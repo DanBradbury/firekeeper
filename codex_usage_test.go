@@ -42,7 +42,7 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 	currentStreak := int64(6)
 	longestStreak := int64(9)
 	m := testModel()
-	m.activeTab = codexUsageTab
+	m.activeTab = usageTab
 	m.width = 100
 	m.height = 24
 	now := time.Now()
@@ -80,7 +80,8 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 
 	view := m.View()
 	for _, expected := range []string{
-		"[ Codex Usage ]",
+		"[ Usage ]",
+		"[ CODEX ]",
 		"╭────╮  Codex",
 		"PLUS  •  248.7M TOKENS  •  1 RESET",
 		"LIMITS",
@@ -116,7 +117,7 @@ func TestRecentCodexDailyUsageFillsMissingDays(t *testing.T) {
 
 func TestRefreshKeyRequestsCodexUsage(t *testing.T) {
 	m := testModel()
-	m.activeTab = codexUsageTab
+	m.activeTab = usageTab
 
 	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
 	m = updated.(model)

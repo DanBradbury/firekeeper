@@ -257,7 +257,7 @@ func (m model) viewCodexUsage(contentRows int) string {
 			usageSectionLine("LOADING", m.width),
 			usagePaintLine("  Fetching Codex account usage…", m.width, usageMutedColor, false, usagePanelColor),
 		)
-		return fillCodexUsageLines(lines, contentRows, m.width)
+		return fillUsageLines(lines, contentRows, m.width)
 	}
 	if m.codexUsageErr != "" && !m.codexUsage.hasData() {
 		lines = append(lines,
@@ -265,7 +265,7 @@ func (m model) viewCodexUsage(contentRows int) string {
 			usageSectionLine("UNAVAILABLE", m.width),
 			usagePaintLine("  "+m.codexUsageErr, m.width, usageMutedColor, false, usagePanelColor),
 		)
-		return fillCodexUsageLines(lines, contentRows, m.width)
+		return fillUsageLines(lines, contentRows, m.width)
 	}
 
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine("LIMITS", m.width))
@@ -310,10 +310,10 @@ func (m model) viewCodexUsage(contentRows int) string {
 			lines = append(lines, usageModelLine(model, m.width))
 		}
 	}
-	return fillCodexUsageLines(lines, contentRows, m.width)
+	return fillUsageLines(lines, contentRows, m.width)
 }
 
-type codexModelUsage struct {
+type modelUsage struct {
 	Model  string
 	Tokens int64
 }
@@ -414,7 +414,7 @@ func dayLabel(date string, today bool) string {
 	return parsed.Format("Mon")
 }
 
-func activeCodexModelUsage(groups []processGroup) []codexModelUsage {
+func activeCodexModelUsage(groups []processGroup) []modelUsage {
 	totals := make(map[string]int64)
 	seen := make(map[string]bool)
 	for _, group := range groups {
@@ -437,9 +437,9 @@ func activeCodexModelUsage(groups []processGroup) []codexModelUsage {
 			totals[model] += session.tokensUsed
 		}
 	}
-	models := make([]codexModelUsage, 0, len(totals))
+	models := make([]modelUsage, 0, len(totals))
 	for model, tokens := range totals {
-		models = append(models, codexModelUsage{Model: model, Tokens: tokens})
+		models = append(models, modelUsage{Model: model, Tokens: tokens})
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].Tokens == models[j].Tokens {
@@ -508,7 +508,7 @@ func usageMetricBarLine(label string, value, maximum int64, width int, emphasize
 		usagePaint(suffix, labelColor, emphasized, usagePanelColor)
 }
 
-func usageModelLine(model codexModelUsage, width int) string {
+func usageModelLine(model modelUsage, width int) string {
 	name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
 	value := formatTokenCount(model.Tokens)
 	contentWidth := max(width-4, 1)
@@ -527,20 +527,6 @@ func usagePaint(value, foreground string, bold bool, background string) string {
 		weight = "1"
 	}
 	return fmt.Sprintf("\x1b[%s;38;2;%s;48;2;%sm%s\x1b[0m", weight, foreground, background, value)
-}
-
-func (m model) codexUsageFooter() (string, string) {
-	help := "  r refresh  •  Tab switch  •  q quit"
-	if m.codexUsageLoading {
-		return help, "  fetching Codex quotas and usage…"
-	}
-	if m.codexUsageErr != "" {
-		return help, "  Codex usage refresh failed: " + m.codexUsageErr
-	}
-	if m.codexUsageRefreshedAt.IsZero() {
-		return help, "  Codex usage not loaded"
-	}
-	return help, "  refreshed " + m.codexUsageRefreshedAt.Format("15:04:05")
 }
 
 func (snapshot codexUsageSnapshot) hasData() bool {
@@ -573,7 +559,7 @@ func formatTokenCount(value int64) string {
 	}
 }
 
-func fillCodexUsageLines(lines []string, height, width int) string {
+func fillUsageLines(lines []string, height, width int) string {
 	if len(lines) > height {
 		lines = lines[:height]
 	}

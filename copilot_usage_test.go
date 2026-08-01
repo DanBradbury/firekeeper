@@ -1,0 +1,143 @@
+package main
+
+import (
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func TestFetchCopilotUsageFromLocalStore(t *testing.T) {
+	sqlite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skip("sqlite3 unavailable")
+	}
+	home := t.TempDir()
+	path := filepath.Join(home, "session-store.db")
+	schema := `
+		CREATE TABLE sessions (id TEXT PRIMARY KEY);
+		CREATE TABLE assistant_usage_events (
+			id INTEGER PRIMARY KEY,
+			session_id TEXT,
+			model TEXT,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			request_multiplier REAL,
+			initiator TEXT,
+			created_at TEXT
+		);
+		INSERT INTO sessions VALUES ('session-1'), ('session-2');
+		INSERT INTO assistant_usage_events VALUES
+			(1, 'session-1', 'claude-sonnet', 100, 20, 1.0, 'user', '2026-07-31T10:00:00Z'),
+			(2, 'session-1', 'claude-sonnet', 200, 30, 1.0, 'agent', '2026-07-31T10:01:00Z'),
+			(3, 'session-2', 'gpt-5', 50, 10, 0.0, 'compaction', '2026-08-01T10:00:00Z'),
+			(4, 'session-2', 'gpt-5', 400, 40, 1.5, 'user', '2026-08-01T10:01:00Z');
+	`
+	if output, err := exec.Command(sqlite, path, schema).CombinedOutput(); err != nil {
+		t.Fatalf("create Copilot usage fixture: %v: %s", err, output)
+	}
+	t.Setenv("COPILOT_HOME", home)
+
+	snapshot, err := fetchCopilotUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Summary.Sessions != 2 || snapshot.Summary.ModelCalls != 4 {
+		t.Fatalf("sessions/calls = %d/%d", snapshot.Summary.Sessions, snapshot.Summary.ModelCalls)
+	}
+	if snapshot.Summary.LifetimeTokens != 850 || snapshot.Summary.InputTokens != 750 || snapshot.Summary.OutputTokens != 100 {
+		t.Fatalf("token summary = %#v", snapshot.Summary)
+	}
+	if snapshot.Summary.UserRequests != 2.5 {
+		t.Fatalf("user request equivalents = %v", snapshot.Summary.UserRequests)
+	}
+	if len(snapshot.Daily) != 2 || len(snapshot.Models) != 2 {
+		t.Fatalf("daily/models = %d/%d", len(snapshot.Daily), len(snapshot.Models))
+	}
+	if snapshot.Models[0].Model != "gpt-5" || snapshot.Models[0].Tokens != 500 {
+		t.Fatalf("top model = %#v", snapshot.Models[0])
+	}
+}
+
+func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = copilotProvider
+	m.width = 100
+	m.height = 24
+	m.copilotUsageRefreshedAt = time.Now()
+	m.copilotUsage = copilotUsageSnapshot{
+		Summary: copilotUsageSummary{
+			Sessions:       12,
+			ModelCalls:     42,
+			LifetimeTokens: 12_500_000,
+			UserRequests:   7.5,
+		},
+		Daily: []copilotDailyUsage{{
+			StartDate:    time.Now().Format("2006-01-02"),
+			Tokens:       2_300_000,
+			UserRequests: 2,
+		}},
+		Models: []copilotUsageModel{{
+			Model:        "claude-sonnet-4.6",
+			Tokens:       12_500_000,
+			ModelCalls:   42,
+			UserRequests: 7.5,
+		}},
+	}
+
+	view := m.View()
+	for _, expected := range []string{
+		"[ Usage ]", "[ COPILOT ]", "GitHub Copilot", "LOCAL CLI",
+		"12 sessions", "42 model calls", "7.5 weighted requests",
+		"GitHub billing", "TOKENS BY DAY", "2.3M", "TOKENS BY MODEL",
+		"CLAUDE SONNET 4.6", "12.5M",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("Copilot usage view missing %q", expected)
+		}
+	}
+}
+
+func TestUsageArrowKeysSwitchProviders(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = codexProvider
+	m.codexUsageRefreshedAt = time.Now()
+
+	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.usageProvider != copilotProvider {
+		t.Fatalf("usage provider = %d, want Copilot", m.usageProvider)
+	}
+	if command == nil || !m.copilotUsageLoading {
+		t.Fatal("switching to unloaded Copilot usage did not start refresh")
+	}
+
+	m.copilotUsageRefreshedAt = time.Now()
+	updated, command = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(model)
+	if m.usageProvider != codexProvider {
+		t.Fatalf("usage provider = %d, want Codex", m.usageProvider)
+	}
+	if command != nil {
+		t.Fatal("switching to loaded Codex usage refreshed unexpectedly")
+	}
+}
+
+func TestCopilotUsageErrorRetainsLastGoodSnapshot(t *testing.T) {
+	m := testModel()
+	m.copilotUsage = copilotUsageSnapshot{Summary: copilotUsageSummary{LifetimeTokens: 99}}
+
+	updated, _ := m.Update(copilotUsageResultMsg{err: errTestCodexUsage, refreshed: time.Now()})
+	m = updated.(model)
+	if m.copilotUsage.Summary.LifetimeTokens != 99 {
+		t.Fatal("failed refresh discarded last good Copilot usage snapshot")
+	}
+	if m.copilotUsageErr == "" {
+		t.Fatal("failed refresh did not expose Copilot error")
+	}
+}

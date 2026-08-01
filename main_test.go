@@ -181,7 +181,7 @@ func TestTickAdvancesAndWrapsFrame(t *testing.T) {
 	}
 }
 
-func TestTabCyclesThroughProcessAndCodexUsageViews(t *testing.T) {
+func TestTabCyclesThroughProcessAndUsageViews(t *testing.T) {
 	m := testModel()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
@@ -195,8 +195,8 @@ func TestTabCyclesThroughProcessAndCodexUsageViews(t *testing.T) {
 
 	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
-	if m.activeTab != codexUsageTab {
-		t.Fatalf("second tab = %d, want Codex usage tab", m.activeTab)
+	if m.activeTab != usageTab {
+		t.Fatalf("second tab = %d, want usage tab", m.activeTab)
 	}
 	if cmd == nil || !m.codexUsageLoading {
 		t.Fatal("opening Codex usage tab did not request refresh")

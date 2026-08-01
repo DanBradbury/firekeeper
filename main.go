@@ -73,8 +73,16 @@ type tab int
 const (
 	animationTab tab = iota
 	processesTab
-	codexUsageTab
+	usageTab
 	tabCount
+)
+
+type usageProvider int
+
+const (
+	codexProvider usageProvider = iota
+	copilotProvider
+	usageProviderCount
 )
 
 type rpgMenuPage int
@@ -123,6 +131,7 @@ type sessionInfo struct {
 	cwd         string
 	model       string
 	source      string
+	repository  string
 	gitBranch   string
 	rolloutPath string
 	updatedAt   time.Time
@@ -150,35 +159,40 @@ type terminalSwitchResultMsg struct {
 }
 
 type model struct {
-	width, height          int
-	activeTab              tab
-	animations             [][]sprite
-	grass                  sprite
-	animation              int
-	frame                  int
-	fireFrames             []sprite
-	fireFrame              int
-	menuOpen               bool
-	menuCursor             int
-	menuPage               rpgMenuPage
-	statusCursor           int
-	frameDuration          time.Duration
-	playing                bool
-	renderer               spriteRenderer
-	spriteColumns          int
-	spriteRows             int
-	processGroups          []processGroup
-	processCursor          int
-	processScroll          int
-	expandedGroups         map[int]bool
-	processErr             string
-	processMetadataWarning string
-	terminalStatus         string
-	refreshedAt            time.Time
-	codexUsage             codexUsageSnapshot
-	codexUsageErr          string
-	codexUsageLoading      bool
-	codexUsageRefreshedAt  time.Time
+	width, height           int
+	activeTab               tab
+	animations              [][]sprite
+	grass                   sprite
+	animation               int
+	frame                   int
+	fireFrames              []sprite
+	fireFrame               int
+	menuOpen                bool
+	menuCursor              int
+	menuPage                rpgMenuPage
+	statusCursor            int
+	frameDuration           time.Duration
+	playing                 bool
+	renderer                spriteRenderer
+	spriteColumns           int
+	spriteRows              int
+	processGroups           []processGroup
+	processCursor           int
+	processScroll           int
+	expandedGroups          map[int]bool
+	processErr              string
+	processMetadataWarning  string
+	terminalStatus          string
+	refreshedAt             time.Time
+	codexUsage              codexUsageSnapshot
+	codexUsageErr           string
+	codexUsageLoading       bool
+	codexUsageRefreshedAt   time.Time
+	usageProvider           usageProvider
+	copilotUsage            copilotUsageSnapshot
+	copilotUsageErr         string
+	copilotUsageLoading     bool
+	copilotUsageRefreshedAt time.Time
 }
 
 func newModel(animations [][]sprite) model {
@@ -245,9 +259,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == processesTab {
 				return m, refreshProcesses()
 			}
-			if m.activeTab == codexUsageTab {
-				m.codexUsageLoading = true
-				return m, refreshCodexUsage()
+			if m.activeTab == usageTab {
+				return m, m.beginUsageRefresh()
 			}
 		case "left", "h":
 			if m.activeTab == animationTab {
@@ -256,6 +269,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if !m.menuOpen {
 					m.cycleAnimation(-1)
 				}
+			} else if m.activeTab == usageTab {
+				return m, m.cycleUsageProvider(-1)
 			}
 		case "right", "l":
 			if m.activeTab == animationTab {
@@ -264,6 +279,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if !m.menuOpen {
 					m.cycleAnimation(1)
 				}
+			} else if m.activeTab == usageTab {
+				return m, m.cycleUsageProvider(1)
 			}
 		case "up", "k":
 			if m.activeTab == animationTab {
@@ -332,9 +349,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == processesTab {
 				return m, refreshProcesses()
 			}
-			if m.activeTab == codexUsageTab {
-				m.codexUsageLoading = true
-				return m, refreshCodexUsage()
+			if m.activeTab == usageTab {
+				return m, m.beginUsageRefresh()
 			}
 		case "s":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
@@ -407,9 +423,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.codexUsage = msg.snapshot
 			m.codexUsageErr = ""
 		}
+
+	case copilotUsageResultMsg:
+		m.copilotUsageLoading = false
+		m.copilotUsageRefreshedAt = msg.refreshed
+		if msg.err != nil {
+			m.copilotUsageErr = sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.copilotUsage = msg.snapshot
+			m.copilotUsageErr = ""
+		}
 	}
 
 	return m, nil
+}
+
+func (m *model) cycleUsageProvider(delta int) tea.Cmd {
+	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
+	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
+		return nil
+	}
+	if m.usageProvider == copilotProvider && !m.copilotUsageRefreshedAt.IsZero() && m.copilotUsageErr == "" {
+		return nil
+	}
+	return m.beginUsageRefresh()
+}
+
+func (m *model) beginUsageRefresh() tea.Cmd {
+	if m.usageProvider == copilotProvider {
+		m.copilotUsageLoading = true
+		return refreshCopilotUsage()
+	}
+	m.codexUsageLoading = true
+	return refreshCodexUsage()
 }
 
 func (m *model) cycleAnimation(delta int) {
@@ -472,8 +518,8 @@ func (m model) View() string {
 		content = m.viewProcesses(contentRows)
 		help, status = m.processFooter()
 	} else {
-		content = m.viewCodexUsage(contentRows)
-		help, status = m.codexUsageFooter()
+		content = m.viewUsage(contentRows)
+		help, status = m.usageFooter()
 	}
 
 	return strings.Join([]string{
@@ -487,11 +533,11 @@ func (m model) View() string {
 func (m model) tabBar() string {
 	switch m.activeTab {
 	case animationTab:
-		return "  [ Animation ]   Processes    Codex Usage    •    Tab switch"
+		return "  [ Animation ]   Processes    Usage    •    Tab switch"
 	case processesTab:
-		return "    Animation    [ Processes ]  Codex Usage    •    Tab switch"
+		return "    Animation    [ Processes ]  Usage    •    Tab switch"
 	default:
-		return "    Animation      Processes  [ Codex Usage ]  •    Tab switch"
+		return "    Animation      Processes  [ Usage ]  •    Tab switch"
 	}
 }
 
@@ -1015,20 +1061,34 @@ func (m model) processBodyLines() ([]string, []int) {
 			continue
 		}
 		if len(group.sessions) == 0 {
-			lines = append(lines, "      session  no Codex rollout metadata found")
+			message := "no session metadata adapter"
+			switch group.tool {
+			case "Codex":
+				message = "no Codex rollout metadata found"
+			case "Copilot":
+				message = "no Copilot session metadata found"
+			}
+			lines = append(lines, "      session  "+message)
 		}
 		for _, session := range group.sessions {
+			originLabel := "source"
+			origin := session.source
+			if session.repository != "" {
+				originLabel = "repo"
+				origin = session.repository
+			}
 			lines = append(lines,
 				"      session  "+session.state.String()+" • "+session.name,
 				"      cwd      "+session.cwd,
 				fmt.Sprintf(
-					"      model    %s  •  source %s  •  updated %s",
+					"      model    %s  •  %s %s  •  updated %s",
 					emptyFallback(session.model, "unknown"),
-					emptyFallback(session.source, "unknown"),
+					originLabel,
+					emptyFallback(origin, "unknown"),
 					formatSessionTime(session.updatedAt),
 				),
 				fmt.Sprintf(
-					"      thread   %s  •  branch %s  •  tokens %d",
+					"      id       %s  •  branch %s  •  tokens %d",
 					session.id,
 					emptyFallback(session.gitBranch, "none"),
 					session.tokensUsed,
@@ -1111,13 +1171,13 @@ func (m *model) restoreProcessSelection(rootPID int) {
 func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGroup {
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
-		if group.tool == "Codex" && len(group.sessions) > 0 {
+		if (group.tool == "Codex" || group.tool == "Copilot") && len(group.sessions) > 0 {
 			known[group.root.pid] = group
 		}
 	}
 	for index := range refreshed {
 		group := &refreshed[index]
-		if group.tool != "Codex" || len(group.sessions) > 0 {
+		if (group.tool != "Codex" && group.tool != "Copilot") || len(group.sessions) > 0 {
 			continue
 		}
 		old, ok := known[group.root.pid]
@@ -1138,9 +1198,14 @@ func refreshProcesses() tea.Cmd {
 			return result
 		}
 		result.groups = groupProcesses(parseProcesses(string(output)))
+		var metadataWarnings []string
 		if err := enrichCodexSessions(result.groups); err != nil {
-			result.metadataWarning = sanitizeProcessCommand(err.Error())
+			metadataWarnings = append(metadataWarnings, "Codex: "+sanitizeProcessCommand(err.Error()))
 		}
+		if err := enrichCopilotSessions(result.groups); err != nil {
+			metadataWarnings = append(metadataWarnings, "Copilot: "+sanitizeProcessCommand(err.Error()))
+		}
+		result.metadataWarning = strings.Join(metadataWarnings, "; ")
 		return result
 	}
 }
