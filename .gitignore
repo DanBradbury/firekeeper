@@ -1,0 +1,32 @@
+# Build outputs
+/firekeeper
+/*.test
+*.out
+
+# Generated demos and profiling data
+/forest-demo.png
+*.prof
+*.pprof
+coverage.txt
+coverage.html
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating systems
+.DS_Store
+Thumbs.db
+
