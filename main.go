@@ -46,6 +46,9 @@ const (
 	animationSourceScale       = 4
 	animationFireWidthIncrease = 2
 	animationCharacterFireGap  = 2
+	animationQuestBadgeGap     = 3
+	questBadgeMinDiameter      = 21
+	questBadgeDigitScale       = 2
 )
 
 type spriteRenderer int
@@ -107,6 +110,12 @@ type sprite struct {
 }
 
 var background = rgb{r: 8, g: 12, b: 24}
+
+var (
+	questBadgeFill    = rgba{r: 250, g: 204, b: 21, a: 255}
+	questBadgeOutline = rgba{r: 91, g: 57, b: 13, a: 255}
+	questBadgeInk     = rgba{r: 48, g: 31, b: 10, a: 255}
+)
 
 //go:embed "ranger spritesheet calciumtrice.png"
 var rangerSheetPNG []byte
@@ -882,6 +891,7 @@ func (m model) grassAnimationScene(columns, rows int) sprite {
 	layout := m.animationLayout(width, height)
 	canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
 	canvas.drawSprite(layout.fireX, layout.fireY, layout.fire)
+	canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
 	return canvas.sprite()
 }
 
@@ -890,6 +900,9 @@ type animationLayout struct {
 	characterX, characterY int
 	fire                   sprite
 	fireX, fireY           int
+	sessionBadge           sprite
+	sessionBadgeX          int
+	sessionBadgeY          int
 }
 
 func (m model) animationLayout(width, height int) animationLayout {
@@ -897,12 +910,11 @@ func (m model) animationLayout(width, height int) animationLayout {
 	frameHeight := min(m.spriteRows, max(height/(2*animationSourceScale), 1)) * 2 * animationSourceScale
 	frame := m.currentFrame().resize(frameWidth, frameHeight)
 	fire := m.currentFireFrame()
+	layout := animationLayout{character: frame}
 	if fire.width < 1 || fire.height < 1 {
-		return animationLayout{
-			character:  frame,
-			characterX: (width - frame.width) / 2,
-			characterY: (height - frame.height) / 2,
-		}
+		layout.characterX = (width - frame.width) / 2
+		layout.characterY = (height - frame.height) / 2
+		return m.withSessionBadge(layout)
 	}
 	scaledFireWidth := fire.width + animationFireWidthIncrease
 	scaledFireHeight := (fire.height*scaledFireWidth + fire.width/2) / fire.width
@@ -910,14 +922,102 @@ func (m model) animationLayout(width, height int) animationLayout {
 
 	fireX := (width - fire.width) / 2
 	fireY := (height - fire.height) / 2
-	return animationLayout{
-		character:  frame,
-		characterX: fireX - animationCharacterFireGap - frame.width,
-		characterY: fireY + fire.height - frame.height,
-		fire:       fire,
-		fireX:      fireX,
-		fireY:      fireY,
+	layout.characterX = fireX - animationCharacterFireGap - frame.width
+	layout.characterY = fireY + fire.height - frame.height
+	layout.fire = fire
+	layout.fireX = fireX
+	layout.fireY = fireY
+	return m.withSessionBadge(layout)
+}
+
+func (m model) withSessionBadge(layout animationLayout) animationLayout {
+	layout.sessionBadge = codexSessionBadge(activeCodexGroupCount(m.processGroups))
+	layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
+	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap
+	return layout
+}
+
+var questBadgeDigits = [10][5]string{
+	{"111", "101", "101", "101", "111"},
+	{"010", "110", "010", "010", "111"},
+	{"111", "001", "111", "100", "111"},
+	{"111", "001", "111", "001", "111"},
+	{"101", "101", "111", "001", "001"},
+	{"111", "100", "111", "001", "111"},
+	{"111", "100", "111", "101", "111"},
+	{"111", "001", "010", "010", "010"},
+	{"111", "101", "111", "101", "111"},
+	{"111", "101", "111", "001", "111"},
+}
+
+func codexSessionBadge(count int) sprite {
+	label := strconv.Itoa(max(count, 0))
+	textWidth := (len(label)*3 + max(len(label)-1, 0)) * questBadgeDigitScale
+	diameter := max(questBadgeMinDiameter, textWidth+8)
+	if diameter%2 == 0 {
+		diameter++
 	}
+
+	badge := sprite{
+		width:  diameter,
+		height: diameter + 3,
+		pixels: make([]rgba, diameter*(diameter+3)),
+	}
+	center := diameter / 2
+	outerRadius := center
+	innerRadius := max(outerRadius-2, 0)
+	for y := 0; y < diameter; y++ {
+		for x := 0; x < diameter; x++ {
+			dx, dy := x-center, y-center
+			distance := dx*dx + dy*dy
+			if distance <= innerRadius*innerRadius {
+				badge.set(x, y, questBadgeFill)
+			} else if distance <= outerRadius*outerRadius {
+				badge.set(x, y, questBadgeOutline)
+			}
+		}
+	}
+
+	// Small pointer makes badge read as character-attached quest indicator.
+	for x := center - 2; x <= center+2; x++ {
+		badge.set(x, diameter-1, questBadgeOutline)
+	}
+	for x := center - 1; x <= center+1; x++ {
+		badge.set(x, diameter, questBadgeOutline)
+	}
+	badge.set(center, diameter, questBadgeFill)
+	badge.set(center, diameter+1, questBadgeOutline)
+
+	textX := (diameter - textWidth) / 2
+	textY := (diameter - 5*questBadgeDigitScale) / 2
+	for index, character := range label {
+		digit := questBadgeDigits[character-'0']
+		digitX := textX + index*4*questBadgeDigitScale
+		for row, pattern := range digit {
+			for column, value := range pattern {
+				if value != '1' {
+					continue
+				}
+				for offsetY := 0; offsetY < questBadgeDigitScale; offsetY++ {
+					for offsetX := 0; offsetX < questBadgeDigitScale; offsetX++ {
+						badge.set(
+							digitX+column*questBadgeDigitScale+offsetX,
+							textY+row*questBadgeDigitScale+offsetY,
+							questBadgeInk,
+						)
+					}
+				}
+			}
+		}
+	}
+	return badge
+}
+
+func (s *sprite) set(x, y int, value rgba) {
+	if x < 0 || x >= s.width || y < 0 || y >= s.height {
+		return
+	}
+	s.pixels[y*s.width+x] = value
 }
 
 func (m model) animationFooter() (string, string) {

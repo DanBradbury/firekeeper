@@ -766,6 +766,62 @@ func TestAnimationSceneScalesFireAndKeepsCharacterClear(t *testing.T) {
 	}
 }
 
+func TestAnimationSceneDrawsCodexSessionBadgeAboveCharacter(t *testing.T) {
+	grass := sprite{width: 1, height: 1, pixels: []rgba{{g: 40, a: 255}}}
+	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}
+	m := newModelWithGrass([][]sprite{{character}}, appConfig{
+		renderer:      blockRenderer,
+		spriteColumns: 4,
+		spriteRows:    2,
+	}, grass)
+	m.processGroups = []processGroup{
+		{tool: "Codex"},
+		{tool: "Copilot"},
+		{tool: "Codex"},
+	}
+
+	scene := m.grassAnimationScene(40, 20)
+	layout := m.animationLayout(scene.width, scene.height)
+	if layout.sessionBadge.width < 1 || layout.sessionBadge.height < 1 {
+		t.Fatal("Codex session badge was not created")
+	}
+	if got, want := layout.sessionBadgeX+(layout.sessionBadge.width/2), layout.characterX+(layout.character.width/2); got != want {
+		t.Fatalf("badge center = %d, want character center %d", got, want)
+	}
+	if layout.sessionBadgeY+layout.sessionBadge.height > layout.characterY {
+		t.Fatalf("badge bottom %d overlaps character top %d", layout.sessionBadgeY+layout.sessionBadge.height, layout.characterY)
+	}
+
+	foundYellow := false
+	foundInk := false
+	for y := layout.sessionBadgeY; y < layout.sessionBadgeY+layout.sessionBadge.height; y++ {
+		for x := layout.sessionBadgeX; x < layout.sessionBadgeX+layout.sessionBadge.width; x++ {
+			pixel := scene.at(x, y)
+			foundYellow = foundYellow || (pixel.r == questBadgeFill.r && pixel.g == questBadgeFill.g && pixel.b == questBadgeFill.b)
+			foundInk = foundInk || (pixel.r == questBadgeInk.r && pixel.g == questBadgeInk.g && pixel.b == questBadgeInk.b)
+		}
+	}
+	if !foundYellow || !foundInk {
+		t.Fatalf("badge colors missing: yellow=%v ink=%v", foundYellow, foundInk)
+	}
+}
+
+func TestCodexSessionBadgeRendersMultiDigitCount(t *testing.T) {
+	badge := codexSessionBadge(12)
+	if badge.width%2 == 0 {
+		t.Fatalf("badge width = %d, want odd width for centering", badge.width)
+	}
+	inkPixels := 0
+	for _, pixel := range badge.pixels {
+		if pixel.r == questBadgeInk.r && pixel.g == questBadgeInk.g && pixel.b == questBadgeInk.b && pixel.a == 255 {
+			inkPixels++
+		}
+	}
+	if inkPixels < 20 {
+		t.Fatalf("multi-digit label contains only %d ink pixels", inkPixels)
+	}
+}
+
 func TestSliceSheetRejectsInvalidGrid(t *testing.T) {
 	_, err := sliceSheet(sprite{width: 31, height: 32}, 10, 10)
 	if err == nil {
