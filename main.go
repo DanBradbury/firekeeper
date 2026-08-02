@@ -46,6 +46,7 @@ const (
 	animationSourceScale       = 4
 	animationFireWidthIncrease = 2
 	animationCharacterFireGap  = 2
+	portraitBoxSize            = 24
 	animationQuestBadgeGap     = 3
 	questBadgeMinDiameter      = 21
 	questBadgeDigitScale       = 2
@@ -77,6 +78,7 @@ const (
 	animationTab tab = iota
 	processesTab
 	usageTab
+	settingsTab
 	tabCount
 )
 
@@ -119,6 +121,12 @@ var (
 
 //go:embed "ranger spritesheet calciumtrice.png"
 var rangerSheetPNG []byte
+
+//go:embed "warrior.png"
+var warriorSheetPNG []byte
+
+//go:embed "cleric.png"
+var clericSheetPNG []byte
 
 type tickMsg time.Time
 
@@ -171,6 +179,7 @@ type model struct {
 	width, height           int
 	activeTab               tab
 	animations              [][]sprite
+	codexSprites            [][][]sprite
 	grass                   sprite
 	animation               int
 	frame                   int
@@ -182,6 +191,13 @@ type model struct {
 	statusCursor            int
 	frameDuration           time.Duration
 	playing                 bool
+	codexSprite             codexSpriteChoice
+	settingsCursor          int
+	settingsEditing         bool
+	settingsEditOriginal    codexSpriteChoice
+	settingsPath            string
+	settingsSavePending     bool
+	settingsErr             string
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -217,8 +233,10 @@ func newModelWithConfig(animations [][]sprite, config appConfig) model {
 		width:          80,
 		height:         24,
 		animations:     animations,
+		codexSprites:   [][][]sprite{animations},
 		frameDuration:  defaultFrameDuration,
 		playing:        true,
+		codexSprite:    codexSpriteRanger,
 		renderer:       config.renderer,
 		spriteColumns:  config.spriteColumns,
 		spriteRows:     config.spriteRows,
@@ -229,6 +247,18 @@ func newModelWithConfig(animations [][]sprite, config appConfig) model {
 func newModelWithGrass(animations [][]sprite, config appConfig, grass sprite) model {
 	m := newModelWithConfig(animations, config)
 	m.grass = grass
+	return m
+}
+
+func (m model) withCodexSprites(sprites [][][]sprite) model {
+	m.codexSprites = sprites
+	return m
+}
+
+func (m model) withPersistentSettings(settings persistentSettings, path string) model {
+	m.codexSprite = settings.CodexSprite
+	m.settingsPath = path
+	m.applyCodexSprite()
 	return m
 }
 
@@ -263,6 +293,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "tab", "shift+tab":
+			m.cancelSettingsEdit()
 			m.activeTab = (m.activeTab + 1) % tabCount
 			m.menuOpen = false
 			if m.activeTab == processesTab {
@@ -280,6 +311,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == usageTab {
 				return m, m.cycleUsageProvider(-1)
+			} else if m.activeTab == settingsTab {
+				if m.settingsEditing {
+					m.cycleCodexSprite(-1)
+				}
 			}
 		case "right", "l":
 			if m.activeTab == animationTab {
@@ -290,6 +325,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == usageTab {
 				return m, m.cycleUsageProvider(1)
+			} else if m.activeTab == settingsTab {
+				if m.settingsEditing {
+					m.cycleCodexSprite(1)
+				}
 			}
 		case "up", "k":
 			if m.activeTab == animationTab {
@@ -303,6 +342,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == processesTab {
 				m.processCursor--
 				m.clampProcessSelection()
+			} else if m.activeTab == settingsTab {
+				if !m.settingsEditing {
+					m.settingsCursor = max(m.settingsCursor-1, 0)
+				}
 			}
 		case "down", "j":
 			if m.activeTab == animationTab {
@@ -316,6 +359,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == processesTab {
 				m.processCursor++
 				m.clampProcessSelection()
+			} else if m.activeTab == settingsTab {
+				if !m.settingsEditing {
+					m.settingsCursor = min(m.settingsCursor+1, settingsItemCount-1)
+				}
 			}
 		case "pgup":
 			if m.activeTab == processesTab {
@@ -345,9 +392,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == animationTab && m.menuOpen && m.menuPage == rpgMenuCommands && m.menuCursor == rpgStatusMenuIndex {
 				m.menuPage = rpgMenuStatus
 				m.statusCursor = 0
+			} else if m.activeTab == settingsTab {
+				if m.settingsEditing {
+					m.settingsEditing = false
+					m.settingsSavePending = m.settingsPath != ""
+					m.settingsErr = ""
+					return m, m.saveSettingsCmd()
+				}
+				m.settingsEditOriginal = m.codexSprite
+				m.settingsEditing = true
 			}
 		case "esc", "backspace":
-			if m.activeTab == animationTab && m.menuOpen {
+			if m.activeTab == settingsTab {
+				m.cancelSettingsEdit()
+			} else if m.activeTab == animationTab && m.menuOpen {
 				if m.menuPage == rpgMenuStatus {
 					m.menuPage = rpgMenuCommands
 				} else {
@@ -442,6 +500,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.copilotUsage = msg.snapshot
 			m.copilotUsageErr = ""
 		}
+
+	case settingsSaveResultMsg:
+		m.settingsSavePending = false
+		if msg.err != nil {
+			m.settingsErr = "save failed: " + sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.settingsErr = ""
+		}
 	}
 
 	return m, nil
@@ -526,9 +592,12 @@ func (m model) View() string {
 	} else if m.activeTab == processesTab {
 		content = m.viewProcesses(contentRows)
 		help, status = m.processFooter()
-	} else {
+	} else if m.activeTab == usageTab {
 		content = m.viewUsage(contentRows)
 		help, status = m.usageFooter()
+	} else {
+		content = m.viewSettings(contentRows)
+		help, status = m.settingsFooter()
 	}
 
 	return strings.Join([]string{
@@ -544,9 +613,11 @@ func (m model) tabBar() string {
 	case animationTab:
 		return "  [ Animation ]   Processes    Usage    •    Tab switch"
 	case processesTab:
-		return "    Animation    [ Processes ]  Usage    •    Tab switch"
+		return "    Animation    [ Processes ]  Usage    Settings    •    Tab switch"
+	case usageTab:
+		return "    Animation      Processes  [ Usage ]  Settings    •    Tab switch"
 	default:
-		return "    Animation      Processes  [ Usage ]  •    Tab switch"
+		return "    Animation      Processes    Usage  [ Settings ]  •    Tab switch"
 	}
 }
 
@@ -1900,6 +1971,14 @@ func sliceSheet(sheet sprite, columns, rows int) ([][]sprite, error) {
 	return animations, nil
 }
 
+func decodeCodexAnimations(data []byte) ([][]sprite, error) {
+	sheet, err := decodeSprite(data)
+	if err != nil {
+		return nil, err
+	}
+	return sliceSheet(sheet, sheetColumns, sheetRows)
+}
+
 func (s sprite) fit(maxWidth, maxHeight int) sprite {
 	if s.width == 0 || s.height == 0 || maxWidth < 1 || maxHeight < 1 {
 		return sprite{}
@@ -2115,6 +2194,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
 		os.Exit(2)
 	}
+	storedSettings, settingsPath, settingsErr := loadPersistentSettings()
+	if settingsErr != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI warning: %v; using default settings\n", settingsErr)
+	}
 	sheet, err := decodeSprite(rangerSheetPNG)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
@@ -2123,6 +2206,16 @@ func main() {
 	animations, err := sliceSheet(sheet, sheetColumns, sheetRows)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
+		os.Exit(1)
+	}
+	warriorAnimations, err := decodeCodexAnimations(warriorSheetPNG)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior sprite: %v\n", err)
+		os.Exit(1)
+	}
+	clericAnimations, err := decodeCodexAnimations(clericSheetPNG)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Cleric sprite: %v\n", err)
 		os.Exit(1)
 	}
 	forestTileset, err := decodeSprite(forestTilesetPNG)
@@ -2140,7 +2233,10 @@ func main() {
 	}
 
 	p := tea.NewProgram(
-		newModelWithGrass(animations, config, grass).withFire(fireFrames),
+		newModelWithGrass(animations, config, grass).
+			withCodexSprites([][][]sprite{animations, warriorAnimations, clericAnimations}).
+			withPersistentSettings(storedSettings, settingsPath).
+			withFire(fireFrames),
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {

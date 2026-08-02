@@ -18,6 +18,7 @@ More harnesses and providers are planned.
 - Inspect session metadata, working directory, model, Git branch, and tokens.
 - View Codex limits, reset times, recent token usage, and active models.
 - Jump to a selected agent terminal session on macOS.
+- Show a static Codex character portrait in Settings.
 - Keep existing CLI workflows: no daemon, remote argument, or wrapper required.
 - Navigate everything from a pixel-art, keyboard-driven TUI.
 
@@ -59,12 +60,13 @@ just --list    # show all recipes
 
 ## Using Firekeeper
 
-Firekeeper opens on an animated camp scene. Press Tab to move between three
+Firekeeper opens on an animated camp scene. Press Tab to move between four
 views:
 
 - **Animation** — home scene and RPG-style command menu.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex and Copilot CLI token history and model usage.
+- **Settings** — configure the Codex character sprite.
 
 ### Global controls
 
@@ -107,6 +109,18 @@ TTY cannot be selected this way.
 | --- | --- |
 | Left / Right or `H` / `L` | Switch between Codex and Copilot |
 | `r` | Refresh selected provider |
+
+### Settings
+
+Codex sprite options: Ranger, Warrior, and Cleric.
+Changes save to Firekeeper’s user config and load automatically on next launch.
+
+| Key | Action |
+| --- | --- |
+| Up / Down or `J` / `K` | Select a setting |
+| Enter | Edit selected setting |
+| Left / Right or `H` / `L` | Change value while editing |
+| Enter / Esc | Save or cancel editing |
 
 Codex usage requires an authenticated Codex CLI installation. Firekeeper makes
 a short-lived local stdio request to Codex when this view opens; it does not

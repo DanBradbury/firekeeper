@@ -181,7 +181,7 @@ func TestTickAdvancesAndWrapsFrame(t *testing.T) {
 	}
 }
 
-func TestTabCyclesThroughProcessAndUsageViews(t *testing.T) {
+func TestTabCyclesThroughProcessUsageAndSettingsViews(t *testing.T) {
 	m := testModel()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
@@ -204,8 +204,99 @@ func TestTabCyclesThroughProcessAndUsageViews(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
+	if m.activeTab != settingsTab {
+		t.Fatalf("third tab = %d, want settings tab", m.activeTab)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
 	if m.activeTab != animationTab {
-		t.Fatalf("third tab = %d, want animation tab", m.activeTab)
+		t.Fatalf("fourth tab = %d, want animation tab", m.activeTab)
+	}
+}
+
+func TestSettingsCodexSpriteDefaultsToRangerAndEdits(t *testing.T) {
+	m := testModel()
+	if m.codexSprite != codexSpriteRanger {
+		t.Fatalf("default Codex sprite = %s, want Ranger", m.codexSprite)
+	}
+	m.activeTab = settingsTab
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.codexSprite != codexSpriteRanger || m.settingsEditing {
+		t.Fatalf("browse changed setting: sprite=%s editing=%t", m.codexSprite, m.settingsEditing)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.settingsEditing {
+		t.Fatal("Enter did not start settings editing")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.codexSprite != codexSpriteWarrior {
+		t.Fatalf("edited Codex sprite = %s, want Warrior", m.codexSprite)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if m.settingsEditing {
+		t.Fatal("Enter did not finish settings editing")
+	}
+	if !strings.Contains(m.View(), "SETTINGS") || !strings.Contains(m.View(), "Warrior") {
+		t.Fatalf("settings view missing selected sprite:\n%s", m.View())
+	}
+}
+
+func TestCodexSpriteSelectionUpdatesMainAnimation(t *testing.T) {
+	ranger := sprite{width: 1, height: 1, pixels: []rgba{{r: 10, a: 255}}}
+	warrior := sprite{width: 1, height: 1, pixels: []rgba{{r: 20, a: 255}}}
+	m := newModel([][]sprite{{ranger}})
+	m.codexSprites = [][][]sprite{{{ranger}}, {{warrior}}, {{sprite{width: 1, height: 1, pixels: []rgba{{r: 30, a: 255}}}}}}
+	m.activeTab = settingsTab
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if got := m.currentFrame().at(0, 0).r; got != 20 {
+		t.Fatalf("main animation sprite red = %d, want 20", got)
+	}
+}
+
+func TestCodexPortraitUsesSelectedSpriteSet(t *testing.T) {
+	makeFrame := func(value uint8) sprite {
+		frame := sprite{width: 32, height: 32, pixels: make([]rgba, 32*32)}
+		for index := range frame.pixels {
+			frame.pixels[index] = rgba{r: value, a: 255}
+		}
+		return frame
+	}
+	m := newModel([][]sprite{{makeFrame(10)}})
+	m.codexSprites = [][][]sprite{
+		{{makeFrame(10)}},
+		{{makeFrame(20)}},
+		{{makeFrame(30)}},
+	}
+	for choice, want := range []uint8{10, 20, 30} {
+		m.codexSprite = codexSpriteChoice(choice)
+		portrait := m.codexPortrait()
+		if got := portrait.at(portraitBoxSize/2, portraitBoxSize/2).r; got != want {
+			t.Fatalf("choice %d portrait red = %d, want %d", choice, got, want)
+		}
+	}
+}
+
+func TestCodexSpriteSheetsDecodeIntoTenAnimations(t *testing.T) {
+	for name, data := range map[string][]byte{
+		"ranger":  rangerSheetPNG,
+		"warrior": warriorSheetPNG,
+		"cleric":  clericSheetPNG,
+	} {
+		animations, err := decodeCodexAnimations(data)
+		if err != nil {
+			t.Fatalf("decode %s: %v", name, err)
+		}
+		if len(animations) != 10 || len(animations[0]) != 10 {
+			t.Fatalf("%s animation dimensions = %d/%d, want 10/10", name, len(animations), len(animations[0]))
+		}
 	}
 }
 
@@ -763,6 +854,37 @@ func TestAnimationSceneScalesFireAndKeepsCharacterClear(t *testing.T) {
 	}
 	if got, want := layout.characterY+layout.character.height, layout.fireY+layout.fire.height; got != want {
 		t.Fatalf("character bottom = %d, fire bottom = %d", got, want)
+	}
+}
+
+func TestSettingsPortraitIsSquareAndStatic(t *testing.T) {
+	frame := sprite{width: 32, height: 32, pixels: make([]rgba, 32*32)}
+	for index := range frame.pixels {
+		frame.pixels[index] = rgba{r: 200, g: 40, b: 20, a: 255}
+	}
+	m := newModel([][]sprite{{frame}, {sprite{width: 32, height: 32, pixels: make([]rgba, 32*32)}}})
+	portrait := m.codexPortrait()
+	if portrait.width != portraitBoxSize || portrait.height != portraitBoxSize {
+		t.Fatalf("portrait size = %dx%d, want %dx%d", portrait.width, portrait.height, portraitBoxSize, portraitBoxSize)
+	}
+	if got := portrait.at(0, 0); got.r != 250 || got.g != 204 || got.a != 255 {
+		t.Fatalf("portrait border = %#v, want gold opaque pixel", got)
+	}
+	if got := portrait.at(portraitBoxSize/2, portraitBoxSize/2); got.r != 200 || got.g != 40 || got.a != 255 {
+		t.Fatalf("portrait interior = %#v, want character pixel", got)
+	}
+	m.frame = 0
+	first := m.codexPortrait()
+	m.frame = 1
+	second := m.codexPortrait()
+	if first.at(portraitBoxSize/2, portraitBoxSize/2) != second.at(portraitBoxSize/2, portraitBoxSize/2) {
+		t.Fatal("portrait changed with animation frame")
+	}
+	m.width = 80
+	m.height = 24
+	m.activeTab = settingsTab
+	if got, want := len(m.settingsPortraitLines()), 10; got != want {
+		t.Fatalf("settings portrait rows = %d, want %d", got, want)
 	}
 }
 
