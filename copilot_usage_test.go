@@ -76,6 +76,12 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 			LifetimeTokens: 12_500_000,
 			UserRequests:   7.5,
 		},
+		Plan: copilotPlanDetails{
+			UsedCredits:  0,
+			TotalCredits: 7000,
+			Remaining:    7000,
+			Available:    true,
+		},
 		Daily: []copilotDailyUsage{{
 			StartDate:    time.Now().Format("2006-01-02"),
 			Tokens:       2_300_000,
@@ -93,12 +99,41 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 	for _, expected := range []string{
 		"[ Usage ]", "[ COPILOT ]", "GitHub Copilot", "LOCAL CLI",
 		"12 sessions", "42 model calls", "7.5 weighted requests",
-		"GitHub billing", "TOKENS BY DAY", "2.3M", "TOKENS BY MODEL",
+		"AI Credits", "0 / 7,000 AIC", "TOKENS BY DAY", "2.3M", "TOKENS BY MODEL",
 		"CLAUDE SONNET 4.6", "12.5M",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Copilot usage view missing %q", expected)
 		}
+	}
+}
+
+func TestDecodeCopilotPlan(t *testing.T) {
+	plan, err := decodeCopilotPlan([]byte(`{
+		"copilot_plan": "pro",
+		"quota_reset_date_utc": "2026-09-01T00:00:00Z",
+		"quota_snapshots": {
+			"premium_interactions": {"entitlement": 7000, "remaining": 6500}
+		}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Name != "pro" || plan.UsedCredits != 500 || plan.TotalCredits != 7000 || plan.Remaining != 6500 {
+		t.Fatalf("plan = %#v", plan)
+	}
+	if plan.ResetAt.IsZero() || !plan.Available {
+		t.Fatalf("reset/availability = %#v", plan)
+	}
+}
+
+func TestDecodeCopilotPlanAcceptsAICreditsQuota(t *testing.T) {
+	plan, err := decodeCopilotPlan([]byte(`{
+		"plan": "pro+",
+		"quota_snapshots": {"ai_credits": {"used": 12.5, "entitlement": 7000, "remaining": 6987.5}}
+	}`))
+	if err != nil || plan.Name != "pro+" || plan.UsedCredits != 12.5 {
+		t.Fatalf("plan/error = %#v/%v", plan, err)
 	}
 }
 

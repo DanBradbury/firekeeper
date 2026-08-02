@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,10 +39,21 @@ type copilotUsageModel struct {
 	UserRequests float64
 }
 
+type copilotPlanDetails struct {
+	Name         string
+	UsedCredits  float64
+	TotalCredits float64
+	Remaining    float64
+	ResetAt      time.Time
+	Available    bool
+}
+
 type copilotUsageSnapshot struct {
 	Summary copilotUsageSummary
 	Daily   []copilotDailyUsage
 	Models  []copilotUsageModel
+	Plan    copilotPlanDetails
+	PlanErr string
 }
 
 type copilotUsageResultMsg struct {
@@ -148,7 +163,109 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 	if err != nil {
 		return copilotUsageSnapshot{}, fmt.Errorf("read Copilot usage: %w", err)
 	}
-	return decodeCopilotUsage(output)
+	snapshot, err := decodeCopilotUsage(output)
+	if err != nil {
+		return copilotUsageSnapshot{}, err
+	}
+	snapshot.Plan, snapshot.PlanErr = fetchCopilotPlan()
+	return snapshot, nil
+}
+
+const copilotPlanURL = "https://api.github.com/copilot_internal/user"
+
+func fetchCopilotPlan() (copilotPlanDetails, string) {
+	token := copilotGitHubToken()
+	if token == "" {
+		return copilotPlanDetails{}, "Copilot token unavailable"
+	}
+
+	endpoint := copilotPlanURL
+	if apiURL := strings.TrimRight(strings.TrimSpace(os.Getenv("GITHUB_API_URL")), "/"); apiURL != "" {
+		endpoint = apiURL + "/copilot_internal/user"
+	}
+	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return copilotPlanDetails{}, "create Copilot plan request: " + err.Error()
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Accept", "application/vnd.github+json")
+	client := &http.Client{Timeout: 5 * time.Second}
+	response, err := client.Do(request)
+	if err != nil {
+		return copilotPlanDetails{}, "read Copilot plan: " + sanitizeProcessCommand(err.Error())
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return copilotPlanDetails{}, fmt.Sprintf("Copilot plan request returned HTTP %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return copilotPlanDetails{}, "read Copilot plan response: " + err.Error()
+	}
+	plan, err := decodeCopilotPlan(body)
+	if err != nil {
+		return copilotPlanDetails{}, err.Error()
+	}
+	return plan, ""
+}
+
+func copilotGitHubToken() string {
+	for _, name := range []string{"COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"} {
+		if token := strings.TrimSpace(os.Getenv(name)); token != "" {
+			return token
+		}
+	}
+	if gh, err := exec.LookPath("gh"); err == nil {
+		if output, err := exec.Command(gh, "auth", "token").Output(); err == nil {
+			return strings.TrimSpace(string(output))
+		}
+	}
+	return ""
+}
+
+type copilotPlanResponse struct {
+	Plan           string                  `json:"copilot_plan"`
+	PlanName       string                  `json:"plan"`
+	ResetAt        string                  `json:"quota_reset_date_utc"`
+	QuotaSnapshots map[string]copilotQuota `json:"quota_snapshots"`
+}
+
+type copilotQuota struct {
+	Entitlement float64 `json:"entitlement"`
+	Remaining   float64 `json:"remaining"`
+	Used        float64 `json:"used"`
+	Unlimited   bool    `json:"unlimited"`
+}
+
+func decodeCopilotPlan(body []byte) (copilotPlanDetails, error) {
+	var response copilotPlanResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return copilotPlanDetails{}, fmt.Errorf("decode Copilot plan: %w", err)
+	}
+	quota, ok := response.QuotaSnapshots["ai_credits"]
+	if !ok {
+		quota, ok = response.QuotaSnapshots["premium_interactions"]
+	}
+	if !ok {
+		return copilotPlanDetails{}, fmt.Errorf("decode Copilot plan: AI credit quota unavailable")
+	}
+	used := quota.Used
+	if used == 0 && quota.Entitlement >= quota.Remaining {
+		used = quota.Entitlement - quota.Remaining
+	}
+	name := response.Plan
+	if name == "" {
+		name = response.PlanName
+	}
+	resetAt, _ := time.Parse(time.RFC3339, response.ResetAt)
+	return copilotPlanDetails{
+		Name:         name,
+		UsedCredits:  used,
+		TotalCredits: quota.Entitlement,
+		Remaining:    quota.Remaining,
+		ResetAt:      resetAt,
+		Available:    true,
+	}, nil
 }
 
 func decodeCopilotUsage(output []byte) (copilotUsageSnapshot, error) {
@@ -240,6 +357,16 @@ func (m model) viewCopilotUsage(contentRows int) string {
 		return fillUsageLines(lines, contentRows, m.width)
 	}
 
+	if m.copilotUsage.Plan.Available {
+		plan := m.copilotUsage.Plan
+		lines = append(lines, usagePaintLine(fmt.Sprintf("  AI Credits %s AIC  •  Plan %s / %s AIC", formatAICredits(plan.UsedCredits), formatAICredits(plan.UsedCredits), formatAICredits(plan.TotalCredits)), m.width, usageMutedColor, false, usagePanelColor))
+	} else {
+		message := "  Plan information unavailable"
+		if m.copilotUsage.PlanErr != "" {
+			message += ": " + m.copilotUsage.PlanErr
+		}
+		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
+	}
 	lines = append(lines,
 		usageDividerLine(m.width),
 		usageSectionLine("LOCAL CLI HISTORY", m.width),
@@ -314,6 +441,28 @@ func formatRequestCount(value float64) string {
 	return fmt.Sprintf("%.1f", value)
 }
 
+func formatAICredits(value float64) string {
+	if value == float64(int64(value)) {
+		return formatCommaInt(int64(value))
+	}
+	return formatCommaInt(int64(value)) + fmt.Sprintf(".%d", int((value-float64(int64(value)))*10))
+}
+
+func formatCommaInt(value int64) string {
+	negative := value < 0
+	if negative {
+		value = -value
+	}
+	digits := strconv.FormatInt(value, 10)
+	for index := len(digits) - 3; index > 0; index -= 3 {
+		digits = digits[:index] + "," + digits[index:]
+	}
+	if negative {
+		return "-" + digits
+	}
+	return digits
+}
+
 func (m model) usageFooter() (string, string) {
 	help := "  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
 	if m.usageProvider == copilotProvider {
@@ -341,5 +490,5 @@ func (m model) usageFooter() (string, string) {
 }
 
 func (snapshot copilotUsageSnapshot) hasData() bool {
-	return snapshot.Summary.Sessions > 0 || snapshot.Summary.LifetimeTokens > 0 || len(snapshot.Daily) > 0
+	return snapshot.Plan.Available || snapshot.Summary.Sessions > 0 || snapshot.Summary.LifetimeTokens > 0 || len(snapshot.Daily) > 0
 }

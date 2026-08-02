@@ -102,9 +102,12 @@ TTY cannot be selected this way.
 Codex usage requires an authenticated Codex CLI installation. Firekeeper makes
 a short-lived local stdio request to Codex when this view opens; it does not
 require a persistent app server or changes to existing Codex commands.
-Copilot usage comes from the local read-only `session-store.db`; account
-allowance and remaining quota stay in GitHub billing because GitHub does not
-provide an equivalent individual quota source through Copilot CLI.
+Copilot usage reads local history from read-only `session-store.db` and, when
+an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
+allowance, remaining credits, and reset timing from GitHub. Token lookup honors
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, and `GITHUB_TOKEN`, then `gh auth token`.
+Plan data is best effort because its Copilot endpoint is internal and may
+change.
 
 ## Rendering
 
