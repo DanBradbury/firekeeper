@@ -40,7 +40,7 @@ const (
 	maximumSpriteRows    = 64
 	kittyImageID         = 42
 	kittyPlacementID     = 1
-	// Forest demo displays its 320px scene at roughly 80 terminal columns.
+	// Forest scene displays its 320px scene at roughly 80 terminal columns.
 	// Keep same 4 source pixels per terminal half-cell here so 16x16 ground
 	// tiles remain native atlas sprites instead of being enlarged and blurred.
 	animationSourceScale       = 4
@@ -2105,8 +2105,6 @@ func fitLine(s string, width int) string {
 }
 
 func main() {
-	demoFlag := flag.String("demo", "sprites", "demo to run: sprites or forest")
-	forestOutputFlag := flag.String("forest-output", "", "write one forest scene PNG and exit")
 	rendererFlag := flag.String("renderer", "auto", "sprite renderer: auto, kitty, or blocks")
 	spriteColumnsFlag := flag.Int("sprite-cols", defaultSpriteColumns, "sprite width in terminal columns")
 	spriteRowsFlag := flag.Int("sprite-rows", defaultSpriteRows, "sprite height in terminal rows")
@@ -2117,43 +2115,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
 		os.Exit(2)
 	}
-	if *demoFlag == "forest" || *forestOutputFlag != "" {
-		tileset, err := decodeSprite(forestTilesetPNG)
-		if err == nil {
-			err = validateForestTileset(tileset)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "forest demo failed: %v\n", err)
-			os.Exit(1)
-		}
-		if *forestOutputFlag != "" {
-			output, err := os.Create(*forestOutputFlag)
-			if err == nil {
-				err = writeForestPreview(output, tileset)
-				closeErr := output.Close()
-				if err == nil {
-					err = closeErr
-				}
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "forest demo failed: %v\n", err)
-				os.Exit(1)
-			}
-			return
-		}
-
-		p := tea.NewProgram(newForestModel(tileset, config.renderer), tea.WithAltScreen())
-		if _, err := p.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "forest demo failed: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-	if *demoFlag != "sprites" {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: demo must be sprites or forest, got %q\n", *demoFlag)
-		os.Exit(2)
-	}
-
 	sheet, err := decodeSprite(rangerSheetPNG)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)

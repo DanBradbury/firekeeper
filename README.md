@@ -48,6 +48,15 @@ For local development:
 go run .
 ```
 
+If [just](https://github.com/casey/just) is installed, use `just` shortcuts:
+
+```sh
+just run       # launch Firekeeper
+just test      # run all tests
+just check     # test, vet, format, and diff checks
+just --list    # show all recipes
+```
+
 ## Using Firekeeper
 
 Firekeeper opens on an animated camp scene. Press Tab to move between three
@@ -138,27 +147,6 @@ exposes process information without provider-specific session metadata.
 
 All monitoring stays local. Firekeeper does not proxy prompts or replace agent
 clients.
-
-## Development demos
-
-Run the layered forest scene:
-
-```sh
-go run . --demo forest
-```
-
-Press `L`, Tab, or arrow keys to cycle its layers. Press Space to pause the
-campfire. Export a static preview with:
-
-```sh
-go run . --demo forest --forest-output forest-demo.png
-```
-
-Run the standalone Kitty graphics example:
-
-```sh
-go run ./cmd/kitty-demo
-```
 
 ## Status
 
