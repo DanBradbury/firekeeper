@@ -6,17 +6,18 @@ Firekeeper is a terminal dashboard for developers working across multiple AI
 coding harnesses. It brings sessions, process state, model usage, and quotas
 into one local view without changing how those tools are launched.
 
-Current support includes Codex, GitHub Copilot CLI, and OpenCode process
-discovery, with detailed local session state and metadata for Codex and Copilot.
+Current support includes Codex, Kimi Code, GitHub Copilot CLI, and OpenCode
+process discovery, with detailed local session state and metadata for Codex,
+Kimi, and Copilot.
 More harnesses and providers are planned.
 
 ## Highlights
 
 - Discover local coding-agent processes automatically.
 - Group parent and child processes into one runtime.
-- See whether Codex and Copilot sessions are active, waiting, or need input.
+- See whether Codex, Kimi, and Copilot sessions are active, waiting, or need input.
 - Inspect session metadata, working directory, model, Git branch, and tokens.
-- View Codex limits, reset times, recent token usage, and active models.
+- View Codex limits, recent token usage, active models, and local Kimi token usage.
 - Jump to a selected agent terminal session on macOS.
 - Show a static Codex character portrait in Settings.
 - Keep existing CLI workflows: no daemon, remote argument, or wrapper required.
@@ -65,7 +66,7 @@ views:
 
 - **Animation** — home scene and RPG-style command menu.
 - **Processes** — running agent harnesses and their session details.
-- **Usage** — Codex quotas plus Codex and Copilot CLI token history and model usage.
+- **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
 - **Settings** — configure the Codex character sprite.
 
 ### Global controls
@@ -107,7 +108,7 @@ TTY cannot be selected this way.
 
 | Key | Action |
 | --- | --- |
-| Left / Right or `H` / `L` | Switch between Codex and Copilot |
+| Left / Right or `H` / `L` | Switch between Codex, Copilot, and Kimi |
 | `r` | Refresh selected provider |
 
 ### Settings
@@ -125,6 +126,11 @@ Changes save to Firekeeper’s user config and load automatically on next launch
 Codex usage requires an authenticated Codex CLI installation. Firekeeper makes
 a short-lived local stdio request to Codex when this view opens; it does not
 require a persistent app server or changes to existing Codex commands.
+Kimi usage reads local `usage.record` events from Kimi Code sessions under
+`KIMI_CODE_HOME` (default `~/.kimi-code`). It shows session, model, input,
+cache, output, and total token history. Kimi quota/reset data is exposed by
+Kimi Code’s `/usage` flow; Firekeeper does not extract credentials or call
+undocumented quota endpoints.
 Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
 allowance, remaining credits, and reset timing from GitHub. Token lookup honors
@@ -153,9 +159,11 @@ running outside tmux first when testing Kitty rendering.
 Firekeeper scans local processes every two seconds and collapses related
 processes into runtime groups. For Codex, it locates open rollout files and
 queries `~/.codex/state_5.sqlite` read-only for available session metadata. For
+Kimi Code, it maps runtime PIDs to their working directory and reads session
+`state.json` under `KIMI_CODE_HOME` without modifying it. For
 Copilot CLI, it maps runtime PIDs to `~/.copilot/session-state` and reads
 `workspace.yaml`, `events.jsonl`, and `session-store.db` without modifying them.
-`CODEX_HOME` and `COPILOT_HOME` overrides are honored. Provider events supply
+`CODEX_HOME`, `KIMI_CODE_HOME`, and `COPILOT_HOME` overrides are honored. Provider events supply
 best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. OpenCode currently
 exposes process information without provider-specific session metadata.
 

@@ -324,6 +324,8 @@ func (m model) viewUsage(contentRows int) string {
 	body := m.viewCodexUsage(bodyRows)
 	if m.usageProvider == copilotProvider {
 		body = m.viewCopilotUsage(bodyRows)
+	} else if m.usageProvider == kimiProvider {
+		body = m.viewKimiUsage(bodyRows)
 	}
 	return selector + "\n" + body
 }
@@ -331,11 +333,15 @@ func (m model) viewUsage(contentRows int) string {
 func (m model) usageProviderSelectorLine() string {
 	codex := "  [ CODEX ]"
 	copilot := "    COPILOT  "
+	kimi := "    KIMI  "
 	if m.usageProvider == copilotProvider {
 		codex = "    CODEX  "
 		copilot = "  [ COPILOT ]"
+	} else if m.usageProvider == kimiProvider {
+		codex = "    CODEX  "
+		kimi = "  [ KIMI ]"
 	}
-	return usagePaintLine(codex+copilot+"    ←/→ provider", m.width, usageBrightColor, true, usageHighlightColor)
+	return usagePaintLine(codex+copilot+kimi+"    ←/→ provider", m.width, usageBrightColor, true, usageHighlightColor)
 }
 
 func (m model) viewCopilotUsage(contentRows int) string {
@@ -476,6 +482,18 @@ func (m model) usageFooter() (string, string) {
 			return help, "  Copilot usage not loaded"
 		}
 		return help, "  Copilot refreshed " + m.copilotUsageRefreshedAt.Format("15:04:05")
+	}
+	if m.usageProvider == kimiProvider {
+		if m.kimiUsageLoading {
+			return help, "  reading local Kimi Code usage…"
+		}
+		if m.kimiUsageErr != "" {
+			return help, "  Kimi usage refresh failed: " + m.kimiUsageErr
+		}
+		if m.kimiUsageRefreshedAt.IsZero() {
+			return help, "  Kimi usage not loaded"
+		}
+		return help, "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
 	}
 	if m.codexUsageLoading {
 		return help, "  fetching Codex quotas and usage…"

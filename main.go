@@ -87,6 +87,7 @@ type usageProvider int
 const (
 	codexProvider usageProvider = iota
 	copilotProvider
+	kimiProvider
 	usageProviderCount
 )
 
@@ -218,6 +219,10 @@ type model struct {
 	copilotUsageErr         string
 	copilotUsageLoading     bool
 	copilotUsageRefreshedAt time.Time
+	kimiUsage               kimiUsageSnapshot
+	kimiUsageErr            string
+	kimiUsageLoading        bool
+	kimiUsageRefreshedAt    time.Time
 }
 
 func newModel(animations [][]sprite) model {
@@ -501,6 +506,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.copilotUsageErr = ""
 		}
 
+	case kimiUsageResultMsg:
+		m.kimiUsageLoading = false
+		m.kimiUsageRefreshedAt = msg.refreshed
+		if msg.err != nil {
+			m.kimiUsageErr = sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.kimiUsage = msg.snapshot
+			m.kimiUsageErr = ""
+		}
+
 	case settingsSaveResultMsg:
 		m.settingsSavePending = false
 		if msg.err != nil {
@@ -521,6 +536,9 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 	if m.usageProvider == copilotProvider && !m.copilotUsageRefreshedAt.IsZero() && m.copilotUsageErr == "" {
 		return nil
 	}
+	if m.usageProvider == kimiProvider && !m.kimiUsageRefreshedAt.IsZero() && m.kimiUsageErr == "" {
+		return nil
+	}
 	return m.beginUsageRefresh()
 }
 
@@ -528,6 +546,10 @@ func (m *model) beginUsageRefresh() tea.Cmd {
 	if m.usageProvider == copilotProvider {
 		m.copilotUsageLoading = true
 		return refreshCopilotUsage()
+	}
+	if m.usageProvider == kimiProvider {
+		m.kimiUsageLoading = true
+		return refreshKimiUsage()
 	}
 	m.codexUsageLoading = true
 	return refreshCodexUsage()
@@ -1238,6 +1260,8 @@ func (m model) processBodyLines() ([]string, []int) {
 				message = "no Codex rollout metadata found"
 			case "Copilot":
 				message = "no Copilot session metadata found"
+			case "Kimi":
+				message = "no Kimi session metadata found"
 			}
 			lines = append(lines, "      session  "+message)
 		}
@@ -1342,13 +1366,13 @@ func (m *model) restoreProcessSelection(rootPID int) {
 func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGroup {
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
-		if (group.tool == "Codex" || group.tool == "Copilot") && len(group.sessions) > 0 {
+		if (group.tool == "Codex" || group.tool == "Copilot" || group.tool == "Kimi") && len(group.sessions) > 0 {
 			known[group.root.pid] = group
 		}
 	}
 	for index := range refreshed {
 		group := &refreshed[index]
-		if (group.tool != "Codex" && group.tool != "Copilot") || len(group.sessions) > 0 {
+		if (group.tool != "Codex" && group.tool != "Copilot" && group.tool != "Kimi") || len(group.sessions) > 0 {
 			continue
 		}
 		old, ok := known[group.root.pid]
@@ -1375,6 +1399,9 @@ func refreshProcesses() tea.Cmd {
 		}
 		if err := enrichCopilotSessions(result.groups); err != nil {
 			metadataWarnings = append(metadataWarnings, "Copilot: "+sanitizeProcessCommand(err.Error()))
+		}
+		if err := enrichKimiSessions(result.groups); err != nil {
+			metadataWarnings = append(metadataWarnings, "Kimi: "+sanitizeProcessCommand(err.Error()))
 		}
 		result.metadataWarning = strings.Join(metadataWarnings, "; ")
 		return result
@@ -1834,6 +1861,8 @@ func classifyProcess(command string) string {
 		return "Copilot"
 	case strings.Contains(lower, "codex"):
 		return "Codex"
+	case strings.Contains(lower, "kimi"):
+		return "Kimi"
 	default:
 		return ""
 	}
