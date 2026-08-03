@@ -223,6 +223,8 @@ type model struct {
 	kimiUsageErr            string
 	kimiUsageLoading        bool
 	kimiUsageRefreshedAt    time.Time
+	kimiHistoryOpen         bool
+	kimiHistoryCursor       int
 }
 
 func newModel(animations [][]sprite) model {
@@ -315,7 +317,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cycleAnimation(-1)
 				}
 			} else if m.activeTab == usageTab {
-				return m, m.cycleUsageProvider(-1)
+				if !m.kimiHistoryOpen {
+					return m, m.cycleUsageProvider(-1)
+				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
 					m.cycleCodexSprite(-1)
@@ -329,7 +333,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cycleAnimation(1)
 				}
 			} else if m.activeTab == usageTab {
-				return m, m.cycleUsageProvider(1)
+				if !m.kimiHistoryOpen {
+					return m, m.cycleUsageProvider(1)
+				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
 					m.cycleCodexSprite(1)
@@ -351,6 +357,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.settingsEditing {
 					m.settingsCursor = max(m.settingsCursor-1, 0)
 				}
+			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+				m.kimiHistoryCursor = max(m.kimiHistoryCursor-1, 0)
 			}
 		case "down", "j":
 			if m.activeTab == animationTab {
@@ -368,6 +376,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.settingsEditing {
 					m.settingsCursor = min(m.settingsCursor+1, settingsItemCount-1)
 				}
+			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+				m.kimiHistoryCursor = min(m.kimiHistoryCursor+1, max(len(m.kimiUsage.History)-1, 0))
 			}
 		case "pgup":
 			if m.activeTab == processesTab {
@@ -406,9 +416,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.settingsEditOriginal = m.codexSprite
 				m.settingsEditing = true
+			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider {
+				if m.kimiHistoryOpen {
+					m.kimiHistoryOpen = false
+				} else if len(m.kimiUsage.History) > 0 {
+					m.kimiHistoryOpen = true
+					m.kimiHistoryCursor = 0
+				}
 			}
 		case "esc", "backspace":
-			if m.activeTab == settingsTab {
+			if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+				m.kimiHistoryOpen = false
+			} else if m.activeTab == settingsTab {
 				m.cancelSettingsEdit()
 			} else if m.activeTab == animationTab && m.menuOpen {
 				if m.menuPage == rpgMenuStatus {
@@ -529,6 +548,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) cycleUsageProvider(delta int) tea.Cmd {
+	m.kimiHistoryOpen = false
 	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
 		return nil

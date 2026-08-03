@@ -111,6 +111,9 @@ TTY cannot be selected this way.
 | Left / Right or `H` / `L` | Switch between Codex, Copilot, and Kimi |
 | `r` | Refresh selected provider |
 
+When Kimi is selected, press `Enter` to browse historical sessions. Use
+Up/Down to select a session; press `Enter` or `Esc` to return.
+
 ### Settings
 
 Codex sprite options: Ranger, Warrior, and Cleric.

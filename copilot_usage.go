@@ -484,6 +484,9 @@ func (m model) usageFooter() (string, string) {
 		return help, "  Copilot refreshed " + m.copilotUsageRefreshedAt.Format("15:04:05")
 	}
 	if m.usageProvider == kimiProvider {
+		if m.kimiHistoryOpen {
+			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Kimi historical sessions"
+		}
 		if m.kimiUsageLoading {
 			return help, "  reading local Kimi Code usage…"
 		}

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestFetchKimiUsageAggregatesLocalWireEvents(t *testing.T) {
@@ -31,6 +33,9 @@ func TestFetchKimiUsageAggregatesLocalWireEvents(t *testing.T) {
 	}
 	if snapshot.Summary.Sessions != 1 || snapshot.Summary.Turns != 2 {
 		t.Fatalf("summary sessions/turns = %#v", snapshot.Summary)
+	}
+	if len(snapshot.History) != 1 || snapshot.History[0].ID != "session_123" || snapshot.History[0].LifetimeTokens != 47 || snapshot.History[0].InputTokens != 15 || snapshot.History[0].CacheRead != 20 || snapshot.History[0].CacheCreation != 3 || snapshot.History[0].OutputTokens != 9 {
+		t.Fatalf("history = %#v", snapshot.History)
 	}
 	if snapshot.Summary.InputTokens != 15 || snapshot.Summary.CacheRead != 20 || snapshot.Summary.CacheCreation != 3 || snapshot.Summary.OutputTokens != 9 || snapshot.Summary.LifetimeTokens != 47 {
 		t.Fatalf("summary token totals = %#v", snapshot.Summary)
@@ -66,5 +71,22 @@ func TestRecentKimiDailyUsageFillsMissingDays(t *testing.T) {
 	days := recentKimiDailyUsage([]kimiDailyUsage{{StartDate: "2026-08-02", Tokens: 42}}, now, 3)
 	if len(days) != 3 || days[0].StartDate != "2026-07-31" || days[1].Tokens != 0 || days[2].Tokens != 42 {
 		t.Fatalf("days = %#v", days)
+	}
+}
+
+func TestKimiUsageEnterOpensAndEscClosesHistory(t *testing.T) {
+	m := newModel(nil)
+	m.activeTab = usageTab
+	m.usageProvider = kimiProvider
+	m.kimiUsage.History = []kimiHistoricalSession{{ID: "session_1", Title: "history"}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.kimiHistoryOpen {
+		t.Fatal("Enter did not open Kimi history")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.kimiHistoryOpen {
+		t.Fatal("Esc did not close Kimi history")
 	}
 }

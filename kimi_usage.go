@@ -34,10 +34,25 @@ type kimiUsageModel struct {
 	Tokens int64
 }
 
+type kimiHistoricalSession struct {
+	ID             string
+	Title          string
+	WorkDir        string
+	Model          string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	InputTokens    int64
+	CacheRead      int64
+	CacheCreation  int64
+	OutputTokens   int64
+	LifetimeTokens int64
+}
+
 type kimiUsageSnapshot struct {
 	Summary kimiUsageSummary
 	Daily   []kimiDailyUsage
 	Models  []kimiUsageModel
+	History []kimiHistoricalSession
 }
 
 type kimiUsageResultMsg struct {
@@ -94,7 +109,7 @@ func fetchKimiUsage() (kimiUsageSnapshot, error) {
 	snapshot := kimiUsageSnapshot{}
 	models := make(map[string]int64)
 	daily := make(map[string]int64)
-	sessions := make(map[string]bool)
+	sessions := make(map[string]*kimiHistoricalSession)
 	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -102,7 +117,18 @@ func fetchKimiUsage() (kimiUsageSnapshot, error) {
 		if entry.IsDir() || entry.Name() != "wire.jsonl" {
 			return nil
 		}
-		sessions[filepath.Dir(path)] = true
+		sessionDir := filepath.Dir(filepath.Dir(filepath.Dir(path)))
+		session := sessions[sessionDir]
+		if session == nil {
+			session = &kimiHistoricalSession{ID: filepath.Base(sessionDir)}
+			if state, readErr := readKimiSessionState(filepath.Join(sessionDir, "state.json")); readErr == nil {
+				session.Title = state.Title
+				session.WorkDir = state.WorkDir
+				session.CreatedAt = state.CreatedAt
+				session.UpdatedAt = state.UpdatedAt
+			}
+			sessions[sessionDir] = session
+		}
 		file, openErr := os.Open(path)
 		if openErr != nil {
 			return nil
@@ -122,6 +148,17 @@ func fetchKimiUsage() (kimiUsageSnapshot, error) {
 			snapshot.Summary.CacheCreation += event.Usage.InputCacheCreation
 			snapshot.Summary.OutputTokens += event.Usage.Output
 			snapshot.Summary.LifetimeTokens += tokens
+			session.InputTokens += event.Usage.InputOther
+			session.CacheRead += event.Usage.InputCacheRead
+			session.CacheCreation += event.Usage.InputCacheCreation
+			session.OutputTokens += event.Usage.Output
+			session.LifetimeTokens += tokens
+			if event.Model != "" {
+				session.Model = event.Model
+			}
+			if event.Time > 0 && time.UnixMilli(event.Time).After(session.UpdatedAt) {
+				session.UpdatedAt = time.UnixMilli(event.Time)
+			}
 			models[event.Model] += tokens
 			if event.Time > 0 {
 				day := time.UnixMilli(event.Time).Format("2006-01-02")
@@ -134,6 +171,12 @@ func fetchKimiUsage() (kimiUsageSnapshot, error) {
 		return kimiUsageSnapshot{}, fmt.Errorf("read Kimi session history: %w", err)
 	}
 	snapshot.Summary.Sessions = int64(len(sessions))
+	for _, session := range sessions {
+		session.Title = emptyFallback(sanitizeProcessCommand(session.Title), "Kimi Code session")
+		session.WorkDir = sanitizeProcessCommand(session.WorkDir)
+		snapshot.History = append(snapshot.History, *session)
+	}
+	sort.Slice(snapshot.History, func(i, j int) bool { return snapshot.History[i].UpdatedAt.After(snapshot.History[j].UpdatedAt) })
 	for day, tokens := range daily {
 		snapshot.Daily = append(snapshot.Daily, kimiDailyUsage{StartDate: day, Tokens: tokens})
 	}
@@ -154,6 +197,18 @@ func fetchKimiUsage() (kimiUsageSnapshot, error) {
 
 func (s kimiUsageSnapshot) hasData() bool { return s.Summary.Turns > 0 || s.Summary.Sessions > 0 }
 
+func readKimiSessionState(path string) (kimiSessionState, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return kimiSessionState{}, err
+	}
+	var state kimiSessionState
+	if err := json.Unmarshal(body, &state); err != nil {
+		return kimiSessionState{}, err
+	}
+	return state, nil
+}
+
 func (m model) viewKimiUsage(contentRows int) string {
 	lines := []string{
 		usagePaintLine("  ╭────╮  Kimi Code", m.width, usageBrightColor, true, usagePanelColor),
@@ -169,6 +224,9 @@ func (m model) viewKimiUsage(contentRows int) string {
 		return fillUsageLines(lines, contentRows, m.width)
 	}
 	s := m.kimiUsage.Summary
+	if m.kimiHistoryOpen {
+		return m.viewKimiHistory(contentRows)
+	}
 	lines = append(lines,
 		usageSidesLine(fmt.Sprintf("  %d sessions  •  %d turns", s.Sessions, s.Turns), formatTokenCount(s.LifetimeTokens)+" tokens  ", m.width, usageTextColor, usageBrightColor),
 		usagePaintLine(fmt.Sprintf("  Input %s  •  cache read %s  •  output %s", formatTokenCount(s.InputTokens), formatTokenCount(s.CacheRead), formatTokenCount(s.OutputTokens)), m.width, usageMutedColor, false, usagePanelColor),
@@ -191,6 +249,46 @@ func (m model) viewKimiUsage(contentRows int) string {
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func (m model) viewKimiHistory(contentRows int) string {
+	lines := []string{
+		usagePaintLine("  ╭────╮  Kimi Code", m.width, usageBrightColor, true, usagePanelColor),
+		usagePaintLine("  │ ◈  │  HISTORICAL SESSIONS  •  Enter/Esc back", m.width, usageTextColor, true, usagePanelColor),
+		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
+		usageDividerLine(m.width),
+	}
+	for index, session := range m.kimiUsage.History {
+		cursor := " "
+		if index == m.kimiHistoryCursor {
+			cursor = ">"
+		}
+		when := formatSessionTime(session.UpdatedAt)
+		cwd := "unknown cwd"
+		if session.WorkDir != "" {
+			cwd = truncateKimiText(filepath.Base(session.WorkDir), 24)
+		}
+		lines = append(lines,
+			usagePaintLine(fmt.Sprintf("%s %-24s %s", cursor, truncateKimiText(session.Title, 24), when), m.width, usageBrightColor, index == m.kimiHistoryCursor, usageHighlightColor),
+			usagePaintLine(fmt.Sprintf("    %-18s %s  •  %s tokens", truncateKimiText(session.Model, 18), formatTokenCount(session.LifetimeTokens), cwd), m.width, usageMutedColor, false, usagePanelColor),
+			usagePaintLine(fmt.Sprintf("    input %s  •  cache read %s  •  cache write %s  •  output %s", formatTokenCount(session.InputTokens), formatTokenCount(session.CacheRead), formatTokenCount(session.CacheCreation), formatTokenCount(session.OutputTokens)), m.width, usageMutedColor, false, usagePanelColor),
+		)
+	}
+	if len(m.kimiUsage.History) == 0 {
+		lines = append(lines, usagePaintLine("  No historical Kimi sessions", m.width, usageMutedColor, false, usagePanelColor))
+	}
+	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func truncateKimiText(value string, width int) string {
+	runes := []rune(value)
+	if len(runes) <= width {
+		return value
+	}
+	if width <= 1 {
+		return string(runes[:width])
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 func recentKimiDailyUsage(buckets []kimiDailyUsage, now time.Time, count int) []kimiDailyUsage {
