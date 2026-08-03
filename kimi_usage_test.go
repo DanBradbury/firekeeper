@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFetchKimiUsageAggregatesLocalWireEvents(t *testing.T) {
@@ -50,11 +51,20 @@ func TestKimiUsageMissingHistoryReturnsActionableError(t *testing.T) {
 func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 	m := newModel(nil)
 	m.width = 100
-	m.kimiUsage = kimiUsageSnapshot{Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100}}
+	today := time.Now().Format("2006-01-02")
+	m.kimiUsage = kimiUsageSnapshot{Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100}, Daily: []kimiDailyUsage{{StartDate: today, Tokens: 1200}}}
 	view := m.viewKimiUsage(20)
-	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset"} {
+	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset", "TOKENS BY DAY", "Today"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Kimi usage view missing %q:\n%s", expected, view)
 		}
+	}
+}
+
+func TestRecentKimiDailyUsageFillsMissingDays(t *testing.T) {
+	now := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+	days := recentKimiDailyUsage([]kimiDailyUsage{{StartDate: "2026-08-02", Tokens: 42}}, now, 3)
+	if len(days) != 3 || days[0].StartDate != "2026-07-31" || days[1].Tokens != 0 || days[2].Tokens != 42 {
+		t.Fatalf("days = %#v", days)
 	}
 }

@@ -173,7 +173,16 @@ func (m model) viewKimiUsage(contentRows int) string {
 		usageSidesLine(fmt.Sprintf("  %d sessions  •  %d turns", s.Sessions, s.Turns), formatTokenCount(s.LifetimeTokens)+" tokens  ", m.width, usageTextColor, usageBrightColor),
 		usagePaintLine(fmt.Sprintf("  Input %s  •  cache read %s  •  output %s", formatTokenCount(s.InputTokens), formatTokenCount(s.CacheRead), formatTokenCount(s.OutputTokens)), m.width, usageMutedColor, false, usagePanelColor),
 		usagePaintLine("  Quota and reset: Kimi Code /usage; no supported local quota file", m.width, usageMutedColor, false, usagePanelColor),
-		usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
+		usageDividerLine(m.width), usageSectionLine("TOKENS BY DAY", m.width))
+	days := recentKimiDailyUsage(m.kimiUsage.Daily, time.Now(), 7)
+	peak := int64(0)
+	for _, day := range days {
+		peak = max(peak, day.Tokens)
+	}
+	for index, day := range days {
+		lines = append(lines, usageMetricBarLine(dayLabel(day.StartDate, index == len(days)-1), day.Tokens, peak, m.width, index == len(days)-1))
+	}
+	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
 	if len(m.kimiUsage.Models) == 0 {
 		lines = append(lines, usagePaintLine("  No local Kimi Code token records", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
@@ -182,4 +191,18 @@ func (m model) viewKimiUsage(contentRows int) string {
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func recentKimiDailyUsage(buckets []kimiDailyUsage, now time.Time, count int) []kimiDailyUsage {
+	byDate := make(map[string]int64, len(buckets))
+	for _, bucket := range buckets {
+		byDate[bucket.StartDate] += bucket.Tokens
+	}
+	result := make([]kimiDailyUsage, 0, count)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	for offset := count - 1; offset >= 0; offset-- {
+		date := today.AddDate(0, 0, -offset).Format("2006-01-02")
+		result = append(result, kimiDailyUsage{StartDate: date, Tokens: byDate[date]})
+	}
+	return result
 }
