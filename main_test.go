@@ -261,6 +261,52 @@ func TestCodexSpriteSelectionUpdatesMainAnimation(t *testing.T) {
 	}
 }
 
+func TestProviderSpritesRenderAsSeparateCharacters(t *testing.T) {
+	makeFrame := func(value uint8) sprite {
+		pixels := make([]rgba, 16)
+		for index := range pixels {
+			pixels[index] = rgba{r: value, a: 255}
+		}
+		return sprite{width: 4, height: 4, pixels: pixels}
+	}
+	m := newModel([][]sprite{{makeFrame(10)}})
+	m.copilotSprites = [][][]sprite{{{makeFrame(20)}}}
+	m.kimiSprites = [][][]sprite{{{makeFrame(30)}}}
+	m.fireFrames = nil
+	layout := m.animationLayout(100, 40)
+	if layout.character.width == 0 || layout.copilotCharacter.width == 0 || layout.kimiCharacter.width == 0 {
+		t.Fatal("provider character missing from animation layout")
+	}
+	if !(layout.copilotX < layout.characterX && layout.characterX < layout.kimiX) {
+		t.Fatalf("character positions = copilot %d, codex %d, kimi %d", layout.copilotX, layout.characterX, layout.kimiX)
+	}
+}
+
+func TestProviderSpriteSettingsAreIndependent(t *testing.T) {
+	makeFrame := func(value uint8) sprite {
+		pixels := make([]rgba, 16)
+		for index := range pixels {
+			pixels[index] = rgba{r: value, a: 255}
+		}
+		return sprite{width: 4, height: 4, pixels: pixels}
+	}
+	m := newModel([][]sprite{{makeFrame(10)}})
+	m.copilotSprites = [][][]sprite{{{makeFrame(20)}}, {{makeFrame(21)}}}
+	m.kimiSprites = [][][]sprite{{{makeFrame(30)}}, {{makeFrame(31)}}}
+	m.activeTab = settingsTab
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.copilotSprite != codexSpriteCleric || m.codexSprite != codexSpriteRanger {
+		t.Fatalf("provider settings changed unexpectedly: codex=%s copilot=%s", m.codexSprite, m.copilotSprite)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_ = updated
+}
+
 func TestCodexPortraitUsesSelectedSpriteSet(t *testing.T) {
 	makeFrame := func(value uint8) sprite {
 		frame := sprite{width: 32, height: 32, pixels: make([]rgba, 32*32)}
@@ -912,6 +958,26 @@ func TestAnimationSceneDrawsCodexSessionBadgeAboveCharacter(t *testing.T) {
 	}
 	if layout.sessionBadgeY+layout.sessionBadge.height > layout.characterY {
 		t.Fatalf("badge bottom %d overlaps character top %d", layout.sessionBadgeY+layout.sessionBadge.height, layout.characterY)
+	}
+	for _, item := range []struct {
+		name                   string
+		badge                  sprite
+		badgeX, badgeY         int
+		character              sprite
+		characterX, characterY int
+	}{
+		{"Copilot", layout.copilotBadge, layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotCharacter, layout.copilotX, layout.copilotY},
+		{"Kimi", layout.kimiBadge, layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiCharacter, layout.kimiX, layout.kimiY},
+	} {
+		if item.badge.width < 1 || item.badge.height < 1 {
+			t.Fatalf("%s session badge was not created", item.name)
+		}
+		if got, want := item.badgeX+(item.badge.width/2), item.characterX+(item.character.width/2); got != want {
+			t.Fatalf("%s badge center = %d, want character center %d", item.name, got, want)
+		}
+		if item.badgeY+item.badge.height > item.characterY {
+			t.Fatalf("%s badge overlaps character", item.name)
+		}
 	}
 
 	foundYellow := false

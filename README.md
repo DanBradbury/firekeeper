@@ -64,10 +64,10 @@ just --list    # show all recipes
 Firekeeper opens on an animated camp scene. Press Tab to move between four
 views:
 
-- **Animation** — home scene and RPG-style command menu.
+- **Animation** — home scene with Codex, Copilot, and Kimi characters plus RPG-style command menu.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
-- **Settings** — configure the Codex character sprite.
+- **Settings** — configure Codex, Copilot, and Kimi character sprites.
 
 ### Global controls
 
@@ -116,8 +116,8 @@ Up/Down to select a session; press `Enter` or `Esc` to return.
 
 ### Settings
 
-Codex sprite options: Ranger, Warrior, and Cleric.
-Changes save to Firekeeper’s user config and load automatically on next launch.
+Codex, Copilot, and Kimi each have sprite options: Ranger, Warrior, and Cleric.
+Choices save to Firekeeper’s user config and load automatically on next launch.
 
 | Key | Action |
 | --- | --- |

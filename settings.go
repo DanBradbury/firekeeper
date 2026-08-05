@@ -19,10 +19,12 @@ const (
 	codexSpriteChoiceCount
 )
 
-const settingsItemCount = 1
+const settingsItemCount = 3
 
 type persistentSettings struct {
-	CodexSprite codexSpriteChoice `json:"codex_sprite"`
+	CodexSprite   codexSpriteChoice `json:"codex_sprite"`
+	CopilotSprite codexSpriteChoice `json:"copilot_sprite"`
+	KimiSprite    codexSpriteChoice `json:"kimi_sprite"`
 }
 
 type settingsSaveResultMsg struct {
@@ -30,7 +32,7 @@ type settingsSaveResultMsg struct {
 }
 
 func defaultPersistentSettings() persistentSettings {
-	return persistentSettings{CodexSprite: codexSpriteRanger}
+	return persistentSettings{CodexSprite: codexSpriteRanger, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteCleric}
 }
 
 func settingsFilePath() (string, error) {
@@ -61,8 +63,8 @@ func loadPersistentSettings() (persistentSettings, string, error) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return defaultPersistentSettings(), path, fmt.Errorf("decode settings: %w", err)
 	}
-	if settings.CodexSprite < codexSpriteRanger || settings.CodexSprite >= codexSpriteChoiceCount {
-		return defaultPersistentSettings(), path, fmt.Errorf("settings contain invalid Codex sprite")
+	if settings.CodexSprite < codexSpriteRanger || settings.CodexSprite >= codexSpriteChoiceCount || settings.CopilotSprite < codexSpriteRanger || settings.CopilotSprite >= codexSpriteChoiceCount || settings.KimiSprite < codexSpriteRanger || settings.KimiSprite >= codexSpriteChoiceCount {
+		return defaultPersistentSettings(), path, fmt.Errorf("settings contain invalid provider sprite")
 	}
 	return settings, path, nil
 }
@@ -114,6 +116,41 @@ func (m *model) cycleCodexSprite(delta int) {
 	m.applyCodexSprite()
 }
 
+func (m *model) cycleSelectedSprite(delta int) {
+	choice := (m.selectedSprite() + codexSpriteChoice(delta) + codexSpriteChoiceCount) % codexSpriteChoiceCount
+	switch m.settingsCursor {
+	case 1:
+		m.copilotSprite = choice
+	case 2:
+		m.kimiSprite = choice
+	default:
+		m.codexSprite = choice
+		m.applyCodexSprite()
+	}
+}
+
+func (m model) selectedSprite() codexSpriteChoice {
+	switch m.settingsCursor {
+	case 1:
+		return m.copilotSprite
+	case 2:
+		return m.kimiSprite
+	default:
+		return m.codexSprite
+	}
+}
+
+func (m model) selectedProviderName() string {
+	switch m.settingsCursor {
+	case 1:
+		return "Copilot"
+	case 2:
+		return "Kimi"
+	default:
+		return "Codex"
+	}
+}
+
 func (m *model) applyCodexSprite() {
 	if int(m.codexSprite) >= len(m.codexSprites) || len(m.codexSprites[m.codexSprite]) == 0 {
 		return
@@ -134,7 +171,9 @@ func (m *model) applyCodexSprite() {
 
 func (m *model) cancelSettingsEdit() {
 	if m.activeTab == settingsTab && m.settingsEditing {
-		m.codexSprite = m.settingsEditOriginal
+		m.codexSprite = m.settingsEditOriginal.CodexSprite
+		m.copilotSprite = m.settingsEditOriginal.CopilotSprite
+		m.kimiSprite = m.settingsEditOriginal.KimiSprite
 		m.applyCodexSprite()
 	}
 	m.settingsEditing = false
@@ -144,7 +183,7 @@ func (m model) saveSettingsCmd() tea.Cmd {
 	if m.settingsPath == "" {
 		return nil
 	}
-	settings := persistentSettings{CodexSprite: m.codexSprite}
+	settings := persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite}
 	path := m.settingsPath
 	return func() tea.Msg {
 		return settingsSaveResultMsg{err: savePersistentSettings(path, settings)}
@@ -157,16 +196,18 @@ func (m model) viewSettings(contentRows int) string {
 		usagePaintLine("  │ SETTINGS                   │", m.width, usageTextColor, true, usagePanelColor),
 		usagePaintLine("  ╰────────────────────────────╯", m.width, usageMutedColor, false, usagePanelColor),
 		usageSectionLine("SETTINGS", m.width),
-		usagePaintLine("▶ Codex Sprite  "+m.codexSprite.String(), m.width, usageBrightColor, true, usagePanelColor),
+		usagePaintLine(m.settingsMarker(0)+"Codex Sprite  "+m.codexSprite.String(), m.width, usageBrightColor, m.settingsCursor == 0, usagePanelColor),
+		usagePaintLine(m.settingsMarker(1)+"Copilot Sprite  "+m.copilotSprite.String(), m.width, usageBrightColor, m.settingsCursor == 1, usagePanelColor),
+		usagePaintLine(m.settingsMarker(2)+"Kimi Sprite  "+m.kimiSprite.String(), m.width, usageBrightColor, m.settingsCursor == 2, usagePanelColor),
 	}
 	lines = append(lines, m.settingsPortraitLines()...)
 	if m.settingsEditing {
 		lines = append(lines,
-			usagePaintLine("  Editing Codex Sprite • ←/→ choose • Enter save", m.width, usageMutedColor, false, usagePanelColor),
+			usagePaintLine("  Editing "+m.selectedProviderName()+" Sprite • ←/→ choose • Enter save", m.width, usageMutedColor, false, usagePanelColor),
 		)
 		options := []string{"Ranger", "Warrior", "Cleric"}
 		for index, option := range options {
-			selected := codexSpriteChoice(index) == m.codexSprite
+			selected := codexSpriteChoice(index) == m.selectedSprite()
 			marker := "    "
 			if selected {
 				marker = "  ▶ "
@@ -179,11 +220,15 @@ func (m model) viewSettings(contentRows int) string {
 	return fillUsageLines(lines, contentRows, m.width)
 }
 
-func (m model) codexPortrait() sprite {
-	animations := m.animations
-	if int(m.codexSprite) < len(m.codexSprites) && len(m.codexSprites[m.codexSprite]) > 0 {
-		animations = m.codexSprites[m.codexSprite]
+func (m model) settingsMarker(index int) string {
+	if index == m.settingsCursor {
+		return "▶ "
 	}
+	return "  "
+}
+
+func (m model) codexPortrait() sprite {
+	animations := m.selectedAnimations()
 	if len(animations) == 0 || len(animations[0]) == 0 {
 		return sprite{}
 	}
@@ -212,6 +257,24 @@ func (m model) codexPortrait() sprite {
 	}
 	box.draw(2, 2, portrait)
 	return box
+}
+
+func (m model) selectedAnimations() [][]sprite {
+	switch m.settingsCursor {
+	case 1:
+		if int(m.copilotSprite) < len(m.copilotSprites) && len(m.copilotSprites[m.copilotSprite]) > 0 {
+			return m.copilotSprites[m.copilotSprite]
+		}
+	case 2:
+		if int(m.kimiSprite) < len(m.kimiSprites) && len(m.kimiSprites[m.kimiSprite]) > 0 {
+			return m.kimiSprites[m.kimiSprite]
+		}
+	default:
+		if int(m.codexSprite) < len(m.codexSprites) && len(m.codexSprites[m.codexSprite]) > 0 {
+			return m.codexSprites[m.codexSprite]
+		}
+	}
+	return m.animations
 }
 
 func (m model) settingsPortraitLines() []string {
@@ -243,13 +306,13 @@ func (m model) settingsPortraitLines() []string {
 
 func (m model) settingsFooter() (string, string) {
 	if m.settingsEditing {
-		return "  ←/→ change  •  Enter save  •  Esc cancel", "  Editing Codex sprite: " + m.codexSprite.String()
+		return "  ←/→ change  •  Enter save  •  Esc cancel", "  Editing " + m.selectedProviderName() + " sprite: " + m.selectedSprite().String()
 	}
 	if m.settingsSavePending {
-		return "  saving settings…  •  Tab switch  •  q quit", "  Codex sprite: " + m.codexSprite.String()
+		return "  saving settings…  •  Tab switch  •  q quit", "  Codex " + m.codexSprite.String() + " • Copilot " + m.copilotSprite.String() + " • Kimi " + m.kimiSprite.String()
 	}
 	if m.settingsErr != "" {
 		return "  settings save failed  •  Enter edit  •  q quit", "  " + m.settingsErr
 	}
-	return "  ↑/↓ select  •  Enter edit  •  Tab switch  •  q quit", "  Codex sprite: " + m.codexSprite.String()
+	return "  ↑/↓ select  •  Enter edit  •  Tab switch  •  q quit", "  Codex " + m.codexSprite.String() + " • Copilot " + m.copilotSprite.String() + " • Kimi " + m.kimiSprite.String()
 }

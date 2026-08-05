@@ -181,6 +181,8 @@ type model struct {
 	activeTab               tab
 	animations              [][]sprite
 	codexSprites            [][][]sprite
+	copilotSprites          [][][]sprite
+	kimiSprites             [][][]sprite
 	grass                   sprite
 	animation               int
 	frame                   int
@@ -193,9 +195,11 @@ type model struct {
 	frameDuration           time.Duration
 	playing                 bool
 	codexSprite             codexSpriteChoice
+	copilotSprite           codexSpriteChoice
+	kimiSprite              codexSpriteChoice
 	settingsCursor          int
 	settingsEditing         bool
-	settingsEditOriginal    codexSpriteChoice
+	settingsEditOriginal    persistentSettings
 	settingsPath            string
 	settingsSavePending     bool
 	settingsErr             string
@@ -241,9 +245,13 @@ func newModelWithConfig(animations [][]sprite, config appConfig) model {
 		height:         24,
 		animations:     animations,
 		codexSprites:   [][][]sprite{animations},
+		copilotSprites: [][][]sprite{animations},
+		kimiSprites:    [][][]sprite{animations},
 		frameDuration:  defaultFrameDuration,
 		playing:        true,
 		codexSprite:    codexSpriteRanger,
+		copilotSprite:  codexSpriteWarrior,
+		kimiSprite:     codexSpriteCleric,
 		renderer:       config.renderer,
 		spriteColumns:  config.spriteColumns,
 		spriteRows:     config.spriteRows,
@@ -262,8 +270,16 @@ func (m model) withCodexSprites(sprites [][][]sprite) model {
 	return m
 }
 
+func (m model) withProviderSprites(copilot, kimi [][][]sprite) model {
+	m.copilotSprites = copilot
+	m.kimiSprites = kimi
+	return m
+}
+
 func (m model) withPersistentSettings(settings persistentSettings, path string) model {
 	m.codexSprite = settings.CodexSprite
+	m.copilotSprite = settings.CopilotSprite
+	m.kimiSprite = settings.KimiSprite
 	m.settingsPath = path
 	m.applyCodexSprite()
 	return m
@@ -322,7 +338,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
-					m.cycleCodexSprite(-1)
+					m.cycleSelectedSprite(-1)
 				}
 			}
 		case "right", "l":
@@ -338,7 +354,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
-					m.cycleCodexSprite(1)
+					m.cycleSelectedSprite(1)
 				}
 			}
 		case "up", "k":
@@ -414,7 +430,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settingsErr = ""
 					return m, m.saveSettingsCmd()
 				}
-				m.settingsEditOriginal = m.codexSprite
+				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite}
 				m.settingsEditing = true
 			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider {
 				if m.kimiHistoryOpen {
@@ -775,9 +791,13 @@ func rpgStatusMenuLines(width, height int, groups []processGroup, selected int) 
 }
 
 func activeCodexGroupCount(groups []processGroup) int {
+	return providerGroupCount(groups, "Codex")
+}
+
+func providerGroupCount(groups []processGroup, provider string) int {
 	count := 0
 	for _, group := range groups {
-		if group.tool == "Codex" {
+		if group.tool == provider {
 			count++
 		}
 	}
@@ -1002,31 +1022,54 @@ func (m model) grassAnimationScene(columns, rows int) sprite {
 	canvas.tileSprite(m.grass)
 
 	layout := m.animationLayout(width, height)
+	canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
 	canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
+	canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
 	canvas.drawSprite(layout.fireX, layout.fireY, layout.fire)
+	canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
 	canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
+	canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
 	return canvas.sprite()
 }
 
 type animationLayout struct {
 	character              sprite
 	characterX, characterY int
+	copilotCharacter       sprite
+	copilotX, copilotY     int
+	kimiCharacter          sprite
+	kimiX, kimiY           int
 	fire                   sprite
 	fireX, fireY           int
 	sessionBadge           sprite
 	sessionBadgeX          int
 	sessionBadgeY          int
+	copilotBadge           sprite
+	copilotBadgeX          int
+	copilotBadgeY          int
+	kimiBadge              sprite
+	kimiBadgeX             int
+	kimiBadgeY             int
 }
 
 func (m model) animationLayout(width, height int) animationLayout {
 	frameWidth := min(m.spriteColumns, max(width/animationSourceScale, 1)) * animationSourceScale
 	frameHeight := min(m.spriteRows, max(height/(2*animationSourceScale), 1)) * 2 * animationSourceScale
 	frame := m.currentFrame().resize(frameWidth, frameHeight)
+	copilot := m.currentProviderFrame(m.copilotSprites, m.copilotSprite).resize(frameWidth, frameHeight)
+	kimi := m.currentProviderFrame(m.kimiSprites, m.kimiSprite).resize(frameWidth, frameHeight)
 	fire := m.currentFireFrame()
-	layout := animationLayout{character: frame}
+	layout := animationLayout{character: frame, copilotCharacter: copilot, kimiCharacter: kimi}
 	if fire.width < 1 || fire.height < 1 {
-		layout.characterX = (width - frame.width) / 2
+		gap := animationCharacterFireGap * animationSourceScale
+		totalWidth := frame.width + copilot.width + kimi.width + gap*2
+		startX := (width - totalWidth) / 2
+		layout.copilotX = startX
+		layout.characterX = startX + copilot.width + gap
+		layout.kimiX = layout.characterX + frame.width + gap
+		layout.copilotY = (height - copilot.height) / 2
 		layout.characterY = (height - frame.height) / 2
+		layout.kimiY = (height - kimi.height) / 2
 		return m.withSessionBadge(layout)
 	}
 	scaledFireWidth := fire.width + animationFireWidthIncrease
@@ -1037,16 +1080,39 @@ func (m model) animationLayout(width, height int) animationLayout {
 	fireY := (height - fire.height) / 2
 	layout.characterX = fireX - animationCharacterFireGap - frame.width
 	layout.characterY = fireY + fire.height - frame.height
+	layout.kimiX = fireX + fire.width + animationCharacterFireGap
+	layout.kimiY = fireY + fire.height - kimi.height
+	layout.copilotX = layout.characterX - animationCharacterFireGap - copilot.width
+	layout.copilotY = layout.characterY + frame.height - copilot.height
 	layout.fire = fire
 	layout.fireX = fireX
 	layout.fireY = fireY
 	return m.withSessionBadge(layout)
 }
 
+func (m model) currentProviderFrame(choices [][][]sprite, choice codexSpriteChoice) sprite {
+	if int(choice) >= len(choices) || len(choices[choice]) == 0 {
+		return m.currentFrame()
+	}
+	animations := choices[choice]
+	animation := min(m.animation, len(animations)-1)
+	if len(animations[animation]) == 0 {
+		return m.currentFrame()
+	}
+	frame := min(m.frame, len(animations[animation])-1)
+	return animations[animation][frame]
+}
+
 func (m model) withSessionBadge(layout animationLayout) animationLayout {
-	layout.sessionBadge = codexSessionBadge(activeCodexGroupCount(m.processGroups))
+	layout.sessionBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Codex"))
 	layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
 	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap
+	layout.copilotBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Copilot"))
+	layout.copilotBadgeX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotBadge.width)/2
+	layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap
+	layout.kimiBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Kimi"))
+	layout.kimiBadgeX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiBadge.width)/2
+	layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap
 	return layout
 }
 
@@ -2284,6 +2350,7 @@ func main() {
 	p := tea.NewProgram(
 		newModelWithGrass(animations, config, grass).
 			withCodexSprites([][][]sprite{animations, warriorAnimations, clericAnimations}).
+			withProviderSprites([][][]sprite{animations, warriorAnimations, clericAnimations}, [][][]sprite{animations, warriorAnimations, clericAnimations}).
 			withPersistentSettings(storedSettings, settingsPath).
 			withFire(fireFrames),
 		tea.WithAltScreen(),
