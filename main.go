@@ -461,8 +461,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "s":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
-				m.terminalStatus = "switching to " + displayTTY(m.processGroups[m.processCursor].root.tty) + "…"
-				return m, switchToTerminal(m.processGroups[m.processCursor].root.tty)
+				group := m.processGroups[m.processCursor]
+				m.terminalStatus = "switching to " + displayTTY(group.root.tty) + "…"
+				return m, switchToTerminal(group.root.tty, groupWorkingDirectory(group))
 			}
 		case "m", "M":
 			if m.activeTab == animationTab {
@@ -1495,11 +1496,44 @@ func refreshProcesses() tea.Cmd {
 }
 
 type terminalAdapter struct {
-	name   string
-	script string
+	name    string
+	script  string
+	usesCWD bool
+}
+
+func groupWorkingDirectory(group processGroup) string {
+	for _, session := range group.sessions {
+		if session.cwd != "" {
+			return session.cwd
+		}
+	}
+	return ""
 }
 
 var macTerminalAdapters = []terminalAdapter{
+	{
+		name: "Ghostty",
+		script: `on run argv
+	set targetCWD to item 1 of argv
+	if application id "com.mitchellh.ghostty" is not running then return "not-running"
+	tell application id "com.mitchellh.ghostty"
+		repeat with terminalWindow in windows
+			repeat with terminalTab in tabs of terminalWindow
+				repeat with terminalPane in terminals of terminalTab
+					if working directory of terminalPane is targetCWD then
+						select tab terminalTab
+						activate window terminalWindow
+						focus terminalPane
+						return "matched"
+					end if
+				end repeat
+			end repeat
+		end repeat
+	end tell
+	return "not-found"
+end run`,
+		usesCWD: true,
+	},
 	{
 		name: "iTerm2",
 		script: `on run argv
@@ -1545,16 +1579,17 @@ end run`,
 	},
 }
 
-func switchToTerminal(tty string) tea.Cmd {
+func switchToTerminal(tty, cwd string) tea.Cmd {
 	return func() tea.Msg {
-		app, err := focusTerminalSession(tty)
+		app, err := focusTerminalSession(tty, cwd)
 		return terminalSwitchResultMsg{tty: tty, app: app, err: err}
 	}
 }
 
-func focusTerminalSession(tty string) (string, error) {
+func focusTerminalSession(tty, cwd string) (string, error) {
 	return focusTerminalSessionWith(
 		tty,
+		cwd,
 		runtime.GOOS,
 		func(script, targetTTY string) (string, error) {
 			output, err := exec.Command("osascript", "-e", script, targetTTY).CombinedOutput()
@@ -1572,6 +1607,7 @@ func focusTerminalSession(tty string) (string, error) {
 
 func focusTerminalSessionWith(
 	tty string,
+	cwd string,
 	goos string,
 	runScript func(string, string) (string, error),
 ) (string, error) {
@@ -1586,7 +1622,14 @@ func focusTerminalSessionWith(
 	var failures []string
 	runningAdapters := 0
 	for _, adapter := range macTerminalAdapters {
-		result, err := runScript(adapter.script, targetTTY)
+		target := targetTTY
+		if adapter.usesCWD {
+			target = cwd
+			if target == "" {
+				continue
+			}
+		}
+		result, err := runScript(adapter.script, target)
 		if err != nil {
 			failures = append(failures, adapter.name+": "+err.Error())
 			continue
@@ -1606,7 +1649,7 @@ func focusTerminalSessionWith(
 	if runningAdapters == 0 {
 		return "", fmt.Errorf("no supported terminal app is running")
 	}
-	return "", fmt.Errorf("no iTerm2 or Terminal.app session owns %s", targetTTY)
+	return "", fmt.Errorf("no supported terminal session owns %s", targetTTY)
 }
 
 func groupProcesses(processes []processInfo) []processGroup {

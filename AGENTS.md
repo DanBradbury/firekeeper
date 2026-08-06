@@ -7,7 +7,7 @@
 - Command: `firekeeper`
 - Product: local, keyboard-driven terminal dashboard for monitoring coding-agent harnesses.
 - Current harness support: Codex, GitHub Copilot CLI, and OpenCode process discovery. Codex and Copilot also have session metadata adapters.
-- Current platform focus: macOS. Terminal switching supports Terminal.app and iTerm2.
+- Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2.
 
 Keep Firekeeper compatible with normal agent CLI workflows. Do not require a daemon, proxy, wrapper command, remote flag, or changed launch procedure unless the user explicitly changes that product constraint.
 

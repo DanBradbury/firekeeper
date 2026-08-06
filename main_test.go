@@ -634,6 +634,7 @@ func TestFocusTerminalSessionSelectsMatchingMacAdapter(t *testing.T) {
 	var gotTTY string
 	app, err := focusTerminalSessionWith(
 		"ttys009",
+		"",
 		"darwin",
 		func(script, tty string) (string, error) {
 			gotTTY = tty
@@ -651,19 +652,46 @@ func TestFocusTerminalSessionSelectsMatchingMacAdapter(t *testing.T) {
 	}
 }
 
+func TestFocusTerminalSessionSelectsGhosttyByWorkingDirectory(t *testing.T) {
+	var gotTarget string
+	app, err := focusTerminalSessionWith(
+		"ttys009",
+		"/workspace/firekeeper",
+		"darwin",
+		func(script, target string) (string, error) {
+			if !strings.Contains(script, `application id "com.mitchellh.ghostty"`) {
+				t.Fatal("Ghostty adapter was not attempted first")
+			}
+			for _, required := range []string{"select tab terminalTab", "activate window terminalWindow", "focus terminalPane"} {
+				if !strings.Contains(script, required) {
+					t.Fatalf("Ghostty adapter missing %q", required)
+				}
+			}
+			gotTarget = target
+			return "matched", nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app != "Ghostty" || gotTarget != "/workspace/firekeeper" {
+		t.Fatalf("Ghostty switch result = %q, %q", app, gotTarget)
+	}
+}
+
 func TestFocusTerminalSessionRejectsMissingTTYAndOtherOS(t *testing.T) {
 	unusedScript := func(string, string) (string, error) { return "", nil }
-	if _, err := focusTerminalSessionWith("", "darwin", unusedScript); err == nil {
+	if _, err := focusTerminalSessionWith("", "", "darwin", unusedScript); err == nil {
 		t.Fatal("missing TTY accepted")
 	}
-	if _, err := focusTerminalSessionWith("ttys001", "linux", unusedScript); err == nil {
+	if _, err := focusTerminalSessionWith("ttys001", "", "linux", unusedScript); err == nil {
 		t.Fatal("non-macOS terminal switch accepted")
 	}
 }
 
 func TestFocusTerminalSessionSkipsAppsThatAreNotRunning(t *testing.T) {
 	calls := 0
-	app, err := focusTerminalSessionWith("ttys001", "darwin", func(string, string) (string, error) {
+	app, err := focusTerminalSessionWith("ttys001", "", "darwin", func(string, string) (string, error) {
 		calls++
 		if calls == 1 {
 			return "not-running", nil

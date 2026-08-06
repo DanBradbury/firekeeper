@@ -100,9 +100,10 @@ views:
 | Home / End | Jump to first or last runtime |
 | `r` | Refresh immediately |
 
-Terminal switching currently supports Terminal.app and iTerm2 on macOS. macOS
-may request Automation permission on first use. Sessions without a controlling
-TTY cannot be selected this way.
+Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
+Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
+matched by TTY. macOS may request Automation permission on first use. Sessions
+without a controlling TTY cannot be selected this way.
 
 ### Usage
 
