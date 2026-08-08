@@ -12,7 +12,7 @@ func TestPersistentSettingsRoundTrip(t *testing.T) {
 	if settings.CodexSprite != codexSpriteRanger {
 		t.Fatalf("default sprite = %s, want Ranger", settings.CodexSprite)
 	}
-	if err := savePersistentSettings(path, persistentSettings{CodexSprite: codexSpriteMage, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteRanger, Background: backgroundNone}); err != nil {
+	if err := savePersistentSettings(path, persistentSettings{CodexSprite: codexSpriteMage, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteRanger, Background: backgroundNone, BackgroundTime: backgroundNight}); err != nil {
 		t.Fatal(err)
 	}
 	loaded, _, err := loadPersistentSettings()
@@ -27,6 +27,9 @@ func TestPersistentSettingsRoundTrip(t *testing.T) {
 	}
 	if loaded.Background != backgroundNone {
 		t.Fatalf("loaded background = %s, want None", loaded.Background)
+	}
+	if loaded.BackgroundTime != backgroundNight {
+		t.Fatalf("loaded background time = %s, want Night", loaded.BackgroundTime)
 	}
 }
 
