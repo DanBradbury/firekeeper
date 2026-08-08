@@ -406,6 +406,36 @@ func TestResizeToFitPreservesAspectRatio(t *testing.T) {
 	}
 }
 
+func TestCoverSpriteFillsViewportWithoutStretching(t *testing.T) {
+	source := sprite{width: 4, height: 2, pixels: []rgba{
+		{r: 10, a: 255}, {r: 20, a: 255}, {r: 30, a: 255}, {r: 40, a: 255},
+		{r: 10, a: 255}, {r: 20, a: 255}, {r: 30, a: 255}, {r: 40, a: 255},
+	}}
+	covered := coverSprite(source, 4, 4)
+	if covered.width != 4 || covered.height != 4 {
+		t.Fatalf("covered sprite = %dx%d, want 4x4", covered.width, covered.height)
+	}
+	if got := covered.at(0, 0).r; got != 20 {
+		t.Fatalf("left crop pixel = %d, want source center red 20", got)
+	}
+	if got := covered.at(3, 0).r; got != 30 {
+		t.Fatalf("right crop pixel = %d, want source center red 30", got)
+	}
+}
+
+func TestAnimationSceneCompositesBackgroundBehindCharacters(t *testing.T) {
+	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 220, a: 255}}}
+	m := newModel([][]sprite{{character}}).withSceneBackground(sprite{width: 1, height: 1, pixels: []rgba{{g: 200, a: 255}}})
+	scene := m.animationScene(40, 20)
+	if corner := scene.at(0, 0); corner.g <= corner.r {
+		t.Fatalf("background wash = %#v, want beach green behind scene", corner)
+	}
+	layout := m.animationLayout(scene.width, scene.height)
+	if got := scene.at(layout.characterX, layout.characterY+layout.character.height-1).r; got != 220 {
+		t.Fatalf("character pixel = %d, want foreground red 220", got)
+	}
+}
+
 func TestPadSpriteBottomAlignsVisiblePixels(t *testing.T) {
 	source := sprite{width: 2, height: 4, pixels: []rgba{
 		{a: 255}, {a: 255},
