@@ -224,6 +224,8 @@ type model struct {
 	warriorHeadshot         sprite
 	mageHeadshot            sprite
 	sceneBackground         sprite
+	sceneBackgrounds        []sprite
+	backgroundChoice        backgroundChoice
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -299,7 +301,8 @@ func (m model) withCharacterHeadshots(wizard, warrior, mage sprite) model {
 }
 
 func (m model) withSceneBackground(background sprite) model {
-	m.sceneBackground = background
+	m.sceneBackgrounds = []sprite{background, {}}
+	m.applySceneBackground()
 	return m
 }
 
@@ -307,8 +310,10 @@ func (m model) withPersistentSettings(settings persistentSettings, path string) 
 	m.codexSprite = settings.CodexSprite
 	m.copilotSprite = settings.CopilotSprite
 	m.kimiSprite = settings.KimiSprite
+	m.backgroundChoice = settings.Background
 	m.settingsPath = path
 	m.applyCodexSprite()
+	m.applySceneBackground()
 	return m
 }
 
@@ -360,7 +365,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
-					m.cycleSelectedSprite(-1)
+					m.cycleSelectedSetting(-1)
 				}
 			}
 		case "right", "l":
@@ -376,7 +381,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
-					m.cycleSelectedSprite(1)
+					m.cycleSelectedSetting(1)
 				}
 			}
 		case "up", "k":
@@ -452,7 +457,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settingsErr = ""
 					return m, m.saveSettingsCmd()
 				}
-				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite}
+				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice}
 				m.settingsEditing = true
 			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider {
 				if m.kimiHistoryOpen {
