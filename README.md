@@ -65,12 +65,13 @@ Firekeeper opens on an animated camp scene. Press Tab to move between four
 views:
 
 - **Animation** — home scene with Codex, Copilot, and Kimi characters plus RPG-style command menu.
-
-Each character’s crest shows total discovered runtimes in gold and currently
-active runtimes in red.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
 - **Settings** — configure Codex, Copilot, and Kimi character sprites.
+
+The Animation scene uses a pixel-art beach battle backdrop. Each character’s
+crest shows total discovered runtimes in gold and currently active runtimes in
+red.
 
 ### Global controls
 

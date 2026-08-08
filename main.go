@@ -146,6 +146,9 @@ var mageSheetPNG []byte
 //go:embed "assets/mage_headshot.png"
 var mageHeadshotPNG []byte
 
+//go:embed "assets/bg_beach.png"
+var beachBackgroundPNG []byte
+
 type tickMsg time.Time
 
 type processPollMsg time.Time
@@ -220,6 +223,7 @@ type model struct {
 	wizardHeadshot          sprite
 	warriorHeadshot         sprite
 	mageHeadshot            sprite
+	sceneBackground         sprite
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -291,6 +295,11 @@ func (m model) withCharacterHeadshots(wizard, warrior, mage sprite) model {
 	m.wizardHeadshot = wizard
 	m.warriorHeadshot = warrior
 	m.mageHeadshot = mage
+	return m
+}
+
+func (m model) withSceneBackground(background sprite) model {
+	m.sceneBackground = background
 	return m
 }
 
@@ -990,8 +999,15 @@ func (m model) animationScene(columns, rows int) sprite {
 	width := max(columns, 1) * animationSourceScale
 	height := max(rows, 1) * 2 * animationSourceScale
 	canvas := newCanvas(width, height, background)
+	if m.sceneBackground.width > 0 && m.sceneBackground.height > 0 {
+		canvas.drawSprite(0, 0, coverSprite(m.sceneBackground, width, height))
+		canvas.wash(rgba{r: 6, g: 18, b: 34, a: 48})
+	}
 
 	layout := m.animationLayout(width, height)
+	canvas.drawCharacterShadow(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height-2, layout.copilotCharacter.width)
+	canvas.drawCharacterShadow(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height-2, layout.character.width)
+	canvas.drawCharacterShadow(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height-2, layout.kimiCharacter.width)
 	canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
 	canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
 	canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
@@ -2191,6 +2207,20 @@ func resizeToFit(source sprite, maxWidth, maxHeight int) sprite {
 	return source.resize(width, height)
 }
 
+func coverSprite(source sprite, width, height int) sprite {
+	if source.width < 1 || source.height < 1 || width < 1 || height < 1 {
+		return sprite{}
+	}
+	scaledWidth, scaledHeight := width, height
+	if source.width*height < source.height*width {
+		scaledHeight = max(1, (source.height*width+source.width-1)/source.width)
+	} else {
+		scaledWidth = max(1, (source.width*height+source.height-1)/source.height)
+	}
+	scaled := source.resize(scaledWidth, scaledHeight)
+	return scaled.crop((scaled.width-width)/2, (scaled.height-height)/2, width, height)
+}
+
 func padSpriteBottom(source sprite, height int) sprite {
 	if source.width < 1 || source.height < 1 || height < source.height {
 		return source
@@ -2337,6 +2367,37 @@ func (c *canvas) drawSprite(x, y int, source sprite) {
 	}
 }
 
+func (c *canvas) wash(tint rgba) {
+	if tint.a == 0 {
+		return
+	}
+	alpha := int(tint.a)
+	inverse := 255 - alpha
+	for index, pixel := range c.pixels {
+		c.pixels[index] = rgb{
+			r: uint8((int(tint.r)*alpha + int(pixel.r)*inverse + 127) / 255),
+			g: uint8((int(tint.g)*alpha + int(pixel.g)*inverse + 127) / 255),
+			b: uint8((int(tint.b)*alpha + int(pixel.b)*inverse + 127) / 255),
+		}
+	}
+}
+
+func (c *canvas) drawCharacterShadow(centerX, baseline, characterWidth int) {
+	width := max(characterWidth*2/3, 10)
+	height := max(width/5, 4)
+	shadow := sprite{width: width, height: height, pixels: make([]rgba, width*height)}
+	centerY := height / 2
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			dx, dy := x-width/2, y-centerY
+			if dx*dx*height*height+dy*dy*width*width <= width*width*height*height/4 {
+				shadow.set(x, y, rgba{r: 2, g: 8, b: 16, a: 105})
+			}
+		}
+	}
+	c.drawSprite(centerX-width/2, baseline-height/2, shadow)
+}
+
 func (c canvas) sprite() sprite {
 	result := sprite{width: c.width, height: c.height, pixels: make([]rgba, c.width*c.height)}
 	for index, pixel := range c.pixels {
@@ -2411,6 +2472,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Mage headshot: %v\n", err)
 		os.Exit(1)
 	}
+	beachBackground, err := decodeSprite(beachBackgroundPNG)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load beach background: %v\n", err)
+		os.Exit(1)
+	}
 	warriorAnimations, err := decodeGridAnimations(warriorSheetPNG, warriorSheetColumns, warriorSheetRows)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior spritesheet: %v\n", err)
@@ -2426,6 +2492,7 @@ func main() {
 			withCodexSprites([][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withProviderSprites([][][]sprite{animations, warriorAnimations, mageAnimations}, [][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withCharacterHeadshots(wizardHeadshot, warriorHeadshot, mageHeadshot).
+			withSceneBackground(beachBackground).
 			withPersistentSettings(storedSettings, settingsPath),
 		tea.WithAltScreen(),
 	)
