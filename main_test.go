@@ -182,6 +182,50 @@ func TestTickAdvancesAndWrapsFrame(t *testing.T) {
 	}
 }
 
+func TestActiveProviderAttacksThenPausesBeforeRepeating(t *testing.T) {
+	frame := func(value uint8) sprite {
+		return sprite{width: 1, height: 1, pixels: []rgba{{r: value, a: 255}}}
+	}
+	m := newModel([][]sprite{{frame(10)}})
+	m.codexSprites = [][][]sprite{{{frame(10)}, {frame(20), frame(21)}}}
+	m.processGroups = []processGroup{{tool: "Codex", sessions: []sessionInfo{{state: sessionStateActive}}}}
+	start := time.Date(2026, time.August, 7, 12, 0, 0, 0, time.UTC)
+
+	m.advanceFrame(start)
+	if !m.codexAttack.attacking || m.codexAttack.frame != 0 {
+		t.Fatalf("first active tick = %#v, want attack frame 0", m.codexAttack)
+	}
+	if got := m.currentProviderFrame(m.codexSprites, m.codexSprite, m.codexAttack).at(0, 0).r; got != 20 {
+		t.Fatalf("attack frame red = %d, want 20", got)
+	}
+
+	m.advanceFrame(start.Add(m.frameDuration))
+	if m.codexAttack.frame != 1 {
+		t.Fatalf("second active tick frame = %d, want 1", m.codexAttack.frame)
+	}
+	m.advanceFrame(start.Add(2 * m.frameDuration))
+	if m.codexAttack.attacking {
+		t.Fatal("attack did not enter pause after final frame")
+	}
+	pause := m.codexAttack.nextAttackAt.Sub(start.Add(2 * m.frameDuration))
+	if pause < minimumAttackPause || pause > maximumAttackPause {
+		t.Fatalf("attack pause = %s, want %s-%s", pause, minimumAttackPause, maximumAttackPause)
+	}
+	if got := m.currentProviderFrame(m.codexSprites, m.codexSprite, m.codexAttack).at(0, 0).r; got != 10 {
+		t.Fatalf("pause frame red = %d, want idle 10", got)
+	}
+
+	m.advanceFrame(m.codexAttack.nextAttackAt)
+	if !m.codexAttack.attacking || m.codexAttack.frame != 0 {
+		t.Fatalf("attack did not restart after pause: %#v", m.codexAttack)
+	}
+	m.processGroups = nil
+	m.advanceFrame(m.codexAttack.nextAttackAt.Add(m.frameDuration))
+	if m.codexAttack.attacking || !m.codexAttack.nextAttackAt.IsZero() {
+		t.Fatalf("inactive provider retained attack state: %#v", m.codexAttack)
+	}
+}
+
 func TestTabCyclesThroughProcessUsageAndSettingsViews(t *testing.T) {
 	m := testModel()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})

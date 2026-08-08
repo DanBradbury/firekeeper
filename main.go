@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -55,6 +56,9 @@ const (
 	animationQuestBadgeGap    = 3
 	questBadgeMinDiameter     = 21
 	questBadgeDigitScale      = 2
+	attackAnimationIndex      = 1
+	minimumAttackPause        = 2 * time.Second
+	maximumAttackPause        = 5 * time.Second
 )
 
 type spriteRenderer int
@@ -196,6 +200,12 @@ type terminalSwitchResultMsg struct {
 	err error
 }
 
+type providerAttackState struct {
+	attacking    bool
+	frame        int
+	nextAttackAt time.Time
+}
+
 type model struct {
 	width, height           int
 	activeTab               tab
@@ -226,6 +236,9 @@ type model struct {
 	sceneBackground         sprite
 	sceneBackgrounds        []sprite
 	backgroundChoice        backgroundChoice
+	codexAttack             providerAttackState
+	copilotAttack           providerAttackState
+	kimiAttack              providerAttackState
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -521,7 +534,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		if m.playing {
-			m.advanceFrame()
+			m.advanceFrame(time.Time(msg))
 		}
 		return m, tick(m.frameDuration)
 
@@ -627,10 +640,40 @@ func (m *model) cycleAnimation(delta int) {
 	m.frame = 0
 }
 
-func (m *model) advanceFrame() {
+func (m *model) advanceFrame(now time.Time) {
 	if len(m.animations) > 0 && len(m.animations[m.animation]) > 0 {
 		m.frame = (m.frame + 1) % len(m.animations[m.animation])
 	}
+	m.advanceProviderAttack(&m.codexAttack, providerActiveGroupCount(m.processGroups, "Codex") > 0, m.codexSprites, m.codexSprite, now)
+	m.advanceProviderAttack(&m.copilotAttack, providerActiveGroupCount(m.processGroups, "Copilot") > 0, m.copilotSprites, m.copilotSprite, now)
+	m.advanceProviderAttack(&m.kimiAttack, providerActiveGroupCount(m.processGroups, "Kimi") > 0, m.kimiSprites, m.kimiSprite, now)
+}
+
+func (m *model) advanceProviderAttack(state *providerAttackState, active bool, choices [][][]sprite, choice codexSpriteChoice, now time.Time) {
+	if !active {
+		*state = providerAttackState{}
+		return
+	}
+	if !state.attacking {
+		if state.nextAttackAt.IsZero() || !now.Before(state.nextAttackAt) {
+			state.attacking = true
+			state.frame = 0
+		}
+		return
+	}
+	frames := providerAnimationFrames(choices, choice, attackAnimationIndex)
+	if len(frames) == 0 || state.frame+1 >= len(frames) {
+		state.attacking = false
+		state.frame = 0
+		state.nextAttackAt = now.Add(randomAttackPause())
+		return
+	}
+	state.frame++
+}
+
+func randomAttackPause() time.Duration {
+	seconds := int(minimumAttackPause/time.Second) + rand.IntN(int(maximumAttackPause/time.Second-minimumAttackPause/time.Second)+1)
+	return time.Duration(seconds) * time.Second
 }
 
 func (m *model) resizeSprite(delta int) {
@@ -1043,9 +1086,9 @@ type animationLayout struct {
 func (m model) animationLayout(width, height int) animationLayout {
 	frameWidth := min(m.spriteColumns, max(width/animationSourceScale, 1)) * animationSourceScale
 	frameHeight := min(m.spriteRows, max(height/(2*animationSourceScale), 1)) * 2 * animationSourceScale
-	frame := padSpriteBottom(resizeToFit(m.currentFrame(), frameWidth, frameHeight), frameHeight)
-	copilot := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.copilotSprites, m.copilotSprite), frameWidth, frameHeight), frameHeight)
-	kimi := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.kimiSprites, m.kimiSprite), frameWidth, frameHeight), frameHeight)
+	frame := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.codexSprites, m.codexSprite, m.codexAttack), frameWidth, frameHeight), frameHeight)
+	copilot := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.copilotSprites, m.copilotSprite, m.copilotAttack), frameWidth, frameHeight), frameHeight)
+	kimi := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.kimiSprites, m.kimiSprite, m.kimiAttack), frameWidth, frameHeight), frameHeight)
 	layout := animationLayout{character: frame, copilotCharacter: copilot, kimiCharacter: kimi}
 	gap := animationCharacterFireGap * animationSourceScale
 	totalWidth := frame.width + copilot.width + kimi.width + gap*2
@@ -1059,17 +1102,35 @@ func (m model) animationLayout(width, height int) animationLayout {
 	return m.withSessionBadge(layout)
 }
 
-func (m model) currentProviderFrame(choices [][][]sprite, choice codexSpriteChoice) sprite {
+func (m model) currentProviderFrame(choices [][][]sprite, choice codexSpriteChoice, attack providerAttackState) sprite {
+	if attack.attacking {
+		frames := providerAnimationFrames(choices, choice, attackAnimationIndex)
+		if len(frames) > 0 {
+			return frames[min(attack.frame, len(frames)-1)]
+		}
+	}
 	if int(choice) >= len(choices) || len(choices[choice]) == 0 {
 		return m.currentFrame()
 	}
 	animations := choices[choice]
+	if !attack.nextAttackAt.IsZero() {
+		if len(animations[0]) > 0 {
+			return animations[0][m.frame%len(animations[0])]
+		}
+	}
 	animation := min(m.animation, len(animations)-1)
 	if len(animations[animation]) == 0 {
 		return m.currentFrame()
 	}
 	frame := min(m.frame, len(animations[animation])-1)
 	return animations[animation][frame]
+}
+
+func providerAnimationFrames(choices [][][]sprite, choice codexSpriteChoice, animation int) []sprite {
+	if int(choice) >= len(choices) || animation < 0 || animation >= len(choices[choice]) {
+		return nil
+	}
+	return choices[choice][animation]
 }
 
 func (m model) withSessionBadge(layout animationLayout) animationLayout {
