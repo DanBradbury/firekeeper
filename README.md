@@ -121,8 +121,10 @@ Up/Down to select a session; press `Enter` or `Esc` to return.
 
 ### Settings
 
-Codex, Copilot, and Kimi each have sprite options: Wizard, Warrior, and Mage.
-Choices save to Firekeeper’s user config and load automatically on next launch.
+**Player Selection** configures Codex, Copilot, and Kimi sprites: Wizard,
+Warrior, or Mage. **Background Selection** switches the Animation scene between
+Beach and None. Choices save to Firekeeper’s user config and load automatically
+on next launch.
 
 | Key | Action |
 | --- | --- |

@@ -347,7 +347,7 @@ func TestWizardSettingsPortraitUsesHeadshotForEachProvider(t *testing.T) {
 	m.kimiSprites = m.codexSprites
 	m.wizardHeadshot = makeFrame(99)
 
-	for provider := 0; provider < settingsItemCount; provider++ {
+	for provider := 0; provider < 3; provider++ {
 		m.settingsCursor = provider
 		m.codexSprite = codexSpriteWarrior
 		m.copilotSprite = codexSpriteWarrior
@@ -363,6 +363,28 @@ func TestWizardSettingsPortraitUsesHeadshotForEachProvider(t *testing.T) {
 		if got := m.codexPortrait().at(portraitBoxSize/2, portraitBoxSize/2).r; got != 99 {
 			t.Fatalf("provider %d portrait red = %d, want headshot red 99", provider, got)
 		}
+	}
+}
+
+func TestBackgroundSettingSelectsAndCancels(t *testing.T) {
+	beach := sprite{width: 1, height: 1, pixels: []rgba{{g: 200, a: 255}}}
+	m := newModel([][]sprite{{sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}}}).withSceneBackground(beach)
+	m.activeTab = settingsTab
+	m.settingsCursor = 3
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.backgroundChoice != backgroundNone || m.sceneBackground.width != 0 {
+		t.Fatalf("background selection = %s with %dx%d sprite, want None", m.backgroundChoice, m.sceneBackground.width, m.sceneBackground.height)
+	}
+	if !strings.Contains(m.View(), "PLAYER SELECTION") || !strings.Contains(m.View(), "BACKGROUND SELECTION") {
+		t.Fatalf("settings categories missing:\n%s", m.View())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.backgroundChoice != backgroundBeach || m.sceneBackground.width != 1 {
+		t.Fatalf("cancelled background selection = %s with %dx%d sprite, want Beach", m.backgroundChoice, m.sceneBackground.width, m.sceneBackground.height)
 	}
 }
 
