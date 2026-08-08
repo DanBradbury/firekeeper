@@ -10,31 +10,38 @@ import (
 	"github.com/charmbracelet/x/ansi/kitty"
 )
 
-func TestEmbeddedSheetSlicesIntoTenAnimations(t *testing.T) {
-	sheet, err := decodeSprite(rangerSheetPNG)
+func TestEmbeddedWizardSpritesheet(t *testing.T) {
+	animations, err := decodeWizardAnimations(wizardSheetPNG)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sheet.width != 320 || sheet.height != 320 {
-		t.Fatalf("sheet dimensions = %dx%d, want 320x320", sheet.width, sheet.height)
+	if got, want := len(animations), 4; got != want {
+		t.Fatalf("animations = %d, want %d", got, want)
 	}
+	for index, want := range []int{6, 7, 18, 5} {
+		if got := len(animations[index]); got != want {
+			t.Fatalf("animation %d frames = %d, want %d", index, got, want)
+		}
+	}
+	if frame := animations[0][0]; frame.width != 161 || frame.height != 106 {
+		t.Fatalf("frame = %dx%d, want 161x106", frame.width, frame.height)
+	}
+}
 
-	animations, err := sliceSheet(sheet, sheetColumns, sheetRows)
+func TestGroupWizardFramesRejectsWrongFrameCount(t *testing.T) {
+	_, err := groupWizardFrames(make([]sprite, 35))
+	if err == nil {
+		t.Fatal("groupWizardFrames accepted incomplete sheet")
+	}
+}
+
+func TestEmbeddedWizardHeadshot(t *testing.T) {
+	headshot, err := decodeSprite(wizardHeadshotPNG)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(animations) != 10 {
-		t.Fatalf("animation count = %d, want 10", len(animations))
-	}
-	for animation, frames := range animations {
-		if len(frames) != 10 {
-			t.Fatalf("animation %d frame count = %d, want 10", animation, len(frames))
-		}
-		for frame, image := range frames {
-			if image.width != 32 || image.height != 32 {
-				t.Fatalf("animation %d frame %d = %dx%d, want 32x32", animation, frame, image.width, image.height)
-			}
-		}
+	if headshot.width != 93 || headshot.height != 94 {
+		t.Fatalf("headshot = %dx%d, want 93x94", headshot.width, headshot.height)
 	}
 }
 
@@ -136,7 +143,7 @@ func TestKittyAnimationUsesConfiguredPlacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, option := range []string{"f=100", "q=2", "i=42", "p=1", "U=1", "C=1", "c=16", "r=8", "a=T"} {
+	for _, option := range []string{"f=100", "q=2", "i=42", "p=1", "U=1", "C=1", "c=32", "r=16", "a=T"} {
 		if !strings.Contains(transmission, option) {
 			t.Errorf("Kitty transmission missing %q", option)
 		}
@@ -150,7 +157,7 @@ func TestKittyAnimationUsesConfiguredPlacement(t *testing.T) {
 	m.width = 40
 	m.height = 20
 	view := m.viewAnimation(m.height - chromeRows)
-	if got, want := strings.Count(view, string(kitty.Placeholder)), defaultSpriteColumns*defaultSpriteRows; got != want {
+	if got, want := strings.Count(view, string(kitty.Placeholder)), m.width*(m.height-chromeRows); got != want {
 		t.Fatalf("placeholder count = %d, want %d", got, want)
 	}
 }
@@ -158,8 +165,6 @@ func TestKittyAnimationUsesConfiguredPlacement(t *testing.T) {
 func TestTickAdvancesAndWrapsFrame(t *testing.T) {
 	m := testModel()
 	m.frame = 9
-	m.fireFrames = make([]sprite, forestFireFrames)
-	m.fireFrame = forestFireFrames - 1
 
 	updated, cmd := m.Update(tickMsg(time.Now()))
 	m = updated.(model)
@@ -169,10 +174,6 @@ func TestTickAdvancesAndWrapsFrame(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("tick did not schedule next tick")
 	}
-	if m.fireFrame != 0 {
-		t.Fatalf("fire frame after tick = %d, want 0", m.fireFrame)
-	}
-
 	m.playing = false
 	updated, _ = m.Update(tickMsg(time.Now()))
 	m = updated.(model)
@@ -262,23 +263,29 @@ func TestCodexSpriteSelectionUpdatesMainAnimation(t *testing.T) {
 }
 
 func TestProviderSpritesRenderAsSeparateCharacters(t *testing.T) {
-	makeFrame := func(value uint8) sprite {
-		pixels := make([]rgba, 16)
+	makeFrame := func(width, height int, value uint8) sprite {
+		pixels := make([]rgba, width*height)
 		for index := range pixels {
 			pixels[index] = rgba{r: value, a: 255}
 		}
-		return sprite{width: 4, height: 4, pixels: pixels}
+		return sprite{width: width, height: height, pixels: pixels}
 	}
-	m := newModel([][]sprite{{makeFrame(10)}})
-	m.copilotSprites = [][][]sprite{{{makeFrame(20)}}}
-	m.kimiSprites = [][][]sprite{{{makeFrame(30)}}}
-	m.fireFrames = nil
-	layout := m.animationLayout(100, 40)
+	m := newModel([][]sprite{{makeFrame(4, 2, 10)}})
+	m.copilotSprites = [][][]sprite{{{makeFrame(2, 4, 20)}}}
+	m.kimiSprites = [][][]sprite{{{makeFrame(3, 1, 30)}}}
+	m.processGroups = []processGroup{{tool: "Codex"}, {tool: "Copilot"}, {tool: "Kimi"}}
+	layout := m.animationLayout(400, 200)
 	if layout.character.width == 0 || layout.copilotCharacter.width == 0 || layout.kimiCharacter.width == 0 {
 		t.Fatal("provider character missing from animation layout")
 	}
 	if !(layout.copilotX < layout.characterX && layout.characterX < layout.kimiX) {
 		t.Fatalf("character positions = copilot %d, codex %d, kimi %d", layout.copilotX, layout.characterX, layout.kimiX)
+	}
+	if layout.copilotY != layout.characterY || layout.characterY != layout.kimiY {
+		t.Fatalf("character tops = Copilot %d, Codex %d, Kimi %d; want exact alignment", layout.copilotY, layout.characterY, layout.kimiY)
+	}
+	if layout.copilotBadgeY != layout.sessionBadgeY || layout.sessionBadgeY != layout.kimiBadgeY {
+		t.Fatalf("badge tops = Copilot %d, Codex %d, Kimi %d; want exact alignment", layout.copilotBadgeY, layout.sessionBadgeY, layout.kimiBadgeY)
 	}
 }
 
@@ -300,7 +307,7 @@ func TestProviderSpriteSettingsAreIndependent(t *testing.T) {
 	m = updated.(model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m = updated.(model)
-	if m.copilotSprite != codexSpriteCleric || m.codexSprite != codexSpriteRanger {
+	if m.copilotSprite != codexSpriteMage || m.codexSprite != codexSpriteRanger {
 		t.Fatalf("provider settings changed unexpectedly: codex=%s copilot=%s", m.codexSprite, m.copilotSprite)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -330,19 +337,88 @@ func TestCodexPortraitUsesSelectedSpriteSet(t *testing.T) {
 	}
 }
 
-func TestCodexSpriteSheetsDecodeIntoTenAnimations(t *testing.T) {
-	for name, data := range map[string][]byte{
-		"ranger":  rangerSheetPNG,
-		"warrior": warriorSheetPNG,
-		"cleric":  clericSheetPNG,
+func TestWizardSettingsPortraitUsesHeadshotForEachProvider(t *testing.T) {
+	makeFrame := func(value uint8) sprite {
+		return sprite{width: 1, height: 1, pixels: []rgba{{r: value, a: 255}}}
+	}
+	m := newModel([][]sprite{{makeFrame(10)}})
+	m.codexSprites = [][][]sprite{{{makeFrame(10)}}, {{makeFrame(20)}}, {{makeFrame(30)}}}
+	m.copilotSprites = m.codexSprites
+	m.kimiSprites = m.codexSprites
+	m.wizardHeadshot = makeFrame(99)
+
+	for provider := 0; provider < settingsItemCount; provider++ {
+		m.settingsCursor = provider
+		m.codexSprite = codexSpriteWarrior
+		m.copilotSprite = codexSpriteWarrior
+		m.kimiSprite = codexSpriteWarrior
+		switch provider {
+		case 1:
+			m.copilotSprite = codexSpriteRanger
+		case 2:
+			m.kimiSprite = codexSpriteRanger
+		default:
+			m.codexSprite = codexSpriteRanger
+		}
+		if got := m.codexPortrait().at(portraitBoxSize/2, portraitBoxSize/2).r; got != 99 {
+			t.Fatalf("provider %d portrait red = %d, want headshot red 99", provider, got)
+		}
+	}
+}
+
+func TestCharacterSpritesheetsDecodeIntoAnimations(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		data                    []byte
+		columns, rows           int
+		frameWidth, frameHeight int
+	}{
+		{"warrior", warriorSheetPNG, warriorSheetColumns, warriorSheetRows, 182, 123},
+		{"mage", mageSheetPNG, mageSheetColumns, mageSheetRows, 158, 173},
 	} {
-		animations, err := decodeCodexAnimations(data)
+		animations, err := decodeGridAnimations(test.data, test.columns, test.rows)
 		if err != nil {
-			t.Fatalf("decode %s: %v", name, err)
+			t.Fatalf("decode %s: %v", test.name, err)
 		}
-		if len(animations) != 10 || len(animations[0]) != 10 {
-			t.Fatalf("%s animation dimensions = %d/%d, want 10/10", name, len(animations), len(animations[0]))
+		if len(animations) != test.rows || len(animations[0]) != test.columns {
+			t.Fatalf("%s animation dimensions = %d/%d, want %d/%d", test.name, len(animations), len(animations[0]), test.rows, test.columns)
 		}
+		if frame := animations[0][0]; frame.width != test.frameWidth || frame.height != test.frameHeight {
+			t.Fatalf("%s frame = %dx%d, want %dx%d", test.name, frame.width, frame.height, test.frameWidth, test.frameHeight)
+		}
+	}
+}
+
+func TestResizeToFitPreservesAspectRatio(t *testing.T) {
+	for _, test := range []struct {
+		sourceWidth, sourceHeight int
+		maxWidth, maxHeight       int
+		wantWidth, wantHeight     int
+	}{
+		{4, 2, 8, 8, 8, 4},
+		{2, 4, 8, 8, 4, 8},
+	} {
+		source := sprite{width: test.sourceWidth, height: test.sourceHeight, pixels: make([]rgba, test.sourceWidth*test.sourceHeight)}
+		got := resizeToFit(source, test.maxWidth, test.maxHeight)
+		if got.width != test.wantWidth || got.height != test.wantHeight {
+			t.Fatalf("resize %dx%d within %dx%d = %dx%d, want %dx%d", test.sourceWidth, test.sourceHeight, test.maxWidth, test.maxHeight, got.width, got.height, test.wantWidth, test.wantHeight)
+		}
+	}
+}
+
+func TestPadSpriteBottomAlignsVisiblePixels(t *testing.T) {
+	source := sprite{width: 2, height: 4, pixels: []rgba{
+		{a: 255}, {a: 255},
+		{}, {},
+		{r: 200, a: 255}, {},
+		{}, {},
+	}}
+	got := padSpriteBottom(source, 8)
+	if got.height != 8 {
+		t.Fatalf("padded height = %d, want 8", got.height)
+	}
+	if pixel := got.at(0, 7); pixel.r != 200 || pixel.a != 255 {
+		t.Fatalf("visible bottom pixel = %#v, want opaque red at y=7", pixel)
 	}
 }
 
@@ -831,103 +907,27 @@ func TestDrawSpriteHonorsTransparency(t *testing.T) {
 	}
 }
 
-func TestCanvasRepeatsGrassTileBehindSprite(t *testing.T) {
-	tile := sprite{
-		width:  2,
-		height: 2,
-		pixels: []rgba{
-			{r: 10, a: 255}, {r: 20, a: 255},
-			{r: 30, a: 255}, {r: 40, a: 255},
-		},
-	}
-	canvas := newCanvas(5, 3, background)
-	canvas.tileSprite(tile)
-
-	for _, check := range []struct {
-		x, y int
-		red  uint8
-	}{
-		{0, 0, 10}, {1, 0, 20}, {2, 0, 10}, {4, 0, 10},
-		{0, 1, 30}, {3, 1, 40}, {4, 2, 10},
-	} {
-		if got := canvas.at(check.x, check.y).r; got != check.red {
-			t.Fatalf("pixel (%d,%d) red = %d, want %d", check.x, check.y, got, check.red)
-		}
-	}
-
-	foreground := sprite{width: 1, height: 1, pixels: []rgba{{r: 99, a: 255}}}
-	canvas.drawSprite(2, 1, foreground)
-	if got := canvas.at(2, 1).r; got != 99 {
-		t.Fatalf("foreground red = %d, want 99", got)
-	}
-	if got := canvas.at(2, 2).r; got != 10 {
-		t.Fatalf("grass beside foreground red = %d, want 10", got)
-	}
-}
-
-func TestKittyAnimationCompositesGrassAcrossViewport(t *testing.T) {
+func TestKittyAnimationCompositesSceneAcrossViewport(t *testing.T) {
 	frame := sprite{width: 1, height: 1, pixels: []rgba{{r: 255, a: 255}}}
-	grass := sprite{width: 1, height: 1, pixels: []rgba{{g: 80, a: 255}}}
-	m := newModelWithGrass([][]sprite{{frame}}, appConfig{
+	m := newModelWithConfig([][]sprite{{frame}}, appConfig{
 		renderer:      kittyRenderer,
 		spriteColumns: 2,
 		spriteRows:    1,
-	}, grass)
+	})
 	m.width = 8
 	m.height = 7
 
 	view := m.viewAnimation(m.height - chromeRows)
 	if got, want := strings.Count(view, string(kitty.Placeholder)), m.width*(m.height-chromeRows); got != want {
-		t.Fatalf("grass scene placeholder count = %d, want %d", got, want)
+		t.Fatalf("scene placeholder count = %d, want %d", got, want)
 	}
 
-	scene := m.grassAnimationScene(m.width, m.height-chromeRows)
+	scene := m.animationScene(m.width, m.height-chromeRows)
 	if got, want := scene.width, m.width*animationSourceScale; got != want {
-		t.Fatalf("native grass scene width = %d, want %d", got, want)
+		t.Fatalf("native scene width = %d, want %d", got, want)
 	}
 	if got, want := scene.height, (m.height-chromeRows)*2*animationSourceScale; got != want {
-		t.Fatalf("native grass scene height = %d, want %d", got, want)
-	}
-}
-
-func TestAnimationSceneScalesFireAndKeepsCharacterClear(t *testing.T) {
-	grass := sprite{width: 1, height: 1, pixels: []rgba{{a: 255}}}
-	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}
-	fire := sprite{width: 2, height: 4, pixels: []rgba{
-		{g: 200, a: 255}, {g: 200, a: 255},
-		{g: 200, a: 255}, {g: 200, a: 255},
-		{g: 200, a: 255}, {g: 200, a: 255},
-		{g: 200, a: 255}, {g: 200, a: 255},
-	}}
-	m := newModelWithGrass([][]sprite{{character}}, appConfig{
-		renderer:      blockRenderer,
-		spriteColumns: 4,
-		spriteRows:    2,
-	}, grass).withFire([]sprite{fire})
-
-	scene := m.grassAnimationScene(40, 20)
-	layout := m.animationLayout(scene.width, scene.height)
-	if got, want := layout.fire.width, fire.width+animationFireWidthIncrease; got != want {
-		t.Fatalf("scaled fire width = %d, want %d", got, want)
-	}
-	if layout.fire.width*fire.height != layout.fire.height*fire.width {
-		t.Fatalf("scaled fire size %dx%d does not preserve %dx%d aspect ratio", layout.fire.width, layout.fire.height, fire.width, fire.height)
-	}
-	if got, want := layout.fireX, (scene.width-layout.fire.width)/2; got != want {
-		t.Fatalf("fire left = %d, want centered at %d", got, want)
-	}
-	if got := scene.at(layout.fireX, layout.fireY); got.g != 200 {
-		t.Fatalf("center fire pixel = %#v, want green fire", got)
-	}
-
-	if got := scene.at(layout.characterX, layout.characterY); got.r != 200 {
-		t.Fatalf("left character pixel = %#v, want red character", got)
-	}
-	if got, want := layout.fireX-(layout.characterX+layout.character.width), animationCharacterFireGap; got != want {
-		t.Fatalf("character-to-fire gap = %d, want %d", got, want)
-	}
-	if got, want := layout.characterY+layout.character.height, layout.fireY+layout.fire.height; got != want {
-		t.Fatalf("character bottom = %d, fire bottom = %d", got, want)
+		t.Fatalf("native scene height = %d, want %d", got, want)
 	}
 }
 
@@ -963,20 +963,19 @@ func TestSettingsPortraitIsSquareAndStatic(t *testing.T) {
 }
 
 func TestAnimationSceneDrawsCodexSessionBadgeAboveCharacter(t *testing.T) {
-	grass := sprite{width: 1, height: 1, pixels: []rgba{{g: 40, a: 255}}}
 	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}
-	m := newModelWithGrass([][]sprite{{character}}, appConfig{
+	m := newModelWithConfig([][]sprite{{character}}, appConfig{
 		renderer:      blockRenderer,
 		spriteColumns: 4,
 		spriteRows:    2,
-	}, grass)
+	})
 	m.processGroups = []processGroup{
 		{tool: "Codex"},
 		{tool: "Copilot"},
 		{tool: "Codex"},
 	}
 
-	scene := m.grassAnimationScene(40, 20)
+	scene := m.animationScene(40, 20)
 	layout := m.animationLayout(scene.width, scene.height)
 	if layout.sessionBadge.width < 1 || layout.sessionBadge.height < 1 {
 		t.Fatal("Codex session badge was not created")
@@ -1022,8 +1021,8 @@ func TestAnimationSceneDrawsCodexSessionBadgeAboveCharacter(t *testing.T) {
 	}
 }
 
-func TestCodexSessionBadgeRendersMultiDigitCount(t *testing.T) {
-	badge := codexSessionBadge(12)
+func TestProviderSessionBadgeRendersTotalAndActiveCounts(t *testing.T) {
+	badge := providerSessionBadge(12, 3)
 	if badge.width%2 == 0 {
 		t.Fatalf("badge width = %d, want odd width for centering", badge.width)
 	}
@@ -1034,7 +1033,27 @@ func TestCodexSessionBadgeRendersMultiDigitCount(t *testing.T) {
 		}
 	}
 	if inkPixels < 20 {
-		t.Fatalf("multi-digit label contains only %d ink pixels", inkPixels)
+		t.Fatalf("multi-digit total label contains only %d ink pixels", inkPixels)
+	}
+	activePixels := 0
+	for _, pixel := range badge.pixels {
+		if pixel == activeBadgeFill {
+			activePixels++
+		}
+	}
+	if activePixels == 0 {
+		t.Fatal("active session tab is missing crimson pixels")
+	}
+}
+
+func TestProviderActiveGroupCountCountsActiveRuntimesOnce(t *testing.T) {
+	groups := []processGroup{
+		{tool: "Codex", sessions: []sessionInfo{{state: sessionStateActive}, {state: sessionStateActive}}},
+		{tool: "Codex", sessions: []sessionInfo{{state: sessionStateWaiting}}},
+		{tool: "Copilot", sessions: []sessionInfo{{state: sessionStateActive}}},
+	}
+	if got := providerActiveGroupCount(groups, "Codex"); got != 1 {
+		t.Fatalf("active Codex groups = %d, want 1", got)
 	}
 }
 

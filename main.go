@@ -27,13 +27,19 @@ const (
 	chromeRows           = 3
 	sheetColumns         = 10
 	sheetRows            = 10
+	wizardSheetColumns   = 6
+	wizardSheetRows      = 6
+	warriorSheetColumns  = 6
+	warriorSheetRows     = 5
+	mageSheetColumns     = 8
+	mageSheetRows        = 6
 	defaultFrameDuration = 120 * time.Millisecond
 	rateStep             = 20 * time.Millisecond
 	minimumFrameDuration = 40 * time.Millisecond
 	maximumFrameDuration = time.Second
 	processPollInterval  = 2 * time.Second
-	defaultSpriteColumns = 16
-	defaultSpriteRows    = 8
+	defaultSpriteColumns = 32
+	defaultSpriteRows    = 16
 	minimumSpriteColumns = 2
 	minimumSpriteRows    = 1
 	maximumSpriteColumns = 128
@@ -43,13 +49,12 @@ const (
 	// Forest scene displays its 320px scene at roughly 80 terminal columns.
 	// Keep same 4 source pixels per terminal half-cell here so 16x16 ground
 	// tiles remain native atlas sprites instead of being enlarged and blurred.
-	animationSourceScale       = 4
-	animationFireWidthIncrease = 2
-	animationCharacterFireGap  = 2
-	portraitBoxSize            = 24
-	animationQuestBadgeGap     = 3
-	questBadgeMinDiameter      = 21
-	questBadgeDigitScale       = 2
+	animationSourceScale      = 4
+	animationCharacterFireGap = 2
+	portraitBoxSize           = 24
+	animationQuestBadgeGap    = 3
+	questBadgeMinDiameter     = 21
+	questBadgeDigitScale      = 2
 )
 
 type spriteRenderer int
@@ -118,16 +123,28 @@ var (
 	questBadgeFill    = rgba{r: 250, g: 204, b: 21, a: 255}
 	questBadgeOutline = rgba{r: 91, g: 57, b: 13, a: 255}
 	questBadgeInk     = rgba{r: 48, g: 31, b: 10, a: 255}
+	activeBadgeFill   = rgba{r: 220, g: 48, b: 50, a: 255}
+	idleBadgeFill     = rgba{r: 67, g: 82, b: 97, a: 255}
+	activeBadgeInk    = rgba{r: 255, g: 242, b: 220, a: 255}
 )
 
-//go:embed "ranger spritesheet calciumtrice.png"
-var rangerSheetPNG []byte
+//go:embed "assets/wizard_spritesheet.png"
+var wizardSheetPNG []byte
 
-//go:embed "warrior.png"
+//go:embed "assets/wizard_headshot.png"
+var wizardHeadshotPNG []byte
+
+//go:embed "assets/warrior_spritesheet.png"
 var warriorSheetPNG []byte
 
-//go:embed "cleric.png"
-var clericSheetPNG []byte
+//go:embed "assets/warrior_headshot.png"
+var warriorHeadshotPNG []byte
+
+//go:embed "assets/mage_spritesheet.png"
+var mageSheetPNG []byte
+
+//go:embed "assets/mage_headshot.png"
+var mageHeadshotPNG []byte
 
 type tickMsg time.Time
 
@@ -183,11 +200,8 @@ type model struct {
 	codexSprites            [][][]sprite
 	copilotSprites          [][][]sprite
 	kimiSprites             [][][]sprite
-	grass                   sprite
 	animation               int
 	frame                   int
-	fireFrames              []sprite
-	fireFrame               int
 	menuOpen                bool
 	menuCursor              int
 	menuPage                rpgMenuPage
@@ -203,6 +217,9 @@ type model struct {
 	settingsPath            string
 	settingsSavePending     bool
 	settingsErr             string
+	wizardHeadshot          sprite
+	warriorHeadshot         sprite
+	mageHeadshot            sprite
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -251,18 +268,12 @@ func newModelWithConfig(animations [][]sprite, config appConfig) model {
 		playing:        true,
 		codexSprite:    codexSpriteRanger,
 		copilotSprite:  codexSpriteWarrior,
-		kimiSprite:     codexSpriteCleric,
+		kimiSprite:     codexSpriteMage,
 		renderer:       config.renderer,
 		spriteColumns:  config.spriteColumns,
 		spriteRows:     config.spriteRows,
 		expandedGroups: make(map[int]bool),
 	}
-}
-
-func newModelWithGrass(animations [][]sprite, config appConfig, grass sprite) model {
-	m := newModelWithConfig(animations, config)
-	m.grass = grass
-	return m
 }
 
 func (m model) withCodexSprites(sprites [][][]sprite) model {
@@ -276,17 +287,19 @@ func (m model) withProviderSprites(copilot, kimi [][][]sprite) model {
 	return m
 }
 
+func (m model) withCharacterHeadshots(wizard, warrior, mage sprite) model {
+	m.wizardHeadshot = wizard
+	m.warriorHeadshot = warrior
+	m.mageHeadshot = mage
+	return m
+}
+
 func (m model) withPersistentSettings(settings persistentSettings, path string) model {
 	m.codexSprite = settings.CodexSprite
 	m.copilotSprite = settings.CopilotSprite
 	m.kimiSprite = settings.KimiSprite
 	m.settingsPath = path
 	m.applyCodexSprite()
-	return m
-}
-
-func (m model) withFire(frames []sprite) model {
-	m.fireFrames = frames
 	return m
 }
 
@@ -604,9 +617,6 @@ func (m *model) advanceFrame() {
 	if len(m.animations) > 0 && len(m.animations[m.animation]) > 0 {
 		m.frame = (m.frame + 1) % len(m.animations[m.animation])
 	}
-	if len(m.fireFrames) > 0 {
-		m.fireFrame = (m.fireFrame + 1) % len(m.fireFrames)
-	}
 }
 
 func (m *model) resizeSprite(delta int) {
@@ -625,13 +635,6 @@ func (m model) currentFrame() sprite {
 		return sprite{}
 	}
 	return m.animations[m.animation][m.frame]
-}
-
-func (m model) currentFireFrame() sprite {
-	if len(m.fireFrames) == 0 {
-		return sprite{}
-	}
-	return m.fireFrames[m.fireFrame%len(m.fireFrames)]
 }
 
 func (m model) View() string {
@@ -805,6 +808,22 @@ func providerGroupCount(groups []processGroup, provider string) int {
 	return count
 }
 
+func providerActiveGroupCount(groups []processGroup, provider string) int {
+	count := 0
+	for _, group := range groups {
+		if group.tool != provider {
+			continue
+		}
+		for _, session := range group.sessions {
+			if session.state == sessionStateActive {
+				count++
+				break
+			}
+		}
+	}
+	return count
+}
+
 func codexSessionSummary(group processGroup) string {
 	if len(group.sessions) > 0 {
 		session := group.sessions[0]
@@ -937,71 +956,22 @@ func styleRPGMenuLine(value string) string {
 
 func (m model) viewBlockAnimation(contentRows int) string {
 	pixelHeight := contentRows * 2
-	if m.grass.width > 0 && m.grass.height > 0 {
-		scene := m.grassAnimationScene(m.width, contentRows).resize(m.width, pixelHeight)
-		canvas := newCanvas(m.width, pixelHeight, background)
-		canvas.drawSprite(0, 0, scene)
-		return canvas.render()
-	}
-
-	frame := m.currentFrame().fit(
-		min(m.spriteColumns, m.width),
-		min(m.spriteRows*2, pixelHeight),
-	)
-	x := (m.width - frame.width) / 2
-	y := (pixelHeight - frame.height) / 2
-
+	scene := m.animationScene(m.width, contentRows).resize(m.width, pixelHeight)
 	canvas := newCanvas(m.width, pixelHeight, background)
-	canvas.tileSprite(m.grass)
-	canvas.drawSprite(x, y, frame)
+	canvas.drawSprite(0, 0, scene)
 	return canvas.render()
 }
 
 func (m model) viewKittyAnimation(contentRows int) string {
-	if m.grass.width > 0 && m.grass.height > 0 {
-		return m.viewKittyGrassAnimation(contentRows)
-	}
-
 	lines := make([]string, contentRows)
 	for row := range lines {
 		lines[row] = strings.Repeat(" ", m.width)
 	}
 
-	frame := m.currentFrame()
-	if frame.width < 1 || frame.height < 1 || contentRows < 1 {
+	if contentRows < 1 {
 		return strings.Join(lines, "\n")
 	}
-
-	columns := min(max(m.spriteColumns, 1), m.width)
-	rows := min(max(m.spriteRows, 1), contentRows)
-	upload, err := encodeKittySprite(frame, columns, rows)
-	if err != nil {
-		return m.viewBlockAnimation(contentRows)
-	}
-
-	top := (contentRows - rows) / 2
-	left := (m.width - columns) / 2
-	for row := 0; row < rows; row++ {
-		prefix := strings.Repeat(" ", left)
-		if row == 0 {
-			prefix += upload
-		}
-		placeholder := kittySpritePlaceholderRow(kittyImageID, kittyPlacementID, row, columns)
-		lines[top+row] = prefix + placeholder + strings.Repeat(" ", max(m.width-left-columns, 0))
-	}
-	return strings.Join(lines, "\n")
-}
-
-func (m model) viewKittyGrassAnimation(contentRows int) string {
-	lines := make([]string, contentRows)
-	for row := range lines {
-		lines[row] = strings.Repeat(" ", m.width)
-	}
-	if m.width < 1 || contentRows < 1 {
-		return strings.Join(lines, "\n")
-	}
-
-	scene := m.grassAnimationScene(m.width, contentRows)
+	scene := m.animationScene(m.width, contentRows)
 	upload, err := encodeKittySprite(scene, m.width, contentRows)
 	if err != nil {
 		return m.viewBlockAnimation(contentRows)
@@ -1009,24 +979,22 @@ func (m model) viewKittyGrassAnimation(contentRows int) string {
 	for row := 0; row < contentRows; row++ {
 		prefix := ""
 		if row == 0 {
-			prefix = upload
+			prefix += upload
 		}
 		lines[row] = prefix + kittySpritePlaceholderRow(kittyImageID, kittyPlacementID, row, m.width)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func (m model) grassAnimationScene(columns, rows int) sprite {
+func (m model) animationScene(columns, rows int) sprite {
 	width := max(columns, 1) * animationSourceScale
 	height := max(rows, 1) * 2 * animationSourceScale
 	canvas := newCanvas(width, height, background)
-	canvas.tileSprite(m.grass)
 
 	layout := m.animationLayout(width, height)
 	canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
 	canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
 	canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
-	canvas.drawSprite(layout.fireX, layout.fireY, layout.fire)
 	canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
 	canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
 	canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
@@ -1040,8 +1008,6 @@ type animationLayout struct {
 	copilotX, copilotY     int
 	kimiCharacter          sprite
 	kimiX, kimiY           int
-	fire                   sprite
-	fireX, fireY           int
 	sessionBadge           sprite
 	sessionBadgeX          int
 	sessionBadgeY          int
@@ -1056,38 +1022,19 @@ type animationLayout struct {
 func (m model) animationLayout(width, height int) animationLayout {
 	frameWidth := min(m.spriteColumns, max(width/animationSourceScale, 1)) * animationSourceScale
 	frameHeight := min(m.spriteRows, max(height/(2*animationSourceScale), 1)) * 2 * animationSourceScale
-	frame := m.currentFrame().resize(frameWidth, frameHeight)
-	copilot := m.currentProviderFrame(m.copilotSprites, m.copilotSprite).resize(frameWidth, frameHeight)
-	kimi := m.currentProviderFrame(m.kimiSprites, m.kimiSprite).resize(frameWidth, frameHeight)
-	fire := m.currentFireFrame()
+	frame := padSpriteBottom(resizeToFit(m.currentFrame(), frameWidth, frameHeight), frameHeight)
+	copilot := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.copilotSprites, m.copilotSprite), frameWidth, frameHeight), frameHeight)
+	kimi := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.kimiSprites, m.kimiSprite), frameWidth, frameHeight), frameHeight)
 	layout := animationLayout{character: frame, copilotCharacter: copilot, kimiCharacter: kimi}
-	if fire.width < 1 || fire.height < 1 {
-		gap := animationCharacterFireGap * animationSourceScale
-		totalWidth := frame.width + copilot.width + kimi.width + gap*2
-		startX := (width - totalWidth) / 2
-		layout.copilotX = startX
-		layout.characterX = startX + copilot.width + gap
-		layout.kimiX = layout.characterX + frame.width + gap
-		layout.copilotY = (height - copilot.height) / 2
-		layout.characterY = (height - frame.height) / 2
-		layout.kimiY = (height - kimi.height) / 2
-		return m.withSessionBadge(layout)
-	}
-	scaledFireWidth := fire.width + animationFireWidthIncrease
-	scaledFireHeight := (fire.height*scaledFireWidth + fire.width/2) / fire.width
-	fire = fire.resize(scaledFireWidth, scaledFireHeight)
-
-	fireX := (width - fire.width) / 2
-	fireY := (height - fire.height) / 2
-	layout.characterX = fireX - animationCharacterFireGap - frame.width
-	layout.characterY = fireY + fire.height - frame.height
-	layout.kimiX = fireX + fire.width + animationCharacterFireGap
-	layout.kimiY = fireY + fire.height - kimi.height
-	layout.copilotX = layout.characterX - animationCharacterFireGap - copilot.width
-	layout.copilotY = layout.characterY + frame.height - copilot.height
-	layout.fire = fire
-	layout.fireX = fireX
-	layout.fireY = fireY
+	gap := animationCharacterFireGap * animationSourceScale
+	totalWidth := frame.width + copilot.width + kimi.width + gap*2
+	startX := (width - totalWidth) / 2
+	layout.copilotX = startX
+	layout.characterX = startX + copilot.width + gap
+	layout.kimiX = layout.characterX + frame.width + gap
+	layout.copilotY = (height - copilot.height) / 2
+	layout.characterY = (height - frame.height) / 2
+	layout.kimiY = (height - kimi.height) / 2
 	return m.withSessionBadge(layout)
 }
 
@@ -1105,13 +1052,13 @@ func (m model) currentProviderFrame(choices [][][]sprite, choice codexSpriteChoi
 }
 
 func (m model) withSessionBadge(layout animationLayout) animationLayout {
-	layout.sessionBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Codex"))
+	layout.sessionBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Codex"), providerActiveGroupCount(m.processGroups, "Codex"))
 	layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
 	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap
-	layout.copilotBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Copilot"))
+	layout.copilotBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Copilot"), providerActiveGroupCount(m.processGroups, "Copilot"))
 	layout.copilotBadgeX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotBadge.width)/2
 	layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap
-	layout.kimiBadge = codexSessionBadge(providerGroupCount(m.processGroups, "Kimi"))
+	layout.kimiBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Kimi"), providerActiveGroupCount(m.processGroups, "Kimi"))
 	layout.kimiBadgeX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiBadge.width)/2
 	layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap
 	return layout
@@ -1130,49 +1077,72 @@ var questBadgeDigits = [10][5]string{
 	{"111", "101", "111", "001", "111"},
 }
 
-func codexSessionBadge(count int) sprite {
-	label := strconv.Itoa(max(count, 0))
-	textWidth := (len(label)*3 + max(len(label)-1, 0)) * questBadgeDigitScale
-	diameter := max(questBadgeMinDiameter, textWidth+8)
+func providerSessionBadge(total, active int) sprite {
+	totalLabel := strconv.Itoa(max(total, 0))
+	activeLabel := strconv.Itoa(max(active, 0))
+	totalTextWidth := badgeTextWidth(totalLabel)
+	activeTextWidth := badgeTextWidth(activeLabel)
+	diameter := max(questBadgeMinDiameter, totalTextWidth+8)
 	if diameter%2 == 0 {
 		diameter++
 	}
+	tabWidth := max(activeTextWidth+11, 17)
+	tabHeight := 14
+	coinY := tabHeight - 2
+	width := max(diameter, tabWidth)
 
 	badge := sprite{
-		width:  diameter,
-		height: diameter + 3,
-		pixels: make([]rgba, diameter*(diameter+3)),
+		width:  width,
+		height: coinY + diameter + 3,
+		pixels: make([]rgba, width*(coinY+diameter+3)),
 	}
-	center := diameter / 2
-	outerRadius := center
+	coinX := (width - diameter) / 2
+	center := coinX + diameter/2
+	outerRadius := diameter / 2
 	innerRadius := max(outerRadius-2, 0)
 	for y := 0; y < diameter; y++ {
 		for x := 0; x < diameter; x++ {
-			dx, dy := x-center, y-center
+			dx, dy := x-diameter/2, y-diameter/2
 			distance := dx*dx + dy*dy
 			if distance <= innerRadius*innerRadius {
-				badge.set(x, y, questBadgeFill)
+				badge.set(coinX+x, coinY+y, questBadgeFill)
 			} else if distance <= outerRadius*outerRadius {
-				badge.set(x, y, questBadgeOutline)
+				badge.set(coinX+x, coinY+y, questBadgeOutline)
 			}
 		}
 	}
 
-	// Small pointer makes badge read as character-attached quest indicator.
-	for x := center - 2; x <= center+2; x++ {
-		badge.set(x, diameter-1, questBadgeOutline)
+	tabX := (width - tabWidth) / 2
+	tabFill := idleBadgeFill
+	if active > 0 {
+		tabFill = activeBadgeFill
 	}
-	for x := center - 1; x <= center+1; x++ {
-		badge.set(x, diameter, questBadgeOutline)
+	for y := 0; y < tabHeight; y++ {
+		for x := 0; x < tabWidth; x++ {
+			if (y == 0 || y == tabHeight-1) && (x < 2 || x >= tabWidth-2) {
+				continue
+			}
+			if x == 0 || x == tabWidth-1 || y == 0 || y == tabHeight-1 {
+				badge.set(tabX+x, y, questBadgeOutline)
+			} else {
+				badge.set(tabX+x, y, tabFill)
+			}
+		}
 	}
-	badge.set(center, diameter, questBadgeFill)
-	badge.set(center, diameter+1, questBadgeOutline)
+	drawActiveMark(&badge, tabX+3, 4)
+	drawBadgeNumber(&badge, activeLabel, tabX+9, 2, activeBadgeInk)
+	drawBadgeNumber(&badge, totalLabel, center-totalTextWidth/2, coinY+(diameter-5*questBadgeDigitScale)/2, questBadgeInk)
+	return badge
+}
 
-	textX := (diameter - textWidth) / 2
-	textY := (diameter - 5*questBadgeDigitScale) / 2
+func badgeTextWidth(label string) int {
+	return (len(label)*3 + max(len(label)-1, 0)) * questBadgeDigitScale
+}
+
+func drawBadgeNumber(badge *sprite, label string, x, y int, ink rgba) {
 	for index, character := range label {
 		digit := questBadgeDigits[character-'0']
-		digitX := textX + index*4*questBadgeDigitScale
+		digitX := x + index*4*questBadgeDigitScale
 		for row, pattern := range digit {
 			for column, value := range pattern {
 				if value != '1' {
@@ -1182,15 +1152,22 @@ func codexSessionBadge(count int) sprite {
 					for offsetX := 0; offsetX < questBadgeDigitScale; offsetX++ {
 						badge.set(
 							digitX+column*questBadgeDigitScale+offsetX,
-							textY+row*questBadgeDigitScale+offsetY,
-							questBadgeInk,
+							y+row*questBadgeDigitScale+offsetY,
+							ink,
 						)
 					}
 				}
 			}
 		}
 	}
-	return badge
+}
+
+func drawActiveMark(badge *sprite, x, y int) {
+	for offset := 0; offset < 5; offset++ {
+		badge.set(x+offset, y+offset, activeBadgeInk)
+		badge.set(x+4-offset, y+offset, activeBadgeInk)
+	}
+	badge.set(x+2, y+5, activeBadgeInk)
 }
 
 func (s *sprite) set(x, y int, value rgba) {
@@ -1215,13 +1192,11 @@ func (m model) animationFooter() (string, string) {
 	}
 	help := "  " + menuControl + "  •  ←/→ animation  •  ↑/↓ rate  •  [/] size  •  space pause  •  q quit"
 	status := fmt.Sprintf(
-		"  animation %02d/%02d  •  frame %02d/%02d  •  fire %02d/%02d  •  %.1f fps (%d ms)  •  %s %d×%d  •  %s",
+		"  animation %02d/%02d  •  frame %02d/%02d  •  %.1f fps (%d ms)  •  %s %d×%d  •  %s",
 		m.animation+1,
 		len(m.animations),
 		m.frame+1,
 		len(m.animations[m.animation]),
-		m.fireFrame+1,
-		max(len(m.fireFrames), 1),
 		fps,
 		m.frameDuration.Milliseconds(),
 		m.renderer,
@@ -2130,11 +2105,48 @@ func sliceSheet(sheet sprite, columns, rows int) ([][]sprite, error) {
 }
 
 func decodeCodexAnimations(data []byte) ([][]sprite, error) {
+	return decodeGridAnimations(data, sheetColumns, sheetRows)
+}
+
+func decodeGridAnimations(data []byte, columns, rows int) ([][]sprite, error) {
 	sheet, err := decodeSprite(data)
 	if err != nil {
 		return nil, err
 	}
-	return sliceSheet(sheet, sheetColumns, sheetRows)
+	return sliceSheet(sheet, columns, rows)
+}
+
+func decodeWizardAnimations(data []byte) ([][]sprite, error) {
+	sheet, err := decodeSprite(data)
+	if err != nil {
+		return nil, err
+	}
+	grid, err := sliceSheet(sheet, wizardSheetColumns, wizardSheetRows)
+	if err != nil {
+		return nil, err
+	}
+	frames := make([]sprite, 0, wizardSheetColumns*wizardSheetRows)
+	for _, row := range grid {
+		frames = append(frames, row...)
+	}
+	return groupWizardFrames(frames)
+}
+
+func groupWizardFrames(frames []sprite) ([][]sprite, error) {
+	frameCounts := []int{6, 7, 18, 5}
+	animations := make([][]sprite, len(frameCounts))
+	next := 0
+	for index, count := range frameCounts {
+		if len(frames)-next < count {
+			return nil, fmt.Errorf("group Wizard frames: need %d frames, have %d", next+count, len(frames))
+		}
+		animations[index] = frames[next : next+count]
+		next += count
+	}
+	if next != len(frames) {
+		return nil, fmt.Errorf("group Wizard frames: used %d of %d frames", next, len(frames))
+	}
+	return animations, nil
 }
 
 func (s sprite) fit(maxWidth, maxHeight int) sprite {
@@ -2163,6 +2175,40 @@ func (s sprite) fit(maxWidth, maxHeight int) sprite {
 			result.pixels[y*width+x] = s.pixels[sourceY*s.width+sourceX]
 		}
 	}
+	return result
+}
+
+func resizeToFit(source sprite, maxWidth, maxHeight int) sprite {
+	if source.width < 1 || source.height < 1 || maxWidth < 1 || maxHeight < 1 {
+		return sprite{}
+	}
+	width, height := maxWidth, maxHeight
+	if source.width*maxHeight > source.height*maxWidth {
+		height = max(1, source.height*maxWidth/source.width)
+	} else {
+		width = max(1, source.width*maxHeight/source.height)
+	}
+	return source.resize(width, height)
+}
+
+func padSpriteBottom(source sprite, height int) sprite {
+	if source.width < 1 || source.height < 1 || height < source.height {
+		return source
+	}
+	result := sprite{width: source.width, height: height, pixels: make([]rgba, source.width*height)}
+	bottom := -1
+	for y := source.height - 1; y >= 0 && bottom < 0; y-- {
+		for x := 0; x < source.width; x++ {
+			if source.at(x, y).a != 0 {
+				bottom = y
+				break
+			}
+		}
+	}
+	if bottom < 0 {
+		return result
+	}
+	result.draw(0, height-1-bottom, source)
 	return result
 }
 
@@ -2291,17 +2337,6 @@ func (c *canvas) drawSprite(x, y int, source sprite) {
 	}
 }
 
-func (c *canvas) tileSprite(tile sprite) {
-	if tile.width < 1 || tile.height < 1 {
-		return
-	}
-	for y := 0; y < c.height; y += tile.height {
-		for x := 0; x < c.width; x += tile.width {
-			c.drawSprite(x, y, tile)
-		}
-	}
-}
-
 func (c canvas) sprite() sprite {
 	result := sprite{width: c.width, height: c.height, pixels: make([]rgba, c.width*c.height)}
 	for index, pixel := range c.pixels {
@@ -2356,46 +2391,42 @@ func main() {
 	if settingsErr != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI warning: %v; using default settings\n", settingsErr)
 	}
-	sheet, err := decodeSprite(rangerSheetPNG)
+	animations, err := decodeWizardAnimations(wizardSheetPNG)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Wizard spritesheet: %v\n", err)
 		os.Exit(1)
 	}
-	animations, err := sliceSheet(sheet, sheetColumns, sheetRows)
+	wizardHeadshot, err := decodeSprite(wizardHeadshotPNG)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Wizard headshot: %v\n", err)
 		os.Exit(1)
 	}
-	warriorAnimations, err := decodeCodexAnimations(warriorSheetPNG)
+	warriorHeadshot, err := decodeSprite(warriorHeadshotPNG)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior sprite: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior headshot: %v\n", err)
 		os.Exit(1)
 	}
-	clericAnimations, err := decodeCodexAnimations(clericSheetPNG)
+	mageHeadshot, err := decodeSprite(mageHeadshotPNG)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Cleric sprite: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Mage headshot: %v\n", err)
 		os.Exit(1)
 	}
-	forestTileset, err := decodeSprite(forestTilesetPNG)
-	if err == nil {
-		err = validateForestTileset(forestTileset)
-	}
+	warriorAnimations, err := decodeGridAnimations(warriorSheetPNG, warriorSheetColumns, warriorSheetRows)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "sprite TUI failed: load grass background: %v\n", err)
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior spritesheet: %v\n", err)
 		os.Exit(1)
 	}
-	grass := forestTileset.crop(0, 0, forestGroundSize, forestGroundSize)
-	fireFrames := make([]sprite, forestFireFrames)
-	for frame := range fireFrames {
-		fireFrames[frame] = forestTileset.crop(frame*forestFireWidth, forestFireY, forestFireWidth, forestFireHeight)
+	mageAnimations, err := decodeGridAnimations(mageSheetPNG, mageSheetColumns, mageSheetRows)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Mage spritesheet: %v\n", err)
+		os.Exit(1)
 	}
-
 	p := tea.NewProgram(
-		newModelWithGrass(animations, config, grass).
-			withCodexSprites([][][]sprite{animations, warriorAnimations, clericAnimations}).
-			withProviderSprites([][][]sprite{animations, warriorAnimations, clericAnimations}, [][][]sprite{animations, warriorAnimations, clericAnimations}).
-			withPersistentSettings(storedSettings, settingsPath).
-			withFire(fireFrames),
+		newModelWithConfig(animations, config).
+			withCodexSprites([][][]sprite{animations, warriorAnimations, mageAnimations}).
+			withProviderSprites([][][]sprite{animations, warriorAnimations, mageAnimations}, [][][]sprite{animations, warriorAnimations, mageAnimations}).
+			withCharacterHeadshots(wizardHeadshot, warriorHeadshot, mageHeadshot).
+			withPersistentSettings(storedSettings, settingsPath),
 		tea.WithAltScreen(),
 	)
 	if _, err := p.Run(); err != nil {
