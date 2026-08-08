@@ -65,6 +65,9 @@ Firekeeper opens on an animated camp scene. Press Tab to move between four
 views:
 
 - **Animation** — home scene with Codex, Copilot, and Kimi characters plus RPG-style command menu.
+
+Each character’s crest shows total discovered runtimes in gold and currently
+active runtimes in red.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
 - **Settings** — configure Codex, Copilot, and Kimi character sprites.
@@ -117,7 +120,7 @@ Up/Down to select a session; press `Enter` or `Esc` to return.
 
 ### Settings
 
-Codex, Copilot, and Kimi each have sprite options: Ranger, Warrior, and Cleric.
+Codex, Copilot, and Kimi each have sprite options: Wizard, Warrior, and Mage.
 Choices save to Firekeeper’s user config and load automatically on next launch.
 
 | Key | Action |
@@ -149,8 +152,8 @@ for crisp terminal artwork.
 
 ```sh
 firekeeper --renderer auto
-firekeeper --renderer kitty --sprite-cols 16 --sprite-rows 8
-firekeeper --renderer blocks --sprite-cols 16 --sprite-rows 8
+firekeeper --renderer kitty --sprite-cols 32 --sprite-rows 16
+firekeeper --renderer blocks --sprite-cols 32 --sprite-rows 16
 ```
 
 `auto` selects Kitty graphics in compatible terminals and falls back to
@@ -183,4 +186,5 @@ Expect adapters and metadata handling to evolve.
 ## Artwork
 
 Pixel artwork comes from Calciumtrice under CC BY 3.0. See
-[ASSETS.md](ASSETS.md) for attribution and source links.
+[ASSETS.md](ASSETS.md) for attribution and source links. Artwork files live in
+`assets/`.

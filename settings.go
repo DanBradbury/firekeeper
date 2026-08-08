@@ -15,7 +15,7 @@ type codexSpriteChoice int
 const (
 	codexSpriteRanger codexSpriteChoice = iota
 	codexSpriteWarrior
-	codexSpriteCleric
+	codexSpriteMage
 	codexSpriteChoiceCount
 )
 
@@ -32,7 +32,7 @@ type settingsSaveResultMsg struct {
 }
 
 func defaultPersistentSettings() persistentSettings {
-	return persistentSettings{CodexSprite: codexSpriteRanger, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteCleric}
+	return persistentSettings{CodexSprite: codexSpriteRanger, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteMage}
 }
 
 func settingsFilePath() (string, error) {
@@ -104,10 +104,10 @@ func (choice codexSpriteChoice) String() string {
 	switch choice {
 	case codexSpriteWarrior:
 		return "Warrior"
-	case codexSpriteCleric:
-		return "Cleric"
+	case codexSpriteMage:
+		return "Mage"
 	default:
-		return "Ranger"
+		return "Wizard"
 	}
 }
 
@@ -205,7 +205,7 @@ func (m model) viewSettings(contentRows int) string {
 		lines = append(lines,
 			usagePaintLine("  Editing "+m.selectedProviderName()+" Sprite • ←/→ choose • Enter save", m.width, usageMutedColor, false, usagePanelColor),
 		)
-		options := []string{"Ranger", "Warrior", "Cleric"}
+		options := []string{"Wizard", "Warrior", "Mage"}
 		for index, option := range options {
 			selected := codexSpriteChoice(index) == m.selectedSprite()
 			marker := "    "
@@ -228,6 +228,9 @@ func (m model) settingsMarker(index int) string {
 }
 
 func (m model) codexPortrait() sprite {
+	if headshot := m.selectedHeadshot(); headshot.width > 0 && headshot.height > 0 {
+		return m.portraitBox(headshot)
+	}
 	animations := m.selectedAnimations()
 	if len(animations) == 0 || len(animations[0]) == 0 {
 		return sprite{}
@@ -236,10 +239,26 @@ func (m model) codexPortrait() sprite {
 	if frame.width < 1 || frame.height < 1 {
 		return sprite{}
 	}
-	portrait := frame.resize(portraitBoxSize-4, portraitBoxSize-4)
+	portrait := frame
 	if frame.width >= 24 && frame.height >= 24 {
-		portrait = frame.crop(8, 0, 16, 16).resize(portraitBoxSize-4, portraitBoxSize-4)
+		portrait = frame.crop(8, 0, 16, 16)
 	}
+	return m.portraitBox(portrait)
+}
+
+func (m model) selectedHeadshot() sprite {
+	switch m.selectedSprite() {
+	case codexSpriteWarrior:
+		return m.warriorHeadshot
+	case codexSpriteMage:
+		return m.mageHeadshot
+	default:
+		return m.wizardHeadshot
+	}
+}
+
+func (m model) portraitBox(portrait sprite) sprite {
+	portrait = resizeToFit(portrait, portraitBoxSize-4, portraitBoxSize-4)
 	box := sprite{
 		width:  portraitBoxSize,
 		height: portraitBoxSize,
@@ -255,7 +274,7 @@ func (m model) codexPortrait() sprite {
 			}
 		}
 	}
-	box.draw(2, 2, portrait)
+	box.draw((box.width-portrait.width)/2, (box.height-portrait.height)/2, portrait)
 	return box
 }
 
