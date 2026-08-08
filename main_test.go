@@ -516,6 +516,19 @@ func TestAnimationSceneCompositesBackgroundBehindCharacters(t *testing.T) {
 	}
 }
 
+func TestAnimationSceneDrawsProviderLabelsBelowCharacters(t *testing.T) {
+	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 220, a: 255}}}
+	m := newModel([][]sprite{{character}})
+	scene := m.animationScene(40, 20)
+	layout := m.animationLayout(scene.width, scene.height)
+	labelY := layout.characterY + layout.character.height + providerLabelGap
+	labelWidth := pixelTextWidth("CODEX", providerLabelScale)
+	labelX := layout.characterX + layout.character.width/2 - labelWidth/2
+	if got := scene.at(labelX, labelY); got != (rgba{r: 248, g: 248, b: 255, a: 255}) {
+		t.Fatalf("Codex label pixel = %#v, want white", got)
+	}
+}
+
 func TestPadSpriteBottomAlignsVisiblePixels(t *testing.T) {
 	source := sprite{width: 2, height: 4, pixels: []rgba{
 		{a: 255}, {a: 255},
@@ -529,6 +542,18 @@ func TestPadSpriteBottomAlignsVisiblePixels(t *testing.T) {
 	}
 	if pixel := got.at(0, 7); pixel.r != 200 || pixel.a != 255 {
 		t.Fatalf("visible bottom pixel = %#v, want opaque red at y=7", pixel)
+	}
+}
+
+func TestSpriteOpaqueTopFindsFirstVisibleRow(t *testing.T) {
+	source := sprite{width: 2, height: 4, pixels: []rgba{
+		{}, {},
+		{}, {},
+		{r: 200, a: 255}, {},
+		{}, {},
+	}}
+	if got := spriteOpaqueTop(source); got != 2 {
+		t.Fatalf("opaque top = %d, want 2", got)
 	}
 }
 

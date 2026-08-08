@@ -54,11 +54,14 @@ const (
 	animationCharacterFireGap = 2
 	portraitBoxSize           = 24
 	animationQuestBadgeGap    = 3
+	animationQuestBadgeDrop   = 52
 	questBadgeMinDiameter     = 21
 	questBadgeDigitScale      = 2
 	attackAnimationIndex      = 1
 	minimumAttackPause        = 2 * time.Second
 	maximumAttackPause        = 5 * time.Second
+	providerLabelGap          = 3
+	providerLabelScale        = 2
 )
 
 type spriteRenderer int
@@ -1071,6 +1074,9 @@ func (m model) animationScene(columns, rows int) sprite {
 	canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
 	canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
 	canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
+	canvas.drawPixelTextCentered(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height+providerLabelGap, "COPILOT", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	canvas.drawPixelTextCentered(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height+providerLabelGap, "CODEX", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
 	return canvas.sprite()
 }
 
@@ -1143,15 +1149,19 @@ func providerAnimationFrames(choices [][][]sprite, choice codexSpriteChoice, ani
 }
 
 func (m model) withSessionBadge(layout animationLayout) animationLayout {
+	badgeDrop := min(
+		animationQuestBadgeDrop,
+		min(spriteOpaqueTop(layout.character), min(spriteOpaqueTop(layout.copilotCharacter), spriteOpaqueTop(layout.kimiCharacter))),
+	)
 	layout.sessionBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Codex"), providerActiveGroupCount(m.processGroups, "Codex"))
 	layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
-	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap
+	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap + badgeDrop
 	layout.copilotBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Copilot"), providerActiveGroupCount(m.processGroups, "Copilot"))
 	layout.copilotBadgeX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotBadge.width)/2
-	layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap
+	layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap + badgeDrop
 	layout.kimiBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Kimi"), providerActiveGroupCount(m.processGroups, "Kimi"))
 	layout.kimiBadgeX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiBadge.width)/2
-	layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap
+	layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap + badgeDrop
 	return layout
 }
 
@@ -1166,6 +1176,20 @@ var questBadgeDigits = [10][5]string{
 	{"111", "001", "010", "010", "010"},
 	{"111", "101", "111", "101", "111"},
 	{"111", "101", "111", "001", "111"},
+}
+
+var providerLabelGlyphs = map[rune][5]string{
+	'C': {"111", "100", "100", "100", "111"},
+	'D': {"110", "101", "101", "101", "110"},
+	'E': {"111", "100", "110", "100", "111"},
+	'I': {"111", "010", "010", "010", "111"},
+	'K': {"101", "101", "110", "101", "101"},
+	'L': {"100", "100", "100", "100", "111"},
+	'M': {"101", "111", "111", "101", "101"},
+	'O': {"111", "101", "101", "101", "111"},
+	'P': {"110", "101", "110", "100", "100"},
+	'T': {"111", "010", "010", "010", "010"},
+	'X': {"101", "101", "010", "101", "101"},
 }
 
 func providerSessionBadge(total, active int) sprite {
@@ -2317,6 +2341,17 @@ func padSpriteBottom(source sprite, height int) sprite {
 	return result
 }
 
+func spriteOpaqueTop(source sprite) int {
+	for y := 0; y < source.height; y++ {
+		for x := 0; x < source.width; x++ {
+			if source.at(x, y).a != 0 {
+				return y
+			}
+		}
+	}
+	return 0
+}
+
 func (s sprite) resize(width, height int) sprite {
 	if s.width < 1 || s.height < 1 || width < 1 || height < 1 {
 		return sprite{}
@@ -2440,6 +2475,41 @@ func (c *canvas) drawSprite(x, y int, source sprite) {
 			c.set(x+column, y+row, blended)
 		}
 	}
+}
+
+func (c *canvas) drawPixelTextCentered(centerX, y int, label string, scale int, ink rgb) {
+	if scale < 1 {
+		return
+	}
+	width := pixelTextWidth(label, scale)
+	x := centerX - width/2
+	for _, character := range label {
+		glyph, ok := providerLabelGlyphs[character]
+		if !ok {
+			x += 4 * scale
+			continue
+		}
+		for row, pattern := range glyph {
+			for column, value := range pattern {
+				if value != '1' {
+					continue
+				}
+				for offsetY := 0; offsetY < scale; offsetY++ {
+					for offsetX := 0; offsetX < scale; offsetX++ {
+						c.set(x+column*scale+offsetX, y+row*scale+offsetY, ink)
+					}
+				}
+			}
+		}
+		x += 4 * scale
+	}
+}
+
+func pixelTextWidth(label string, scale int) int {
+	if len(label) == 0 || scale < 1 {
+		return 0
+	}
+	return (len(label)*4 - 1) * scale
 }
 
 func (c *canvas) wash(tint rgba) {
