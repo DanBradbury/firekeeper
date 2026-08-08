@@ -124,8 +124,10 @@ Up/Down to select a session; press `Enter` or `Esc` to return.
 
 **Player Selection** configures Codex, Copilot, and Kimi sprites: Wizard,
 Warrior, or Mage. **Background Selection** switches the Animation scene between
-Beach and None. Choices save to Firekeeper’s user config and load automatically
-on next launch.
+Beach and None, then selects Day or Night. Choices save to Firekeeper’s user
+config and load automatically on next launch. Add future background variants as
+`assets/bg_<scene>_<time>.png`, such as `bg_forest_day.png` and
+`bg_forest_night.png`.
 
 | Key | Action |
 | --- | --- |

@@ -150,8 +150,11 @@ var mageSheetPNG []byte
 //go:embed "assets/mage_headshot.png"
 var mageHeadshotPNG []byte
 
-//go:embed "assets/bg_beach.png"
+//go:embed "assets/bg_beach_day.png"
 var beachBackgroundPNG []byte
+
+//go:embed "assets/bg_beach_night.png"
+var beachNightBackgroundPNG []byte
 
 type tickMsg time.Time
 
@@ -234,8 +237,9 @@ type model struct {
 	warriorHeadshot         sprite
 	mageHeadshot            sprite
 	sceneBackground         sprite
-	sceneBackgrounds        []sprite
+	sceneBackgrounds        [][]sprite
 	backgroundChoice        backgroundChoice
+	backgroundTime          backgroundTime
 	codexAttack             providerAttackState
 	copilotAttack           providerAttackState
 	kimiAttack              providerAttackState
@@ -314,7 +318,11 @@ func (m model) withCharacterHeadshots(wizard, warrior, mage sprite) model {
 }
 
 func (m model) withSceneBackground(background sprite) model {
-	m.sceneBackgrounds = []sprite{background, {}}
+	return m.withSceneBackgrounds(background)
+}
+
+func (m model) withSceneBackgrounds(beach ...sprite) model {
+	m.sceneBackgrounds = [][]sprite{beach, nil}
 	m.applySceneBackground()
 	return m
 }
@@ -324,6 +332,7 @@ func (m model) withPersistentSettings(settings persistentSettings, path string) 
 	m.copilotSprite = settings.CopilotSprite
 	m.kimiSprite = settings.KimiSprite
 	m.backgroundChoice = settings.Background
+	m.backgroundTime = settings.BackgroundTime
 	m.settingsPath = path
 	m.applyCodexSprite()
 	m.applySceneBackground()
@@ -470,7 +479,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.settingsErr = ""
 					return m, m.saveSettingsCmd()
 				}
-				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice}
+				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice, BackgroundTime: m.backgroundTime}
 				m.settingsEditing = true
 			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider {
 				if m.kimiHistoryOpen {
@@ -2543,6 +2552,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load beach background: %v\n", err)
 		os.Exit(1)
 	}
+	beachNightBackground, err := decodeSprite(beachNightBackgroundPNG)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load beach night background: %v\n", err)
+		os.Exit(1)
+	}
 	warriorAnimations, err := decodeGridAnimations(warriorSheetPNG, warriorSheetColumns, warriorSheetRows)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior spritesheet: %v\n", err)
@@ -2558,7 +2572,7 @@ func main() {
 			withCodexSprites([][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withProviderSprites([][][]sprite{animations, warriorAnimations, mageAnimations}, [][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withCharacterHeadshots(wizardHeadshot, warriorHeadshot, mageHeadshot).
-			withSceneBackground(beachBackground).
+			withSceneBackgrounds(beachBackground, beachNightBackground).
 			withPersistentSettings(storedSettings, settingsPath),
 		tea.WithAltScreen(),
 	)

@@ -411,8 +411,9 @@ func TestWizardSettingsPortraitUsesHeadshotForEachProvider(t *testing.T) {
 }
 
 func TestBackgroundSettingSelectsAndCancels(t *testing.T) {
-	beach := sprite{width: 1, height: 1, pixels: []rgba{{g: 200, a: 255}}}
-	m := newModel([][]sprite{{sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}}}).withSceneBackground(beach)
+	beachDay := sprite{width: 1, height: 1, pixels: []rgba{{g: 200, a: 255}}}
+	beachNight := sprite{width: 1, height: 1, pixels: []rgba{{b: 200, a: 255}}}
+	m := newModel([][]sprite{{sprite{width: 1, height: 1, pixels: []rgba{{r: 200, a: 255}}}}}).withSceneBackgrounds(beachDay, beachNight)
 	m.activeTab = settingsTab
 	m.settingsCursor = 3
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -429,6 +430,19 @@ func TestBackgroundSettingSelectsAndCancels(t *testing.T) {
 	m = updated.(model)
 	if m.backgroundChoice != backgroundBeach || m.sceneBackground.width != 1 {
 		t.Fatalf("cancelled background selection = %s with %dx%d sprite, want Beach", m.backgroundChoice, m.sceneBackground.width, m.sceneBackground.height)
+	}
+	m.settingsCursor = 4
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.backgroundTime != backgroundNight || m.sceneBackground.at(0, 0).b != 200 {
+		t.Fatalf("background time = %s, want Night sprite", m.backgroundTime)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.backgroundTime != backgroundDay || m.sceneBackground.at(0, 0).g != 200 {
+		t.Fatalf("cancelled time selection = %s, want Day sprite", m.backgroundTime)
 	}
 }
 

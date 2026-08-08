@@ -27,13 +27,22 @@ const (
 	backgroundChoiceCount
 )
 
-const settingsItemCount = 4
+type backgroundTime int
+
+const (
+	backgroundDay backgroundTime = iota
+	backgroundNight
+	backgroundTimeCount
+)
+
+const settingsItemCount = 5
 
 type persistentSettings struct {
-	CodexSprite   codexSpriteChoice `json:"codex_sprite"`
-	CopilotSprite codexSpriteChoice `json:"copilot_sprite"`
-	KimiSprite    codexSpriteChoice `json:"kimi_sprite"`
-	Background    backgroundChoice  `json:"background"`
+	CodexSprite    codexSpriteChoice `json:"codex_sprite"`
+	CopilotSprite  codexSpriteChoice `json:"copilot_sprite"`
+	KimiSprite     codexSpriteChoice `json:"kimi_sprite"`
+	Background     backgroundChoice  `json:"background"`
+	BackgroundTime backgroundTime    `json:"background_time"`
 }
 
 type settingsSaveResultMsg struct {
@@ -41,7 +50,7 @@ type settingsSaveResultMsg struct {
 }
 
 func defaultPersistentSettings() persistentSettings {
-	return persistentSettings{CodexSprite: codexSpriteRanger, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteMage, Background: backgroundBeach}
+	return persistentSettings{CodexSprite: codexSpriteRanger, CopilotSprite: codexSpriteWarrior, KimiSprite: codexSpriteMage, Background: backgroundBeach, BackgroundTime: backgroundDay}
 }
 
 func settingsFilePath() (string, error) {
@@ -72,7 +81,7 @@ func loadPersistentSettings() (persistentSettings, string, error) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return defaultPersistentSettings(), path, fmt.Errorf("decode settings: %w", err)
 	}
-	if settings.CodexSprite < codexSpriteRanger || settings.CodexSprite >= codexSpriteChoiceCount || settings.CopilotSprite < codexSpriteRanger || settings.CopilotSprite >= codexSpriteChoiceCount || settings.KimiSprite < codexSpriteRanger || settings.KimiSprite >= codexSpriteChoiceCount || settings.Background < backgroundBeach || settings.Background >= backgroundChoiceCount {
+	if settings.CodexSprite < codexSpriteRanger || settings.CodexSprite >= codexSpriteChoiceCount || settings.CopilotSprite < codexSpriteRanger || settings.CopilotSprite >= codexSpriteChoiceCount || settings.KimiSprite < codexSpriteRanger || settings.KimiSprite >= codexSpriteChoiceCount || settings.Background < backgroundBeach || settings.Background >= backgroundChoiceCount || settings.BackgroundTime < backgroundDay || settings.BackgroundTime >= backgroundTimeCount {
 		return defaultPersistentSettings(), path, fmt.Errorf("settings contain invalid player or background selection")
 	}
 	return settings, path, nil
@@ -127,6 +136,13 @@ func (choice backgroundChoice) String() string {
 	return "Beach"
 }
 
+func (time backgroundTime) String() string {
+	if time == backgroundNight {
+		return "Night"
+	}
+	return "Day"
+}
+
 func (m *model) cycleCodexSprite(delta int) {
 	m.codexSprite = (m.codexSprite + codexSpriteChoice(delta) + codexSpriteChoiceCount) % codexSpriteChoiceCount
 	m.applyCodexSprite()
@@ -148,6 +164,11 @@ func (m *model) cycleSelectedSprite(delta int) {
 func (m *model) cycleSelectedSetting(delta int) {
 	if m.settingsCursor == 3 {
 		m.backgroundChoice = (m.backgroundChoice + backgroundChoice(delta) + backgroundChoiceCount) % backgroundChoiceCount
+		m.applySceneBackground()
+		return
+	}
+	if m.settingsCursor == 4 {
+		m.backgroundTime = (m.backgroundTime + backgroundTime(delta) + backgroundTimeCount) % backgroundTimeCount
 		m.applySceneBackground()
 		return
 	}
@@ -180,6 +201,9 @@ func (m model) selectedSettingName() string {
 	if m.settingsCursor == 3 {
 		return "Background"
 	}
+	if m.settingsCursor == 4 {
+		return "Time of Day"
+	}
 	return m.selectedProviderName() + " Sprite"
 }
 
@@ -202,8 +226,17 @@ func (m *model) applyCodexSprite() {
 }
 
 func (m *model) applySceneBackground() {
-	if int(m.backgroundChoice) < len(m.sceneBackgrounds) {
-		m.sceneBackground = m.sceneBackgrounds[m.backgroundChoice]
+	m.sceneBackground = sprite{}
+	if int(m.backgroundChoice) >= len(m.sceneBackgrounds) {
+		return
+	}
+	variants := m.sceneBackgrounds[m.backgroundChoice]
+	if int(m.backgroundTime) < len(variants) {
+		m.sceneBackground = variants[m.backgroundTime]
+		return
+	}
+	if len(variants) > 0 {
+		m.sceneBackground = variants[backgroundDay]
 	}
 }
 
@@ -213,6 +246,7 @@ func (m *model) cancelSettingsEdit() {
 		m.copilotSprite = m.settingsEditOriginal.CopilotSprite
 		m.kimiSprite = m.settingsEditOriginal.KimiSprite
 		m.backgroundChoice = m.settingsEditOriginal.Background
+		m.backgroundTime = m.settingsEditOriginal.BackgroundTime
 		m.applyCodexSprite()
 		m.applySceneBackground()
 	}
@@ -223,7 +257,7 @@ func (m model) saveSettingsCmd() tea.Cmd {
 	if m.settingsPath == "" {
 		return nil
 	}
-	settings := persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice}
+	settings := persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice, BackgroundTime: m.backgroundTime}
 	path := m.settingsPath
 	return func() tea.Msg {
 		return settingsSaveResultMsg{err: savePersistentSettings(path, settings)}
@@ -241,6 +275,7 @@ func (m model) viewSettings(contentRows int) string {
 		usagePaintLine(m.settingsMarker(2)+"Kimi Sprite  "+m.kimiSprite.String(), m.width, usageBrightColor, m.settingsCursor == 2, usagePanelColor),
 		usageSectionLine("BACKGROUND SELECTION", m.width),
 		usagePaintLine(m.settingsMarker(3)+"Background  "+m.backgroundChoice.String(), m.width, usageBrightColor, m.settingsCursor == 3, usagePanelColor),
+		usagePaintLine(m.settingsMarker(4)+"Time of Day  "+m.backgroundTime.String(), m.width, usageBrightColor, m.settingsCursor == 4, usagePanelColor),
 	}
 	lines = append(lines, m.settingsPreviewLines()...)
 	if m.settingsEditing {
@@ -250,11 +285,15 @@ func (m model) viewSettings(contentRows int) string {
 		options := []string{"Wizard", "Warrior", "Mage"}
 		if m.settingsCursor == 3 {
 			options = []string{"Beach", "None"}
+		} else if m.settingsCursor == 4 {
+			options = []string{"Day", "Night"}
 		}
 		for index, option := range options {
 			selected := false
 			if m.settingsCursor == 3 {
 				selected = backgroundChoice(index) == m.backgroundChoice
+			} else if m.settingsCursor == 4 {
+				selected = backgroundTime(index) == m.backgroundTime
 			} else {
 				selected = codexSpriteChoice(index) == m.selectedSprite()
 			}
@@ -374,11 +413,11 @@ func (m model) settingsPortraitLines() []string {
 }
 
 func (m model) settingsPreviewLines() []string {
-	if m.settingsCursor != 3 {
+	if m.settingsCursor < 3 {
 		return m.settingsPortraitLines()
 	}
-	const columns = 20
-	const rows = 8
+	const columns = 28
+	const rows = 10
 	preview := coverSprite(m.sceneBackground, columns, rows*2)
 	if m.renderer == kittyRenderer {
 		upload, err := encodeKittySprite(preview, columns, rows)
@@ -417,9 +456,12 @@ func (m model) selectedSettingValue() string {
 	if m.settingsCursor == 3 {
 		return m.backgroundChoice.String()
 	}
+	if m.settingsCursor == 4 {
+		return m.backgroundTime.String()
+	}
 	return m.selectedSprite().String()
 }
 
 func (m model) settingsSummary() string {
-	return "  Codex " + m.codexSprite.String() + " • Copilot " + m.copilotSprite.String() + " • Kimi " + m.kimiSprite.String() + " • Background " + m.backgroundChoice.String()
+	return "  Codex " + m.codexSprite.String() + " • Copilot " + m.copilotSprite.String() + " • Kimi " + m.kimiSprite.String() + " • Background " + m.backgroundChoice.String() + " (" + m.backgroundTime.String() + ")"
 }
