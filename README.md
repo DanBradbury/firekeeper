@@ -70,9 +70,10 @@ views:
 - **Settings** — configure Codex, Copilot, and Kimi character sprites.
 
 The Animation scene uses a pixel-art beach battle backdrop. Each character’s
-crest shows total discovered runtimes in gold and currently active runtimes in
-red. Active provider runtimes periodically use their attack animation, with a
-random 2–5 second idle pause between attacks.
+provider label identifies its harness. Each crest shows total discovered
+runtimes in gold and currently active runtimes in red. Active provider runtimes
+periodically use their attack animation, with a random 2–5 second idle pause
+between attacks.
 
 ### Global controls
 
