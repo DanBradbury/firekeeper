@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -17,7 +18,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const codexUsageTimeout = 15 * time.Second
+const (
+	codexUsageTimeout               = 15 * time.Second
+	codexUsageHistoryDays           = 7
+	codexUsageRolloutMaxBytes int64 = 8 << 20
+)
 
 const (
 	usagePanelColor     = "24;26;38"
@@ -28,6 +33,15 @@ const (
 	usageDividerColor   = "42;46;63"
 	usageHighlightColor = "55;60;78"
 )
+
+var modelUsageColors = []string{
+	"137;180;250", // blue
+	"245;194;231", // pink
+	"166;227;161", // green
+	"250;179;135", // orange
+	"203;166;247", // purple
+	"249;226;175", // yellow
+}
 
 type codexQuotaWindow struct {
 	UsedPercent       float64 `json:"usedPercent"`
@@ -68,11 +82,18 @@ type codexDailyUsage struct {
 	Tokens    int64  `json:"tokens"`
 }
 
+type codexDailyModelUsage struct {
+	StartDate string
+	Model     string
+	Tokens    int64
+}
+
 type codexUsageSnapshot struct {
 	RateLimits   map[string]codexRateLimit
 	ResetCredits int
 	Summary      codexUsageSummary
 	Daily        []codexDailyUsage
+	DailyByModel []codexDailyModelUsage
 }
 
 type codexUsageResultMsg struct {
@@ -101,6 +122,22 @@ type codexRateLimitsRPCResult struct {
 type codexUsageRPCResult struct {
 	Summary           codexUsageSummary `json:"summary"`
 	DailyUsageBuckets []codexDailyUsage `json:"dailyUsageBuckets"`
+}
+
+type codexRolloutUsageEvent struct {
+	Timestamp string `json:"timestamp"`
+	Type      string `json:"type"`
+	Payload   struct {
+		Type           string `json:"type"`
+		ThreadSettings struct {
+			Model string `json:"model"`
+		} `json:"thread_settings"`
+		Info struct {
+			TotalTokenUsage struct {
+				TotalTokens int64 `json:"total_tokens"`
+			} `json:"total_token_usage"`
+		} `json:"info"`
+	} `json:"payload"`
 }
 
 func refreshCodexUsage() tea.Cmd {
@@ -177,6 +214,9 @@ func fetchCodexUsage() (codexUsageSnapshot, error) {
 			return codexUsageSnapshot{}, fmt.Errorf("%w: %s", err, sanitizeProcessCommand(message))
 		}
 		return codexUsageSnapshot{}, err
+	}
+	if dailyByModel, err := readCodexDailyModelUsage(time.Now(), codexUsageHistoryDays); err == nil {
+		snapshot.DailyByModel = dailyByModel
 	}
 	return snapshot, nil
 }
@@ -290,24 +330,49 @@ func (m model) viewCodexUsage(contentRows int) string {
 		}
 	}
 
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY DAY", m.width))
-	days := recentCodexDailyUsage(m.codexUsage.Daily, time.Now(), 7)
-	peak := int64(0)
-	for _, day := range days {
-		peak = max(peak, day.Tokens)
-	}
-	for index, day := range days {
-		label := dayLabel(day.StartDate, index == len(days)-1)
-		lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
-	}
-
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine("ACTIVE TOKENS BY MODEL", m.width))
 	models := activeCodexModelUsage(m.processGroups)
 	if len(models) == 0 {
 		lines = append(lines, usagePaintLine("  No active model usage", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
+		peak := int64(0)
 		for _, model := range models {
-			lines = append(lines, usageModelLine(model, m.width))
+			peak = max(peak, model.Tokens)
+		}
+		for _, model := range colorModelUsage(models) {
+			lines = append(lines, usageModelBarLine(model, peak, m.width))
+		}
+	}
+
+	title := "TOKENS BY DAY"
+	dayCount := min(7, max(contentRows-len(lines)-2, 1))
+	if len(m.codexUsage.DailyByModel) > 0 {
+		title += " · MODEL"
+	}
+	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
+	if len(m.codexUsage.DailyByModel) > 0 {
+		days := recentCodexDailyModelUsage(m.codexUsage.DailyByModel, time.Now(), dayCount)
+		peak := int64(0)
+		for _, day := range days {
+			total := int64(0)
+			for _, model := range day.Models {
+				total += model.Tokens
+			}
+			peak = max(peak, total)
+		}
+		for index, day := range days {
+			label := dayLabel(day.StartDate, index == len(days)-1)
+			lines = append(lines, usageModelStackBarLine(label, day.Models, peak, m.width, index == len(days)-1))
+		}
+	} else {
+		days := recentCodexDailyUsage(m.codexUsage.Daily, time.Now(), dayCount)
+		peak := int64(0)
+		for _, day := range days {
+			peak = max(peak, day.Tokens)
+		}
+		for index, day := range days {
+			label := dayLabel(day.StartDate, index == len(days)-1)
+			lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)
@@ -316,6 +381,7 @@ func (m model) viewCodexUsage(contentRows int) string {
 type modelUsage struct {
 	Model  string
 	Tokens int64
+	Color  string
 }
 
 func (m model) codexUsageHeaderLines() []string {
@@ -403,6 +469,192 @@ func recentCodexDailyUsage(buckets []codexDailyUsage, now time.Time, count int) 
 	return result
 }
 
+type codexDailyModelUsageBucket struct {
+	StartDate string
+	Models    []modelUsage
+}
+
+func readCodexDailyModelUsage(now time.Time, days int) ([]codexDailyModelUsage, error) {
+	codexHome := strings.TrimSpace(os.Getenv("CODEX_HOME"))
+	if codexHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("find Codex home: %w", err)
+		}
+		codexHome = filepath.Join(home, ".codex")
+	}
+	root := filepath.Join(codexHome, "sessions")
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("read Codex sessions: %w", err)
+	}
+
+	usage := make(map[string]map[string]int64)
+	cutoff := startOfDay(now).AddDate(0, 0, -(max(days, 1) - 1))
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "rollout-") || filepath.Ext(entry.Name()) != ".jsonl" {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().Before(cutoff) {
+			return nil
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			return nil
+		}
+
+		reader := io.Reader(file)
+		skipInitial := false
+		if info.Size() > codexUsageRolloutMaxBytes {
+			if _, err := file.Seek(info.Size()-codexUsageRolloutMaxBytes, io.SeekStart); err != nil {
+				return nil
+			}
+			buffered := bufio.NewReader(file)
+			if _, err := buffered.ReadBytes('\n'); err != nil && err != io.EOF {
+				return nil
+			}
+			reader = buffered
+			skipInitial = true
+		}
+		entries, err := scanCodexRolloutModelUsage(reader, now, days, skipInitial)
+		closeErr := file.Close()
+		if err != nil {
+			return nil
+		}
+		if closeErr != nil {
+			return nil
+		}
+		for _, entry := range entries {
+			if usage[entry.StartDate] == nil {
+				usage[entry.StartDate] = make(map[string]int64)
+			}
+			usage[entry.StartDate][entry.Model] += entry.Tokens
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan Codex rollouts: %w", err)
+	}
+
+	result := make([]codexDailyModelUsage, 0)
+	for date, models := range usage {
+		for model, tokens := range models {
+			if tokens > 0 {
+				result = append(result, codexDailyModelUsage{StartDate: date, Model: model, Tokens: tokens})
+			}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].StartDate == result[j].StartDate {
+			return result[i].Model < result[j].Model
+		}
+		return result[i].StartDate < result[j].StartDate
+	})
+	return result, nil
+}
+
+func scanCodexRolloutModelUsage(reader io.Reader, now time.Time, days int, skipInitial bool) ([]codexDailyModelUsage, error) {
+	cutoff := startOfDay(now).AddDate(0, 0, -(max(days, 1) - 1))
+	usage := make(map[string]map[string]int64)
+	model := "unknown"
+	var previousTotal int64
+	hasPreviousTotal := false
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), 2<<20)
+	for scanner.Scan() {
+		var event codexRolloutUsageEvent
+		if json.Unmarshal(scanner.Bytes(), &event) != nil {
+			continue
+		}
+		if event.Type != "event_msg" {
+			continue
+		}
+		if event.Payload.Type == "thread_settings_applied" && strings.TrimSpace(event.Payload.ThreadSettings.Model) != "" {
+			model = sanitizeProcessCommand(event.Payload.ThreadSettings.Model)
+			if model == "" {
+				model = "unknown"
+			}
+			continue
+		}
+		if event.Payload.Type != "token_count" {
+			continue
+		}
+		timestamp, err := time.Parse(time.RFC3339Nano, event.Timestamp)
+		if err != nil {
+			continue
+		}
+		total := event.Payload.Info.TotalTokenUsage.TotalTokens
+		if total < 0 {
+			continue
+		}
+		if !hasPreviousTotal {
+			previousTotal = total
+			hasPreviousTotal = true
+			if skipInitial {
+				continue
+			}
+		} else if total >= previousTotal {
+			total -= previousTotal
+			previousTotal += total
+		} else {
+			previousTotal = total
+			continue
+		}
+		localTime := timestamp.In(now.Location())
+		if localTime.Before(cutoff) {
+			continue
+		}
+		date := localTime.Format("2006-01-02")
+		if usage[date] == nil {
+			usage[date] = make(map[string]int64)
+		}
+		usage[date][model] += total
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]codexDailyModelUsage, 0)
+	for date, models := range usage {
+		for model, tokens := range models {
+			if tokens > 0 {
+				result = append(result, codexDailyModelUsage{StartDate: date, Model: model, Tokens: tokens})
+			}
+		}
+	}
+	return result, nil
+}
+
+func recentCodexDailyModelUsage(entries []codexDailyModelUsage, now time.Time, count int) []codexDailyModelUsageBucket {
+	byDate := make(map[string]map[string]int64)
+	for _, entry := range entries {
+		if byDate[entry.StartDate] == nil {
+			byDate[entry.StartDate] = make(map[string]int64)
+		}
+		byDate[entry.StartDate][entry.Model] += entry.Tokens
+	}
+	result := make([]codexDailyModelUsageBucket, 0, count)
+	today := startOfDay(now)
+	for offset := count - 1; offset >= 0; offset-- {
+		date := today.AddDate(0, 0, -offset).Format("2006-01-02")
+		models := make([]modelUsage, 0, len(byDate[date]))
+		for model, tokens := range byDate[date] {
+			models = append(models, modelUsage{Model: model, Tokens: tokens})
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i].Model < models[j].Model })
+		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: colorModelUsage(models)})
+	}
+	return result
+}
+
+func startOfDay(value time.Time) time.Time {
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, value.Location())
+}
+
 func dayLabel(date string, today bool) string {
 	if today {
 		return "Today"
@@ -448,6 +700,23 @@ func activeCodexModelUsage(groups []processGroup) []modelUsage {
 		return models[i].Tokens > models[j].Tokens
 	})
 	return models
+}
+
+func colorModelUsage(models []modelUsage) []modelUsage {
+	colored := append([]modelUsage(nil), models...)
+	for index := range colored {
+		colored[index].Color = modelUsageColor(colored[index].Model)
+	}
+	return colored
+}
+
+func modelUsageColor(model string) string {
+	hash := uint32(2166136261)
+	for _, character := range strings.ToLower(model) {
+		hash ^= uint32(character)
+		hash *= 16777619
+	}
+	return modelUsageColors[int(hash)%len(modelUsageColors)]
 }
 
 func usageSectionLine(title string, width int) string {
@@ -508,6 +777,69 @@ func usageMetricBarLine(label string, value, maximum int64, width int, emphasize
 		usagePaint(suffix, labelColor, emphasized, usagePanelColor)
 }
 
+func usageModelBarLine(model modelUsage, maximum int64, width int) string {
+	name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
+	value := formatTokenCount(model.Tokens)
+	labelWidth := min(18, max(width/4, 8))
+	valueWidth := min(9, max(width/10, 6))
+	barWidth := max(width-labelWidth-valueWidth-8, 1)
+	filled := int(float64(barWidth)*float64(model.Tokens)/float64(max(maximum, 1)) + 0.5)
+	if model.Tokens > 0 {
+		filled = max(filled, 1)
+	}
+	filled = min(filled, barWidth)
+	prefix := "  ◆ " + padRPGMenuText(name, labelWidth) + " "
+	suffix := " " + fmt.Sprintf("%*s", valueWidth, value) + "  "
+	return usagePaint(prefix, model.Color, true, usageHighlightColor) +
+		usagePaint(strings.Repeat("━", filled), model.Color, true, usageHighlightColor) +
+		usagePaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false, usageHighlightColor) +
+		usagePaint(suffix, usageTextColor, false, usageHighlightColor)
+}
+
+func usageModelStackBarLine(label string, models []modelUsage, maximum int64, width int, emphasized bool) string {
+	labelWidth := min(8, max(width/8, 5))
+	valueWidth := min(9, max(width/10, 6))
+	barWidth := max(width-labelWidth-valueWidth-5, 1)
+	total := int64(0)
+	for _, model := range models {
+		total += model.Tokens
+	}
+	filled := int(float64(barWidth)*float64(total)/float64(max(maximum, 1)) + 0.5)
+	if total > 0 {
+		filled = max(filled, 1)
+	}
+	filled = min(filled, barWidth)
+	labelColor := usageMutedColor
+	if emphasized {
+		labelColor = usageBrightColor
+	}
+	prefix := "  " + padRPGMenuText(label, labelWidth) + " "
+	suffix := " " + fmt.Sprintf("%*s", valueWidth, formatTokenCount(total)) + " "
+	var bar strings.Builder
+	remainingTokens := total
+	remainingWidth := filled
+	for index, model := range models {
+		segment := 0
+		if remainingTokens > 0 {
+			segment = int(float64(remainingWidth)*float64(model.Tokens)/float64(remainingTokens) + 0.5)
+		}
+		if index == len(models)-1 {
+			segment = remainingWidth
+		}
+		segment = min(segment, remainingWidth)
+		if segment > 0 {
+			bar.WriteString(usagePaint(strings.Repeat("━", segment), model.Color, true, usagePanelColor))
+		}
+		remainingTokens -= model.Tokens
+		remainingWidth -= segment
+	}
+	if remainingWidth > 0 {
+		bar.WriteString(usagePaint(strings.Repeat("━", remainingWidth), usageTrackColor, false, usagePanelColor))
+	}
+	bar.WriteString(usagePaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false, usagePanelColor))
+	return usagePaint(prefix, labelColor, emphasized, usagePanelColor) + bar.String() + usagePaint(suffix, labelColor, emphasized, usagePanelColor)
+}
+
 func usageModelLine(model modelUsage, width int) string {
 	name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
 	value := formatTokenCount(model.Tokens)
@@ -530,7 +862,7 @@ func usagePaint(value, foreground string, bold bool, background string) string {
 }
 
 func (snapshot codexUsageSnapshot) hasData() bool {
-	return len(snapshot.RateLimits) > 0 || len(snapshot.Daily) > 0 || snapshot.Summary.LifetimeTokens != nil
+	return len(snapshot.RateLimits) > 0 || len(snapshot.Daily) > 0 || len(snapshot.DailyByModel) > 0 || snapshot.Summary.LifetimeTokens != nil
 }
 
 func (snapshot codexUsageSnapshot) sortedRateLimits() []codexRateLimit {

@@ -70,11 +70,10 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 	}
 	m.processGroups = []processGroup{{
 		tool: "Codex",
-		sessions: []sessionInfo{{
-			id:         "session-1",
-			model:      "gpt-5.6-sol",
-			tokensUsed: 9812345,
-		}},
+		sessions: []sessionInfo{
+			{id: "session-1", model: "gpt-5.6-sol", tokensUsed: 9812345},
+			{id: "session-2", model: "gpt-5.6-codex", tokensUsed: 4100000},
+		},
 	}}
 	m.codexUsageRefreshedAt = time.Now()
 
@@ -94,9 +93,74 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 		"ACTIVE TOKENS BY MODEL",
 		"GPT 5.6 SOL",
 		"9.8M",
+		"GPT 5.6 CODEX",
+		"4.1M",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Codex usage view missing %q", expected)
+		}
+	}
+}
+
+func TestColorModelUsageAssignsStableDistinctColors(t *testing.T) {
+	models := []modelUsage{
+		{Model: "gpt-5.6-sol", Tokens: 100},
+		{Model: "gpt-5.6-codex", Tokens: 80},
+	}
+	colored := colorModelUsage(models)
+	if colored[0].Color == "" || colored[1].Color == "" {
+		t.Fatalf("model colors = %#v, want colors", colored)
+	}
+	if colored[0].Color == colored[1].Color {
+		t.Fatalf("model colors = %#v, want distinct colors", colored)
+	}
+	if again := colorModelUsage([]modelUsage{{Model: "gpt-5.6-codex"}, {Model: "gpt-5.6-sol"}}); again[0].Color != colored[1].Color || again[1].Color != colored[0].Color {
+		t.Fatalf("model colors changed between calls: %#v then %#v", colored, again)
+	}
+}
+
+func TestScanCodexRolloutModelUsageTracksTimestampedTokenDeltas(t *testing.T) {
+	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
+	rollout := strings.Join([]string{
+		`{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-5.6-sol"}}}`,
+		`{"timestamp":"2026-08-08T10:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":100}}}}`,
+		`{"timestamp":"2026-08-08T10:01:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":140}}}}`,
+		`{"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"model":"gpt-5.6-codex"}}}`,
+		`{"timestamp":"2026-08-09T10:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":200}}}}`,
+	}, "\n")
+	usage, err := scanCodexRolloutModelUsage(strings.NewReader(rollout), now, 7, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]int64)
+	for _, entry := range usage {
+		got[entry.StartDate+"/"+entry.Model] = entry.Tokens
+	}
+	if got["2026-08-08/gpt-5.6-sol"] != 140 {
+		t.Fatalf("day-one model usage = %#v, want 140", got)
+	}
+	if got["2026-08-09/gpt-5.6-codex"] != 60 {
+		t.Fatalf("day-two model usage = %#v, want 60", got)
+	}
+}
+
+func TestCodexUsageViewUsesModelSplitDailyBars(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.width = 100
+	m.height = 24
+	today := time.Now().Format("2006-01-02")
+	m.codexUsage = codexUsageSnapshot{DailyByModel: []codexDailyModelUsage{
+		{StartDate: today, Model: "gpt-5.6-sol", Tokens: 900},
+		{StartDate: today, Model: "gpt-5.6-codex", Tokens: 100},
+	}}
+	view := m.View()
+	if !strings.Contains(view, "TOKENS BY DAY · MODEL") {
+		t.Fatalf("model daily heading missing:\n%s", view)
+	}
+	for _, color := range []string{modelUsageColor("gpt-5.6-sol"), modelUsageColor("gpt-5.6-codex")} {
+		if !strings.Contains(view, "38;2;"+color) {
+			t.Fatalf("model color %s missing:\n%s", color, view)
 		}
 	}
 }

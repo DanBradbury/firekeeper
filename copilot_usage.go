@@ -32,6 +32,12 @@ type copilotDailyUsage struct {
 	UserRequests float64
 }
 
+type copilotDailyModelUsage struct {
+	StartDate string
+	Model     string
+	Tokens    int64
+}
+
 type copilotUsageModel struct {
 	Model        string
 	Tokens       int64
@@ -49,11 +55,12 @@ type copilotPlanDetails struct {
 }
 
 type copilotUsageSnapshot struct {
-	Summary copilotUsageSummary
-	Daily   []copilotDailyUsage
-	Models  []copilotUsageModel
-	Plan    copilotPlanDetails
-	PlanErr string
+	Summary      copilotUsageSummary
+	Daily        []copilotDailyUsage
+	DailyByModel []copilotDailyModelUsage
+	Models       []copilotUsageModel
+	Plan         copilotPlanDetails
+	PlanErr      string
 }
 
 type copilotUsageResultMsg struct {
@@ -65,6 +72,7 @@ type copilotUsageResultMsg struct {
 type copilotUsageRow struct {
 	Kind         string  `json:"kind"`
 	Label        string  `json:"label"`
+	Model        string  `json:"model"`
 	Tokens       int64   `json:"tokens"`
 	UserRequests float64 `json:"user_requests"`
 	ModelCalls   int64   `json:"model_calls"`
@@ -111,6 +119,7 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 				'' AS sort_label,
 				'summary' AS kind,
 				'' AS label,
+				'' AS model,
 				COALESCE(SUM(input_tokens + output_tokens), 0) AS tokens,
 				COALESCE(SUM(user_requests), 0) AS user_requests,
 				COUNT(*) AS model_calls,
@@ -124,6 +133,7 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 				substr(created_at, 1, 10) AS sort_label,
 				'daily' AS kind,
 				substr(created_at, 1, 10) AS label,
+				'' AS model,
 				SUM(input_tokens + output_tokens) AS tokens,
 				SUM(user_requests) AS user_requests,
 				COUNT(*) AS model_calls,
@@ -135,9 +145,25 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 			UNION ALL
 			SELECT
 				2 AS sort_group,
+				substr(created_at, 1, 10) || char(0) || model AS sort_label,
+				'daily_model' AS kind,
+				substr(created_at, 1, 10) AS label,
+				model AS model,
+				SUM(input_tokens + output_tokens) AS tokens,
+				SUM(user_requests) AS user_requests,
+				COUNT(*) AS model_calls,
+				0 AS sessions,
+				SUM(input_tokens) AS input_tokens,
+				SUM(output_tokens) AS output_tokens
+			FROM usage
+			GROUP BY substr(created_at, 1, 10), model
+			UNION ALL
+			SELECT
+				3 AS sort_group,
 				model AS sort_label,
 				'model' AS kind,
 				model AS label,
+				'' AS model,
 				SUM(input_tokens + output_tokens) AS tokens,
 				SUM(user_requests) AS user_requests,
 				COUNT(*) AS model_calls,
@@ -149,7 +175,8 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 		)
 		SELECT
 			kind,
-			label,
+		label,
+		model,
 			tokens,
 			user_requests,
 			model_calls,
@@ -294,6 +321,12 @@ func decodeCopilotUsage(output []byte) (copilotUsageSnapshot, error) {
 				Tokens:       row.Tokens,
 				UserRequests: row.UserRequests,
 			})
+		case "daily_model":
+			snapshot.DailyByModel = append(snapshot.DailyByModel, copilotDailyModelUsage{
+				StartDate: row.Label,
+				Model:     row.Model,
+				Tokens:    row.Tokens,
+			})
 		case "model":
 			snapshot.Models = append(snapshot.Models, copilotUsageModel{
 				Model:        row.Label,
@@ -384,25 +417,52 @@ func (m model) viewCopilotUsage(contentRows int) string {
 			usageBrightColor,
 		),
 		usagePaintLine("  Account allowance and remaining quota: GitHub billing", m.width, usageMutedColor, false, usagePanelColor),
-		usageDividerLine(m.width),
-		usageSectionLine("TOKENS BY DAY", m.width),
 	)
-	days := recentCopilotDailyUsage(m.copilotUsage.Daily, time.Now(), 7)
-	peak := int64(0)
-	for _, day := range days {
-		peak = max(peak, day.Tokens)
-	}
-	for index, day := range days {
-		label := dayLabel(day.StartDate, index == len(days)-1)
-		lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
-	}
 
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
 	if len(m.copilotUsage.Models) == 0 {
 		lines = append(lines, usagePaintLine("  No local Copilot CLI model usage", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
+		models := make([]modelUsage, 0, len(m.copilotUsage.Models))
+		peak := int64(0)
 		for _, model := range m.copilotUsage.Models {
-			lines = append(lines, usageModelLine(modelUsage{Model: model.Model, Tokens: model.Tokens}, m.width))
+			models = append(models, modelUsage{Model: model.Model, Tokens: model.Tokens})
+			peak = max(peak, model.Tokens)
+		}
+		for _, model := range colorModelUsage(models) {
+			lines = append(lines, usageModelBarLine(model, peak, m.width))
+		}
+	}
+
+	title := "TOKENS BY DAY"
+	if len(m.copilotUsage.DailyByModel) > 0 {
+		title += " · MODEL"
+	}
+	dayCount := min(7, max(contentRows-len(lines)-2, 1))
+	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
+	if len(m.copilotUsage.DailyByModel) > 0 {
+		days := recentCopilotDailyModelUsage(m.copilotUsage.DailyByModel, time.Now(), dayCount)
+		peak := int64(0)
+		for _, day := range days {
+			total := int64(0)
+			for _, model := range day.Models {
+				total += model.Tokens
+			}
+			peak = max(peak, total)
+		}
+		for index, day := range days {
+			label := dayLabel(day.StartDate, index == len(days)-1)
+			lines = append(lines, usageModelStackBarLine(label, day.Models, peak, m.width, index == len(days)-1))
+		}
+	} else {
+		days := recentCopilotDailyUsage(m.copilotUsage.Daily, time.Now(), dayCount)
+		peak := int64(0)
+		for _, day := range days {
+			peak = max(peak, day.Tokens)
+		}
+		for index, day := range days {
+			label := dayLabel(day.StartDate, index == len(days)-1)
+			lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)
@@ -436,6 +496,28 @@ func recentCopilotDailyUsage(buckets []copilotDailyUsage, now time.Time, count i
 		day := byDate[date]
 		day.StartDate = date
 		result = append(result, day)
+	}
+	return result
+}
+
+func recentCopilotDailyModelUsage(entries []copilotDailyModelUsage, now time.Time, count int) []codexDailyModelUsageBucket {
+	byDate := make(map[string]map[string]int64)
+	for _, entry := range entries {
+		if byDate[entry.StartDate] == nil {
+			byDate[entry.StartDate] = make(map[string]int64)
+		}
+		byDate[entry.StartDate][entry.Model] += entry.Tokens
+	}
+	result := make([]codexDailyModelUsageBucket, 0, count)
+	today := startOfDay(now)
+	for offset := count - 1; offset >= 0; offset-- {
+		date := today.AddDate(0, 0, -offset).Format("2006-01-02")
+		models := make([]modelUsage, 0, len(byDate[date]))
+		for model, tokens := range byDate[date] {
+			models = append(models, modelUsage{Model: model, Tokens: tokens})
+		}
+		sort.Slice(models, func(i, j int) bool { return models[i].Model < models[j].Model })
+		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: colorModelUsage(models)})
 	}
 	return result
 }
@@ -511,5 +593,5 @@ func (m model) usageFooter() (string, string) {
 }
 
 func (snapshot copilotUsageSnapshot) hasData() bool {
-	return snapshot.Plan.Available || snapshot.Summary.Sessions > 0 || snapshot.Summary.LifetimeTokens > 0 || len(snapshot.Daily) > 0
+	return snapshot.Plan.Available || snapshot.Summary.Sessions > 0 || snapshot.Summary.LifetimeTokens > 0 || len(snapshot.Daily) > 0 || len(snapshot.DailyByModel) > 0
 }

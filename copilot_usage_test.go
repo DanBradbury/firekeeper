@@ -54,8 +54,8 @@ func TestFetchCopilotUsageFromLocalStore(t *testing.T) {
 	if snapshot.Summary.UserRequests != 2.5 {
 		t.Fatalf("user request equivalents = %v", snapshot.Summary.UserRequests)
 	}
-	if len(snapshot.Daily) != 2 || len(snapshot.Models) != 2 {
-		t.Fatalf("daily/models = %d/%d", len(snapshot.Daily), len(snapshot.Models))
+	if len(snapshot.Daily) != 2 || len(snapshot.DailyByModel) != 2 || len(snapshot.Models) != 2 {
+		t.Fatalf("daily/daily-model/models = %d/%d/%d", len(snapshot.Daily), len(snapshot.DailyByModel), len(snapshot.Models))
 	}
 	if snapshot.Models[0].Model != "gpt-5" || snapshot.Models[0].Tokens != 500 {
 		t.Fatalf("top model = %#v", snapshot.Models[0])
@@ -87,23 +87,30 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 			Tokens:       2_300_000,
 			UserRequests: 2,
 		}},
-		Models: []copilotUsageModel{{
-			Model:        "claude-sonnet-4.6",
-			Tokens:       12_500_000,
-			ModelCalls:   42,
-			UserRequests: 7.5,
-		}},
+		DailyByModel: []copilotDailyModelUsage{
+			{StartDate: time.Now().Format("2006-01-02"), Model: "claude-sonnet-4.6", Tokens: 2_000_000},
+			{StartDate: time.Now().Format("2006-01-02"), Model: "gpt-5", Tokens: 300_000},
+		},
+		Models: []copilotUsageModel{
+			{Model: "claude-sonnet-4.6", Tokens: 12_500_000, ModelCalls: 42, UserRequests: 7.5},
+			{Model: "gpt-5", Tokens: 800_000, ModelCalls: 3},
+		},
 	}
 
 	view := m.View()
 	for _, expected := range []string{
 		"[ Usage ]", "[ COPILOT ]", "GitHub Copilot", "LOCAL CLI",
 		"12 sessions", "42 model calls", "7.5 weighted requests",
-		"AI Credits", "0 / 7,000 AIC", "TOKENS BY DAY", "2.3M", "TOKENS BY MODEL",
-		"CLAUDE SONNET 4.6", "12.5M",
+		"AI Credits", "0 / 7,000 AIC", "TOKENS BY DAY · MODEL", "2.3M", "TOKENS BY MODEL",
+		"CLAUDE SONNET 4.6", "12.5M", "GPT 5", "800.0K",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Copilot usage view missing %q", expected)
+		}
+	}
+	for _, color := range []string{modelUsageColor("claude-sonnet-4.6"), modelUsageColor("gpt-5")} {
+		if !strings.Contains(view, "38;2;"+color) {
+			t.Fatalf("Copilot model color %s missing", color)
 		}
 	}
 }

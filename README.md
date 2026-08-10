@@ -139,7 +139,10 @@ config and load automatically on next launch. Add future background variants as
 
 Codex usage requires an authenticated Codex CLI installation. Firekeeper makes
 a short-lived local stdio request to Codex when this view opens; it does not
-require a persistent app server or changes to existing Codex commands.
+require a persistent app server or changes to existing Codex commands. Codex
+reads local rollout token deltas to render stable model colors in daily usage
+bars. Very large rollout files are read from their newest 8 MiB, so oldest
+tokens within that tail window can be undercounted.
 Kimi usage reads local `usage.record` events from Kimi Code sessions under
 `KIMI_CODE_HOME` (default `~/.kimi-code`). It shows session, model, input,
 cache, output, and total token history. Kimi quota/reset data is exposed by
@@ -149,6 +152,7 @@ Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
 allowance, remaining credits, and reset timing from GitHub. Token lookup honors
 `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, and `GITHUB_TOKEN`, then `gh auth token`.
+Local daily token bars are split and color-coded by model.
 Plan data is best effort because its Copilot endpoint is internal and may
 change.
 
