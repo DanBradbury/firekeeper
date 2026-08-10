@@ -1065,28 +1065,37 @@ func (m model) animationScene(columns, rows int) sprite {
 	}
 
 	layout := m.animationLayout(width, height)
-	canvas.drawCharacterShadow(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height-2, layout.copilotCharacter.width)
-	canvas.drawCharacterShadow(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height-2, layout.character.width)
-	canvas.drawCharacterShadow(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height-2, layout.kimiCharacter.width)
-	canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
-	canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
-	canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
-	canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
-	canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
-	canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
-	canvas.drawPixelTextCentered(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height+providerLabelGap, "COPILOT", providerLabelScale, rgb{r: 248, g: 248, b: 255})
-	canvas.drawPixelTextCentered(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height+providerLabelGap, "CODEX", providerLabelScale, rgb{r: 248, g: 248, b: 255})
-	canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	if layout.copilotVisible {
+		canvas.drawCharacterShadow(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height-2, layout.copilotCharacter.width)
+		canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
+		canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
+		canvas.drawPixelTextCentered(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height+providerLabelGap, "COPILOT", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	}
+	if layout.codexVisible {
+		canvas.drawCharacterShadow(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height-2, layout.character.width)
+		canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
+		canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
+		canvas.drawPixelTextCentered(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height+providerLabelGap, "CODEX", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	}
+	if layout.kimiVisible {
+		canvas.drawCharacterShadow(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height-2, layout.kimiCharacter.width)
+		canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
+		canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
+		canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+	}
 	return canvas.sprite()
 }
 
 type animationLayout struct {
 	character              sprite
 	characterX, characterY int
+	codexVisible           bool
 	copilotCharacter       sprite
 	copilotX, copilotY     int
+	copilotVisible         bool
 	kimiCharacter          sprite
 	kimiX, kimiY           int
+	kimiVisible            bool
 	sessionBadge           sprite
 	sessionBadgeX          int
 	sessionBadgeY          int
@@ -1104,13 +1113,47 @@ func (m model) animationLayout(width, height int) animationLayout {
 	frame := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.codexSprites, m.codexSprite, m.codexAttack), frameWidth, frameHeight), frameHeight)
 	copilot := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.copilotSprites, m.copilotSprite, m.copilotAttack), frameWidth, frameHeight), frameHeight)
 	kimi := padSpriteBottom(resizeToFit(m.currentProviderFrame(m.kimiSprites, m.kimiSprite, m.kimiAttack), frameWidth, frameHeight), frameHeight)
-	layout := animationLayout{character: frame, copilotCharacter: copilot, kimiCharacter: kimi}
+	layout := animationLayout{
+		character:        frame,
+		copilotCharacter: copilot,
+		kimiCharacter:    kimi,
+		codexVisible:     providerGroupCount(m.processGroups, "Codex") > 0,
+		copilotVisible:   providerGroupCount(m.processGroups, "Copilot") > 0,
+		kimiVisible:      providerGroupCount(m.processGroups, "Kimi") > 0,
+	}
 	gap := animationCharacterFireGap * animationSourceScale
-	totalWidth := frame.width + copilot.width + kimi.width + gap*2
+	totalWidth := 0
+	visibleCount := 0
+	for _, item := range []struct {
+		visible bool
+		width   int
+	}{
+		{layout.copilotVisible, copilot.width},
+		{layout.codexVisible, frame.width},
+		{layout.kimiVisible, kimi.width},
+	} {
+		if !item.visible {
+			continue
+		}
+		if visibleCount > 0 {
+			totalWidth += gap
+		}
+		totalWidth += item.width
+		visibleCount++
+	}
 	startX := (width - totalWidth) / 2
-	layout.copilotX = startX
-	layout.characterX = startX + copilot.width + gap
-	layout.kimiX = layout.characterX + frame.width + gap
+	nextX := startX
+	if layout.copilotVisible {
+		layout.copilotX = nextX
+		nextX += copilot.width + gap
+	}
+	if layout.codexVisible {
+		layout.characterX = nextX
+		nextX += frame.width + gap
+	}
+	if layout.kimiVisible {
+		layout.kimiX = nextX
+	}
 	layout.copilotY = (height - copilot.height) / 2
 	layout.characterY = (height - frame.height) / 2
 	layout.kimiY = (height - kimi.height) / 2
@@ -1149,19 +1192,34 @@ func providerAnimationFrames(choices [][][]sprite, choice codexSpriteChoice, ani
 }
 
 func (m model) withSessionBadge(layout animationLayout) animationLayout {
-	badgeDrop := min(
-		animationQuestBadgeDrop,
-		min(spriteOpaqueTop(layout.character), min(spriteOpaqueTop(layout.copilotCharacter), spriteOpaqueTop(layout.kimiCharacter))),
-	)
-	layout.sessionBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Codex"), providerActiveGroupCount(m.processGroups, "Codex"))
-	layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
-	layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap + badgeDrop
-	layout.copilotBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Copilot"), providerActiveGroupCount(m.processGroups, "Copilot"))
-	layout.copilotBadgeX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotBadge.width)/2
-	layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap + badgeDrop
-	layout.kimiBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Kimi"), providerActiveGroupCount(m.processGroups, "Kimi"))
-	layout.kimiBadgeX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiBadge.width)/2
-	layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap + badgeDrop
+	badgeDrop := animationQuestBadgeDrop
+	for _, item := range []struct {
+		visible   bool
+		character sprite
+	}{
+		{layout.codexVisible, layout.character},
+		{layout.copilotVisible, layout.copilotCharacter},
+		{layout.kimiVisible, layout.kimiCharacter},
+	} {
+		if item.visible {
+			badgeDrop = min(badgeDrop, spriteOpaqueTop(item.character))
+		}
+	}
+	if layout.codexVisible {
+		layout.sessionBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Codex"), providerActiveGroupCount(m.processGroups, "Codex"))
+		layout.sessionBadgeX = layout.characterX + (layout.character.width-layout.sessionBadge.width)/2
+		layout.sessionBadgeY = layout.characterY - layout.sessionBadge.height - animationQuestBadgeGap + badgeDrop
+	}
+	if layout.copilotVisible {
+		layout.copilotBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Copilot"), providerActiveGroupCount(m.processGroups, "Copilot"))
+		layout.copilotBadgeX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotBadge.width)/2
+		layout.copilotBadgeY = layout.copilotY - layout.copilotBadge.height - animationQuestBadgeGap + badgeDrop
+	}
+	if layout.kimiVisible {
+		layout.kimiBadge = providerSessionBadge(providerGroupCount(m.processGroups, "Kimi"), providerActiveGroupCount(m.processGroups, "Kimi"))
+		layout.kimiBadgeX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiBadge.width)/2
+		layout.kimiBadgeY = layout.kimiY - layout.kimiBadge.height - animationQuestBadgeGap + badgeDrop
+	}
 	return layout
 }
 

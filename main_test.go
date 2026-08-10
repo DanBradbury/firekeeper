@@ -506,6 +506,7 @@ func TestCoverSpriteFillsViewportWithoutStretching(t *testing.T) {
 func TestAnimationSceneCompositesBackgroundBehindCharacters(t *testing.T) {
 	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 220, a: 255}}}
 	m := newModel([][]sprite{{character}}).withSceneBackground(sprite{width: 1, height: 1, pixels: []rgba{{g: 200, a: 255}}})
+	m.processGroups = []processGroup{{tool: "Codex"}}
 	scene := m.animationScene(40, 20)
 	if corner := scene.at(0, 0); corner.g <= corner.r {
 		t.Fatalf("background wash = %#v, want beach green behind scene", corner)
@@ -519,6 +520,7 @@ func TestAnimationSceneCompositesBackgroundBehindCharacters(t *testing.T) {
 func TestAnimationSceneDrawsProviderLabelsBelowCharacters(t *testing.T) {
 	character := sprite{width: 1, height: 1, pixels: []rgba{{r: 220, a: 255}}}
 	m := newModel([][]sprite{{character}})
+	m.processGroups = []processGroup{{tool: "Codex"}}
 	scene := m.animationScene(40, 20)
 	layout := m.animationLayout(scene.width, scene.height)
 	labelY := layout.characterY + layout.character.height + providerLabelGap
@@ -526,6 +528,32 @@ func TestAnimationSceneDrawsProviderLabelsBelowCharacters(t *testing.T) {
 	labelX := layout.characterX + layout.character.width/2 - labelWidth/2
 	if got := scene.at(labelX, labelY); got != (rgba{r: 248, g: 248, b: 255, a: 255}) {
 		t.Fatalf("Codex label pixel = %#v, want white", got)
+	}
+}
+
+func TestAnimationSceneHidesUnavailableProvidersAndCentersAvailableSprite(t *testing.T) {
+	frame := func(red uint8) sprite {
+		return sprite{width: 1, height: 1, pixels: []rgba{{r: red, a: 255}}}
+	}
+	m := newModel([][]sprite{{frame(20)}})
+	m.copilotSprites = [][][]sprite{{{frame(80)}}}
+	m.kimiSprites = [][][]sprite{{{frame(140)}}}
+	m.processGroups = []processGroup{{tool: "Codex"}}
+
+	scene := m.animationScene(40, 20)
+	layout := m.animationLayout(scene.width, scene.height)
+	if !layout.codexVisible || layout.copilotVisible || layout.kimiVisible {
+		t.Fatalf("provider visibility = Codex %t, Copilot %t, Kimi %t", layout.codexVisible, layout.copilotVisible, layout.kimiVisible)
+	}
+	if got, want := layout.characterX+layout.character.width/2, scene.width/2; got != want {
+		t.Fatalf("Codex center = %d, want %d", got, want)
+	}
+	for _, hidden := range []uint8{80, 140} {
+		for _, pixel := range scene.pixels {
+			if pixel.r == hidden {
+				t.Fatalf("hidden provider pixel %d rendered", hidden)
+			}
+		}
 	}
 }
 
@@ -1108,6 +1136,7 @@ func TestAnimationSceneDrawsCodexSessionBadgeAboveCharacter(t *testing.T) {
 		{tool: "Codex"},
 		{tool: "Copilot"},
 		{tool: "Codex"},
+		{tool: "Kimi"},
 	}
 
 	scene := m.animationScene(40, 20)
