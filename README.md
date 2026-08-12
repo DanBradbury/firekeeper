@@ -74,7 +74,8 @@ provider label identifies its harness. Each crest shows total discovered
 runtimes in gold and currently active runtimes in red. Active provider runtimes
 periodically use their attack animation, with a random 2–5 second idle pause
 between attacks. Characters only appear while their provider has a discovered
-local runtime.
+local runtime. Newly discovered providers play a one-shot reveal effect before
+their character, crest, and label appear.
 
 ### Global controls
 
