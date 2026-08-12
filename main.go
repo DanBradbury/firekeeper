@@ -62,6 +62,8 @@ const (
 	maximumAttackPause        = 5 * time.Second
 	providerLabelGap          = 3
 	providerLabelScale        = 2
+	effectSheetColumns        = 5
+	effectSheetRows           = 1
 )
 
 type spriteRenderer int
@@ -159,6 +161,9 @@ var beachBackgroundPNG []byte
 //go:embed "assets/bg_beach_night.png"
 var beachNightBackgroundPNG []byte
 
+//go:embed "assets/effect.png"
+var revealEffectPNG []byte
+
 type tickMsg time.Time
 
 type processPollMsg time.Time
@@ -212,6 +217,11 @@ type providerAttackState struct {
 	nextAttackAt time.Time
 }
 
+type providerRevealState struct {
+	playing bool
+	frame   int
+}
+
 type model struct {
 	width, height           int
 	activeTab               tab
@@ -246,6 +256,10 @@ type model struct {
 	codexAttack             providerAttackState
 	copilotAttack           providerAttackState
 	kimiAttack              providerAttackState
+	revealEffect            []sprite
+	codexReveal             providerRevealState
+	copilotReveal           providerRevealState
+	kimiReveal              providerRevealState
 	renderer                spriteRenderer
 	spriteColumns           int
 	spriteRows              int
@@ -317,6 +331,11 @@ func (m model) withCharacterHeadshots(wizard, warrior, mage sprite) model {
 	m.wizardHeadshot = wizard
 	m.warriorHeadshot = warrior
 	m.mageHeadshot = mage
+	return m
+}
+
+func (m model) withRevealEffect(frames []sprite) model {
+	m.revealEffect = frames
 	return m
 }
 
@@ -559,7 +578,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.processErr = msg.err.Error()
 		} else {
 			selectedPID := m.selectedProcessRootPID()
+			previousGroups := m.processGroups
 			m.processGroups = retainKnownSessionMetadata(m.processGroups, msg.groups)
+			m.updateProviderReveals(previousGroups)
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
@@ -659,6 +680,36 @@ func (m *model) advanceFrame(now time.Time) {
 	m.advanceProviderAttack(&m.codexAttack, providerActiveGroupCount(m.processGroups, "Codex") > 0, m.codexSprites, m.codexSprite, now)
 	m.advanceProviderAttack(&m.copilotAttack, providerActiveGroupCount(m.processGroups, "Copilot") > 0, m.copilotSprites, m.copilotSprite, now)
 	m.advanceProviderAttack(&m.kimiAttack, providerActiveGroupCount(m.processGroups, "Kimi") > 0, m.kimiSprites, m.kimiSprite, now)
+	m.advanceProviderReveal(&m.codexReveal)
+	m.advanceProviderReveal(&m.copilotReveal)
+	m.advanceProviderReveal(&m.kimiReveal)
+}
+
+func (m *model) updateProviderReveals(previous []processGroup) {
+	m.updateProviderReveal(&m.codexReveal, providerGroupCount(previous, "Codex") > 0, providerGroupCount(m.processGroups, "Codex") > 0)
+	m.updateProviderReveal(&m.copilotReveal, providerGroupCount(previous, "Copilot") > 0, providerGroupCount(m.processGroups, "Copilot") > 0)
+	m.updateProviderReveal(&m.kimiReveal, providerGroupCount(previous, "Kimi") > 0, providerGroupCount(m.processGroups, "Kimi") > 0)
+}
+
+func (m *model) updateProviderReveal(state *providerRevealState, wasAvailable, available bool) {
+	if !available {
+		*state = providerRevealState{}
+		return
+	}
+	if !wasAvailable && len(m.revealEffect) > 0 {
+		*state = providerRevealState{playing: true}
+	}
+}
+
+func (m *model) advanceProviderReveal(state *providerRevealState) {
+	if !state.playing {
+		return
+	}
+	if state.frame+1 >= len(m.revealEffect) {
+		*state = providerRevealState{}
+		return
+	}
+	state.frame++
 }
 
 func (m *model) advanceProviderAttack(state *providerAttackState, active bool, choices [][][]sprite, choice codexSpriteChoice, now time.Time) {
@@ -1066,22 +1117,34 @@ func (m model) animationScene(columns, rows int) sprite {
 
 	layout := m.animationLayout(width, height)
 	if layout.copilotVisible {
-		canvas.drawCharacterShadow(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height-2, layout.copilotCharacter.width)
-		canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
-		canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
-		canvas.drawPixelTextCentered(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height+providerLabelGap, "COPILOT", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		if layout.copilotRevealing {
+			canvas.drawSprite(layout.copilotEffectX, layout.copilotEffectY, layout.copilotEffect)
+		} else {
+			canvas.drawCharacterShadow(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height-2, layout.copilotCharacter.width)
+			canvas.drawSprite(layout.copilotX, layout.copilotY, layout.copilotCharacter)
+			canvas.drawSprite(layout.copilotBadgeX, layout.copilotBadgeY, layout.copilotBadge)
+			canvas.drawPixelTextCentered(layout.copilotX+layout.copilotCharacter.width/2, layout.copilotY+layout.copilotCharacter.height+providerLabelGap, "COPILOT", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		}
 	}
 	if layout.codexVisible {
-		canvas.drawCharacterShadow(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height-2, layout.character.width)
-		canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
-		canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
-		canvas.drawPixelTextCentered(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height+providerLabelGap, "CODEX", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		if layout.codexRevealing {
+			canvas.drawSprite(layout.characterEffectX, layout.characterEffectY, layout.characterEffect)
+		} else {
+			canvas.drawCharacterShadow(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height-2, layout.character.width)
+			canvas.drawSprite(layout.characterX, layout.characterY, layout.character)
+			canvas.drawSprite(layout.sessionBadgeX, layout.sessionBadgeY, layout.sessionBadge)
+			canvas.drawPixelTextCentered(layout.characterX+layout.character.width/2, layout.characterY+layout.character.height+providerLabelGap, "CODEX", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		}
 	}
 	if layout.kimiVisible {
-		canvas.drawCharacterShadow(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height-2, layout.kimiCharacter.width)
-		canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
-		canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
-		canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		if layout.kimiRevealing {
+			canvas.drawSprite(layout.kimiEffectX, layout.kimiEffectY, layout.kimiEffect)
+		} else {
+			canvas.drawCharacterShadow(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height-2, layout.kimiCharacter.width)
+			canvas.drawSprite(layout.kimiX, layout.kimiY, layout.kimiCharacter)
+			canvas.drawSprite(layout.kimiBadgeX, layout.kimiBadgeY, layout.kimiBadge)
+			canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
+		}
 	}
 	return canvas.sprite()
 }
@@ -1090,12 +1153,24 @@ type animationLayout struct {
 	character              sprite
 	characterX, characterY int
 	codexVisible           bool
+	characterEffect        sprite
+	characterEffectX       int
+	characterEffectY       int
+	codexRevealing         bool
 	copilotCharacter       sprite
 	copilotX, copilotY     int
 	copilotVisible         bool
+	copilotEffect          sprite
+	copilotEffectX         int
+	copilotEffectY         int
+	copilotRevealing       bool
 	kimiCharacter          sprite
 	kimiX, kimiY           int
 	kimiVisible            bool
+	kimiEffect             sprite
+	kimiEffectX            int
+	kimiEffectY            int
+	kimiRevealing          bool
 	sessionBadge           sprite
 	sessionBadgeX          int
 	sessionBadgeY          int
@@ -1157,7 +1232,26 @@ func (m model) animationLayout(width, height int) animationLayout {
 	layout.copilotY = (height - copilot.height) / 2
 	layout.characterY = (height - frame.height) / 2
 	layout.kimiY = (height - kimi.height) / 2
+	layout.codexRevealing = m.codexReveal.playing
+	layout.copilotRevealing = m.copilotReveal.playing
+	layout.kimiRevealing = m.kimiReveal.playing
+	layout.characterEffect = m.providerRevealFrame(m.codexReveal, frameWidth, frameHeight)
+	layout.copilotEffect = m.providerRevealFrame(m.copilotReveal, frameWidth, frameHeight)
+	layout.kimiEffect = m.providerRevealFrame(m.kimiReveal, frameWidth, frameHeight)
+	layout.characterEffectX = layout.characterX + (layout.character.width-layout.characterEffect.width)/2
+	layout.characterEffectY = layout.characterY + layout.character.height - layout.characterEffect.height
+	layout.copilotEffectX = layout.copilotX + (layout.copilotCharacter.width-layout.copilotEffect.width)/2
+	layout.copilotEffectY = layout.copilotY + layout.copilotCharacter.height - layout.copilotEffect.height
+	layout.kimiEffectX = layout.kimiX + (layout.kimiCharacter.width-layout.kimiEffect.width)/2
+	layout.kimiEffectY = layout.kimiY + layout.kimiCharacter.height - layout.kimiEffect.height
 	return m.withSessionBadge(layout)
+}
+
+func (m model) providerRevealFrame(state providerRevealState, maxWidth, maxHeight int) sprite {
+	if !state.playing || state.frame < 0 || state.frame >= len(m.revealEffect) {
+		return sprite{}
+	}
+	return resizeToFit(m.revealEffect[state.frame], maxWidth, maxHeight)
 }
 
 func (m model) currentProviderFrame(choices [][][]sprite, choice codexSpriteChoice, attack providerAttackState) sprite {
@@ -2685,6 +2779,11 @@ func main() {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load beach night background: %v\n", err)
 		os.Exit(1)
 	}
+	revealEffect, err := decodeGridAnimations(revealEffectPNG, effectSheetColumns, effectSheetRows)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "sprite TUI failed: load reveal effect: %v\n", err)
+		os.Exit(1)
+	}
 	warriorAnimations, err := decodeGridAnimations(warriorSheetPNG, warriorSheetColumns, warriorSheetRows)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sprite TUI failed: load Warrior spritesheet: %v\n", err)
@@ -2700,6 +2799,7 @@ func main() {
 			withCodexSprites([][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withProviderSprites([][][]sprite{animations, warriorAnimations, mageAnimations}, [][][]sprite{animations, warriorAnimations, mageAnimations}).
 			withCharacterHeadshots(wizardHeadshot, warriorHeadshot, mageHeadshot).
+			withRevealEffect(revealEffect[0]).
 			withSceneBackgrounds(beachBackground, beachNightBackground).
 			withPersistentSettings(storedSettings, settingsPath),
 		tea.WithAltScreen(),

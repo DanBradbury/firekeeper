@@ -226,6 +226,37 @@ func TestActiveProviderAttacksThenPausesBeforeRepeating(t *testing.T) {
 	}
 }
 
+func TestNewProviderPlaysRevealEffectBeforeCharacter(t *testing.T) {
+	frame := func(red uint8) sprite {
+		return sprite{width: 1, height: 1, pixels: []rgba{{r: red, a: 255}}}
+	}
+	m := newModel([][]sprite{{frame(200)}}).withRevealEffect([]sprite{frame(80), frame(120)})
+	updated, _ := m.Update(processResultMsg{groups: []processGroup{{tool: "Codex"}}, refreshed: time.Now()})
+	m = updated.(model)
+	if !m.codexReveal.playing || m.codexReveal.frame != 0 {
+		t.Fatalf("initial reveal = %#v, want frame zero", m.codexReveal)
+	}
+	scene := m.animationScene(40, 20)
+	layout := m.animationLayout(scene.width, scene.height)
+	if !layout.codexRevealing || scene.at(layout.characterEffectX, layout.characterEffectY).r != 80 {
+		t.Fatal("first reveal frame did not replace Codex character")
+	}
+
+	m.advanceFrame(time.Now())
+	if m.codexReveal.frame != 1 {
+		t.Fatalf("reveal frame = %d, want 1", m.codexReveal.frame)
+	}
+	m.advanceFrame(time.Now().Add(m.frameDuration))
+	if m.codexReveal.playing {
+		t.Fatal("reveal effect did not finish")
+	}
+	scene = m.animationScene(40, 20)
+	layout = m.animationLayout(scene.width, scene.height)
+	if layout.codexRevealing || scene.at(layout.characterX, layout.characterY+layout.character.height-1).r != 200 {
+		t.Fatal("Codex character was not revealed after effect")
+	}
+}
+
 func TestTabCyclesThroughProcessUsageAndSettingsViews(t *testing.T) {
 	m := testModel()
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -466,6 +497,19 @@ func TestCharacterSpritesheetsDecodeIntoAnimations(t *testing.T) {
 		if frame := animations[0][0]; frame.width != test.frameWidth || frame.height != test.frameHeight {
 			t.Fatalf("%s frame = %dx%d, want %dx%d", test.name, frame.width, frame.height, test.frameWidth, test.frameHeight)
 		}
+	}
+}
+
+func TestRevealEffectSpritesheetDecodesIntoFrames(t *testing.T) {
+	animations, err := decodeGridAnimations(revealEffectPNG, effectSheetColumns, effectSheetRows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(animations) != 1 || len(animations[0]) != 5 {
+		t.Fatalf("reveal effect frames = %#v, want one row with five frames", animations)
+	}
+	if frame := animations[0][0]; frame.width != 126 || frame.height != 116 {
+		t.Fatalf("reveal effect frame = %dx%d, want 126x116", frame.width, frame.height)
 	}
 }
 
