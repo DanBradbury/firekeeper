@@ -244,8 +244,12 @@ func (m model) viewKimiUsage(contentRows int) string {
 	if len(m.kimiUsage.Models) == 0 {
 		lines = append(lines, usagePaintLine("  No local Kimi Code token records", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
+		models := make([]modelUsage, 0, len(m.kimiUsage.Models))
 		for _, item := range m.kimiUsage.Models {
-			lines = append(lines, usageModelLine(modelUsage{Model: item.Model, Tokens: item.Tokens}, m.width))
+			models = append(models, modelUsage{Model: item.Model, Tokens: item.Tokens})
+		}
+		for _, model := range colorModelUsage(models) {
+			lines = append(lines, usageModelLine(model, m.width))
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)

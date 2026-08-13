@@ -108,10 +108,144 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 			t.Fatalf("Copilot usage view missing %q", expected)
 		}
 	}
-	for _, color := range []string{modelUsageColor("claude-sonnet-4.6"), modelUsageColor("gpt-5")} {
+	colors := modelUsageColorAssignments([]string{"claude-sonnet-4.6", "gpt-5"})
+	for _, color := range colors {
 		if !strings.Contains(view, "38;2;"+color) {
 			t.Fatalf("Copilot model color %s missing", color)
 		}
+	}
+}
+
+func TestReadCopilotHistoricalSessionsFromLocalStore(t *testing.T) {
+	sqlite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skip("sqlite3 unavailable")
+	}
+	home := t.TempDir()
+	t.Setenv("COPILOT_HOME", home)
+	path := filepath.Join(home, "session-store.db")
+	schema := `
+		CREATE TABLE sessions (
+			id TEXT PRIMARY KEY,
+			cwd TEXT,
+			repository TEXT,
+			host_type TEXT,
+			branch TEXT,
+			summary TEXT,
+			created_at TEXT,
+			updated_at TEXT
+		);
+		CREATE TABLE assistant_usage_events (
+			id INTEGER PRIMARY KEY,
+			session_id TEXT,
+			model TEXT,
+			input_tokens INTEGER,
+			output_tokens INTEGER,
+			request_multiplier REAL,
+			initiator TEXT,
+			created_at TEXT
+		);
+		INSERT INTO sessions VALUES
+			('older', '/work/older', 'owner/older', 'github', 'main', 'Older session', '2026-08-10T10:00:00Z', '2026-08-10T11:00:00Z'),
+			('newer', '/work/newer', 'owner/newer', 'github', 'feature', 'Newer session', '2026-08-11T10:00:00Z', '2026-08-11T11:00:00Z');
+		INSERT INTO assistant_usage_events VALUES
+			(1, 'older', 'claude-sonnet', 100, 20, 1.0, 'user', '2026-08-10T10:30:00Z'),
+			(2, 'newer', 'gpt-5', 200, 30, 0.0, 'agent', '2026-08-11T10:30:00Z'),
+			(3, 'newer', 'claude-opus', 300, 40, 1.5, 'user', '2026-08-11T12:00:00Z');
+	`
+	if output, err := exec.Command(sqlite, path, schema).CombinedOutput(); err != nil {
+		t.Fatalf("create Copilot history fixture: %v: %s", err, output)
+	}
+
+	sessions, err := readCopilotHistoricalSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 || sessions[0].ID != "newer" || sessions[1].ID != "older" {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	newer := sessions[0]
+	if newer.Title != "Newer session" || newer.Model != "claude-opus" || newer.LifetimeTokens != 570 {
+		t.Fatalf("newest session = %#v", newer)
+	}
+	if newer.InputTokens != 500 || newer.OutputTokens != 70 || newer.ModelCalls != 2 || newer.UserRequests != 1.5 {
+		t.Fatalf("newest usage = %#v", newer)
+	}
+	if newer.Repository != "owner/newer" || newer.GitBranch != "feature" || newer.UpdatedAt.Format(time.RFC3339) != "2026-08-11T12:00:00Z" {
+		t.Fatalf("newest metadata = %#v", newer)
+	}
+}
+
+func TestDecodeCopilotHistoricalSessionsSanitizesPartialRows(t *testing.T) {
+	sessions, err := decodeCopilotHistoricalSessions([]byte(`[{"id":"session-1","summary":"Fix\u001b[31m tests","cwd":"/work/firekeeper","updated_at":"2026-08-12T10:00:00Z"}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || strings.Contains(sessions[0].Title, "\x1b") || sessions[0].UpdatedAt.IsZero() {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if _, err := decodeCopilotHistoricalSessions([]byte(`{malformed`)); err == nil {
+		t.Fatal("malformed history JSON was accepted")
+	}
+}
+
+func TestCopilotUsageEnterBrowsesHistoricalSessions(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = copilotProvider
+	m.width = 100
+	m.copilotUsage.History = []copilotHistoricalSession{
+		{ID: "one", Title: "First session", Model: "gpt-5", WorkDir: "/work/one"},
+		{ID: "two", Title: "Second session", Model: "claude-opus", WorkDir: "/work/two"},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.copilotHistoryOpen {
+		t.Fatal("Enter did not open Copilot history")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.copilotHistoryCursor != 1 || !strings.Contains(m.viewCopilotHistory(7), "Second session") {
+		t.Fatalf("history cursor/view = %d\n%s", m.copilotHistoryCursor, m.viewCopilotHistory(7))
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.copilotHistoryOpen {
+		t.Fatal("Esc did not close Copilot history")
+	}
+}
+
+func TestCopilotUsageEnterShowsHistoryError(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = copilotProvider
+	m.width = 100
+	m.copilotHistoryErr = "session store unavailable"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.copilotHistoryOpen {
+		t.Fatal("Enter did not open empty Copilot history")
+	}
+	if view := m.viewCopilotHistory(8); !strings.Contains(view, "Session history unavailable") {
+		t.Fatalf("empty history did not explain failure:\n%s", view)
+	}
+}
+
+func TestCopilotHistoryRefreshFailureRetainsLastGoodSessions(t *testing.T) {
+	m := testModel()
+	m.copilotUsage.History = []copilotHistoricalSession{{ID: "known"}}
+	updated, _ := m.Update(copilotUsageResultMsg{
+		snapshot:   copilotUsageSnapshot{Summary: copilotUsageSummary{Sessions: 1}},
+		refreshed:  time.Now(),
+		historyErr: errTestCodexUsage,
+	})
+	m = updated.(model)
+	if len(m.copilotUsage.History) != 1 || m.copilotUsage.History[0].ID != "known" {
+		t.Fatal("failed history refresh discarded last good sessions")
+	}
+	if m.copilotHistoryErr == "" {
+		t.Fatal("failed history refresh did not expose error")
 	}
 }
 

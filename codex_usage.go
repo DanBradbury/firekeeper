@@ -37,11 +37,15 @@ const (
 
 var modelUsageColors = []string{
 	"137;180;250", // blue
-	"245;194;231", // pink
-	"166;227;161", // green
 	"250;179;135", // orange
+	"166;227;161", // green
+	"243;139;168", // red
 	"203;166;247", // purple
 	"249;226;175", // yellow
+	"148;226;213", // teal
+	"245;194;231", // pink
+	"137;220;235", // sky
+	"180;190;254", // lavender
 }
 
 type codexQuotaWindow struct {
@@ -354,6 +358,14 @@ func (m model) viewCodexUsage(contentRows int) string {
 
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine("ACTIVE TOKENS BY MODEL", m.width))
 	models := activeCodexModelUsage(m.processGroups)
+	modelNames := make([]string, 0, len(models)+len(m.codexUsage.DailyByModel))
+	for _, model := range models {
+		modelNames = append(modelNames, model.Model)
+	}
+	for _, entry := range m.codexUsage.DailyByModel {
+		modelNames = append(modelNames, entry.Model)
+	}
+	modelColors := modelUsageColorAssignments(modelNames)
 	if len(models) == 0 {
 		lines = append(lines, usagePaintLine("  No active model usage", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
@@ -361,7 +373,7 @@ func (m model) viewCodexUsage(contentRows int) string {
 		for _, model := range models {
 			peak = max(peak, model.Tokens)
 		}
-		for _, model := range colorModelUsage(models) {
+		for _, model := range colorModelUsageWithAssignments(models, modelColors) {
 			lines = append(lines, usageModelBarLine(model, peak, m.width))
 		}
 	}
@@ -374,6 +386,9 @@ func (m model) viewCodexUsage(contentRows int) string {
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
 	if len(m.codexUsage.DailyByModel) > 0 {
 		days := recentCodexDailyModelUsage(m.codexUsage.DailyByModel, time.Now(), dayCount)
+		for index := range days {
+			days[index].Models = colorModelUsageWithAssignments(days[index].Models, modelColors)
+		}
 		peak := int64(0)
 		for _, day := range days {
 			total := int64(0)
@@ -851,7 +866,7 @@ func recentCodexDailyModelUsage(entries []codexDailyModelUsage, now time.Time, c
 			models = append(models, modelUsage{Model: model, Tokens: tokens})
 		}
 		sort.Slice(models, func(i, j int) bool { return models[i].Model < models[j].Model })
-		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: colorModelUsage(models)})
+		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: models})
 	}
 	return result
 }
@@ -908,20 +923,69 @@ func activeCodexModelUsage(groups []processGroup) []modelUsage {
 }
 
 func colorModelUsage(models []modelUsage) []modelUsage {
+	names := make([]string, len(models))
+	for index, model := range models {
+		names[index] = model.Model
+	}
+	return colorModelUsageWithAssignments(models, modelUsageColorAssignments(names))
+}
+
+func colorModelUsageWithAssignments(models []modelUsage, assignments map[string]string) []modelUsage {
 	colored := append([]modelUsage(nil), models...)
 	for index := range colored {
-		colored[index].Color = modelUsageColor(colored[index].Model)
+		colored[index].Color = assignments[modelUsageColorKey(colored[index].Model)]
+		if colored[index].Color == "" {
+			colored[index].Color = modelUsageColor(colored[index].Model)
+		}
 	}
 	return colored
 }
 
+func modelUsageColorAssignments(models []string) map[string]string {
+	unique := make(map[string]bool, len(models))
+	keys := make([]string, 0, len(models))
+	for _, model := range models {
+		key := modelUsageColorKey(model)
+		if unique[key] {
+			continue
+		}
+		unique[key] = true
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	assignments := make(map[string]string, len(keys))
+	used := make([]bool, len(modelUsageColors))
+	for _, key := range keys {
+		start := modelUsageColorIndex(key)
+		colorIndex := start
+		for offset := 0; offset < len(modelUsageColors); offset++ {
+			candidate := (start + offset) % len(modelUsageColors)
+			if !used[candidate] {
+				colorIndex = candidate
+				used[candidate] = true
+				break
+			}
+		}
+		assignments[key] = modelUsageColors[colorIndex]
+	}
+	return assignments
+}
+
+func modelUsageColorKey(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
 func modelUsageColor(model string) string {
+	return modelUsageColors[modelUsageColorIndex(modelUsageColorKey(model))]
+}
+
+func modelUsageColorIndex(model string) int {
 	hash := uint32(2166136261)
-	for _, character := range strings.ToLower(model) {
+	for _, character := range model {
 		hash ^= uint32(character)
 		hash *= 16777619
 	}
-	return modelUsageColors[int(hash)%len(modelUsageColors)]
+	return int(hash) % len(modelUsageColors)
 }
 
 func usageSectionLine(title string, width int) string {
@@ -1051,7 +1115,11 @@ func usageModelLine(model modelUsage, width int) string {
 	contentWidth := max(width-4, 1)
 	space := max(contentWidth-len([]rune(name))-len([]rune(value)), 1)
 	line := "  " + name + strings.Repeat(" ", space) + value + "  "
-	return usagePaintLine(line, width, usageTextColor, false, usageHighlightColor)
+	color := model.Color
+	if color == "" {
+		color = usageTextColor
+	}
+	return usagePaintLine(line, width, color, true, usageHighlightColor)
 }
 
 func usagePaintLine(value string, width int, foreground string, bold bool, background string) string {

@@ -120,10 +120,12 @@ without a controlling TTY cannot be selected this way.
 | Left / Right or `H` / `L` | Switch between Codex, Copilot, and Kimi |
 | `r` | Refresh selected provider |
 
-When Codex or Kimi is selected, press `Enter` to browse historical sessions.
-Use Up/Down to select a session; press `Enter` or `Esc` to return. Codex history
-is read from the local `state_5.sqlite` database and is limited to the 500 most
-recent sessions.
+Press `Enter` on any supported provider to browse historical sessions. Use
+Up/Down to select a session; press `Enter` or `Esc` to return. Codex history is
+read from local `state_5.sqlite`; Copilot history is read from local
+`session-store.db`. Each browser is limited to the 500 most recent sessions.
+Usage overviews assign distinct, consistent colors to as many as 10 displayed
+models per provider, including model totals and stacked daily bars.
 
 ### Settings
 

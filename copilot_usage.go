@@ -17,6 +17,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+const copilotSessionHistoryLimit = 500
+
 type copilotUsageSummary struct {
 	Sessions       int64
 	ModelCalls     int64
@@ -45,6 +47,25 @@ type copilotUsageModel struct {
 	UserRequests float64
 }
 
+type copilotHistoricalSession struct {
+	ID             string  `json:"id"`
+	Title          string  `json:"summary"`
+	WorkDir        string  `json:"cwd"`
+	Repository     string  `json:"repository"`
+	HostType       string  `json:"host_type"`
+	GitBranch      string  `json:"branch"`
+	Created        string  `json:"created_at"`
+	Updated        string  `json:"updated_at"`
+	Model          string  `json:"model"`
+	InputTokens    int64   `json:"input_tokens"`
+	OutputTokens   int64   `json:"output_tokens"`
+	LifetimeTokens int64   `json:"tokens"`
+	ModelCalls     int64   `json:"model_calls"`
+	UserRequests   float64 `json:"user_requests"`
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
 type copilotPlanDetails struct {
 	Name         string
 	UsedCredits  float64
@@ -61,12 +82,14 @@ type copilotUsageSnapshot struct {
 	Models       []copilotUsageModel
 	Plan         copilotPlanDetails
 	PlanErr      string
+	History      []copilotHistoricalSession
 }
 
 type copilotUsageResultMsg struct {
-	snapshot  copilotUsageSnapshot
-	refreshed time.Time
-	err       error
+	snapshot   copilotUsageSnapshot
+	refreshed  time.Time
+	err        error
+	historyErr error
 }
 
 type copilotUsageRow struct {
@@ -84,12 +107,85 @@ type copilotUsageRow struct {
 func refreshCopilotUsage() tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fetchCopilotUsage()
+		history, historyErr := readCopilotHistoricalSessions()
+		snapshot.History = history
 		return copilotUsageResultMsg{
-			snapshot:  snapshot,
-			refreshed: time.Now(),
-			err:       err,
+			snapshot:   snapshot,
+			refreshed:  time.Now(),
+			err:        err,
+			historyErr: historyErr,
 		}
 	}
+}
+
+func readCopilotHistoricalSessions() ([]copilotHistoricalSession, error) {
+	home, err := copilotHome()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(home, "session-store.db")
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("find Copilot session store: %w", err)
+	}
+	query := fmt.Sprintf(`
+		SELECT
+			s.id,
+			COALESCE(s.summary, '') AS summary,
+			COALESCE(s.cwd, '') AS cwd,
+			COALESCE(s.repository, '') AS repository,
+			COALESCE(s.host_type, '') AS host_type,
+			COALESCE(s.branch, '') AS branch,
+			COALESCE(s.created_at, '') AS created_at,
+			CASE
+				WHEN COALESCE(MAX(a.created_at), '') > COALESCE(s.updated_at, '') THEN MAX(a.created_at)
+				ELSE COALESCE(s.updated_at, '')
+			END AS updated_at,
+			COALESCE((
+				SELECT latest.model
+				FROM assistant_usage_events latest
+				WHERE latest.session_id = s.id
+				ORDER BY latest.id DESC
+				LIMIT 1
+			), '') AS model,
+			COALESCE(SUM(a.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(a.output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(COALESCE(a.input_tokens, 0) + COALESCE(a.output_tokens, 0)), 0) AS tokens,
+			COUNT(a.id) AS model_calls,
+			COALESCE(SUM(CASE WHEN a.initiator = 'user' THEN COALESCE(a.request_multiplier, 1.0) ELSE 0 END), 0) AS user_requests
+		FROM sessions s
+		LEFT JOIN assistant_usage_events a ON a.session_id = s.id
+		GROUP BY s.id
+		ORDER BY updated_at DESC
+		LIMIT %d
+	`, copilotSessionHistoryLimit)
+	output, err := exec.Command("sqlite3", "-readonly", "-json", path, query).Output()
+	if err != nil {
+		return nil, fmt.Errorf("read Copilot session history: %w", err)
+	}
+	return decodeCopilotHistoricalSessions(output)
+}
+
+func decodeCopilotHistoricalSessions(output []byte) ([]copilotHistoricalSession, error) {
+	if len(bytes.TrimSpace(output)) == 0 {
+		return nil, nil
+	}
+	var sessions []copilotHistoricalSession
+	if err := json.Unmarshal(output, &sessions); err != nil {
+		return nil, fmt.Errorf("decode Copilot session history: %w", err)
+	}
+	for index := range sessions {
+		session := &sessions[index]
+		session.ID = sanitizeProcessCommand(session.ID)
+		session.WorkDir = sanitizeProcessCommand(session.WorkDir)
+		session.Repository = sanitizeProcessCommand(session.Repository)
+		session.HostType = sanitizeProcessCommand(session.HostType)
+		session.GitBranch = sanitizeProcessCommand(session.GitBranch)
+		session.Model = sanitizeProcessCommand(session.Model)
+		session.Title = emptyFallback(sanitizeProcessCommand(session.Title), firstNonEmpty(filepath.Base(session.WorkDir), session.Repository, "Copilot session"))
+		session.CreatedAt = parseCopilotTime(session.Created)
+		session.UpdatedAt = parseCopilotTime(session.Updated)
+	}
+	return sessions, nil
 }
 
 func fetchCopilotUsage() (copilotUsageSnapshot, error) {
@@ -378,6 +474,9 @@ func (m model) usageProviderSelectorLine() string {
 }
 
 func (m model) viewCopilotUsage(contentRows int) string {
+	if m.copilotHistoryOpen {
+		return m.viewCopilotHistory(contentRows)
+	}
 	lines := m.copilotUsageHeaderLines()
 	if m.copilotUsageLoading && !m.copilotUsage.hasData() {
 		lines = append(lines,
@@ -420,6 +519,14 @@ func (m model) viewCopilotUsage(contentRows int) string {
 	)
 
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
+	modelNames := make([]string, 0, len(m.copilotUsage.Models)+len(m.copilotUsage.DailyByModel))
+	for _, model := range m.copilotUsage.Models {
+		modelNames = append(modelNames, model.Model)
+	}
+	for _, entry := range m.copilotUsage.DailyByModel {
+		modelNames = append(modelNames, entry.Model)
+	}
+	modelColors := modelUsageColorAssignments(modelNames)
 	if len(m.copilotUsage.Models) == 0 {
 		lines = append(lines, usagePaintLine("  No local Copilot CLI model usage", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
@@ -429,7 +536,7 @@ func (m model) viewCopilotUsage(contentRows int) string {
 			models = append(models, modelUsage{Model: model.Model, Tokens: model.Tokens})
 			peak = max(peak, model.Tokens)
 		}
-		for _, model := range colorModelUsage(models) {
+		for _, model := range colorModelUsageWithAssignments(models, modelColors) {
 			lines = append(lines, usageModelBarLine(model, peak, m.width))
 		}
 	}
@@ -442,6 +549,9 @@ func (m model) viewCopilotUsage(contentRows int) string {
 	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
 	if len(m.copilotUsage.DailyByModel) > 0 {
 		days := recentCopilotDailyModelUsage(m.copilotUsage.DailyByModel, time.Now(), dayCount)
+		for index := range days {
+			days[index].Models = colorModelUsageWithAssignments(days[index].Models, modelColors)
+		}
 		peak := int64(0)
 		for _, day := range days {
 			total := int64(0)
@@ -464,6 +574,56 @@ func (m model) viewCopilotUsage(contentRows int) string {
 			label := dayLabel(day.StartDate, index == len(days)-1)
 			lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
 		}
+	}
+	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func (m model) viewCopilotHistory(contentRows int) string {
+	lines := []string{
+		usagePaintLine("  ╭────╮  GitHub Copilot", m.width, usageBrightColor, true, usagePanelColor),
+		usagePaintLine(fmt.Sprintf("  │ ◖◗ │  HISTORICAL SESSIONS (%d)  •  Enter/Esc back", len(m.copilotUsage.History)), m.width, usageTextColor, true, usagePanelColor),
+		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
+		usageDividerLine(m.width),
+	}
+	start, end := codexHistoryWindow(len(m.copilotUsage.History), m.copilotHistoryCursor, contentRows-len(lines))
+	for index := start; index < end; index++ {
+		session := m.copilotUsage.History[index]
+		cursor := " "
+		if index == m.copilotHistoryCursor {
+			cursor = ">"
+		}
+		cwd := "unknown cwd"
+		if session.WorkDir != "" {
+			cwd = truncateKimiText(filepath.Base(session.WorkDir), 24)
+		}
+		model := emptyFallback(session.Model, "unknown model")
+		metadata := make([]string, 0, 3)
+		if session.Repository != "" {
+			metadata = append(metadata, truncateKimiText(session.Repository, 28))
+		}
+		if session.GitBranch != "" {
+			metadata = append(metadata, "branch "+truncateKimiText(session.GitBranch, 20))
+		}
+		if session.HostType != "" {
+			metadata = append(metadata, session.HostType)
+		}
+		if len(metadata) == 0 {
+			metadata = append(metadata, "local session")
+		}
+		lines = append(lines,
+			usagePaintLine(fmt.Sprintf("%s %-28s %s", cursor, truncateKimiText(session.Title, 28), formatSessionTime(session.UpdatedAt)), m.width, usageBrightColor, index == m.copilotHistoryCursor, usageHighlightColor),
+			usagePaintLine(fmt.Sprintf("    %-20s %s  •  %s tokens", truncateKimiText(model, 20), cwd, formatTokenCount(session.LifetimeTokens)), m.width, usageMutedColor, false, usagePanelColor),
+			usagePaintLine(fmt.Sprintf("    %s  •  %s calls  •  %s requests", strings.Join(metadata, "  •  "), formatTokenCount(session.ModelCalls), formatRequestCount(session.UserRequests)), m.width, usageMutedColor, false, usagePanelColor),
+		)
+	}
+	if len(m.copilotUsage.History) == 0 {
+		message := "  No historical Copilot sessions"
+		if m.copilotHistoryErr != "" {
+			message = "  Session history unavailable: " + m.copilotHistoryErr
+		} else if m.copilotUsageLoading {
+			message = "  Loading historical Copilot sessions…"
+		}
+		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
 	}
 	return fillUsageLines(lines, contentRows, m.width)
 }
@@ -517,7 +677,7 @@ func recentCopilotDailyModelUsage(entries []copilotDailyModelUsage, now time.Tim
 			models = append(models, modelUsage{Model: model, Tokens: tokens})
 		}
 		sort.Slice(models, func(i, j int) bool { return models[i].Model < models[j].Model })
-		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: colorModelUsage(models)})
+		result = append(result, codexDailyModelUsageBucket{StartDate: date, Models: models})
 	}
 	return result
 }
@@ -554,11 +714,18 @@ func formatCommaInt(value int64) string {
 func (m model) usageFooter() (string, string) {
 	help := "  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
 	if m.usageProvider == copilotProvider {
+		if m.copilotHistoryOpen {
+			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Copilot historical sessions"
+		}
+		help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
 		if m.copilotUsageLoading {
 			return help, "  reading local Copilot CLI usage…"
 		}
 		if m.copilotUsageErr != "" {
 			return help, "  Copilot usage refresh failed: " + m.copilotUsageErr
+		}
+		if m.copilotHistoryErr != "" {
+			return help, "  Copilot session history unavailable: " + m.copilotHistoryErr
 		}
 		if m.copilotUsageRefreshedAt.IsZero() {
 			return help, "  Copilot usage not loaded"
