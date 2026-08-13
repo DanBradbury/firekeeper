@@ -22,6 +22,7 @@ const (
 	codexUsageTimeout               = 15 * time.Second
 	codexUsageHistoryDays           = 7
 	codexUsageRolloutMaxBytes int64 = 8 << 20
+	codexSessionHistoryLimit        = 500
 )
 
 const (
@@ -88,18 +89,33 @@ type codexDailyModelUsage struct {
 	Tokens    int64
 }
 
+type codexHistoricalSession struct {
+	ID        string `json:"id"`
+	Title     string `json:"display_name"`
+	WorkDir   string `json:"cwd"`
+	Model     string `json:"model"`
+	Source    string `json:"source"`
+	GitBranch string `json:"git_branch"`
+	UpdatedMS int64  `json:"updated_at_ms"`
+	Tokens    int64  `json:"tokens_used"`
+	Archived  int    `json:"archived"`
+	UpdatedAt time.Time
+}
+
 type codexUsageSnapshot struct {
 	RateLimits   map[string]codexRateLimit
 	ResetCredits int
 	Summary      codexUsageSummary
 	Daily        []codexDailyUsage
 	DailyByModel []codexDailyModelUsage
+	History      []codexHistoricalSession
 }
 
 type codexUsageResultMsg struct {
-	snapshot  codexUsageSnapshot
-	refreshed time.Time
-	err       error
+	snapshot   codexUsageSnapshot
+	refreshed  time.Time
+	err        error
+	historyErr error
 }
 
 type codexRPCError struct {
@@ -143,10 +159,13 @@ type codexRolloutUsageEvent struct {
 func refreshCodexUsage() tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fetchCodexUsage()
+		history, historyErr := readCodexHistoricalSessions()
+		snapshot.History = history
 		return codexUsageResultMsg{
-			snapshot:  snapshot,
-			refreshed: time.Now(),
-			err:       err,
+			snapshot:   snapshot,
+			refreshed:  time.Now(),
+			err:        err,
+			historyErr: historyErr,
 		}
 	}
 }
@@ -290,6 +309,9 @@ func readCodexUsageResponses(reader io.Reader) (codexUsageSnapshot, error) {
 }
 
 func (m model) viewCodexUsage(contentRows int) string {
+	if m.codexHistoryOpen {
+		return m.viewCodexHistory(contentRows)
+	}
 	lines := m.codexUsageHeaderLines()
 	if m.codexUsageLoading && !m.codexUsage.hasData() {
 		lines = append(lines,
@@ -376,6 +398,189 @@ func (m model) viewCodexUsage(contentRows int) string {
 		}
 	}
 	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func readCodexHistoricalSessions() ([]codexHistoricalSession, error) {
+	statePath, err := codexStatePath()
+	if err != nil {
+		return nil, err
+	}
+	columnsOutput, err := exec.Command("sqlite3", "-readonly", "-json", statePath, "PRAGMA table_info(threads)").Output()
+	if err != nil {
+		return nil, fmt.Errorf("inspect Codex state: %w", err)
+	}
+	var schema []struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(columnsOutput, &schema); err != nil {
+		return nil, fmt.Errorf("decode Codex state schema: %w", err)
+	}
+	columns := make(map[string]bool, len(schema))
+	for _, column := range schema {
+		columns[column.Name] = true
+	}
+	query, err := codexHistoryQuery(columns)
+	if err != nil {
+		return nil, err
+	}
+	output, err := exec.Command("sqlite3", "-readonly", "-json", statePath, query).Output()
+	if err != nil {
+		return nil, fmt.Errorf("read Codex session history: %w", err)
+	}
+	return decodeCodexHistoricalSessions(output)
+}
+
+func codexHistoryQuery(columns map[string]bool) (string, error) {
+	if !columns["id"] {
+		return "", fmt.Errorf("Codex state threads table has no id column")
+	}
+	title := codexHistoryTextExpression(columns, "id", "name", "title", "preview")
+	cwd := codexHistoryTextExpression(columns, "''", "cwd")
+	model := codexHistoryTextExpression(columns, "''", "model")
+	source := codexHistoryTextExpression(columns, "''", "thread_source", "source")
+	branch := codexHistoryTextExpression(columns, "''", "git_branch")
+	updated := codexHistoryUpdatedExpression(columns)
+	tokens := "0"
+	if columns["tokens_used"] {
+		tokens = "COALESCE(tokens_used, 0)"
+	}
+	archived := "0"
+	if columns["archived"] {
+		archived = "COALESCE(archived, 0)"
+	}
+	order := updated
+	if columns["recency_at_ms"] {
+		order = "COALESCE(NULLIF(recency_at_ms, 0), " + updated + ")"
+	}
+	return fmt.Sprintf(`
+		SELECT
+			id,
+			%s AS display_name,
+			%s AS cwd,
+			%s AS model,
+			%s AS source,
+			%s AS git_branch,
+			%s AS updated_at_ms,
+			%s AS tokens_used,
+			%s AS archived
+		FROM threads
+		ORDER BY %s DESC
+		LIMIT %d
+	`, title, cwd, model, source, branch, updated, tokens, archived, order, codexSessionHistoryLimit), nil
+}
+
+func codexHistoryTextExpression(columns map[string]bool, fallback string, candidates ...string) string {
+	parts := make([]string, 0, len(candidates)+1)
+	for _, candidate := range candidates {
+		if columns[candidate] {
+			parts = append(parts, "NULLIF("+candidate+", '')")
+		}
+	}
+	parts = append(parts, fallback)
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return "COALESCE(" + strings.Join(parts, ", ") + ")"
+}
+
+func codexHistoryUpdatedExpression(columns map[string]bool) string {
+	var parts []string
+	if columns["updated_at_ms"] {
+		parts = append(parts, "NULLIF(updated_at_ms, 0)")
+	}
+	if columns["updated_at"] {
+		parts = append(parts, "NULLIF(updated_at, 0) * 1000")
+	}
+	parts = append(parts, "0")
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return "COALESCE(" + strings.Join(parts, ", ") + ")"
+}
+
+func decodeCodexHistoricalSessions(output []byte) ([]codexHistoricalSession, error) {
+	if len(bytes.TrimSpace(output)) == 0 {
+		return nil, nil
+	}
+	var sessions []codexHistoricalSession
+	if err := json.Unmarshal(output, &sessions); err != nil {
+		return nil, fmt.Errorf("decode Codex session history: %w", err)
+	}
+	for index := range sessions {
+		session := &sessions[index]
+		session.ID = sanitizeProcessCommand(session.ID)
+		session.Title = emptyFallback(sanitizeProcessCommand(session.Title), "Codex session")
+		session.WorkDir = sanitizeProcessCommand(session.WorkDir)
+		session.Model = sanitizeProcessCommand(session.Model)
+		session.Source = sanitizeProcessCommand(session.Source)
+		session.GitBranch = sanitizeProcessCommand(session.GitBranch)
+		if session.UpdatedMS > 0 {
+			session.UpdatedAt = time.UnixMilli(session.UpdatedMS)
+		}
+	}
+	return sessions, nil
+}
+
+func (m model) viewCodexHistory(contentRows int) string {
+	lines := []string{
+		usagePaintLine("  ╭────╮  Codex", m.width, usageBrightColor, true, usagePanelColor),
+		usagePaintLine(fmt.Sprintf("  │ >_ │  HISTORICAL SESSIONS (%d)  •  Enter/Esc back", len(m.codexUsage.History)), m.width, usageTextColor, true, usagePanelColor),
+		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
+		usageDividerLine(m.width),
+	}
+	start, end := codexHistoryWindow(len(m.codexUsage.History), m.codexHistoryCursor, contentRows-len(lines))
+	for index := start; index < end; index++ {
+		session := m.codexUsage.History[index]
+		cursor := " "
+		if index == m.codexHistoryCursor {
+			cursor = ">"
+		}
+		cwd := "unknown cwd"
+		if session.WorkDir != "" {
+			cwd = truncateKimiText(filepath.Base(session.WorkDir), 24)
+		}
+		model := emptyFallback(session.Model, "unknown model")
+		metadata := make([]string, 0, 3)
+		if session.GitBranch != "" {
+			metadata = append(metadata, "branch "+truncateKimiText(session.GitBranch, 20))
+		}
+		if session.Source != "" {
+			metadata = append(metadata, truncateKimiText(session.Source, 24))
+		}
+		if session.Archived != 0 {
+			metadata = append(metadata, "archived")
+		}
+		if len(metadata) == 0 {
+			metadata = append(metadata, "local session")
+		}
+		lines = append(lines,
+			usagePaintLine(fmt.Sprintf("%s %-28s %s", cursor, truncateKimiText(session.Title, 28), formatSessionTime(session.UpdatedAt)), m.width, usageBrightColor, index == m.codexHistoryCursor, usageHighlightColor),
+			usagePaintLine(fmt.Sprintf("    %-20s %s  •  %s tokens", truncateKimiText(model, 20), cwd, formatTokenCount(session.Tokens)), m.width, usageMutedColor, false, usagePanelColor),
+			usagePaintLine("    "+strings.Join(metadata, "  •  "), m.width, usageMutedColor, false, usagePanelColor),
+		)
+	}
+	if len(m.codexUsage.History) == 0 {
+		message := "  No historical Codex sessions"
+		if m.codexHistoryErr != "" {
+			message = "  Session history unavailable: " + m.codexHistoryErr
+		} else if m.codexUsageLoading {
+			message = "  Loading historical Codex sessions…"
+		}
+		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
+	}
+	return fillUsageLines(lines, contentRows, m.width)
+}
+
+func codexHistoryWindow(total, cursor, availableRows int) (int, int) {
+	if total <= 0 || availableRows <= 0 {
+		return 0, 0
+	}
+	capacity := max(availableRows/3, 1)
+	capacity = min(capacity, total)
+	cursor = min(max(cursor, 0), total-1)
+	start := max(cursor-capacity+1, 0)
+	start = min(start, total-capacity)
+	return start, start + capacity
 }
 
 type modelUsage struct {

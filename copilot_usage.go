@@ -580,11 +580,20 @@ func (m model) usageFooter() (string, string) {
 		}
 		return help, "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
 	}
+	if m.codexHistoryOpen {
+		return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Codex historical sessions"
+	}
+	if len(m.codexUsage.History) > 0 {
+		help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+	}
 	if m.codexUsageLoading {
 		return help, "  fetching Codex quotas and usage…"
 	}
 	if m.codexUsageErr != "" {
 		return help, "  Codex usage refresh failed: " + m.codexUsageErr
+	}
+	if m.codexHistoryErr != "" {
+		return help, "  Codex session history unavailable: " + m.codexHistoryErr
 	}
 	if m.codexUsageRefreshedAt.IsZero() {
 		return help, "  Codex usage not loaded"

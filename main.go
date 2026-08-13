@@ -275,6 +275,9 @@ type model struct {
 	codexUsageErr           string
 	codexUsageLoading       bool
 	codexUsageRefreshedAt   time.Time
+	codexHistoryErr         string
+	codexHistoryOpen        bool
+	codexHistoryCursor      int
 	usageProvider           usageProvider
 	copilotUsage            copilotUsageSnapshot
 	copilotUsageErr         string
@@ -404,7 +407,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cycleAnimation(-1)
 				}
 			} else if m.activeTab == usageTab {
-				if !m.kimiHistoryOpen {
+				if !m.usageHistoryOpen() {
 					return m, m.cycleUsageProvider(-1)
 				}
 			} else if m.activeTab == settingsTab {
@@ -420,7 +423,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cycleAnimation(1)
 				}
 			} else if m.activeTab == usageTab {
-				if !m.kimiHistoryOpen {
+				if !m.usageHistoryOpen() {
 					return m, m.cycleUsageProvider(1)
 				}
 			} else if m.activeTab == settingsTab {
@@ -444,8 +447,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.settingsEditing {
 					m.settingsCursor = max(m.settingsCursor-1, 0)
 				}
-			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
-				m.kimiHistoryCursor = max(m.kimiHistoryCursor-1, 0)
+			} else if m.activeTab == usageTab {
+				if m.usageProvider == codexProvider && m.codexHistoryOpen {
+					m.codexHistoryCursor = max(m.codexHistoryCursor-1, 0)
+				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+					m.kimiHistoryCursor = max(m.kimiHistoryCursor-1, 0)
+				}
 			}
 		case "down", "j":
 			if m.activeTab == animationTab {
@@ -463,8 +470,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !m.settingsEditing {
 					m.settingsCursor = min(m.settingsCursor+1, settingsItemCount-1)
 				}
-			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
-				m.kimiHistoryCursor = min(m.kimiHistoryCursor+1, max(len(m.kimiUsage.History)-1, 0))
+			} else if m.activeTab == usageTab {
+				if m.usageProvider == codexProvider && m.codexHistoryOpen {
+					m.codexHistoryCursor = min(m.codexHistoryCursor+1, max(len(m.codexUsage.History)-1, 0))
+				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+					m.kimiHistoryCursor = min(m.kimiHistoryCursor+1, max(len(m.kimiUsage.History)-1, 0))
+				}
 			}
 		case "pgup":
 			if m.activeTab == processesTab {
@@ -503,16 +514,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.settingsEditOriginal = persistentSettings{CodexSprite: m.codexSprite, CopilotSprite: m.copilotSprite, KimiSprite: m.kimiSprite, Background: m.backgroundChoice, BackgroundTime: m.backgroundTime}
 				m.settingsEditing = true
-			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider {
-				if m.kimiHistoryOpen {
-					m.kimiHistoryOpen = false
-				} else if len(m.kimiUsage.History) > 0 {
-					m.kimiHistoryOpen = true
-					m.kimiHistoryCursor = 0
+			} else if m.activeTab == usageTab {
+				if m.usageProvider == codexProvider {
+					if m.codexHistoryOpen {
+						m.codexHistoryOpen = false
+					} else {
+						m.codexHistoryOpen = true
+						m.codexHistoryCursor = 0
+					}
+				} else if m.usageProvider == kimiProvider {
+					if m.kimiHistoryOpen {
+						m.kimiHistoryOpen = false
+					} else if len(m.kimiUsage.History) > 0 {
+						m.kimiHistoryOpen = true
+						m.kimiHistoryCursor = 0
+					}
 				}
 			}
 		case "esc", "backspace":
-			if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
+			if m.activeTab == usageTab && m.usageProvider == codexProvider && m.codexHistoryOpen {
+				m.codexHistoryOpen = false
+			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
 				m.kimiHistoryOpen = false
 			} else if m.activeTab == settingsTab {
 				m.cancelSettingsEdit()
@@ -601,8 +623,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.codexUsageErr = sanitizeProcessCommand(msg.err.Error())
 		} else {
+			history := m.codexUsage.History
 			m.codexUsage = msg.snapshot
+			m.codexUsage.History = history
 			m.codexUsageErr = ""
+		}
+		if msg.historyErr != nil {
+			m.codexHistoryErr = sanitizeProcessCommand(msg.historyErr.Error())
+		} else {
+			m.codexUsage.History = msg.snapshot.History
+			m.codexHistoryErr = ""
+			m.codexHistoryCursor = min(m.codexHistoryCursor, max(len(m.codexUsage.History)-1, 0))
+			if len(m.codexUsage.History) == 0 {
+				m.codexHistoryOpen = false
+			}
 		}
 
 	case copilotUsageResultMsg:
@@ -638,6 +672,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) cycleUsageProvider(delta int) tea.Cmd {
+	m.codexHistoryOpen = false
 	m.kimiHistoryOpen = false
 	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
@@ -650,6 +685,11 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 		return nil
 	}
 	return m.beginUsageRefresh()
+}
+
+func (m model) usageHistoryOpen() bool {
+	return (m.usageProvider == codexProvider && m.codexHistoryOpen) ||
+		(m.usageProvider == kimiProvider && m.kimiHistoryOpen)
 }
 
 func (m *model) beginUsageRefresh() tea.Cmd {

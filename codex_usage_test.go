@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -176,6 +178,147 @@ func TestRecentCodexDailyUsageFillsMissingDays(t *testing.T) {
 	}
 	if days[2].Tokens != 2100000 || days[5].Tokens != 0 || days[6].Tokens != 23800000 {
 		t.Fatalf("daily values = %#v", days)
+	}
+}
+
+func TestReadCodexHistoricalSessionsFromLocalState(t *testing.T) {
+	sqlite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skip("sqlite3 unavailable")
+	}
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	statePath := filepath.Join(home, "state_5.sqlite")
+	schema := `
+		CREATE TABLE threads (
+			id TEXT PRIMARY KEY,
+			title TEXT,
+			cwd TEXT,
+			model TEXT,
+			source TEXT,
+			git_branch TEXT,
+			updated_at INTEGER,
+			tokens_used INTEGER,
+			has_user_event INTEGER,
+			archived INTEGER
+		);
+		INSERT INTO threads VALUES ('older', 'Older session', '/tmp/older', 'gpt-old', 'cli', 'main', 100, 20, 0, 1);
+		INSERT INTO threads VALUES ('newer', 'Newer session', '/tmp/newer', 'gpt-new', 'app', 'feature', 200, 40, 0, 0);
+		INSERT INTO threads VALUES ('empty', 'No user event', '/tmp/empty', '', '', '', 300, 0, 0, 0);
+	`
+	if output, err := exec.Command(sqlite, statePath, schema).CombinedOutput(); err != nil {
+		t.Fatalf("create Codex state fixture: %v: %s", err, output)
+	}
+
+	sessions, err := readCodexHistoricalSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 3 || sessions[0].ID != "empty" || sessions[1].ID != "newer" || sessions[2].ID != "older" {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if sessions[1].Title != "Newer session" || sessions[1].GitBranch != "feature" || sessions[1].Tokens != 40 {
+		t.Fatalf("newer session = %#v", sessions[1])
+	}
+	if sessions[2].UpdatedAt.Unix() != 100 || sessions[2].Archived != 1 {
+		t.Fatalf("older session metadata = %#v", sessions[2])
+	}
+}
+
+func TestCodexHistoryQuerySupportsPartialSchema(t *testing.T) {
+	query, err := codexHistoryQuery(map[string]bool{
+		"id":         true,
+		"title":      true,
+		"updated_at": true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"NULLIF(title, '')", "NULLIF(updated_at, 0) * 1000", "0 AS tokens_used"} {
+		if !strings.Contains(query, expected) {
+			t.Fatalf("partial-schema query missing %q:\n%s", expected, query)
+		}
+	}
+	for _, absent := range []string{"NULLIF(thread_source", "NULLIF(git_branch", "WHERE COALESCE(has_user_event"} {
+		if strings.Contains(query, absent) {
+			t.Fatalf("partial-schema query referenced missing %q:\n%s", absent, query)
+		}
+	}
+	if _, err := codexHistoryQuery(map[string]bool{"title": true}); err == nil {
+		t.Fatal("schema without id column was accepted")
+	}
+}
+
+func TestDecodeCodexHistoricalSessionsSanitizesPartialRows(t *testing.T) {
+	sessions, err := decodeCodexHistoricalSessions([]byte(`[{"id":"session-1","display_name":"Build\u001b[31m feature","updated_at_ms":1000}]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || strings.Contains(sessions[0].Title, "\x1b") || sessions[0].UpdatedAt.UnixMilli() != 1000 {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if _, err := decodeCodexHistoricalSessions([]byte(`{malformed`)); err == nil {
+		t.Fatal("malformed history JSON was accepted")
+	}
+}
+
+func TestCodexUsageEnterBrowsesHistoricalSessions(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = codexProvider
+	m.width = 100
+	m.codexUsage.History = []codexHistoricalSession{
+		{ID: "one", Title: "First session", Model: "gpt-5.6-sol", WorkDir: "/work/one"},
+		{ID: "two", Title: "Second session", Model: "gpt-5.6-codex", WorkDir: "/work/two"},
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.codexHistoryOpen {
+		t.Fatal("Enter did not open Codex history")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.codexHistoryCursor != 1 || !strings.Contains(m.viewCodexHistory(7), "Second session") {
+		t.Fatalf("history cursor/view = %d\n%s", m.codexHistoryCursor, m.viewCodexHistory(7))
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.codexHistoryOpen {
+		t.Fatal("Esc did not close Codex history")
+	}
+}
+
+func TestCodexUsageEnterShowsEmptyHistoryState(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = codexProvider
+	m.width = 100
+	m.codexHistoryErr = "state database unavailable"
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.codexHistoryOpen {
+		t.Fatal("Enter did not open empty Codex history")
+	}
+	if view := m.viewCodexHistory(8); !strings.Contains(view, "Session history unavailable") {
+		t.Fatalf("empty history did not explain failure:\n%s", view)
+	}
+}
+
+func TestCodexHistoryRefreshFailureRetainsLastGoodSessions(t *testing.T) {
+	m := testModel()
+	m.codexUsage.History = []codexHistoricalSession{{ID: "known"}}
+	updated, _ := m.Update(codexUsageResultMsg{
+		snapshot:   codexUsageSnapshot{Daily: []codexDailyUsage{{StartDate: "2026-08-12", Tokens: 1}}},
+		refreshed:  time.Now(),
+		historyErr: errTestCodexUsage,
+	})
+	m = updated.(model)
+	if len(m.codexUsage.History) != 1 || m.codexUsage.History[0].ID != "known" {
+		t.Fatal("failed history refresh discarded last good sessions")
+	}
+	if m.codexHistoryErr == "" {
+		t.Fatal("failed history refresh did not expose error")
 	}
 }
 
