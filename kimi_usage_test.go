@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,26 @@ func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset", "TOKENS BY DAY", "Today"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Kimi usage view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestKimiUsageViewUsesUniqueModelColors(t *testing.T) {
+	m := newModel(nil)
+	m.width = 100
+	modelNames := make([]string, 10)
+	for index := range modelNames {
+		modelNames[index] = fmt.Sprintf("kimi-model-%d", index)
+		m.kimiUsage.Models = append(m.kimiUsage.Models, kimiUsageModel{Model: modelNames[index], Tokens: int64(100 - index)})
+	}
+	view := m.viewKimiUsage(40)
+	assignments := modelUsageColorAssignments(modelNames)
+	if len(assignments) != 10 {
+		t.Fatalf("Kimi model color count = %d, want 10", len(assignments))
+	}
+	for _, color := range assignments {
+		if !strings.Contains(view, "38;2;"+color) {
+			t.Fatalf("Kimi model color %s missing", color)
 		}
 	}
 }

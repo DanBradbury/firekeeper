@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -105,19 +107,47 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 }
 
 func TestColorModelUsageAssignsStableDistinctColors(t *testing.T) {
-	models := []modelUsage{
-		{Model: "gpt-5.6-sol", Tokens: 100},
-		{Model: "gpt-5.6-codex", Tokens: 80},
+	models := make([]modelUsage, 10)
+	for index := range models {
+		models[index] = modelUsage{Model: fmt.Sprintf("model-%d", index), Tokens: int64(100 - index)}
 	}
 	colored := colorModelUsage(models)
-	if colored[0].Color == "" || colored[1].Color == "" {
-		t.Fatalf("model colors = %#v, want colors", colored)
+	used := make(map[string]bool, len(colored))
+	for _, model := range colored {
+		if model.Color == "" {
+			t.Fatalf("model colors = %#v, want colors", colored)
+		}
+		if used[model.Color] {
+			t.Fatalf("model color %q repeated: %#v", model.Color, colored)
+		}
+		used[model.Color] = true
 	}
-	if colored[0].Color == colored[1].Color {
-		t.Fatalf("model colors = %#v, want distinct colors", colored)
+	if len(used) != 10 || len(modelUsageColors) != 10 {
+		t.Fatalf("unique colors/palette = %d/%d, want 10/10", len(used), len(modelUsageColors))
 	}
-	if again := colorModelUsage([]modelUsage{{Model: "gpt-5.6-codex"}, {Model: "gpt-5.6-sol"}}); again[0].Color != colored[1].Color || again[1].Color != colored[0].Color {
-		t.Fatalf("model colors changed between calls: %#v then %#v", colored, again)
+	reversed := append([]modelUsage(nil), models...)
+	slices.Reverse(reversed)
+	again := colorModelUsage(reversed)
+	byModel := make(map[string]string, len(colored))
+	for _, model := range colored {
+		byModel[model.Model] = model.Color
+	}
+	for _, model := range again {
+		if model.Color != byModel[model.Model] {
+			t.Fatalf("color for %q changed from %q to %q after reorder", model.Model, byModel[model.Model], model.Color)
+		}
+	}
+}
+
+func TestModelColorAssignmentsStayConsistentAcrossOverviewSections(t *testing.T) {
+	assignments := modelUsageColorAssignments([]string{"gpt-5", "claude-opus", "gpt-5", "claude-sonnet"})
+	legend := colorModelUsageWithAssignments([]modelUsage{{Model: "gpt-5"}, {Model: "claude-opus"}}, assignments)
+	daily := colorModelUsageWithAssignments([]modelUsage{{Model: "claude-opus"}, {Model: "gpt-5"}}, assignments)
+	if legend[0].Color != daily[1].Color || legend[1].Color != daily[0].Color {
+		t.Fatalf("overview colors changed between sections: legend=%#v daily=%#v", legend, daily)
+	}
+	if legend[0].Color == legend[1].Color {
+		t.Fatalf("overview models share color: %#v", legend)
 	}
 }
 
@@ -160,7 +190,8 @@ func TestCodexUsageViewUsesModelSplitDailyBars(t *testing.T) {
 	if !strings.Contains(view, "TOKENS BY DAY · MODEL") {
 		t.Fatalf("model daily heading missing:\n%s", view)
 	}
-	for _, color := range []string{modelUsageColor("gpt-5.6-sol"), modelUsageColor("gpt-5.6-codex")} {
+	colors := modelUsageColorAssignments([]string{"gpt-5.6-sol", "gpt-5.6-codex"})
+	for _, color := range colors {
 		if !strings.Contains(view, "38;2;"+color) {
 			t.Fatalf("model color %s missing:\n%s", color, view)
 		}
