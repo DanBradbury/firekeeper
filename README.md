@@ -120,8 +120,10 @@ without a controlling TTY cannot be selected this way.
 | Left / Right or `H` / `L` | Switch between Codex, Copilot, and Kimi |
 | `r` | Refresh selected provider |
 
-When Kimi is selected, press `Enter` to browse historical sessions. Use
-Up/Down to select a session; press `Enter` or `Esc` to return.
+When Codex or Kimi is selected, press `Enter` to browse historical sessions.
+Use Up/Down to select a session; press `Enter` or `Esc` to return. Codex history
+is read from the local `state_5.sqlite` database and is limited to the 500 most
+recent sessions.
 
 ### Settings
 
