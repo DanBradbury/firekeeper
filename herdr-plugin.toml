@@ -1,0 +1,21 @@
+id = "firekeeper.dashboard"
+name = "Firekeeper Dashboard"
+version = "0.1.0"
+min_herdr_version = "0.8.0"
+description = "Open Firekeeper's pixel-art coding-agent dashboard inside Herdr"
+platforms = ["macos"]
+
+[[build]]
+command = ["go", "build", "-o", "firekeeper", "."]
+
+[[actions]]
+id = "open-dashboard"
+title = "Open Firekeeper Dashboard"
+contexts = ["workspace"]
+command = ["herdr", "plugin", "pane", "open", "--plugin", "firekeeper.dashboard", "--entrypoint", "dashboard", "--placement", "tab", "--focus"]
+
+[[panes]]
+id = "dashboard"
+title = "Firekeeper Dashboard"
+placement = "tab"
+command = ["./firekeeper", "--renderer", "blocks"]

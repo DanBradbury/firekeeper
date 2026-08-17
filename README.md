@@ -50,6 +50,26 @@ For local development:
 go run .
 ```
 
+### Herdr plugin
+
+Firekeeper can also run as a dashboard tab inside Herdr 0.8.0 or newer. Plugin
+installation builds Firekeeper locally and therefore has the same Go 1.26 or
+newer requirement:
+
+```sh
+herdr plugin install DanBradbury/firekeeper
+herdr plugin action invoke firekeeper.dashboard.open-dashboard
+```
+
+For plugin development from a repository checkout, build the plugin binary and
+link the checkout instead:
+
+```sh
+go build -o firekeeper .
+herdr plugin link "$PWD"
+herdr plugin pane open --plugin firekeeper.dashboard --entrypoint dashboard --placement tab --focus
+```
+
 If [just](https://github.com/casey/just) is installed, use `just` shortcuts:
 
 ```sh
