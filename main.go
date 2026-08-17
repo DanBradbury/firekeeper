@@ -1213,6 +1213,7 @@ func (m model) animationScene(columns, rows int) sprite {
 			canvas.drawPixelTextCentered(layout.kimiX+layout.kimiCharacter.width/2, layout.kimiY+layout.kimiCharacter.height+providerLabelGap, "KIMI", providerLabelScale, rgb{r: 248, g: 248, b: 255})
 		}
 	}
+	m.drawAnimationPartySidebar(&canvas)
 	return canvas.sprite()
 }
 
