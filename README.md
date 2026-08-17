@@ -92,11 +92,10 @@ reveal effect before their character, crest, and label appear.
 | Key | Action |
 | --- | --- |
 | `M` | Open or close menu |
-| Arrow keys / `HJKL` | Navigate |
+| Arrow keys / `HJKL` | Navigate open menus |
 | Enter on **STATUS** | Show active Codex sessions |
 | Esc / Backspace | Return or close menu |
-| Left / Right | Cycle character animations when menu is closed |
-| Up / Down | Change animation speed when menu is closed |
+| Up / Down or `J` / `K` | Select and scroll party sessions when menu is closed |
 | Space | Pause or resume animation |
 | `[` / `]` | Resize character sprite |
 

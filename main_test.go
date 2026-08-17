@@ -45,44 +45,21 @@ func TestEmbeddedWizardHeadshot(t *testing.T) {
 	}
 }
 
-func TestAnimationControlsWrapAndResetFrame(t *testing.T) {
+func TestAnimationLeftRightControlsNoLongerChangeAnimation(t *testing.T) {
 	m := testModel()
+	m.animation = 3
 	m.frame = 7
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyLeft})
 	m = updated.(model)
-	if m.animation != 9 || m.frame != 0 {
-		t.Fatalf("left from first animation = animation %d frame %d, want 9/0", m.animation, m.frame)
+	if m.animation != 3 || m.frame != 7 {
+		t.Fatalf("left changed animation/frame to %d/%d", m.animation, m.frame)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m = updated.(model)
-	if m.animation != 0 || m.frame != 0 {
-		t.Fatalf("right from last animation = animation %d frame %d, want 0/0", m.animation, m.frame)
-	}
-}
-
-func TestAnimationRateControlsAndBounds(t *testing.T) {
-	m := testModel()
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(model)
-	if m.frameDuration != defaultFrameDuration-rateStep {
-		t.Fatalf("up duration = %s, want %s", m.frameDuration, defaultFrameDuration-rateStep)
-	}
-
-	m.frameDuration = minimumFrameDuration
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
-	m = updated.(model)
-	if m.frameDuration != minimumFrameDuration {
-		t.Fatalf("minimum duration crossed: %s", m.frameDuration)
-	}
-
-	m.frameDuration = maximumFrameDuration
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(model)
-	if m.frameDuration != maximumFrameDuration {
-		t.Fatalf("maximum duration crossed: %s", m.frameDuration)
+	if m.animation != 3 || m.frame != 7 {
+		t.Fatalf("right changed animation/frame to %d/%d", m.animation, m.frame)
 	}
 }
 
