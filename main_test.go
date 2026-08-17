@@ -208,7 +208,10 @@ func TestNewProviderPlaysRevealEffectBeforeCharacter(t *testing.T) {
 		return sprite{width: 1, height: 1, pixels: []rgba{{r: red, a: 255}}}
 	}
 	m := newModel([][]sprite{{frame(200)}}).withRevealEffect([]sprite{frame(80), frame(120)})
-	updated, _ := m.Update(processResultMsg{groups: []processGroup{{tool: "Codex"}}, refreshed: time.Now()})
+	updated, _ := m.Update(processResultMsg{groups: []processGroup{{
+		tool:     "Codex",
+		sessions: []sessionInfo{{name: "Revealed session"}},
+	}}, refreshed: time.Now()})
 	m = updated.(model)
 	if !m.codexReveal.playing || m.codexReveal.frame != 0 {
 		t.Fatalf("initial reveal = %#v, want frame zero", m.codexReveal)
@@ -829,6 +832,40 @@ func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 	}
 }
 
+func TestProcessRefreshDropsUnidentifiedCodexGroups(t *testing.T) {
+	m := testModel()
+	updated, _ := m.Update(processResultMsg{
+		groups: []processGroup{
+			{
+				tool: "Codex",
+				root: processInfo{pid: 101, tty: "ttys001", command: "codex"},
+			},
+			{
+				tool: "Codex",
+				root: processInfo{pid: 202, tty: "ttys002", command: "codex"},
+				sessions: []sessionInfo{{
+					id:    "019fb33c-c5f4-75f3-b987-228eb484c6ec",
+					name:  "Known Codex session",
+					state: sessionStateUnknown,
+				}},
+			},
+			{tool: "OpenCode", root: processInfo{pid: 303}},
+		},
+		refreshed: time.Now(),
+	})
+	m = updated.(model)
+
+	if len(m.processGroups) != 2 {
+		t.Fatalf("visible process groups = %d, want 2", len(m.processGroups))
+	}
+	if m.processGroups[0].root.pid != 202 || m.processGroups[0].sessions[0].name != "Known Codex session" {
+		t.Fatalf("identified Codex group was not preserved: %#v", m.processGroups[0])
+	}
+	if m.processGroups[1].tool != "OpenCode" {
+		t.Fatalf("process-only provider was dropped: %#v", m.processGroups[1])
+	}
+}
+
 func TestRPGMenuLinesFillRequestedPanel(t *testing.T) {
 	lines := rpgMenuLines(24, 18, 0)
 	if len(lines) != 18 {
@@ -1004,6 +1041,36 @@ func TestProcessSwitchKeyStartsTerminalFocus(t *testing.T) {
 	}
 	if !strings.Contains(m.terminalStatus, "ttys001") {
 		t.Fatalf("switch status = %q", m.terminalStatus)
+	}
+}
+
+func TestAnimationEnterStartsSelectedPartyTerminalFocus(t *testing.T) {
+	m := testModel()
+	m.activeTab = animationTab
+	m.processGroups = []processGroup{
+		{
+			tool:     "Codex",
+			root:     processInfo{pid: 101, tty: "ttys001"},
+			sessions: []sessionInfo{{cwd: "/workspace/first"}},
+		},
+		{
+			tool:     "Copilot",
+			root:     processInfo{pid: 202, tty: "ttys002"},
+			sessions: []sessionInfo{{cwd: "/workspace/second"}},
+		},
+	}
+	m.partyCursor = 1
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("Enter did not start terminal focus for selected party session")
+	}
+	if !strings.Contains(m.terminalStatus, "ttys002") {
+		t.Fatalf("switch status = %q", m.terminalStatus)
+	}
+	if _, status := m.animationFooter(); !strings.Contains(status, "switching to ttys002") {
+		t.Fatalf("animation footer status = %q", status)
 	}
 }
 

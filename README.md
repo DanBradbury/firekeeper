@@ -74,11 +74,12 @@ provider label identifies its harness. Each crest shows total discovered
 runtimes in gold and currently active runtimes in red. An MMORPG-style party
 sidebar stacks every discovered local session with its provider's configured
 headshot, working-directory name, and latest observable state. Runtimes without
-session metadata still appear with an unknown directory and state. Active
-provider runtimes periodically use their attack animation, with a random 2–5
-second idle pause between attacks. Characters only appear while their provider
-has a discovered local runtime. Newly discovered providers play a one-shot
-reveal effect before their character, crest, and label appear.
+session metadata still appear with an unknown directory and state, except for
+Codex process groups, which are hidden until they can be matched to a session.
+Active provider runtimes periodically use their attack animation, with a random
+2–5 second idle pause between attacks. Characters only appear while their
+provider has a discovered local runtime. Newly discovered providers play a
+one-shot reveal effect before their character, crest, and label appear.
 
 ### Global controls
 
@@ -96,6 +97,7 @@ reveal effect before their character, crest, and label appear.
 | Enter on **STATUS** | Show active Codex sessions |
 | Esc / Backspace | Return or close menu |
 | Up / Down or `J` / `K` | Select and scroll party sessions when menu is closed |
+| Enter | Switch to the selected party session when the menu is closed |
 | Space | Pause or resume animation |
 | `[` / `]` | Resize character sprite |
 
@@ -192,6 +194,8 @@ Copilot CLI, it maps runtime PIDs to `~/.copilot/session-state` and reads
 `CODEX_HOME`, `KIMI_CODE_HOME`, and `COPILOT_HOME` overrides are honored. Provider events supply
 best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. OpenCode currently
 exposes process information without provider-specific session metadata.
+Codex Desktop helper processes that cannot be matched to rollout metadata are
+not shown as sessions.
 
 All monitoring stays local. Firekeeper does not proxy prompts or replace agent
 clients.

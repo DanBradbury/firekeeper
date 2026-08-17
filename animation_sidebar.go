@@ -58,6 +58,32 @@ func animationPartySessions(groups []processGroup) []animationPartySession {
 	return sessions
 }
 
+func selectedPartyTerminalTarget(groups []processGroup, selected int) (string, string, bool) {
+	if selected < 0 {
+		return "", "", false
+	}
+	for _, group := range groups {
+		if len(group.sessions) == 0 {
+			if selected == 0 {
+				return group.root.tty, groupWorkingDirectory(group), true
+			}
+			selected--
+			continue
+		}
+		for _, session := range group.sessions {
+			if selected == 0 {
+				cwd := session.cwd
+				if cwd == "" {
+					cwd = groupWorkingDirectory(group)
+				}
+				return group.root.tty, cwd, true
+			}
+			selected--
+		}
+	}
+	return "", "", false
+}
+
 func animationSessionDirectory(cwd string) string {
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {
