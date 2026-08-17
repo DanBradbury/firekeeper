@@ -64,18 +64,21 @@ just --list    # show all recipes
 Firekeeper opens on an animated camp scene. Press Tab to move between four
 views:
 
-- **Animation** — home scene with Codex, Copilot, and Kimi characters plus RPG-style command menu.
+- **Animation** — home scene with provider characters, live-session party sidebar, and RPG-style command menu.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
 - **Settings** — configure Codex, Copilot, and Kimi character sprites.
 
 The Animation scene uses a pixel-art beach battle backdrop. Each character’s
 provider label identifies its harness. Each crest shows total discovered
-runtimes in gold and currently active runtimes in red. Active provider runtimes
-periodically use their attack animation, with a random 2–5 second idle pause
-between attacks. Characters only appear while their provider has a discovered
-local runtime. Newly discovered providers play a one-shot reveal effect before
-their character, crest, and label appear.
+runtimes in gold and currently active runtimes in red. An MMORPG-style party
+sidebar stacks every discovered local session with its provider's configured
+headshot, working-directory name, and latest observable state. Runtimes without
+session metadata still appear with an unknown directory and state. Active
+provider runtimes periodically use their attack animation, with a random 2–5
+second idle pause between attacks. Characters only appear while their provider
+has a discovered local runtime. Newly discovered providers play a one-shot
+reveal effect before their character, crest, and label appear.
 
 ### Global controls
 
