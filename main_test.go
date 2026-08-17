@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -1071,6 +1073,61 @@ func TestAnimationEnterStartsSelectedPartyTerminalFocus(t *testing.T) {
 	}
 	if _, status := m.animationFooter(); !strings.Contains(status, "switching to ttys002") {
 		t.Fatalf("animation footer status = %q", status)
+	}
+}
+
+func TestTerminalSwitchResultReportsHerdrPane(t *testing.T) {
+	m := testModel()
+	updated, _ := m.Update(terminalSwitchResultMsg{
+		tty:         "ttys009",
+		app:         "Terminal.app",
+		multiplexer: "Herdr",
+	})
+	m = updated.(model)
+	for _, expected := range []string{"Terminal.app", "ttys009", "Herdr pane"} {
+		if !strings.Contains(m.terminalStatus, expected) {
+			t.Fatalf("terminal status %q missing %q", m.terminalStatus, expected)
+		}
+	}
+}
+
+func TestSwitchTerminalTargetUsesHerdrClientTTY(t *testing.T) {
+	target := terminalSwitchTarget{tty: "ttys-inner", cwd: "/workspace/firekeeper"}
+	var focusedTTY, focusedCWD string
+	result := switchTerminalTargetWith(
+		target,
+		func(context.Context, terminalSwitchTarget) (herdrFocusTarget, bool, error) {
+			return herdrFocusTarget{session: "work", paneID: "2-3", clientTTY: "ttys-outer"}, true, nil
+		},
+		func(tty, cwd string) (string, error) {
+			focusedTTY, focusedCWD = tty, cwd
+			return "Terminal.app", nil
+		},
+	)
+	if focusedTTY != "ttys-outer" || focusedCWD != target.cwd {
+		t.Fatalf("terminal focus target = %q, %q", focusedTTY, focusedCWD)
+	}
+	if result.multiplexer != "Herdr" || result.tty != "ttys-outer" || result.err != nil {
+		t.Fatalf("switch result = %#v", result)
+	}
+}
+
+func TestSwitchTerminalTargetFallsBackWhenHerdrFocusFails(t *testing.T) {
+	target := terminalSwitchTarget{tty: "ttys001", cwd: "/workspace/firekeeper"}
+	result := switchTerminalTargetWith(
+		target,
+		func(context.Context, terminalSwitchTarget) (herdrFocusTarget, bool, error) {
+			return herdrFocusTarget{session: "work", paneID: "2-3"}, true, errors.New("server unavailable")
+		},
+		func(tty, cwd string) (string, error) {
+			if tty != target.tty || cwd != target.cwd {
+				t.Fatalf("fallback terminal focus target = %q, %q", tty, cwd)
+			}
+			return "Ghostty", nil
+		},
+	)
+	if result.app != "Ghostty" || result.err != nil || !strings.Contains(result.warning, "server unavailable") {
+		t.Fatalf("fallback switch result = %#v", result)
 	}
 }
 

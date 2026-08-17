@@ -54,15 +54,15 @@ func TestSelectedPartyTerminalTargetTracksFlattenedSessionSelection(t *testing.T
 		{tool: "OpenCode", root: processInfo{tty: "ttys002"}},
 	}
 
-	tty, cwd, ok := selectedPartyTerminalTarget(groups, 1)
-	if !ok || tty != "ttys001" || cwd != "/workspace/backend" {
-		t.Fatalf("second party target = %q, %q, %t", tty, cwd, ok)
+	target, ok := selectedPartyTerminalTarget(groups, 1)
+	if !ok || target.tty != "ttys001" || target.cwd != "/workspace/backend" {
+		t.Fatalf("second party target = %#v, %t", target, ok)
 	}
-	tty, cwd, ok = selectedPartyTerminalTarget(groups, 2)
-	if !ok || tty != "ttys002" || cwd != "" {
-		t.Fatalf("process-only party target = %q, %q, %t", tty, cwd, ok)
+	target, ok = selectedPartyTerminalTarget(groups, 2)
+	if !ok || target.tty != "ttys002" || target.cwd != "" {
+		t.Fatalf("process-only party target = %#v, %t", target, ok)
 	}
-	if _, _, ok := selectedPartyTerminalTarget(groups, 3); ok {
+	if _, ok := selectedPartyTerminalTarget(groups, 3); ok {
 		t.Fatal("out-of-range party selection returned a target")
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"flag"
@@ -203,9 +204,11 @@ type processResultMsg struct {
 }
 
 type terminalSwitchResultMsg struct {
-	tty string
-	app string
-	err error
+	tty         string
+	app         string
+	multiplexer string
+	warning     string
+	err         error
 }
 
 type providerAttackState struct {
@@ -509,10 +512,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.menuPage = rpgMenuStatus
 				m.statusCursor = 0
 			} else if m.activeTab == animationTab && !m.menuOpen {
-				tty, cwd, ok := selectedPartyTerminalTarget(m.processGroups, m.partyCursor)
+				target, ok := selectedPartyTerminalTarget(m.processGroups, m.partyCursor)
 				if ok {
-					m.terminalStatus = "switching to " + displayTTY(tty) + "…"
-					return m, switchToTerminal(tty, cwd)
+					m.terminalStatus = "switching to " + displayTTY(target.tty) + "…"
+					return m, switchToTerminal(target)
 				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
@@ -573,8 +576,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
 				group := m.processGroups[m.processCursor]
-				m.terminalStatus = "switching to " + displayTTY(group.root.tty) + "…"
-				return m, switchToTerminal(group.root.tty, groupWorkingDirectory(group))
+				target := newTerminalSwitchTarget(group, 0)
+				m.terminalStatus = "switching to " + displayTTY(target.tty) + "…"
+				return m, switchToTerminal(target)
 			}
 		case "m", "M":
 			if m.activeTab == animationTab {
@@ -637,6 +641,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.terminalStatus = "terminal switch failed: " + sanitizeProcessCommand(msg.err.Error())
 		} else {
 			m.terminalStatus = "switched to " + msg.app + " " + displayTTY(msg.tty)
+			if msg.multiplexer != "" {
+				m.terminalStatus += " • " + msg.multiplexer + " pane"
+			}
+			if msg.warning != "" {
+				m.terminalStatus += " • " + sanitizeProcessCommand(msg.warning)
+			}
 		}
 
 	case codexUsageResultMsg:
@@ -1901,10 +1911,38 @@ end run`,
 	},
 }
 
-func switchToTerminal(tty, cwd string) tea.Cmd {
+func switchToTerminal(target terminalSwitchTarget) tea.Cmd {
 	return func() tea.Msg {
-		app, err := focusTerminalSession(tty, cwd)
-		return terminalSwitchResultMsg{tty: tty, app: app, err: err}
+		return switchTerminalTargetWith(target, focusHerdrTarget, focusTerminalSession)
+	}
+}
+
+func switchTerminalTargetWith(
+	target terminalSwitchTarget,
+	focusHerdr func(context.Context, terminalSwitchTarget) (herdrFocusTarget, bool, error),
+	focusTerminal func(string, string) (string, error),
+) terminalSwitchResultMsg {
+	focusTTY := target.tty
+	multiplexer := ""
+	warning := ""
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	resolved, found, herdrErr := focusHerdr(ctx, target)
+	if found && herdrErr == nil {
+		multiplexer = "Herdr"
+		if resolved.clientTTY != "" {
+			focusTTY = resolved.clientTTY
+		}
+	} else if found {
+		warning = "Herdr pane focus failed: " + herdrErr.Error()
+	}
+	app, err := focusTerminal(focusTTY, target.cwd)
+	return terminalSwitchResultMsg{
+		tty:         focusTTY,
+		app:         app,
+		multiplexer: multiplexer,
+		warning:     warning,
+		err:         err,
 	}
 }
 

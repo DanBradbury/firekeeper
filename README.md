@@ -18,7 +18,7 @@ More harnesses and providers are planned.
 - See whether Codex, Kimi, and Copilot sessions are active, waiting, or need input.
 - Inspect session metadata, working directory, model, Git branch, and tokens.
 - View Codex limits, recent token usage, active models, and local Kimi token usage.
-- Jump to a selected agent terminal session on macOS.
+- Jump to a selected agent terminal or Herdr pane on macOS.
 - Show a static Codex character portrait in Settings.
 - Keep existing CLI workflows: no daemon, remote argument, or wrapper required.
 - Navigate everything from a pixel-art, keyboard-driven TUI.
@@ -136,6 +136,17 @@ Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
 Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
 matched by TTY. macOS may request Automation permission on first use. Sessions
 without a controlling TTY cannot be selected this way.
+
+When the selected Codex or Copilot runtime is inside
+[Herdr](https://herdr.dev/), Firekeeper also focuses its Herdr pane before
+bringing the containing terminal forward. Detection is read-only and happens
+only when switching. Firekeeper checks all running Herdr sessions and matches by
+native agent session ID when available, then by process ID, with a unique
+working-directory match as a fallback. The optional Herdr integrations
+(`herdr integration install codex` and `herdr integration install copilot`)
+improve matching but are not required. Named Herdr sessions and attached
+Ghostty or Terminal.app clients are supported; if Herdr is unavailable or no
+unambiguous pane is found, Firekeeper falls back to normal terminal switching.
 
 ### Usage
 
