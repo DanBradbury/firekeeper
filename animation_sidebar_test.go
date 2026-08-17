@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
 
 func TestAnimationPartySessionsIncludeAllProvidersAndStates(t *testing.T) {
 	groups := []processGroup{
@@ -87,6 +91,9 @@ func TestAnimationSceneDrawsStackedPartyCards(t *testing.T) {
 
 	firstCardX := panelX + partySidebarPadding
 	firstCardY := partySidebarHeaderHeight
+	if got := scene.at(firstCardX, firstCardY); got != (rgba{r: partySelectedBorder.r, g: partySelectedBorder.g, b: partySelectedBorder.b, a: 255}) {
+		t.Fatalf("selected card border = %#v, want %#v", got, partySelectedBorder)
+	}
 	activeAccent := rgb{r: 81, g: 220, b: 118}
 	if got := scene.at(firstCardX+1, firstCardY+1); got != (rgba{r: activeAccent.r, g: activeAccent.g, b: activeAccent.b, a: 255}) {
 		t.Fatalf("active card accent = %#v, want %#v", got, activeAccent)
@@ -110,6 +117,76 @@ func TestAnimationPartySidebarUsesResponsiveWidth(t *testing.T) {
 	}
 	if got := partySidebarWidth(80 * animationSourceScale); got != partySidebarColumns*animationSourceScale {
 		t.Fatalf("wide sidebar width = %d, want %d", got, partySidebarColumns*animationSourceScale)
+	}
+}
+
+func TestAnimationPartyKeysSelectAndScrollEveryMember(t *testing.T) {
+	m := testModel()
+	m.width = 80
+	m.height = 15
+	for index := 0; index < 5; index++ {
+		m.processGroups = append(m.processGroups, processGroup{
+			tool: "Codex",
+			sessions: []sessionInfo{{
+				cwd:   "/workspace/member",
+				state: sessionStateActive,
+			}},
+		})
+	}
+	if capacity := partySidebarCapacity(m.width*animationSourceScale, (m.height-chromeRows)*2*animationSourceScale); capacity != 2 {
+		t.Fatalf("party capacity = %d, want 2", capacity)
+	}
+	originalAnimation := m.animation
+	originalRate := m.frameDuration
+
+	for wantCursor := 1; wantCursor < 5; wantCursor++ {
+		key := tea.KeyMsg{Type: tea.KeyDown}
+		if wantCursor == 1 {
+			key = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}}
+		}
+		updated, _ := m.Update(key)
+		m = updated.(model)
+		if m.partyCursor != wantCursor {
+			t.Fatalf("party cursor = %d, want %d", m.partyCursor, wantCursor)
+		}
+	}
+	if m.partyScroll != 3 {
+		t.Fatalf("party scroll at last member = %d, want 3", m.partyScroll)
+	}
+	if m.animation != originalAnimation || m.frameDuration != originalRate {
+		t.Fatalf("party navigation changed animation/rate to %d/%s", m.animation, m.frameDuration)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.partyCursor != 0 || m.partyScroll != 0 {
+		t.Fatalf("wrapped party selection = cursor %d scroll %d, want 0/0", m.partyCursor, m.partyScroll)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(model)
+	if m.partyCursor != 4 || m.partyScroll != 3 {
+		t.Fatalf("reverse wrapped party selection = cursor %d scroll %d, want 4/3", m.partyCursor, m.partyScroll)
+	}
+}
+
+func TestPartyViewportKeepsSelectedMemberVisible(t *testing.T) {
+	for _, test := range []struct {
+		name                   string
+		cursor, scroll         int
+		total, capacity        int
+		wantCursor, wantScroll int
+	}{
+		{name: "scroll down", cursor: 4, total: 6, capacity: 3, wantCursor: 4, wantScroll: 2},
+		{name: "scroll up", cursor: 1, scroll: 3, total: 6, capacity: 3, wantCursor: 1, wantScroll: 1},
+		{name: "clamp stale selection", cursor: 9, scroll: 9, total: 4, capacity: 2, wantCursor: 3, wantScroll: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cursor, scroll := partyViewport(test.cursor, test.scroll, test.total, test.capacity)
+			if cursor != test.wantCursor || scroll != test.wantScroll {
+				t.Fatalf("viewport = cursor %d scroll %d, want %d/%d", cursor, scroll, test.wantCursor, test.wantScroll)
+			}
+		})
 	}
 }
 

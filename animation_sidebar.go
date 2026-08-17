@@ -27,6 +27,7 @@ var (
 	partyTextBright      = rgb{r: 248, g: 248, b: 255}
 	partyTextMuted       = rgb{r: 171, g: 184, b: 202}
 	partyCardBorder      = rgb{r: 17, g: 22, b: 35}
+	partySelectedBorder  = rgb{r: 255, g: 224, b: 117}
 )
 
 type animationPartySession struct {
@@ -82,10 +83,14 @@ func (m model) drawAnimationPartySidebar(scene *canvas) {
 	panel := newCanvas(panelWidth, scene.height, partyPanelBackground)
 	drawPartyFrame(&panel)
 	sessions := animationPartySessions(m.processGroups)
-	header := "PARTY " + strconv.Itoa(len(sessions))
+	header := "PARTY 0"
+	if len(sessions) > 0 {
+		displayCursor := min(max(m.partyCursor, 0), len(sessions)-1)
+		header = "PARTY " + strconv.Itoa(displayCursor+1) + "/" + strconv.Itoa(len(sessions))
+	}
 	panel.drawPartyTextCentered(panelWidth/2, 5, header, partyTextBright)
 
-	capacity := max((scene.height-partySidebarHeaderHeight+partyCardGap)/(partyCardHeight+partyCardGap), 0)
+	capacity := partySidebarCapacity(scene.width, scene.height)
 	if capacity == 0 {
 		return
 	}
@@ -101,18 +106,12 @@ func (m model) drawAnimationPartySidebar(scene *canvas) {
 		return
 	}
 
-	visibleSessions := min(len(sessions), capacity)
-	showOverflow := len(sessions) > capacity
-	if showOverflow {
-		visibleSessions = max(capacity-1, 0)
-	}
+	cursor, start := partyViewport(m.partyCursor, m.partyScroll, len(sessions), capacity)
+	end := min(start+capacity, len(sessions))
 	cardY := partySidebarHeaderHeight
-	for index := 0; index < visibleSessions; index++ {
-		m.drawPartySessionCard(&panel, cardY, sessions[index])
+	for index := start; index < end; index++ {
+		m.drawPartySessionCard(&panel, cardY, sessions[index], index == cursor)
 		cardY += partyCardHeight + partyCardGap
-	}
-	if showOverflow {
-		drawPartyOverflowCard(&panel, cardY, len(sessions)-visibleSessions)
 	}
 
 	scene.drawSprite(scene.width-panelWidth, 0, panel.sprite())
@@ -124,6 +123,63 @@ func partySidebarWidth(sceneWidth int) int {
 		return 0
 	}
 	return min(partySidebarColumns*animationSourceScale, sceneWidth/2)
+}
+
+func partySidebarCapacity(sceneWidth, sceneHeight int) int {
+	if partySidebarWidth(sceneWidth) == 0 || sceneHeight < partySidebarHeaderHeight+partyCardHeight {
+		return 0
+	}
+	return max((sceneHeight-partySidebarHeaderHeight+partyCardGap)/(partyCardHeight+partyCardGap), 0)
+}
+
+func partyViewport(cursor, scroll, total, capacity int) (int, int) {
+	if total < 1 || capacity < 1 {
+		return 0, 0
+	}
+	cursor = min(max(cursor, 0), total-1)
+	maxScroll := max(total-capacity, 0)
+	scroll = min(max(scroll, 0), maxScroll)
+	if cursor < scroll {
+		scroll = cursor
+	} else if cursor >= scroll+capacity {
+		scroll = cursor - capacity + 1
+	}
+	return cursor, min(max(scroll, 0), maxScroll)
+}
+
+func (m *model) movePartyCursor(delta int) {
+	count := len(animationPartySessions(m.processGroups))
+	if count < 1 {
+		m.partyCursor = 0
+		m.partyScroll = 0
+		return
+	}
+	m.partyCursor = (m.partyCursor + delta + count) % count
+	m.ensurePartySelectionVisible()
+}
+
+func (m *model) clampPartySelection() {
+	count := len(animationPartySessions(m.processGroups))
+	if count < 1 {
+		m.partyCursor = 0
+		m.partyScroll = 0
+		return
+	}
+	m.partyCursor = min(max(m.partyCursor, 0), count-1)
+	m.ensurePartySelectionVisible()
+}
+
+func (m *model) ensurePartySelectionVisible() {
+	count := len(animationPartySessions(m.processGroups))
+	capacity := partySidebarCapacity(
+		max(m.width, 1)*animationSourceScale,
+		max(m.height-chromeRows, 0)*2*animationSourceScale,
+	)
+	if count < 1 || capacity < 1 {
+		m.partyScroll = 0
+		return
+	}
+	m.partyCursor, m.partyScroll = partyViewport(m.partyCursor, m.partyScroll, count, capacity)
 }
 
 func drawPartyFrame(panel *canvas) {
@@ -140,12 +196,16 @@ func drawPartyFrame(panel *canvas) {
 	)
 }
 
-func (m model) drawPartySessionCard(panel *canvas, y int, session animationPartySession) {
+func (m model) drawPartySessionCard(panel *canvas, y int, session animationPartySession, selected bool) {
 	x := partySidebarPadding
 	width := panel.width - partySidebarPadding*2
 	fill, accent := partySessionColors(session.provider, session.state)
 	drawPartyFilledRect(panel, x, y, width, partyCardHeight, fill)
-	drawPartyRectOutline(panel, x, y, width, partyCardHeight, partyCardBorder)
+	border := partyCardBorder
+	if selected {
+		border = partySelectedBorder
+	}
+	drawPartyRectOutline(panel, x, y, width, partyCardHeight, border)
 	drawPartyFilledRect(panel, x+1, y+1, partyCardStatusIndicatorSize, partyCardHeight-2, accent)
 
 	portrait := m.animationProviderPortrait(session.provider)
@@ -162,14 +222,6 @@ func (m model) drawPartySessionCard(panel *canvas, y int, session animationParty
 	panel.drawPartyText(textX, y+3, truncatePartyText(session.provider, maxCharacters), partyTextBright)
 	panel.drawPartyText(textX, y+3+partyCardTextLineHeight, truncatePartyText(session.directory, maxCharacters), partyTextMuted)
 	panel.drawPartyText(textX, y+3+partyCardTextLineHeight*2, truncatePartyText(session.state.String(), maxCharacters), accent)
-}
-
-func drawPartyOverflowCard(panel *canvas, y, hidden int) {
-	x := partySidebarPadding
-	width := panel.width - partySidebarPadding*2
-	drawPartyFilledRect(panel, x, y, width, partyCardHeight, rgb{r: 25, g: 31, b: 45})
-	drawPartyRectOutline(panel, x, y, width, partyCardHeight, partyCardBorder)
-	panel.drawPartyTextCentered(x+width/2, y+11, "+"+strconv.Itoa(hidden)+" MORE", partyTextMuted)
 }
 
 func partySessionColors(provider string, state sessionState) (rgb, rgb) {

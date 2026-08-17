@@ -35,9 +35,6 @@ const (
 	mageSheetColumns     = 8
 	mageSheetRows        = 6
 	defaultFrameDuration = 120 * time.Millisecond
-	rateStep             = 20 * time.Millisecond
-	minimumFrameDuration = 40 * time.Millisecond
-	maximumFrameDuration = time.Second
 	processPollInterval  = 2 * time.Second
 	defaultSpriteColumns = 32
 	defaultSpriteRows    = 16
@@ -235,6 +232,8 @@ type model struct {
 	menuCursor              int
 	menuPage                rpgMenuPage
 	statusCursor            int
+	partyCursor             int
+	partyScroll             int
 	frameDuration           time.Duration
 	playing                 bool
 	codexSprite             codexSpriteChoice
@@ -406,8 +405,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == animationTab {
 				if m.menuOpen && m.menuPage == rpgMenuCommands {
 					m.moveMenuCursor(-1, 0)
-				} else if !m.menuOpen {
-					m.cycleAnimation(-1)
 				}
 			} else if m.activeTab == usageTab {
 				if !m.usageHistoryOpen() {
@@ -422,8 +419,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == animationTab {
 				if m.menuOpen && m.menuPage == rpgMenuCommands {
 					m.moveMenuCursor(1, 0)
-				} else if !m.menuOpen {
-					m.cycleAnimation(1)
 				}
 			} else if m.activeTab == usageTab {
 				if !m.usageHistoryOpen() {
@@ -441,7 +436,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.menuOpen && m.menuPage == rpgMenuStatus {
 					m.moveStatusCursor(-1)
 				} else if !m.menuOpen {
-					m.frameDuration = max(m.frameDuration-rateStep, minimumFrameDuration)
+					m.movePartyCursor(-1)
 				}
 			} else if m.activeTab == processesTab {
 				m.processCursor--
@@ -466,7 +461,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if m.menuOpen && m.menuPage == rpgMenuStatus {
 					m.moveStatusCursor(1)
 				} else if !m.menuOpen {
-					m.frameDuration = min(m.frameDuration+rateStep, maximumFrameDuration)
+					m.movePartyCursor(1)
 				}
 			} else if m.activeTab == processesTab {
 				m.processCursor++
@@ -599,6 +594,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.clampPartySelection()
 		m.ensureSelectedProcessVisible()
 
 	case tickMsg:
@@ -623,6 +619,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
 			m.clampStatusCursor()
+			m.clampPartySelection()
 			m.ensureSelectedProcessVisible()
 		}
 
@@ -730,14 +727,6 @@ func (m *model) beginUsageRefresh() tea.Cmd {
 	}
 	m.codexUsageLoading = true
 	return refreshCodexUsage()
-}
-
-func (m *model) cycleAnimation(delta int) {
-	if len(m.animations) == 0 {
-		return
-	}
-	m.animation = (m.animation + delta + len(m.animations)) % len(m.animations)
-	m.frame = 0
 }
 
 func (m *model) advanceFrame(now time.Time) {
@@ -1518,14 +1507,14 @@ func (m model) animationFooter() (string, string) {
 		state = "paused"
 	}
 	fps := float64(time.Second) / float64(m.frameDuration)
-	menuControl := "M menu"
+	help := "  M menu  •  ↑/↓ party  •  [/] size  •  space pause  •  q quit"
 	if m.menuOpen {
-		menuControl = "arrows navigate  •  Esc/M close menu"
+		menuControl := "arrows navigate  •  Esc/M close menu"
 		if m.menuPage == rpgMenuStatus {
 			menuControl = "↑/↓ navigate  •  Esc back  •  M close menu"
 		}
+		help = "  " + menuControl + "  •  q quit"
 	}
-	help := "  " + menuControl + "  •  ←/→ animation  •  ↑/↓ rate  •  [/] size  •  space pause  •  q quit"
 	status := fmt.Sprintf(
 		"  animation %02d/%02d  •  frame %02d/%02d  •  %.1f fps (%d ms)  •  %s %d×%d  •  %s",
 		m.animation+1,
