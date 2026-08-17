@@ -41,6 +41,32 @@ func TestAnimationPartySessionsIncludeAllProvidersAndStates(t *testing.T) {
 	}
 }
 
+func TestSelectedPartyTerminalTargetTracksFlattenedSessionSelection(t *testing.T) {
+	groups := []processGroup{
+		{
+			tool: "Copilot",
+			root: processInfo{tty: "ttys001"},
+			sessions: []sessionInfo{
+				{cwd: "/workspace/frontend"},
+				{cwd: "/workspace/backend"},
+			},
+		},
+		{tool: "OpenCode", root: processInfo{tty: "ttys002"}},
+	}
+
+	tty, cwd, ok := selectedPartyTerminalTarget(groups, 1)
+	if !ok || tty != "ttys001" || cwd != "/workspace/backend" {
+		t.Fatalf("second party target = %q, %q, %t", tty, cwd, ok)
+	}
+	tty, cwd, ok = selectedPartyTerminalTarget(groups, 2)
+	if !ok || tty != "ttys002" || cwd != "" {
+		t.Fatalf("process-only party target = %q, %q, %t", tty, cwd, ok)
+	}
+	if _, _, ok := selectedPartyTerminalTarget(groups, 3); ok {
+		t.Fatal("out-of-range party selection returned a target")
+	}
+}
+
 func TestAnimationProviderPortraitMatchesConfiguredHeadshot(t *testing.T) {
 	solid := func(red uint8) sprite {
 		return sprite{width: 1, height: 1, pixels: []rgba{{r: red, a: 255}}}

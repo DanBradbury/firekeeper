@@ -385,7 +385,8 @@ func pollProcesses() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.activeTab == processesTab && msg.String() != "s" {
+		if (m.activeTab == processesTab && msg.String() != "s") ||
+			(m.activeTab == animationTab && (msg.String() != "enter" || m.menuOpen)) {
 			m.terminalStatus = ""
 		}
 		switch msg.String() {
@@ -507,6 +508,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activeTab == animationTab && m.menuOpen && m.menuPage == rpgMenuCommands && m.menuCursor == rpgStatusMenuIndex {
 				m.menuPage = rpgMenuStatus
 				m.statusCursor = 0
+			} else if m.activeTab == animationTab && !m.menuOpen {
+				tty, cwd, ok := selectedPartyTerminalTarget(m.processGroups, m.partyCursor)
+				if ok {
+					m.terminalStatus = "switching to " + displayTTY(tty) + "…"
+					return m, switchToTerminal(tty, cwd)
+				}
 			} else if m.activeTab == settingsTab {
 				if m.settingsEditing {
 					m.settingsEditing = false
@@ -613,7 +620,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			selectedPID := m.selectedProcessRootPID()
 			previousGroups := m.processGroups
-			m.processGroups = retainKnownSessionMetadata(m.processGroups, msg.groups)
+			m.processGroups = filterUnidentifiedCodexGroups(
+				retainKnownSessionMetadata(m.processGroups, msg.groups),
+			)
 			m.updateProviderReveals(previousGroups)
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
@@ -1507,7 +1516,7 @@ func (m model) animationFooter() (string, string) {
 		state = "paused"
 	}
 	fps := float64(time.Second) / float64(m.frameDuration)
-	help := "  M menu  •  ↑/↓ party  •  [/] size  •  space pause  •  q quit"
+	help := "  M menu  •  ↑/↓ party  •  Enter switch  •  [/] size  •  space pause  •  q quit"
 	if m.menuOpen {
 		menuControl := "arrows navigate  •  Esc/M close menu"
 		if m.menuPage == rpgMenuStatus {
@@ -1528,6 +1537,9 @@ func (m model) animationFooter() (string, string) {
 		m.spriteRows,
 		state,
 	)
+	if m.terminalStatus != "" {
+		status = "  " + m.terminalStatus
+	}
 	return help, status
 }
 
@@ -1768,6 +1780,17 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGro
 		group.sessions = append([]sessionInfo(nil), old.sessions...)
 	}
 	return refreshed
+}
+
+func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
+	visible := make([]processGroup, 0, len(groups))
+	for _, group := range groups {
+		if group.tool == "Codex" && len(group.sessions) == 0 {
+			continue
+		}
+		visible = append(visible, group)
+	}
+	return visible
 }
 
 func refreshProcesses() tea.Cmd {
@@ -2027,7 +2050,7 @@ func enrichCodexSessions(groups []processGroup) error {
 		}
 	}
 	if len(threadIDs) == 0 {
-		return fmt.Errorf("no open Codex rollout files found")
+		return nil
 	}
 
 	metadata, err := readThreadMetadata(threadIDs)
