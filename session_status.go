@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 )
 
 const rolloutStatusTailBytes int64 = 4 << 20
+const rolloutMetaHeadBytes int64 = 8 << 20
 
 type sessionState int
 
@@ -30,6 +32,41 @@ func (s sessionState) String() string {
 	default:
 		return "UNKNOWN"
 	}
+}
+
+type rolloutSessionMetaRecord struct {
+	Type    string `json:"type"`
+	Payload struct {
+		ParentThreadID string `json:"parent_thread_id"`
+	} `json:"payload"`
+}
+
+// readRolloutParentThreadID returns the parent thread ID recorded in the
+// rollout's leading session_meta record, or "" when the thread has no parent
+// or the record cannot be read.
+func readRolloutParentThreadID(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+
+	head, err := io.ReadAll(io.LimitReader(file, rolloutMetaHeadBytes))
+	if err != nil {
+		return ""
+	}
+	line := head
+	if index := bytes.IndexByte(head, '\n'); index >= 0 {
+		line = head[:index]
+	}
+	var record rolloutSessionMetaRecord
+	if json.Unmarshal(line, &record) != nil || record.Type != "session_meta" {
+		return ""
+	}
+	if !validUUID(record.Payload.ParentThreadID) {
+		return ""
+	}
+	return record.Payload.ParentThreadID
 }
 
 type rolloutStatusEvent struct {
