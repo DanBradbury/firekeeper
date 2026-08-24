@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -343,6 +346,25 @@ func TestProviderSpritesRenderAsSeparateCharacters(t *testing.T) {
 	}
 	if layout.copilotBadgeY != layout.sessionBadgeY || layout.sessionBadgeY != layout.kimiBadgeY {
 		t.Fatalf("badge tops = Copilot %d, Codex %d, Kimi %d; want exact alignment", layout.copilotBadgeY, layout.sessionBadgeY, layout.kimiBadgeY)
+	}
+}
+
+func TestAnimationLayoutKeepsCharactersClearOfPartySidebar(t *testing.T) {
+	frame := sprite{width: 1, height: 1, pixels: []rgba{{r: 20, a: 255}}}
+	m := newModel([][]sprite{{frame}})
+	m.processGroups = []processGroup{{tool: "Codex"}}
+
+	width := 80 * animationSourceScale
+	panelWidth := partySidebarWidth(width)
+	if panelWidth == 0 {
+		t.Fatal("party sidebar should be visible at this width")
+	}
+	layout := m.animationLayout(width, 40*2*animationSourceScale)
+	if got, limit := layout.characterX+layout.character.width, width-panelWidth; got > limit {
+		t.Fatalf("character right edge = %d, want <= %d so the party sidebar does not cover it", got, limit)
+	}
+	if got, want := layout.characterX+layout.character.width/2, (width-panelWidth)/2; got != want {
+		t.Fatalf("character center = %d, want %d (centered left of party sidebar)", got, want)
 	}
 }
 
@@ -935,8 +957,8 @@ func TestFocusTerminalSessionSelectsMatchingMacAdapter(t *testing.T) {
 		"ttys009",
 		"",
 		"darwin",
-		func(script, tty string) (string, error) {
-			gotTTY = tty
+		func(script string, arguments ...string) (string, error) {
+			gotTTY = arguments[0]
 			if !strings.Contains(script, "select terminalSession") {
 				t.Fatal("iTerm adapter did not select session")
 			}
@@ -952,34 +974,137 @@ func TestFocusTerminalSessionSelectsMatchingMacAdapter(t *testing.T) {
 }
 
 func TestFocusTerminalSessionSelectsGhosttyByWorkingDirectory(t *testing.T) {
-	var gotTarget string
+	var gotTargets []string
 	app, err := focusTerminalSessionWith(
 		"ttys009",
 		"/workspace/firekeeper",
 		"darwin",
-		func(script, target string) (string, error) {
+		func(script string, arguments ...string) (string, error) {
 			if !strings.Contains(script, `application id "com.mitchellh.ghostty"`) {
-				t.Fatal("Ghostty adapter was not attempted first")
+				return "not-running", nil
 			}
 			for _, required := range []string{"select tab terminalTab", "activate window terminalWindow", "focus terminalPane"} {
 				if !strings.Contains(script, required) {
 					t.Fatalf("Ghostty adapter missing %q", required)
 				}
 			}
-			gotTarget = target
+			gotTargets = append([]string(nil), arguments...)
 			return "matched", nil
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if app != "Ghostty" || gotTarget != "/workspace/firekeeper" {
-		t.Fatalf("Ghostty switch result = %q, %q", app, gotTarget)
+	if app != "Ghostty" || len(gotTargets) != 3 || gotTargets[0] != "/dev/ttys009" || gotTargets[1] != "/workspace/firekeeper" || gotTargets[2] != "" {
+		t.Fatalf("Ghostty switch result = %q, %q", app, gotTargets)
+	}
+}
+
+func TestFocusTerminalSessionPrefersExactTTYMatchOverGhosttyWorkingDirectory(t *testing.T) {
+	var attempted []string
+	app, err := focusTerminalSessionWith(
+		"ttys009",
+		"/workspace/firekeeper",
+		"darwin",
+		func(script string, _ ...string) (string, error) {
+			switch {
+			case strings.Contains(script, `application id "com.googlecode.iterm2"`):
+				attempted = append(attempted, "iTerm2")
+				return "matched", nil
+			case strings.Contains(script, `application id "com.mitchellh.ghostty"`):
+				attempted = append(attempted, "Ghostty")
+				return "matched", nil
+			default:
+				return "not-running", nil
+			}
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app != "iTerm2" || len(attempted) != 1 || attempted[0] != "iTerm2" {
+		t.Fatalf("switch result = %q after attempts %v", app, attempted)
+	}
+}
+
+func TestGhosttyAdapterMatchesTTYAndReusesStableTerminalID(t *testing.T) {
+	var script string
+	for _, adapter := range macTerminalAdapters {
+		if adapter.name == "Ghostty" {
+			script = adapter.script
+			break
+		}
+	}
+	if script == "" {
+		t.Fatal("Ghostty adapter is missing")
+	}
+	for _, required := range []string{
+		`set targetTTY to item 1 of argv`,
+		`set targetCWD to item 2 of argv`,
+		`set cachedTerminalID to item 3 of argv`,
+		`«class Gtty» of terminalPane`,
+		`cwdMatchCount`,
+		`id of terminalPane is cachedTerminalID`,
+		`return "matched:"`,
+	} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("Ghostty adapter missing %q", required)
+		}
+	}
+}
+
+func TestMacTerminalAdapterScriptsCompile(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("AppleScript is only available on macOS")
+	}
+	for _, adapter := range macTerminalAdapters {
+		t.Run(adapter.name, func(t *testing.T) {
+			outputPath := filepath.Join(t.TempDir(), "adapter.scpt")
+			if output, err := exec.Command("osacompile", "-o", outputPath, "-e", adapter.script).CombinedOutput(); err != nil {
+				t.Fatalf("compile AppleScript: %s: %v", strings.TrimSpace(string(output)), err)
+			}
+		})
+	}
+}
+
+func TestFocusTerminalSessionCachesGhosttyTerminalIDForRepeatedSwitches(t *testing.T) {
+	const targetTTY = "/dev/ttys099"
+	ghosttyTerminalIDs.Delete(targetTTY)
+	t.Cleanup(func() { ghosttyTerminalIDs.Delete(targetTTY) })
+
+	ghosttyCalls := 0
+	runScript := func(script string, arguments ...string) (string, error) {
+		if !strings.Contains(script, `application id "com.mitchellh.ghostty"`) {
+			return "not-running", nil
+		}
+		ghosttyCalls++
+		if len(arguments) != 3 {
+			t.Fatalf("Ghostty arguments = %q", arguments)
+		}
+		if ghosttyCalls == 1 && arguments[2] != "" {
+			t.Fatalf("initial cached terminal ID = %q", arguments[2])
+		}
+		if ghosttyCalls == 2 && arguments[2] != "terminal-123" {
+			t.Fatalf("reused terminal ID = %q", arguments[2])
+		}
+		return "matched:terminal-123", nil
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		app, err := focusTerminalSessionWith("ttys099", "/workspace/firekeeper", "darwin", runScript)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if app != "Ghostty" {
+			t.Fatalf("switch %d app = %q", attempt+1, app)
+		}
+	}
+	if ghosttyCalls != 2 {
+		t.Fatalf("Ghostty calls = %d", ghosttyCalls)
 	}
 }
 
 func TestFocusTerminalSessionRejectsMissingTTYAndOtherOS(t *testing.T) {
-	unusedScript := func(string, string) (string, error) { return "", nil }
+	unusedScript := func(string, ...string) (string, error) { return "", nil }
 	if _, err := focusTerminalSessionWith("", "", "darwin", unusedScript); err == nil {
 		t.Fatal("missing TTY accepted")
 	}
@@ -990,7 +1115,7 @@ func TestFocusTerminalSessionRejectsMissingTTYAndOtherOS(t *testing.T) {
 
 func TestFocusTerminalSessionSkipsAppsThatAreNotRunning(t *testing.T) {
 	calls := 0
-	app, err := focusTerminalSessionWith("ttys001", "", "darwin", func(string, string) (string, error) {
+	app, err := focusTerminalSessionWith("ttys001", "", "darwin", func(string, ...string) (string, error) {
 		calls++
 		if calls == 1 {
 			return "not-running", nil

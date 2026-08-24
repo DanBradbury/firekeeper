@@ -136,6 +136,11 @@ Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
 Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
 matched by TTY. macOS may request Automation permission on first use. Sessions
 without a controlling TTY cannot be selected this way.
+Firekeeper uses exact TTY matching when the installed Ghostty scripting API
+provides it. Ghostty 1.3 does not expose TTYs, so after its first best-effort
+working-directory match Firekeeper remembers the pane's stable ID for repeated
+switches. The initial match remains ambiguous when multiple Ghostty panes share
+the same working directory.
 
 When the selected Codex or Copilot runtime is inside
 [Herdr](https://herdr.dev/), Firekeeper also focuses its Herdr pane before

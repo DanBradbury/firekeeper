@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -1292,7 +1293,9 @@ func (m model) animationLayout(width, height int) animationLayout {
 		totalWidth += item.width
 		visibleCount++
 	}
-	startX := (width - totalWidth) / 2
+	// Center characters in the area left of the party sidebar so the panel
+	// never covers them, and pin to the left edge when they cannot fit.
+	startX := max((width-partySidebarWidth(width)-totalWidth)/2, 0)
 	nextX := startX
 	if layout.copilotVisible {
 		layout.copilotX = nextX
@@ -1833,6 +1836,8 @@ type terminalAdapter struct {
 	usesCWD bool
 }
 
+var ghosttyTerminalIDs sync.Map
+
 func groupWorkingDirectory(group processGroup) string {
 	for _, session := range group.sessions {
 		if session.cwd != "" {
@@ -1843,29 +1848,6 @@ func groupWorkingDirectory(group processGroup) string {
 }
 
 var macTerminalAdapters = []terminalAdapter{
-	{
-		name: "Ghostty",
-		script: `on run argv
-	set targetCWD to item 1 of argv
-	if application id "com.mitchellh.ghostty" is not running then return "not-running"
-	tell application id "com.mitchellh.ghostty"
-		repeat with terminalWindow in windows
-			repeat with terminalTab in tabs of terminalWindow
-				repeat with terminalPane in terminals of terminalTab
-					if working directory of terminalPane is targetCWD then
-						select tab terminalTab
-						activate window terminalWindow
-						focus terminalPane
-						return "matched"
-					end if
-				end repeat
-			end repeat
-		end repeat
-	end tell
-	return "not-found"
-end run`,
-		usesCWD: true,
-	},
 	{
 		name: "iTerm2",
 		script: `on run argv
@@ -1909,6 +1891,69 @@ end run`,
 	return "not-found"
 end run`,
 	},
+	{
+		name: "Ghostty",
+		script: `on run argv
+	set targetTTY to item 1 of argv
+	set targetCWD to item 2 of argv
+	set cachedTerminalID to item 3 of argv
+	if application id "com.mitchellh.ghostty" is not running then return "not-running"
+	set ttySupported to true
+	set cwdMatchCount to 0
+	set cwdMatchWindow to missing value
+	set cwdMatchTab to missing value
+	set cwdMatchPane to missing value
+	tell application id "com.mitchellh.ghostty"
+		repeat with terminalWindow in windows
+			repeat with terminalTab in tabs of terminalWindow
+				repeat with terminalPane in terminals of terminalTab
+					if cachedTerminalID is not "" and id of terminalPane is cachedTerminalID then
+						select tab terminalTab
+						activate window terminalWindow
+						focus terminalPane
+						return "matched:" & cachedTerminalID
+					end if
+					try
+						set paneTTY to «class Gtty» of terminalPane
+						if paneTTY is not missing value then
+							set paneTTYText to paneTTY as text
+							if paneTTYText is targetTTY or ("/dev/" & paneTTYText) is targetTTY then
+								select tab terminalTab
+								activate window terminalWindow
+								focus terminalPane
+								return "matched:" & id of terminalPane
+							end if
+						end if
+					on error errorMessage number errorNumber
+						if errorNumber is -1728 then
+							set ttySupported to false
+						else
+							error errorMessage number errorNumber
+						end if
+					end try
+					if working directory of terminalPane is targetCWD then
+						set cwdMatchCount to cwdMatchCount + 1
+						if cwdMatchCount is 1 then
+							set cwdMatchWindow to terminalWindow
+							set cwdMatchTab to terminalTab
+							set cwdMatchPane to terminalPane
+						end if
+					end if
+				end repeat
+			end repeat
+		end repeat
+		if ttySupported then return "not-found"
+		if cwdMatchCount > 0 then
+			select tab cwdMatchTab
+			activate window cwdMatchWindow
+			focus cwdMatchPane
+			return "matched:" & id of cwdMatchPane
+		end if
+	end tell
+	return "not-found"
+end run`,
+		usesCWD: true,
+	},
 }
 
 func switchToTerminal(target terminalSwitchTarget) tea.Cmd {
@@ -1951,8 +1996,9 @@ func focusTerminalSession(tty, cwd string) (string, error) {
 		tty,
 		cwd,
 		runtime.GOOS,
-		func(script, targetTTY string) (string, error) {
-			output, err := exec.Command("osascript", "-e", script, targetTTY).CombinedOutput()
+		func(script string, arguments ...string) (string, error) {
+			commandArguments := append([]string{"-e", script}, arguments...)
+			output, err := exec.Command("osascript", commandArguments...).CombinedOutput()
 			result := strings.TrimSpace(string(output))
 			if err != nil {
 				if result != "" {
@@ -1969,7 +2015,7 @@ func focusTerminalSessionWith(
 	tty string,
 	cwd string,
 	goos string,
-	runScript func(string, string) (string, error),
+	runScript func(string, ...string) (string, error),
 ) (string, error) {
 	if goos != "darwin" {
 		return "", fmt.Errorf("terminal switching requires macOS")
@@ -1982,22 +2028,32 @@ func focusTerminalSessionWith(
 	var failures []string
 	runningAdapters := 0
 	for _, adapter := range macTerminalAdapters {
-		target := targetTTY
+		targets := []string{targetTTY}
 		if adapter.usesCWD {
-			target = cwd
-			if target == "" {
+			if cwd == "" {
 				continue
 			}
+			cachedTerminalID := ""
+			if cached, ok := ghosttyTerminalIDs.Load(targetTTY); ok {
+				cachedTerminalID, _ = cached.(string)
+			}
+			targets = append(targets, cwd, cachedTerminalID)
 		}
-		result, err := runScript(adapter.script, target)
+		result, err := runScript(adapter.script, targets...)
 		if err != nil {
 			failures = append(failures, adapter.name+": "+err.Error())
 			continue
 		}
-		switch result {
-		case "matched":
+		switch {
+		case result == "matched" || strings.HasPrefix(result, "matched:"):
+			if adapter.name == "Ghostty" {
+				terminalID := strings.TrimPrefix(result, "matched:")
+				if terminalID != result && terminalID != "" {
+					ghosttyTerminalIDs.Store(targetTTY, terminalID)
+				}
+			}
 			return adapter.name, nil
-		case "not-running":
+		case result == "not-running":
 			continue
 		default:
 			runningAdapters++
@@ -2101,7 +2157,7 @@ func enrichCodexSessions(groups []processGroup) error {
 			continue
 		}
 		seen := make(map[string]bool)
-		for _, rolloutPath := range rollouts[group.root.pid] {
+		for _, rolloutPath := range dropSupersededForkRollouts(rollouts[group.root.pid]) {
 			threadID, ok := threadIDFromRolloutPath(rolloutPath)
 			if !ok || seen[threadID] {
 				continue
@@ -2167,6 +2223,33 @@ func discoverOpenRollouts(rootPIDs []int) (map[int][]string, error) {
 		}
 	}
 	return rollouts, nil
+}
+
+// dropSupersededForkRollouts removes rollout files whose thread was forked
+// into a newer thread that the same process still holds open. Codex keeps the
+// parent rollout file open after forking, which would otherwise surface one
+// runtime as two sessions (and two party members).
+func dropSupersededForkRollouts(paths []string) []string {
+	if len(paths) < 2 {
+		return paths
+	}
+	parents := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if parent := readRolloutParentThreadID(path); parent != "" {
+			parents[parent] = true
+		}
+	}
+	if len(parents) == 0 {
+		return paths
+	}
+	kept := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if id, ok := threadIDFromRolloutPath(path); ok && parents[id] {
+			continue
+		}
+		kept = append(kept, path)
+	}
+	return kept
 }
 
 func threadIDFromRolloutPath(path string) (string, bool) {
