@@ -1,0 +1,12 @@
+{"type": "mode", "mode": "normal", "sessionId": "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6e"}
+{"type": "user", "sessionId": "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6e", "timestamp": "bogus", "message": {"role": "user", "content": "hello"}}
+not json {
+{"type": "assistant"}
+{"type": "assistant", "message": {"content": "plain string"}}
+{"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "unknown", "content": [{"type": "image", "source": {}}]}]}}
+{"type": "user", "message": {"content": {"weird": true}}}
+[1,2,3]
+{"type": "brand-new-type", "foo": 1}
+{"type": "system", "subtype": "x", "content": 42}
+{"type": "assistant", "message": {"content": [{"type": "server_tool_use", "name": "web_search"}]}}
+

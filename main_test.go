@@ -856,6 +856,24 @@ func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 	}
 }
 
+func TestProcessRefreshRetainsClaudeMetadata(t *testing.T) {
+	m := testModel()
+	m.processGroups = []processGroup{{
+		tool:     "Claude",
+		root:     processInfo{pid: 101, tty: "ttys001", command: "claude"},
+		sessions: []sessionInfo{{id: "0199c3d4-e5f6-7a8b-9c0d-000000000001", name: "Known Claude session"}},
+	}}
+	updated, _ := m.Update(processResultMsg{
+		groups:          []processGroup{{tool: "Claude", root: processInfo{pid: 101, tty: "ttys001", command: "claude"}}},
+		metadataWarning: "temporary metadata lookup failure",
+		refreshed:       time.Now(),
+	})
+	m = updated.(model)
+	if len(m.processGroups[0].sessions) != 1 || m.processGroups[0].sessions[0].name != "Known Claude session" {
+		t.Fatal("transient refresh discarded known Claude session metadata")
+	}
+}
+
 func TestProcessRefreshDropsUnidentifiedCodexGroups(t *testing.T) {
 	m := testModel()
 	updated, _ := m.Update(processResultMsg{
