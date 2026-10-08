@@ -17,9 +17,26 @@ const (
 	MaxBodyBytes    = 5 << 20
 )
 
+// Option configures Handler.
+type Option func(*options)
+
+type options struct {
+	prices map[string]store.Price
+}
+
+// WithPrices sets the per-model price table /v1/usage uses to add cost.
+// With no table, usage reports tokens only; prices are never built in.
+func WithPrices(p map[string]store.Price) Option {
+	return func(o *options) { o.prices = p }
+}
+
 // Handler routes the v1 API. It consumes s.Changes() to drive /v1/stream,
 // so create at most one Handler per Store. Streams end when s is closed.
-func Handler(s *store.Store) http.Handler {
+func Handler(s *store.Store, opts ...Option) http.Handler {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
 	h := newHub()
 	go h.run(s.Changes())
 
@@ -30,6 +47,7 @@ func Handler(s *store.Store) http.Handler {
 	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s))
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
+	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))
 	mux.HandleFunc("GET /v1/stream", stream(h))
 	return mux
 }
