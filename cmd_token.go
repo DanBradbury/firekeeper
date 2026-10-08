@@ -23,12 +23,13 @@ func runToken(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper serve token "+args[0], flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	db := fs.String("db", "", "dashboard database path (default ~/.firekeeper/dashboard.db)")
-	var name, scope, machine string
+	var name, scope, machine, account string
 	switch args[0] {
 	case "create":
 		fs.StringVar(&name, "name", "", "token name (required)")
 		fs.StringVar(&scope, "scope", store.ScopeRead, "token scope: ingest or read")
 		fs.StringVar(&machine, "machine", "", "machine id an ingest token is bound to (required for ingest)")
+		fs.StringVar(&account, "account", "", "email of the account that owns the token (default: the single-user account)")
 	case "list", "revoke":
 	default:
 		fmt.Fprintf(stderr, "firekeeper serve token: unknown command %q\n", args[0])
@@ -72,7 +73,12 @@ func runToken(args []string, stdout, stderr io.Writer) int {
 
 	switch args[0] {
 	case "create":
-		t, secret, err := s.CreateToken(ctx, name, scope, machine)
+		acct, err := resolveAccount(ctx, s, account)
+		if err != nil {
+			fmt.Fprintf(stderr, "firekeeper serve token: %v\n", err)
+			return 1
+		}
+		t, secret, err := s.CreateToken(ctx, acct, name, scope, machine)
 		if err != nil {
 			fmt.Fprintf(stderr, "firekeeper serve token: %v\n", err)
 			if errors.Is(err, store.ErrInvalid) {
@@ -89,13 +95,23 @@ func runToken(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "ID\tNAME\tSCOPE\tMACHINE\tCREATED\tSTATUS")
+		owners := map[string]string{}
+		if accts, err := s.ListAccounts(ctx); err == nil {
+			for _, a := range accts {
+				owners[a.ID] = a.Email
+			}
+		}
+		fmt.Fprintln(tw, "ID\tNAME\tSCOPE\tMACHINE\tACCOUNT\tCREATED\tSTATUS")
 		for _, t := range toks {
 			status := "active"
 			if t.RevokedAt != nil {
 				status = "revoked"
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Scope, t.MachineID, t.CreatedAt.Format(time.RFC3339), status)
+			owner := owners[t.AccountID]
+			if t.AccountID == store.DefaultAccountID {
+				owner = "(default)"
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Scope, t.MachineID, owner, t.CreatedAt.Format(time.RFC3339), status)
 		}
 		tw.Flush()
 	case "revoke":

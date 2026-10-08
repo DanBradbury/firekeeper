@@ -6,8 +6,9 @@ document describes the v1 HTTP API as implemented in `internal/server/api`.
 The contract it follows lives in `AGENTS.md` under "Reporting and dashboard".
 
 - Default listen address: `127.0.0.1:7777`.
-- No authentication yet. Bearer tokens are planned; until then, keep the
-  server on loopback.
+- Authentication: bearer tokens or browser sessions, each tied to one
+  account. A server with no tokens and no accounts is open, which is only
+  acceptable on loopback. See [Accounts and tenancy](#accounts-and-tenancy).
 - Request and response bodies are JSON (`Content-Type: application/json`),
   except `/v1/stream`, which is `text/event-stream`.
 - Timestamps are RFC 3339 strings in UTC, or `null` when unknown.
@@ -23,12 +24,101 @@ Every error is a JSON object with a standard HTTP status:
 | Status | `code` | When |
 | --- | --- | --- |
 | 400 | `bad_request` | Malformed JSON, query parameter, or `uid`. |
+| 401 | `unauthorized` | Missing, malformed, expired or revoked credentials. |
+| 401 | `invalid_credentials` | Wrong email or password at login. |
+| 403 | `forbidden` | The token's scope does not permit the request. |
+| 403 | `csrf_failed` | A cookie-authenticated write without a valid `X-CSRF-Token`, or from another origin. |
+| 403 | `signup_closed`, `invite_required`, `invite_invalid` | Signup refused; see below. |
+| 409 | `email_taken` | An account with that email exists. |
+| 415 | `unsupported_media_type` | Login or signup without a JSON `Content-Type`. |
+| 429 | `rate_limited` | Too many failed attempts from this IP or for this email. `Retry-After` says how long. |
 | 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, or state, an invalid cursor, or an event whose `machine_id`/`session_id` does not match its batch. |
 | 404 | `not_found` | Unknown session. |
 | 413 | `payload_too_large` | Body over 5 MiB. |
 | 413 | `too_many_events` | More than 500 events in one ingest request. |
 | 500 | `internal` | Server-side failure. Details are not exposed. |
 | 503 | `unavailable` | Stream requested while the server is shutting down. |
+
+## Accounts and tenancy
+
+Every machine, session, event and token belongs to one account. Each request
+authenticates as exactly one account, and the server filters every query on
+it: lists, reads, search (`q`), usage, machines, ingest, heartbeat and the
+stream. Another account's data is not merely hidden from lists; asking for it
+by `uid` returns `404`, the same as a session that does not exist. Two
+accounts can use the same `machine_id` and `session_id`. Each sees and writes
+only its own copy, and ingest into the same ids from another account never
+touches yours.
+
+Credentials, in order of precedence:
+
+1. `Authorization: Bearer TOKEN`. Tokens are created with
+   `firekeeper serve token create [--account EMAIL]` and belong to that
+   account. Ingest tokens only call `/v1/ingest` and `/v1/heartbeat`; read
+   tokens only read.
+2. The `fk_session` cookie set by login or signup. It is `HttpOnly`,
+   `SameSite=Lax`, `Secure` when the request came over HTTPS (or through a
+   proxy sending `X-Forwarded-Proto: https`), and lasts 14 days from login.
+   Browser sessions are read-only. Every non-GET request made with the cookie
+   must also send the session's `X-CSRF-Token` and, when the browser sends an
+   `Origin` header, it must match the host. Logging out, expiry, or disabling
+   the account also ends an open `/v1/stream`.
+
+**Single-user mode.** While no token and no account exists (apart from the
+built-in `default` account, which has no email or password and cannot sign
+in), no credentials are needed and every request acts as `default`. Data and
+tokens from before accounts existed belong to `default`. Creating the first
+account or token turns authentication on; `default`'s tokens keep working.
+
+Passwords are stored as argon2id hashes. Login and signup are rate limited
+per IP and per email. A failed login does not reveal whether the email has an
+account.
+
+### `POST /v1/auth/signup`
+
+```json
+{ "email": "you@example.com", "password": "at least 10 characters", "invite_code": "fki_..." }
+```
+
+Who may sign up is set by `firekeeper serve --signup`:
+
+| Mode | Behavior |
+| --- | --- |
+| `closed` (default) | Always `403 signup_closed`. |
+| `invite` | Needs an unused, unexpired `invite_code` (`403 invite_required` / `invite_invalid`). Each code works once. Create one with `firekeeper serve invite create`. |
+| `open` | Anyone who can reach the server. |
+
+Email is lowercased and must be a bare address. Passwords must be 10 to 256
+characters. Response `201`, plus the session cookie:
+
+```json
+{ "account": { "id": "9f2c...", "email": "you@example.com" }, "csrf_token": "..." }
+```
+
+Signup is limited to 5 attempts per IP and 5 per email per minute, successful
+or not. The body must be JSON.
+
+### `POST /v1/auth/login`
+
+Body `{ "email": "...", "password": "..." }`. Response `200` with the same body
+and cookie as signup. Ten failed attempts per IP, or ten for one email, in a
+minute lock that IP or email out for the rest of the minute (`429`).
+
+### `POST /v1/auth/logout`
+
+Deletes the browser session and clears the cookie. Needs the cookie and
+`X-CSRF-Token`. Response `200`: `{ "ok": true }`. Callers not using a browser
+session get `400`.
+
+### `GET /v1/account`
+
+```json
+{ "id": "9f2c...", "email": "you@example.com", "single_user": false, "csrf_token": "..." }
+```
+
+`csrf_token` appears only for browser sessions, so a page can recover it after
+a reload. In single-user mode the account is `{"id": "default", "email": "",
+"single_user": true}`.
 
 ## Shared objects
 
@@ -235,7 +325,7 @@ get 404.
 
 ### `GET /v1/machines`
 
-Lists every machine ordered by `id`:
+Lists the account's machines ordered by `id`:
 
 ```json
 {

@@ -83,7 +83,7 @@ func usage(s *store.Store, prices map[string]store.Price) http.HandlerFunc {
 				return
 			}
 		}
-		rows, sum, err := s.Usage(r.Context(), store.UsageFilter{From: from, To: to, GroupBy: groupBy, Prices: prices})
+		rows, sum, err := s.Usage(r.Context(), accountID(r), store.UsageFilter{From: from, To: to, GroupBy: groupBy, Prices: prices})
 		if err != nil {
 			storeErr(w, err)
 			return
