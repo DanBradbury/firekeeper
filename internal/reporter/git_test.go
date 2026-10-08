@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -156,7 +157,7 @@ func TestReportSendsGitContextAndFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	se, err := srv.store.GetSession(ctx, testMachine, testSession)
+	se, err := srv.store.GetSession(ctx, store.DefaultAccountID, testMachine, testSession)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +167,7 @@ func TestReportSendsGitContextAndFiles(t *testing.T) {
 	if se.CWD != "~/src/demo" {
 		t.Fatalf("cwd = %q, want it redacted", se.CWD)
 	}
-	files, err := srv.store.ListFiles(ctx, testMachine, testSession)
+	files, err := srv.store.ListFiles(ctx, store.DefaultAccountID, testMachine, testSession)
 	if err != nil {
 		t.Fatal(err)
 	}

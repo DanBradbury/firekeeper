@@ -30,13 +30,13 @@ type touch struct {
 
 // storeFiles records touched paths against the session's stored cwd. The
 // paths and cwd arrive redacted, so both share the same "~" home prefix.
-func storeFiles(ctx context.Context, tx *sql.Tx, machineID, sessionID string, touched []touch) error {
+func storeFiles(ctx context.Context, tx *sql.Tx, accountID, machineID, sessionID string, touched []touch) error {
 	if len(touched) == 0 {
 		return nil
 	}
 	var cwd string
-	if err := tx.QueryRowContext(ctx, `SELECT cwd FROM sessions WHERE machine_id = ? AND session_id = ?`,
-		machineID, sessionID).Scan(&cwd); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT cwd FROM sessions WHERE account_id = ? AND machine_id = ? AND session_id = ?`,
+		accountID, machineID, sessionID).Scan(&cwd); err != nil {
 		return err
 	}
 	for _, t := range touched {
@@ -45,13 +45,13 @@ func storeFiles(ctx context.Context, tx *sql.Tx, machineID, sessionID string, to
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO session_files(machine_id, session_id, path, first_seq, last_seq, changes)
-VALUES (?, ?, ?, ?, ?, 1)
-ON CONFLICT(machine_id, session_id, path) DO UPDATE SET
+INSERT INTO session_files(account_id, machine_id, session_id, path, first_seq, last_seq, changes)
+VALUES (?, ?, ?, ?, ?, ?, 1)
+ON CONFLICT(account_id, machine_id, session_id, path) DO UPDATE SET
     first_seq = MIN(session_files.first_seq, excluded.first_seq),
     last_seq = MAX(session_files.last_seq, excluded.last_seq),
     changes = session_files.changes + 1`,
-			machineID, sessionID, p, t.seq, t.seq); err != nil {
+			accountID, machineID, sessionID, p, t.seq, t.seq); err != nil {
 			return err
 		}
 	}
@@ -101,10 +101,10 @@ func relPath(cwd, p string) string {
 }
 
 // ListFiles returns the files a session changed, ordered by path.
-func (s *Store) ListFiles(ctx context.Context, machineID, sessionID string) ([]SessionFile, error) {
+func (s *Store) ListFiles(ctx context.Context, accountID, machineID, sessionID string) ([]SessionFile, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT path, first_seq, last_seq, changes FROM session_files
-WHERE machine_id = ? AND session_id = ? ORDER BY path`, machineID, sessionID)
+WHERE account_id = ? AND machine_id = ? AND session_id = ? ORDER BY path`, accountID, machineID, sessionID)
 	if err != nil {
 		return nil, err
 	}

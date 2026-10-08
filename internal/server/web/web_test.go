@@ -37,6 +37,8 @@ func TestHandlerServesAssets(t *testing.T) {
 		{"/api.js", "javascript", "v1/sessions"},
 		{"/api.js", "javascript", "v1/usage"},
 		{"/app.js", "javascript", "usageView"},
+		{"/api.js", "javascript", "v1/auth/login"},
+		{"/app.js", "javascript", "authView"},
 		{"/mock.js", "javascript", "createMockAPI"},
 		{"/app.css", "text/css", ".event"},
 		{"/favicon.svg", "image/svg+xml", "<svg"},
@@ -206,7 +208,7 @@ func TestLongSessionPaging(t *testing.T) {
 				Text: fmt.Sprintf("event %d", i), Raw: json.RawMessage(`{}`),
 			})
 		}
-		if _, _, err := s.Ingest(ctx, store.Machine{ID: "m1"}, []store.SessionBatch{b}); err != nil {
+		if _, _, err := s.Ingest(ctx, store.DefaultAccountID, store.Machine{ID: "m1"}, []store.SessionBatch{b}); err != nil {
 			t.Fatal(err)
 		}
 	}

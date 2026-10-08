@@ -335,7 +335,8 @@ firekeeper report --provider codex       # in another terminal
 | `--listen ADDR` | Address to listen on. Default `127.0.0.1:7777`. |
 | `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
 | `--file-link TEMPLATE` | Link changed files to their repository host, for example `https://github.com/me/{project}/blob/{ref}/{path}`. Placeholders: `{project}`, `{ref}` (the commit, else the branch), `{commit}`, `{branch}`, and `{path}`. Must be an `http` or `https` URL containing `{path}`. Default `repo_url_template` from the config file. |
-| `--insecure` | Allow a `--listen` address other than loopback. |
+| `--insecure` | Allow a `--listen` address other than loopback with no token or account. The API is then open. |
+| `--signup MODE` | Who may create accounts: `closed` (default), `invite`, or `open`. See [Accounts](#accounts). |
 
 The web UI has two views, picked in the top bar. **Sessions** lists sessions
 and opens transcripts. **Usage** charts daily token use by model for the last
@@ -374,14 +375,51 @@ firekeeper serve token revoke NAME_OR_ID
 `create` prints the token once; only its SHA-256 hash is stored. Ingest tokens
 (for `report`, bound to one machine id, see `~/.firekeeper/machine-id`) can
 only call `/v1/ingest` and `/v1/heartbeat`; read tokens can only read, and the
-web UI asks for one on a login page and keeps it in `sessionStorage`. Once any
-active token exists, every `/v1/*` request needs `Authorization: Bearer TOKEN` header.
-Failed attempts are rate limited per IP.
+web UI accepts one under "Use a read token instead" on its sign-in page and keeps
+it in `sessionStorage`. Once any active token exists, every `/v1/*` request
+needs an `Authorization: Bearer TOKEN` header (or a browser session; see
+[Accounts](#accounts)). Failed attempts are rate limited per IP. `token create`
+takes `--account EMAIL` to assign the token to an account.
 
-With no tokens the API is open, which is only acceptable on loopback.
-`serve` refuses a non-loopback `--listen` address unless a token exists or
-`--insecure` is passed, and then warns that anyone who can reach the port can
-read every stored transcript and upload new ones.
+With no tokens and no accounts the API is open, which is only acceptable on
+loopback. `serve` refuses a non-loopback `--listen` address unless a token or
+an account exists or `--insecure` is passed, and then warns that anyone who can
+reach the port can read every stored transcript and upload new ones.
+
+### Accounts
+
+One server can hold several people's data. Every machine, session, token and
+transcript belongs to an account, and an account can never list, read, stream
+or upload into another's.
+
+- **Single user, the default.** A server with no tokens and no accounts needs
+  no signup or login; everything belongs to a built-in default account.
+  Existing databases are upgraded to this automatically.
+- **Accounts.** Creating the first account turns login on for everyone.
+  People sign in on the web UI with email and password (stored as argon2id
+  hashes), which sets a 14-day browser session cookie. Browser sessions can
+  read but not upload; uploads use ingest tokens.
+
+```sh
+printf '%s' "$PASSWORD" | firekeeper serve account create --email you@example.com --password-stdin
+firekeeper serve account list
+firekeeper serve account disable you@example.com   # or: enable
+firekeeper serve invite create [--ttl 168h] [--account EMAIL]
+firekeeper serve token create --name laptop --scope ingest --machine MACHINE_ID --account you@example.com
+firekeeper serve --signup invite                    # closed (default) | invite | open
+```
+
+`--signup closed` refuses every signup; the owner creates accounts with
+`account create`. `invite` lets a person sign up with a one-time code from
+`invite create`; `open` lets anyone who can reach the server. Without
+`--account`, `token create` and `invite create` act for the single-user
+default account, whose existing tokens keep working. Data uploaded before
+accounts existed stays with the default account and is not visible to new
+accounts. Put HTTPS in front of any server reachable beyond loopback; the
+session cookie is only marked `Secure` when it sees HTTPS (or
+`X-Forwarded-Proto: https`).
+
+### Daemon
 
 `daemon` runs the `report` pass in a loop, in the foreground, until it gets
 Ctrl-C or `SIGTERM`. It is optional: nothing else in Firekeeper, and no

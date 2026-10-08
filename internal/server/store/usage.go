@@ -87,7 +87,10 @@ func (r *UsageRow) add(model string, t transcript.Tokens, prices map[string]Pric
 // Usage returns token sums grouped by f.GroupBy, plus the total over all
 // rows. Rows are ordered by day ascending when grouped by day, then by
 // total tokens descending, then by group values.
-func (s *Store) Usage(ctx context.Context, f UsageFilter) (rows []UsageRow, sum UsageRow, err error) {
+func (s *Store) Usage(ctx context.Context, accountID string, f UsageFilter) (rows []UsageRow, sum UsageRow, err error) {
+	if err := requireAccount(accountID); err != nil {
+		return nil, sum, err
+	}
 	if !f.From.Before(f.To) {
 		return nil, sum, fmt.Errorf("%w: from must be before to", ErrInvalid)
 	}
@@ -113,10 +116,10 @@ func (s *Store) Usage(ctx context.Context, f UsageFilter) (rows []UsageRow, sum 
 	}
 	query := `SELECT ` + strings.Join(cols, ", ") + `,
     SUM(e.input_tokens), SUM(e.output_tokens), SUM(e.cache_tokens)
-FROM events e JOIN sessions s ON s.machine_id = e.machine_id AND s.session_id = e.session_id
-WHERE e.ts >= ? AND e.ts < ? AND (e.input_tokens > 0 OR e.output_tokens > 0 OR e.cache_tokens > 0)
+FROM events e JOIN sessions s ON s.account_id = e.account_id AND s.machine_id = e.machine_id AND s.session_id = e.session_id
+WHERE e.account_id = ? AND e.ts >= ? AND e.ts < ? AND (e.input_tokens > 0 OR e.output_tokens > 0 OR e.cache_tokens > 0)
 GROUP BY ` + strings.Join(cols, ", ")
-	res, err := s.db.QueryContext(ctx, query, fmtTime(&f.From), fmtTime(&f.To))
+	res, err := s.db.QueryContext(ctx, query, accountID, fmtTime(&f.From), fmtTime(&f.To))
 	if err != nil {
 		return nil, sum, err
 	}

@@ -44,7 +44,7 @@ func ingestSeed(t *testing.T, s *store.Store, sd seed) {
 			Text: sd.text, Tokens: transcript.Tokens{Input: 1}, Raw: json.RawMessage(`{}`),
 		})
 	}
-	if _, _, err := s.Ingest(context.Background(), store.Machine{ID: sd.machine, Name: sd.machine + "-name"}, []store.SessionBatch{b}); err != nil {
+	if _, _, err := s.Ingest(context.Background(), store.DefaultAccountID, store.Machine{ID: sd.machine, Name: sd.machine + "-name"}, []store.SessionBatch{b}); err != nil {
 		t.Fatal(err)
 	}
 }
