@@ -218,6 +218,18 @@ portable true-color half blocks elsewhere. Kitty, Ghostty, WezTerm, Konsole,
 Warp, iTerm2, and current Windows Terminal versions provide best results. Try
 running outside tmux first when testing Kitty rendering.
 
+## Subcommands
+
+Running `firekeeper` with no subcommand starts the dashboard as usual. Opt-in
+reporting subcommands are being added; `firekeeper --help` lists them.
+
+```sh
+firekeeper snapshot --json   # print currently discovered sessions as JSON
+```
+
+`export`, `report`, `serve`, and `daemon` are placeholders that print
+`not implemented` and exit with status 2.
+
 ## How session discovery works
 
 Firekeeper scans local processes every two seconds and collapses related
