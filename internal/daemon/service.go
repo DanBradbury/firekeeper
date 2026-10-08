@@ -32,7 +32,7 @@ const (
 // serviceEnv lists the variables copied into the service definition at
 // install time, when set, so the daemon sees the same provider homes and
 // tools as the shell that installed it.
-var serviceEnv = []string{"PATH", "CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "XDG_CONFIG_HOME"}
+var serviceEnv = []string{"PATH", "CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME"}
 
 // goos is replaced in tests.
 var goos = runtime.GOOS

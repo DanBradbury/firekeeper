@@ -543,3 +543,18 @@ func TestCommandErrorMessage(t *testing.T) {
 		t.Fatalf("Error() = %q", got)
 	}
 }
+
+func TestNewServiceCapturesProviderHomes(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", "/fixture/claude")
+	t.Setenv("KIMI_CODE_HOME", "")
+	svc, err := NewService([]string{"--provider", "claude"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if svc.Env["CLAUDE_CONFIG_DIR"] != "/fixture/claude" {
+		t.Fatalf("CLAUDE_CONFIG_DIR not captured: %v", svc.Env)
+	}
+	if _, ok := svc.Env["KIMI_CODE_HOME"]; ok {
+		t.Fatal("unset variables must not be captured")
+	}
+}

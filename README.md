@@ -369,7 +369,7 @@ starts the service. The service runs the binary you ran `install` with
 (symlinks resolved) as `firekeeper daemon --quiet ...`, so after moving or
 reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
-`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, and `XDG_CONFIG_HOME` from
+`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_CONFIG_HOME` from
 your shell into the definition when they are set. It refuses to install a
 temporary `go run` build. Nothing here needs or uses `sudo`.
 
