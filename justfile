@@ -47,3 +47,7 @@ diff-check:
 
 # Run standard pre-commit checks.
 check: test vet fmt-check diff-check
+
+# Build the container image.
+docker-build:
+    docker build -t firekeeper:local .
