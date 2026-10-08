@@ -84,3 +84,15 @@ func TestReportExitCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestReportToken(t *testing.T) {
+	cfg := stubReport(t, reporter.Summary{}, nil)
+	var stdout, stderr bytes.Buffer
+	t.Setenv(tokenEnv, "fk_env")
+	if code := runReport(nil, &stdout, &stderr); code != 0 || cfg.Token != "fk_env" {
+		t.Fatalf("env: code=%d token=%q", code, cfg.Token)
+	}
+	if code := runReport([]string{"--token", "fk_flag"}, &stdout, &stderr); code != 0 || cfg.Token != "fk_flag" {
+		t.Fatalf("flag: code=%d token=%q", code, cfg.Token)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"io"
 	"net/http"
 	"os"
@@ -190,6 +191,37 @@ func TestRunInsecureWarns(t *testing.T) {
 	port := base[strings.LastIndex(base, ":"):]
 	if resp, _ := get(t, "http://127.0.0.1"+port+"/v1/machines"); resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /v1/machines = %d", resp.StatusCode)
+	}
+}
+
+func TestRunNonLoopbackWithToken(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "d", "dashboard.db")
+	if err := os.MkdirAll(filepath.Dir(db), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Open(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secret, err := s.CreateToken(context.Background(), "r", store.ScopeRead, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	base, _ := start(t, Config{Listen: "0.0.0.0:0", DB: db})
+	url := "http://127.0.0.1" + base[strings.LastIndex(base, ":"):] + "/v1/machines"
+	if resp, _ := get(t, url); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no token: %d", resp.StatusCode)
+	}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bea"+"rer "+secret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("with token: %d", resp.StatusCode)
 	}
 }
 
