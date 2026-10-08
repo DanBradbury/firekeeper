@@ -54,9 +54,33 @@ type Config struct {
 	// "https://github.com/me/{project}/blob/{ref}/{path}". Empty means no
 	// links. See api.ValidateFileLink.
 	FileLink string
+	// Limits caps each account's storage, sessions and ingest rate. The zero
+	// value is no limits; `firekeeper serve` starts from api.DefaultLimits.
+	Limits api.Limits
+	// Banner, if set, is shown at the top of every page, such as
+	// "Test bed: data may be wiped". Plain text, at most MaxBannerLen
+	// characters.
+	Banner string
 	// OnListen, if set, is called with the base URL once the listener is
 	// bound and before requests are served.
 	OnListen func(url string)
+}
+
+// MaxBannerLen is the longest Config.Banner, in bytes.
+const MaxBannerLen = 300
+
+// ValidateBanner rejects a banner that is too long or holds control
+// characters. It is shown as text, never as HTML.
+func ValidateBanner(b string) error {
+	if len(b) > MaxBannerLen {
+		return fmt.Errorf("banner is longer than %d bytes", MaxBannerLen)
+	}
+	for _, r := range b {
+		if r < ' ' || r == 0x7f {
+			return errors.New("banner must not contain control characters")
+		}
+	}
+	return nil
 }
 
 // DefaultDBPath returns ~/.firekeeper/dashboard.db.
@@ -98,6 +122,9 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := api.ValidateFileLink(cfg.FileLink); err != nil {
 			return err
 		}
+	}
+	if err := ValidateBanner(cfg.Banner); err != nil {
+		return err
 	}
 	dbPath := cfg.DB
 	if dbPath == "" {
@@ -153,13 +180,13 @@ func Run(ctx context.Context, cfg Config) error {
 	// The middleware resolves every request to an account. It leaves the API
 	// open to the default account only while no token and no account exists.
 	am := auth.New(s, auth.WithSignup(signup))
-	apiHandler := am.Wrap(api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink)))
+	apiHandler := am.Wrap(api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)))
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/auth/login", am.Login())
 	mux.Handle("POST /v1/auth/signup", am.Signup())
 	mux.Handle("/v1/", apiHandler)
 	mux.Handle("/v1/stream", endWith(stopping, apiHandler))
-	mux.Handle("/", web.Handler(web.WithGate(am.Page)))
+	mux.Handle("/", web.Handler(web.WithGate(am.Page), web.WithBanner(strings.TrimSpace(cfg.Banner))))
 
 	// No WriteTimeout: it would cut /v1/stream off.
 	srv := &http.Server{

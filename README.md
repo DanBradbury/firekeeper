@@ -337,6 +337,10 @@ firekeeper report --provider codex       # in another terminal
 | `--file-link TEMPLATE` | Link changed files to their repository host, for example `https://github.com/me/{project}/blob/{ref}/{path}`. Placeholders: `{project}`, `{ref}` (the commit, else the branch), `{commit}`, `{branch}`, and `{path}`. Must be an `http` or `https` URL containing `{path}`. Default `repo_url_template` from the config file. |
 | `--insecure` | Allow a `--listen` address other than loopback with no token or account. The API is then open. |
 | `--signup MODE` | Who may create accounts: `closed` (default), `invite`, or `open`. See [Accounts](#accounts). |
+| `--max-bytes SIZE` | Most transcript data one account may store, such as `500MB` or `2GiB`. Default `1GiB`; `0` for no limit. See [Test-bed safeguards](#test-bed-safeguards). |
+| `--max-sessions N` | Most sessions one account may store. Default `5000`; `0` for no limit. |
+| `--max-ingest-per-minute N` | Most ingest requests one account may make per minute. Default `120`; `0` for no limit. |
+| `--banner TEXT` | Show this text at the top of every page, such as `Test bed: data may be wiped`. Plain text, at most 300 bytes. |
 
 The web UI has two views, picked in the top bar. **Sessions** lists sessions
 and opens transcripts. **Usage** charts daily token use by model for the last
@@ -448,6 +452,51 @@ accounts existed stays with the default account and is not visible to new
 accounts. Put HTTPS in front of any server reachable beyond loopback; the
 session cookie is only marked `Secure` when it sees HTTPS (or
 `X-Forwarded-Proto: https`).
+
+### Test-bed safeguards
+
+These make it safe to let other people upload their transcripts to a server
+you run. They matter once you open `--signup` beyond yourself.
+
+```sh
+firekeeper serve admin create-invite [--ttl 168h] [--account EMAIL]  # prints a one-time code
+firekeeper serve admin list-accounts                                  # accounts, sessions, events, stored size
+firekeeper serve admin disable-account --email them@example.com       # blocks sign-in and tokens, keeps data
+firekeeper serve admin reset-password --email them@example.com        # asks for the new password twice
+firekeeper serve admin delete-account --email them@example.com --yes  # without --yes, only shows what it would remove
+```
+
+The admin commands work on the database directly and need no network or
+credentials, only access to the database file. There is no email, so a
+forgotten password is an operator action: `reset-password` also signs the
+person out everywhere but leaves their tokens working. `delete-account`
+removes the account, its tokens, and all its sessions and events (including
+search entries), and cannot be undone. Use `serve account enable EMAIL` to
+re-enable a disabled account.
+
+- **Limits.** Each account may store at most `--max-bytes` of event text and
+  raw payloads, at most `--max-sessions` sessions, and make at most
+  `--max-ingest-per-minute` ingest requests a minute. An over-limit upload
+  gets a JSON `413` (`storage_limit`, `session_limit`) or `429`
+  (`rate_limited`, with `Retry-After`) and **stores nothing from that
+  request**, so a reporter's retry cannot lose or duplicate events. A `429`
+  clears by itself; a `413` keeps failing until the account deletes data or
+  the operator raises the limit. Re-sending data already stored always works. The single-user default account is never limited.
+  The account page shows usage against these limits.
+- **Account page.** Signed-in people open `#/account` (their email in the
+  header). It shows what they store, **Download my data** (a JSON Lines
+  export of everything stored for the account: `GET /v1/account/export`), and
+  **Delete my account** (type your email to confirm: `DELETE /v1/account`).
+  Both need a browser session; tokens cannot delete an account.
+- **Privacy notice.** `/privacy` is a plain page, readable without
+  JavaScript and without signing in, linked from signup and every page
+  footer. It says that transcripts are uploaded and stored on the server,
+  that redaction is best effort and secrets may get through, that the
+  operator can read stored data, that the server is a test bed whose data may
+  be wiped, and how to delete everything. Edit
+  `internal/server/web/static/privacy.html` if your deployment differs.
+- **Banner.** `--banner TEXT` puts a notice above every page, including the
+  sign-in and privacy pages.
 
 ### Daemon
 

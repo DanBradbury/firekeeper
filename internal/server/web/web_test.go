@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/server/api"
+	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
@@ -269,5 +270,117 @@ func TestLongSessionPaging(t *testing.T) {
 	}
 	if seen != total || pages != total/200 {
 		t.Fatalf("saw %d events in %d pages, want %d in %d", seen, pages, total, total/200)
+	}
+}
+
+// scriptTag matches anything that can run script: a script element or an
+// inline event handler.
+var scriptTag = regexp.MustCompile(`(?i)<script|\son[a-z]+\s*=|javascript:`)
+
+func TestPrivacyPage(t *testing.T) {
+	// Public even when every other page needs a sign-in.
+	h := gated(auth.PageState{Required: true, Accounts: true, Signup: auth.SignupClosed}, nil)
+	rr := serve(t, h, "GET", "/privacy")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("content type %q", ct)
+	}
+	body := rr.Body.String()
+	if scriptTag.MatchString(body) {
+		t.Fatalf("privacy page can run script: %q", scriptTag.FindString(body))
+	}
+	// Fully readable without scripts: plain statements, in the page itself.
+	for _, want := range []string{
+		"uploaded and stored",
+		"best effort",
+		"may get through",
+		"operator can read",
+		"test bed",
+		"may be wiped",
+		"delete",
+		"DELETE /v1/account",
+	} {
+		if !strings.Contains(strings.ToLower(body), strings.ToLower(want)) {
+			t.Errorf("privacy page does not say %q", want)
+		}
+	}
+	if strings.Contains(body, bannerMarker) {
+		t.Error("banner marker left in the page")
+	}
+	csp := rr.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'self'") || strings.Contains(csp, "unsafe-inline") {
+		t.Fatalf("CSP %q", csp)
+	}
+	if rr := serve(t, h, "HEAD", "/privacy"); rr.Code != http.StatusOK || rr.Body.Len() != 0 {
+		t.Fatalf("HEAD: %d, %d bytes", rr.Code, rr.Body.Len())
+	}
+	if rr := serve(t, h, "POST", "/privacy"); rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d", rr.Code)
+	}
+}
+
+func TestPrivacyLinks(t *testing.T) {
+	h := Handler()
+	// The footer on the dashboard and the sign-in pages, and the notice
+	// beside the signup form.
+	for _, path := range []string{"/", "/login", "/signup"} {
+		if body := serve(t, h, "GET", path).Body.String(); !strings.Contains(body, `<a href="privacy">`) {
+			t.Errorf("%s has no footer link to the privacy page", path)
+		}
+	}
+	login := serve(t, h, "GET", "/login.js").Body.String()
+	if !strings.Contains(login, `href: "privacy"`) || !strings.Contains(login, "isSignup && el(\"p\", { class: \"privacy-note\"") {
+		t.Error("the signup form does not link to the privacy page")
+	}
+}
+
+func TestBanner(t *testing.T) {
+	const text = `Test bed <b>"data"</b> may be wiped & more`
+	h := Handler(WithBanner(text))
+	for _, path := range []string{"/", "/login", "/signup", "/privacy"} {
+		rr := serve(t, h, "GET", path)
+		body := rr.Body.String()
+		want := `<div class="banner" role="note">Test bed &lt;b&gt;&#34;data&#34;&lt;/b&gt; may be wiped &amp; more</div>`
+		if !strings.Contains(body, want) {
+			t.Errorf("%s: banner missing or not escaped", path)
+		}
+		if strings.Contains(body, "<b>") || strings.Contains(body, bannerMarker) {
+			t.Errorf("%s: raw banner HTML or marker in page", path)
+		}
+		// Before the header, so it is the first thing a reader sees.
+		if strings.Index(body, `class="banner"`) > strings.Index(body, `class="topbar"`) {
+			t.Errorf("%s: banner is below the header", path)
+		}
+		if cc := rr.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("%s: Cache-Control %q lets the banner be cached", path, cc)
+		}
+	}
+	for _, path := range []string{"/", "/login", "/privacy"} {
+		body := serve(t, Handler(), "GET", path).Body.String()
+		if strings.Contains(body, "banner") && strings.Contains(body, `class="banner"`) || strings.Contains(body, bannerMarker) {
+			t.Errorf("%s: banner shown without --banner", path)
+		}
+	}
+	// The mock UI is unaffected by the server's banner but still renders.
+	if rr := serve(t, h, "GET", "/?mock=1"); rr.Code != http.StatusOK {
+		t.Fatalf("mock page: %d", rr.Code)
+	}
+}
+
+func TestAccountPageIsServed(t *testing.T) {
+	h := Handler()
+	app := serve(t, h, "GET", "/app.js").Body.String()
+	for _, want := range []string{"accountView", `"/account"`, "api.exportURL", "api.deleteAccount"} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.js missing %q", want)
+		}
+	}
+	client := serve(t, h, "GET", "/api.js").Body.String()
+	for _, want := range []string{"v1/account/export", `"DELETE"`, "v1/account"} {
+		if !strings.Contains(client, want) {
+			t.Errorf("api.js missing %q", want)
+		}
 	}
 }
