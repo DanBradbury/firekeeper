@@ -227,6 +227,7 @@ reporting subcommands are being added; `firekeeper --help` lists them.
 firekeeper snapshot --json   # print currently discovered sessions as JSON
 firekeeper report --dry-run  # show what one upload pass would send
 firekeeper report --provider codex --provider copilot
+firekeeper backfill --provider codex --dry-run   # plan importing past sessions
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 firekeeper daemon --provider codex   # report every 15 seconds until stopped
 firekeeper daemon install --provider codex   # run the daemon at login
@@ -262,7 +263,54 @@ file.
 Read offsets live in `~/.firekeeper/state.json` and advance only after the
 server accepts a batch, so an interrupted pass can be rerun without losing
 or duplicating events. A transcript that shrinks is re-read from the start;
-the server drops events it already has.
+the server drops events it already has. `report`, `daemon`, and `backfill`
+share these offsets: each takes a lock on `~/.firekeeper/state.lock` while it
+loads or saves them, so they can run at the same time without one moving
+another's offsets backwards. A pass that cannot get the lock within 30
+seconds fails with a message saying so.
+
+### Backfill
+
+`backfill` imports the sessions already on this machine, including ones that
+have ended, in one pass, then exits. Run it once when you start using the
+dashboard; `daemon` or `report` keeps new activity flowing afterwards.
+
+```sh
+firekeeper backfill --provider codex --dry-run   # print the plan only
+firekeeper backfill --provider codex             # print the plan, ask, upload
+```
+
+It first prints a plan per provider: sessions, files, bytes, an estimated
+event and request count, and the range of last-activity dates, plus how many
+sessions were excluded or are already fully uploaded. The plan holds counts
+and dates only, never transcript text. Uploading needs `--provider` and a
+`y` at the confirmation prompt; without a terminal to ask on, `backfill`
+refuses unless `--yes` is given. With no `--provider`, or with `--dry-run`,
+it prints the plan and stops without opening a network connection.
+
+Sessions upload newest first, so the dashboard is useful early, with one
+progress line per session on stderr. Uploads go through the same redaction,
+batching, and offsets as `report`, so Ctrl-C or a failure can be rerun to
+resume, running it twice uploads nothing the second time, and a later
+`report` or `daemon` pass sends only new events. A failed request is retried
+with backoff (1, 2, 4, then 8 seconds); after 5 failed requests in a row the
+pass stops. Ended sessions show as `ENDED`; a session that is still running
+keeps the state discovery reports for it.
+
+| Flag | Meaning |
+| --- | --- |
+| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
+| `--provider NAME` | Import this provider's sessions. Repeatable. Codex and Copilot can be backfilled today; Claude Code sessions are uploaded only while running, by `report` and `daemon`. |
+| `--since DURATION` | Only import transcripts modified within the duration, for example `720h`. |
+| `--after YYYY-MM-DD` | Only import transcripts modified after this local date. Use `--since` or `--after`, not both. |
+| `--limit N` | Import at most N sessions, newest first. Run again to continue. |
+| `--dry-run` | Print the plan, upload nothing. |
+| `--yes` | Upload without asking. Required when input is not a terminal. |
+| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`. |
+
+Sessions in a directory with `.firekeeper-ignore`, or whose working directory
+is unknown, are skipped as they are by `report`. Exclude globs are not
+applied yet.
 
 `serve` runs the dashboard: the v1 API under `/v1/` and the web UI at `/`,
 on one port. It prints the URL on startup and runs until interrupted. On
