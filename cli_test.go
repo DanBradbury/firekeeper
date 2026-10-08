@@ -93,7 +93,7 @@ func TestUsageListsSubcommands(t *testing.T) {
 	fs.SetOutput(&out)
 	fs.String("renderer", "auto", "sprite renderer")
 	printUsage(fs)
-	for _, want := range []string{"snapshot", "export", "report", "serve", "daemon", "-renderer"} {
+	for _, want := range []string{"snapshot", "export", "report", "backfill", "serve", "daemon", "-renderer"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("usage missing %q:\n%s", want, out.String())
 		}
