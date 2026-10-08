@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -32,7 +33,19 @@ type Session struct {
 	LastActivityAt *time.Time        `json:"last_activity_at"`
 	EventCount     int64             `json:"event_count"`
 	Tokens         transcript.Tokens `json:"tokens"`
+	// Snippets are the best-matching transcript excerpts, set only for
+	// searches (q). Text is HTML-escaped except for <mark> around matches.
+	Snippets []Snippet `json:"snippets,omitempty"`
 }
+
+// Snippet is a matched excerpt of one event's text.
+type Snippet struct {
+	Seq  int64  `json:"seq"`
+	Text string `json:"text"`
+}
+
+// MaxSnippets is the most snippets returned per session.
+const MaxSnippets = 3
 
 // MachineInfo is a machine with its heartbeat and session count.
 type MachineInfo struct {
@@ -81,6 +94,7 @@ func parseTime(ns sql.NullString) *time.Time {
 // cursor is the keyset position after the last row of a page. Key is the
 // session's last_activity_at as stored, or "" when it is NULL.
 type cursor struct {
+	Offset    int    `json:"o,omitempty"` // search results are paged by offset
 	Key       string `json:"k"`
 	MachineID string `json:"m"`
 	SessionID string `json:"s"`
@@ -94,7 +108,7 @@ func encodeCursor(c cursor) string {
 func decodeCursor(s string) (cursor, error) {
 	var c cursor
 	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil || json.Unmarshal(b, &c) != nil || c.MachineID == "" || c.SessionID == "" {
+	if err != nil || json.Unmarshal(b, &c) != nil || c.Offset < 0 || (c.Offset == 0 && (c.MachineID == "" || c.SessionID == "")) {
 		return c, fmt.Errorf("%w: invalid cursor", ErrInvalid)
 	}
 	return c, nil
@@ -132,6 +146,9 @@ func (s *Store) ListSessions(ctx context.Context, f SessionFilter) ([]Session, s
 	if f.Limit < 1 {
 		return nil, "", fmt.Errorf("%w: limit must be positive", ErrInvalid)
 	}
+	if strings.TrimSpace(f.Q) != "" {
+		return s.searchSessions(ctx, f)
+	}
 	var where []string
 	var args []any
 	for _, eq := range []struct{ col, val string }{
@@ -142,12 +159,6 @@ func (s *Store) ListSessions(ctx context.Context, f SessionFilter) ([]Session, s
 			where = append(where, eq.col+" = ?")
 			args = append(args, eq.val)
 		}
-	}
-	if q := strings.TrimSpace(f.Q); q != "" {
-		where = append(where, `(instr(lower(s.title), lower(?)) > 0 OR EXISTS (
-    SELECT 1 FROM events_fts f JOIN events e ON e.rowid = f.rowid
-    WHERE events_fts MATCH ? AND e.machine_id = s.machine_id AND e.session_id = s.session_id))`)
-		args = append(args, q, ftsPhrase(q))
 	}
 	if f.Cursor != "" {
 		c, err := decodeCursor(f.Cursor)
@@ -263,6 +274,110 @@ FROM machines m ORDER BY m.id`)
 		}
 		mi.LastHeartbeatAt = parseTime(hb)
 		out = append(out, mi)
+	}
+	return out, rows.Err()
+}
+
+const (
+	markOpen  = "\x02"
+	markClose = "\x03"
+)
+
+var markReplacer = strings.NewReplacer(markOpen, "<mark>", markClose, "</mark>")
+
+// highlight HTML-escapes an FTS snippet delimited by markOpen/markClose and
+// swaps the delimiters for <mark> tags.
+func highlight(s string) string {
+	return markReplacer.Replace(html.EscapeString(s))
+}
+
+// searchSessions runs q as an FTS5 phrase over event text (and, as a
+// fallback, session titles). Sessions are ranked by their best-matching
+// event using bm25; title-only matches rank after transcript matches. Each
+// result carries up to MaxSnippets snippets. Pages are offset-based.
+func (s *Store) searchSessions(ctx context.Context, f SessionFilter) ([]Session, string, error) {
+	q := strings.TrimSpace(f.Q)
+	phrase := ftsPhrase(q)
+	offset := 0
+	if f.Cursor != "" {
+		c, err := decodeCursor(f.Cursor)
+		if err != nil {
+			return nil, "", err
+		}
+		offset = c.Offset
+	}
+	where := []string{`(h.sid IS NOT NULL OR instr(lower(s.title), lower(?)) > 0)`}
+	args := []any{phrase, q}
+	for _, eq := range []struct{ col, val string }{
+		{"s.machine_id", f.Machine}, {"s.provider", f.Provider},
+		{"s.project", f.Project}, {"s.state", f.State},
+	} {
+		if eq.val != "" {
+			where = append(where, eq.col+" = ?")
+			args = append(args, eq.val)
+		}
+	}
+	args = append(args, f.Limit+1, offset)
+	query := `WITH hits AS (
+    SELECT e.machine_id AS mid, e.session_id AS sid, MIN(events_fts.rank) AS score
+    FROM events_fts JOIN events e ON e.rowid = events_fts.rowid
+    WHERE events_fts MATCH ? GROUP BY e.machine_id, e.session_id)
+SELECT ` + sessionColumns + ` FROM sessions s
+LEFT JOIN hits h ON h.mid = s.machine_id AND h.sid = s.session_id
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY COALESCE(h.score, 0), COALESCE(s.last_activity_at, '') DESC, s.machine_id DESC, s.session_id DESC
+LIMIT ? OFFSET ?`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	var out []Session
+	for rows.Next() {
+		se, _, err := scanSession(rows)
+		if err != nil {
+			rows.Close()
+			return nil, "", err
+		}
+		out = append(out, se)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, "", err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(out) > f.Limit {
+		out = out[:f.Limit]
+		next = encodeCursor(cursor{Offset: offset + f.Limit})
+	}
+	for i := range out {
+		sn, err := s.snippets(ctx, out[i].MachineID, out[i].SessionID, phrase)
+		if err != nil {
+			return nil, "", err
+		}
+		out[i].Snippets = sn
+	}
+	return out, next, nil
+}
+
+func (s *Store) snippets(ctx context.Context, machineID, sessionID, phrase string) ([]Snippet, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT e.seq, snippet(events_fts, 0, ?, ?, '…', 24)
+FROM events_fts JOIN events e ON e.rowid = events_fts.rowid
+WHERE events_fts MATCH ? AND e.machine_id = ? AND e.session_id = ?
+ORDER BY events_fts.rank, e.seq LIMIT ?`, markOpen, markClose, phrase, machineID, sessionID, MaxSnippets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Snippet
+	for rows.Next() {
+		var sn Snippet
+		if err := rows.Scan(&sn.Seq, &sn.Text); err != nil {
+			return nil, err
+		}
+		sn.Text = highlight(sn.Text)
+		out = append(out, sn)
 	}
 	return out, rows.Err()
 }
