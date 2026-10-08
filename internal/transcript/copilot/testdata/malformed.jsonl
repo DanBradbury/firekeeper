@@ -1,0 +1,10 @@
+{"type":"session.start","data":{"sessionId":"0199b2c3-d4e5-7f60-8a9b-1c2d3e4f5a6c"},"timestamp":"2026-01-02T03:04:05.000Z"}
+{"type":"future.event","data":{"shape":"unknown"},"timestamp":"2026-01-02T03:04:06.000Z"}
+{"type":"user.message","data":{"content":"hello"},"timestamp":"not-a-time"}
+{"type":"user.message","data":"not an object"}
+{"type":"assistant.message","data":{"content":{"unexpected":true}}}
+{"type":"tool.execution_start","data":{"toolCallId":"t1","arguments":"raw args"}}
+{"type":"session.shutdown","data":{"modelMetrics":{"m":{"usage":null}}}}
+{"truncated json
+[1,2,3]
+{"type":"tool.execution_complete","data":{"toolCallId":"never_started","result":{"content":["unexpected"]}}}
