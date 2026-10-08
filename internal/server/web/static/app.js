@@ -1,5 +1,5 @@
-// Firekeeper dashboard: a session list and a transcript viewer, routed by
-// URL fragment. All transcript text is inserted with textContent, never as
+// Firekeeper dashboard: a session list, a transcript viewer, and token
+// usage charts, routed by URL fragment. All transcript text is inserted with textContent, never as
 // HTML.
 
 import { realAPI, auth } from "./api.js";
@@ -26,6 +26,8 @@ function el(tag, attrs, ...children) {
     if (v === undefined || v === null || v === false) continue;
     if (k === "class") n.className = v;
     else if (k === "text") n.textContent = v;
+    // The CSP forbids inline style attributes; CSSOM assignment is allowed.
+    else if (k === "css") for (const [p, pv] of Object.entries(v)) n.style.setProperty(p, pv);
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
     else n.setAttribute(k, v === true ? "" : String(v));
   }
@@ -101,6 +103,9 @@ function badge(state) {
 
 function parseRoute() {
   const h = location.hash.replace(/^#/, "") || "/";
+  if (h === "/usage" || h.startsWith("/usage?")) {
+    return { view: "usage", params: new URLSearchParams(h.slice(7)) };
+  }
   if (h.startsWith("/s/")) {
     try {
       return { view: "session", uid: decodeURIComponent(h.slice(3)) };
@@ -147,7 +152,14 @@ function render() {
   current = null;
   app.replaceChildren();
   const r = parseRoute();
-  current = r.view === "session" ? sessionView(r.uid) : listView(r.params);
+  for (const [id, view] of [["nav-sessions", "list"], ["nav-usage", "usage"]]) {
+    const a = document.getElementById(id);
+    if (view === r.view) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+  if (r.view === "session") current = sessionView(r.uid);
+  else if (r.view === "usage") current = usageView(r.params);
+  else current = listView(r.params);
   window.scrollTo(0, 0);
 }
 
@@ -664,6 +676,462 @@ function sessionView(uid) {
         clearTimeout(headTimer);
         headTimer = setTimeout(loadHead, 1000);
       }
+    },
+  };
+}
+
+// ---------- usage ----------
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const RANGES = [7, 30, 90];
+const SERIES_SLOTS = 7; // colored models; the rest fold into "Other"
+const METRICS = {
+  total: { label: "All tokens", of: (r) => tokTotal(r.tokens) },
+  input: { label: "Input", of: (r) => r.tokens.input || 0 },
+  output: { label: "Output", of: (r) => r.tokens.output || 0 },
+  cache: { label: "Cache", of: (r) => r.tokens.cache || 0 },
+  cost: { label: "Cost", of: (r) => r.cost || 0, priced: true },
+};
+
+// modelSlots keeps each model's color for the whole page visit, so changing
+// the range or metric never repaints a model that is still shown.
+const modelSlots = new Map();
+
+function svg(tag, attrs, ...children) {
+  const n = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === undefined || v === null) continue;
+    if (k === "css") for (const [p, pv] of Object.entries(v)) n.style.setProperty(p, pv);
+    else n.setAttribute(k, String(v));
+  }
+  for (const c of children) if (c) n.append(c);
+  return n;
+}
+
+function tokTotal(t) {
+  t = t || {};
+  return (t.input || 0) + (t.output || 0) + (t.cache || 0);
+}
+
+function money(n) {
+  n = Number(n) || 0;
+  if (n === 0) return "0.00";
+  if (n < 0.01) return n.toFixed(4);
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const isoDay = (t) => new Date(t).toISOString().slice(0, 10);
+const todayUTC = () => isoDay(Date.now());
+const addDays = (day, n) => isoDay(Date.parse(day) + n * 86400e3);
+const validDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || "") && !Number.isNaN(Date.parse(d));
+const shortDay = (day) => new Date(day).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+
+function modelName(m) {
+  return m || "(unknown model)";
+}
+
+// assignSlots gives each of the top models a stable slot 1..SERIES_SLOTS.
+function assignSlots(models) {
+  const used = new Set();
+  const want = [];
+  for (const m of models) {
+    const s = modelSlots.get(m);
+    if (s && !used.has(s)) used.add(s);
+    else want.push(m);
+  }
+  for (const m of want) {
+    let s = 1;
+    while (used.has(s)) s++;
+    modelSlots.set(m, s);
+    used.add(s);
+  }
+}
+
+// niceMax rounds a positive maximum up to 1, 2, 2.5, or 5 times a power of ten.
+function niceMax(v) {
+  if (!(v > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * p) return m * p;
+  return 10 * p;
+}
+
+// barPath draws a bar segment with 4px rounded top corners when it is the
+// top of its stack and wide enough to show them.
+function barPath(x, y, w, h, roundTop) {
+  const r = roundTop ? Math.min(4, w / 2, h) : 0;
+  if (!r) return `M${x},${y + h}V${y}H${x + w}V${y + h}Z`;
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+function usageView(params) {
+  let alive = true;
+  let token = 0;
+  let refreshTimer = null;
+  let data = null; // { daily, projects, from, to, priced }
+
+  let range = params.get("range") || "30";
+  let from = params.get("from");
+  let to = params.get("to");
+  let metric = params.get("metric") || "total";
+  if (!(metric in METRICS)) metric = "total";
+  if (range === "custom" && !(validDay(from) && validDay(to) && from <= to)) range = "30";
+  if (range !== "custom" && !RANGES.includes(Number(range))) range = "30";
+
+  const rangeSel = el("select", { name: "range" },
+    ...RANGES.map((n) => el("option", { value: String(n), text: `Last ${n} days` })),
+    el("option", { value: "custom", text: "Custom" }));
+  const fromIn = el("input", { type: "date", name: "from" });
+  const toIn = el("input", { type: "date", name: "to" });
+  const metricSel = el("select", { name: "metric" });
+  const fromLabel = el("label", {}, "From", fromIn);
+  const toLabel = el("label", {}, "To", toIn);
+
+  const status = el("div", {}, el("div", { class: "loading", text: "Loading usage…" }));
+  const tiles = el("div", { class: "tiles" });
+  const chartTitle = el("h2");
+  const legend = el("ul", { class: "legend" });
+  const chartBox = el("div", { class: "chart" });
+  const tip = el("div", { class: "chart-tip", role: "status", hidden: true });
+  const dailyTable = el("div", { class: "table-wrap" });
+  const dailyDetails = el("details", { class: "daily" }, el("summary", { text: "Show daily table" }), dailyTable);
+  const projectTable = el("div", { class: "panel table-wrap" });
+  const content = el("div", { hidden: true },
+    tiles,
+    el("section", { class: "panel chart-panel" }, chartTitle, legend, el("div", { class: "chart-wrap" }, chartBox, tip), dailyDetails),
+    el("h2", { text: "Totals by project" }),
+    projectTable);
+  const rangeNote = el("p", { class: "range-note" });
+
+  app.append(
+    el("h1", { text: "Usage" }),
+    el("form", { class: "filters", onsubmit: (e) => e.preventDefault() },
+      el("label", {}, "Range", rangeSel), fromLabel, toLabel, el("label", {}, "Chart", metricSel)),
+    rangeNote,
+    status,
+    content,
+  );
+
+  function bounds() {
+    if (range === "custom") return [from, to];
+    const t = todayUTC();
+    return [addDays(t, 1 - Number(range)), t];
+  }
+
+  function syncControls() {
+    const [f, t] = bounds();
+    rangeSel.value = range;
+    fromIn.value = f;
+    toIn.value = t;
+    const custom = range === "custom";
+    fromIn.disabled = !custom;
+    toIn.disabled = !custom;
+    rangeNote.textContent = `${shortDay(f)} – ${shortDay(t)} (UTC days). Tokens are summed from stored transcript events that have a timestamp.`;
+  }
+
+  function syncHash() {
+    const p = new URLSearchParams();
+    if (range !== "30") p.set("range", range);
+    if (range === "custom") {
+      p.set("from", from);
+      p.set("to", to);
+    }
+    if (metric !== "total") p.set("metric", metric);
+    const h = p.size ? `#/usage?${p}` : "#/usage";
+    if (location.hash !== h) history.replaceState(null, "", h);
+  }
+
+  // fillMetrics lists the chart metrics. Cost exists only with a price
+  // table, so a requested cost metric waits for the first response.
+  function fillMetrics(priced) {
+    const opts = Object.entries(METRICS).filter(([, m]) => !m.priced || priced);
+    if (!opts.some(([k]) => k === metric)) {
+      if (data) metric = "total";
+      else opts.push([metric, METRICS[metric]]);
+    }
+    metricSel.replaceChildren(...opts.map(([k, m]) => el("option", { value: k, text: m.label })));
+    metricSel.value = metric;
+  }
+
+  rangeSel.addEventListener("change", () => {
+    if (rangeSel.value === "custom") {
+      [from, to] = bounds();
+      range = "custom";
+    } else {
+      range = rangeSel.value;
+    }
+    syncControls();
+    syncHash();
+    load();
+  });
+  const onDate = () => {
+    if (!validDay(fromIn.value) || !validDay(toIn.value)) return;
+    from = fromIn.value;
+    to = toIn.value;
+    if (from > to) [from, to] = [to, from];
+    syncControls();
+    syncHash();
+    load();
+  };
+  fromIn.addEventListener("change", onDate);
+  toIn.addEventListener("change", onDate);
+  metricSel.addEventListener("change", () => {
+    metric = metricSel.value;
+    syncHash();
+    if (data) drawChart();
+  });
+
+  async function load(quiet = false) {
+    const my = ++token;
+    const [f, t] = bounds();
+    if (!quiet) status.replaceChildren(el("div", { class: "loading", text: "Loading usage…" }));
+    try {
+      const [daily, projects] = await Promise.all([
+        api.usage(f, t, ["day", "model"]),
+        api.usage(f, t, ["project"]),
+      ]);
+      if (!alive || my !== token) return;
+      data = { daily, projects, from: f, to: t, priced: !!daily.priced };
+      fillMetrics(data.priced);
+      if (daily.rows.length === 0) {
+        content.hidden = true;
+        status.replaceChildren(notice(`No token usage recorded between ${shortDay(f)} and ${shortDay(t)}.`));
+        return;
+      }
+      status.replaceChildren();
+      content.hidden = false;
+      drawTiles();
+      drawChart();
+      drawProjects();
+    } catch (err) {
+      if (!alive || my !== token) return;
+      status.replaceChildren(notice(err.message, true));
+    }
+  }
+
+  function drawTiles() {
+    const t = data.projects.totals;
+    const tile = (label, value, title) => el("div", { class: "tile", title },
+      el("div", { class: "tile-label", text: label }), el("div", { class: "tile-value", text: value }));
+    const f = (n) => (Number(n) || 0).toLocaleString();
+    const list = [
+      tile("Total tokens", compact(tokTotal(t.tokens)), f(tokTotal(t.tokens))),
+      tile("Input", compact(t.tokens.input), f(t.tokens.input)),
+      tile("Output", compact(t.tokens.output), f(t.tokens.output)),
+      tile("Cache", compact(t.tokens.cache), f(t.tokens.cache)),
+    ];
+    if (data.priced) {
+      const partial = t.unpriced_tokens > 0;
+      list.push(tile(partial ? "Cost (partial)" : "Cost", money(t.cost),
+        partial ? `Excludes ${f(t.unpriced_tokens)} tokens from models without a price` : "From the configured price table"));
+    }
+    tiles.replaceChildren(...list);
+  }
+
+  // series ranks models by the chosen metric over the range; the top
+  // SERIES_SLOTS keep their own color and the rest become "Other".
+  function series() {
+    const m = METRICS[metric];
+    const byModel = new Map();
+    for (const r of data.daily.rows) byModel.set(r.group.model, (byModel.get(r.group.model) || 0) + m.of(r));
+    const ranked = [...byModel.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    let top = ranked.map(([k]) => k);
+    let other = false;
+    if (top.length > SERIES_SLOTS) {
+      top = top.slice(0, SERIES_SLOTS - 1);
+      other = true;
+    }
+    assignSlots(top);
+    const list = top.map((k) => ({ key: k, label: modelName(k), color: `var(--series-${modelSlots.get(k)})`, total: byModel.get(k) }));
+    if (other) {
+      const shown = new Set(top);
+      const rest = ranked.filter(([k]) => !shown.has(k));
+      list.push({ key: null, label: `Other (${rest.length} models)`, color: "var(--series-other)", total: rest.reduce((a, [, v]) => a + v, 0) });
+    }
+    return list;
+  }
+
+  function drawChart() {
+    const m = METRICS[metric];
+    const fmt = metric === "cost" ? money : compact;
+    chartTitle.textContent = {
+      total: "Daily tokens by model", cost: "Daily cost by model",
+    }[metric] || `Daily ${m.label.toLowerCase()} tokens by model`;
+    const ser = series();
+    const keyOf = new Map(ser.filter((x) => x.key !== null).map((x, i) => [x.key, i]));
+    const otherIdx = ser.findIndex((x) => x.key === null);
+
+    // One column per UTC day in range, including days with no usage.
+    const days = [];
+    for (let d = data.from; d <= data.to; d = addDays(d, 1)) days.push(d);
+    const dayIdx = new Map(days.map((d, i) => [d, i]));
+    const cols = days.map(() => ser.map(() => 0));
+    const costPartial = days.map(() => 0);
+    for (const r of data.daily.rows) {
+      const i = dayIdx.get(r.group.day);
+      if (i === undefined) continue;
+      const si = keyOf.has(r.group.model) ? keyOf.get(r.group.model) : otherIdx;
+      if (si >= 0) cols[i][si] += m.of(r);
+      costPartial[i] += r.unpriced_tokens || 0;
+    }
+
+    legend.replaceChildren(...ser.map((x) => el("li", {},
+      el("span", { class: "swatch", css: { background: x.color } }),
+      el("span", { class: "legend-label", text: x.label }),
+      el("span", { class: "legend-value", text: fmt(x.total) }))));
+
+    const width = Math.max(chartBox.clientWidth || 600, 280);
+    const height = 240;
+    const pad = { l: 48, r: 8, t: 10, b: 24 };
+    const pw = width - pad.l - pad.r;
+    const ph = height - pad.t - pad.b;
+    const max = niceMax(Math.max(0, ...cols.map((c) => c.reduce((a, b) => a + b, 0))));
+    const step = pw / days.length;
+    const gap = Math.min(2, step * 0.25);
+    const bw = Math.min(Math.max(step - gap, 1), 48);
+    const y = (v) => pad.t + ph - (v / max) * ph;
+
+    const root = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img",
+      "aria-label": `${chartTitle.textContent}, ${shortDay(data.from)} to ${shortDay(data.to)}. The daily table below lists the same values.` });
+    for (let i = 0; i <= 4; i++) {
+      const v = (max / 4) * i;
+      root.append(
+        svg("line", { x1: pad.l, x2: width - pad.r, y1: y(v), y2: y(v), class: i === 0 ? "axis" : "grid" }),
+        svg("text", { x: pad.l - 6, y: y(v) + 4, "text-anchor": "end", class: "tick" }, document.createTextNode(fmt(v))));
+    }
+    const labelEvery = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor(pw / 64))));
+    days.forEach((d, i) => {
+      if (i % labelEvery !== 0) return;
+      root.append(svg("text", { x: pad.l + i * step + step / 2, y: height - 6, "text-anchor": "middle", class: "tick" },
+        document.createTextNode(shortDay(d))));
+    });
+
+    const bars = svg("g");
+    const hits = svg("g");
+    days.forEach((d, i) => {
+      const x = pad.l + i * step + (step - bw) / 2;
+      let base = 0;
+      const top = cols[i].reduce((a, v, si) => (v > 0 ? si : a), -1);
+      cols[i].forEach((v, si) => {
+        if (v <= 0) return;
+        const y0 = y(base);
+        const y1 = y(base + v);
+        base += v;
+        // A 2px surface gap separates stacked segments.
+        const h = Math.max(y0 - y1 - (base > v ? Math.min(2, (y0 - y1) / 2) : 0), 0.5);
+        bars.append(svg("path", { d: barPath(x, y1, bw, h, si === top), css: { fill: ser[si].color } }));
+      });
+      // The hit target spans the whole column so thin bars are easy to hover.
+      const hit = svg("rect", { x: pad.l + i * step, y: pad.t, width: step, height: ph, class: "hit" });
+      hit.addEventListener("mouseenter", () => showTip(d, cols[i], ser, fmt, costPartial[i], pad.l + i * step + step / 2, width));
+      hit.addEventListener("mouseleave", hideTip);
+      hits.append(hit);
+    });
+    root.append(bars, hits);
+    chartBox.replaceChildren(root);
+    hideTip();
+    if (dailyDetails.open) drawDaily();
+  }
+
+  function showTip(day, col, ser, fmt, partial, cx, width) {
+    const total = col.reduce((a, b) => a + b, 0);
+    const lines = ser.map((x, si) => [x, col[si]]).filter(([, v]) => v > 0).reverse();
+    tip.replaceChildren(...[
+      el("div", { class: "tip-head" }, el("strong", { text: shortDay(day) }), el("span", { text: fmt(total) })),
+      ...lines.map(([x, v]) => el("div", { class: "tip-row" },
+        el("span", { class: "swatch", css: { background: x.color } }),
+        el("span", { class: "tip-label", text: x.label }),
+        el("span", { class: "tip-value", text: fmt(v) }))),
+      lines.length === 0 ? el("div", { class: "tip-row muted", text: "No usage" }) : null,
+      metric === "cost" && partial > 0 ? el("div", { class: "tip-row muted", text: `${compact(partial)} tokens unpriced` }) : null,
+    ].filter(Boolean));
+    tip.hidden = false;
+    const w = tip.offsetWidth;
+    tip.style.left = `${Math.min(Math.max(cx - w / 2, 0), width - w)}px`;
+  }
+  function hideTip() {
+    tip.hidden = true;
+  }
+
+  function drawDaily() {
+    const priced = data.priced;
+    const rows = data.daily.rows.slice().reverse();
+    const f = (n) => (Number(n) || 0).toLocaleString();
+    dailyTable.replaceChildren(el("table", { class: "data" },
+      el("thead", {}, el("tr", {},
+        el("th", { scope: "col", text: "Day" }), el("th", { scope: "col", text: "Model" }),
+        el("th", { scope: "col", class: "num", text: "Input" }), el("th", { scope: "col", class: "num", text: "Output" }),
+        el("th", { scope: "col", class: "num", text: "Cache" }), el("th", { scope: "col", class: "num", text: "Total" }),
+        priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
+      el("tbody", {}, ...rows.map((r) => el("tr", {},
+        el("td", { text: r.group.day }), el("td", { class: "model", text: modelName(r.group.model) }),
+        el("td", { class: "num", text: f(r.tokens.input) }), el("td", { class: "num", text: f(r.tokens.output) }),
+        el("td", { class: "num", text: f(r.tokens.cache) }), el("td", { class: "num", text: f(tokTotal(r.tokens)) }),
+        priced && costCell(r))))));
+  }
+  dailyDetails.addEventListener("toggle", () => {
+    if (dailyDetails.open && data) drawDaily();
+  });
+
+  function costCell(r) {
+    const partial = r.unpriced_tokens > 0;
+    return el("td", { class: "num", title: partial ? `Excludes ${(r.unpriced_tokens).toLocaleString()} tokens from models without a price` : undefined },
+      money(r.cost), partial ? el("span", { class: "partial", text: " *" }) : null);
+  }
+
+  function drawProjects() {
+    const priced = data.priced;
+    const t = data.projects.totals;
+    const all = tokTotal(t.tokens) || 1;
+    const f = (n) => (Number(n) || 0).toLocaleString();
+    const anyPartial = data.projects.rows.some((r) => r.unpriced_tokens > 0);
+    const line = (name, r, cls) => el("tr", { class: cls },
+      el("td", { class: "project", text: name }),
+      el("td", { class: "num", text: f(r.tokens.input) }),
+      el("td", { class: "num", text: f(r.tokens.output) }),
+      el("td", { class: "num hide-sm", text: f(r.tokens.cache) }),
+      el("td", { class: "num", text: f(tokTotal(r.tokens)) }),
+      el("td", { class: "share hide-sm" },
+        el("span", { class: "share-track" },
+          el("span", { class: "share-bar", css: { width: `${((tokTotal(r.tokens) / all) * 100).toFixed(1)}%` } })),
+        el("span", { class: "share-pct", text: `${((tokTotal(r.tokens) / all) * 100).toFixed(1)}%` })),
+      priced && costCell(r));
+    projectTable.replaceChildren(...[
+      el("table", { class: "data" },
+        el("thead", {}, el("tr", {},
+          el("th", { scope: "col", text: "Project" }),
+          el("th", { scope: "col", class: "num", text: "Input" }),
+          el("th", { scope: "col", class: "num", text: "Output" }),
+          el("th", { scope: "col", class: "num hide-sm", text: "Cache" }),
+          el("th", { scope: "col", class: "num", text: "Total" }),
+          el("th", { scope: "col", class: "hide-sm", text: "Share" }),
+          priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
+        el("tbody", {}, ...data.projects.rows.map((r) => line(r.group.project || "(no project)", r))),
+        el("tfoot", {}, line("Total", { ...t, group: {} }, "total"))),
+      anyPartial && el("p", { class: "footnote", text: "* Cost covers priced models only; some tokens came from models with no price in the configured table." }),
+    ].filter(Boolean));
+  }
+
+  const resize = "ResizeObserver" in window
+    ? new ResizeObserver(() => {
+      if (data && !content.hidden) drawChart();
+    })
+    : null;
+  resize?.observe(chartBox);
+
+  syncControls();
+  fillMetrics(false);
+  load();
+
+  return {
+    dispose() {
+      alive = false;
+      resize?.disconnect();
+      clearTimeout(refreshTimer);
+    },
+    onStream(type) {
+      if (type !== "event.appended") return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => load(true), 5000);
     },
   };
 }

@@ -328,6 +328,13 @@ firekeeper report --provider codex       # in another terminal
 | `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
 | `--insecure` | Allow a `--listen` address other than loopback. |
 
+The web UI has two views, picked in the top bar. **Sessions** lists sessions
+and opens transcripts. **Usage** charts daily token use by model for the last
+7, 30, or 90 days or a custom range, with totals by project and a daily
+table. Days are UTC, and only events with a timestamp are counted. Cost
+appears only when a per-model price table is configured; Firekeeper never
+ships prices, and `serve` has no way to set one yet.
+
 ### Tokens
 
 ```sh
