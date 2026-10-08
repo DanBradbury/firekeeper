@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -91,6 +92,10 @@ const changeBuffer = 1024
 type Store struct {
 	db      *sql.DB
 	changes chan Change
+
+	// mu guards closed so notify never sends on a closed channel.
+	mu     sync.RWMutex
+	closed bool
 }
 
 // Open opens (creating if needed) the database at path and applies migrations.
@@ -114,18 +119,32 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	return s, nil
 }
 
-// Close closes the database and the change channel.
+// Close closes the change channel and the database. It is safe to call
+// while writes are in flight; their notifications are discarded.
 func (s *Store) Close() error {
-	err := s.db.Close()
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
 	close(s.changes)
-	return err
+	s.mu.Unlock()
+	return s.db.Close()
 }
 
 // Changes returns the notification channel. Notifications are dropped when
-// the buffer is full rather than blocking ingest.
+// the buffer is full rather than blocking ingest, so consumers must treat
+// them as hints and re-read state (for example events after the last seq
+// they saw) instead of relying on every notification arriving.
 func (s *Store) Changes() <-chan Change { return s.changes }
 
 func (s *Store) notify(cs []Change) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return
+	}
 	for _, c := range cs {
 		select {
 		case s.changes <- c:
@@ -190,17 +209,21 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
 	return v, err
 }
 
+// timeLayout is fixed-width UTC so stored timestamps order correctly as
+// strings. RFC3339Nano trims trailing zeros, which breaks lexical order.
+const timeLayout = "2006-01-02T15:04:05.000000000Z"
+
 func fmtTime(t *time.Time) any {
 	if t == nil || t.IsZero() {
 		return nil
 	}
-	return t.UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(timeLayout)
 }
 
 func upsertMachine(ctx context.Context, tx *sql.Tx, m Machine, now time.Time, heartbeat bool) error {
 	var hb any
 	if heartbeat {
-		hb = now.UTC().Format(time.RFC3339Nano)
+		hb = now.UTC().Format(timeLayout)
 	}
 	_, err := tx.ExecContext(ctx, `
 INSERT INTO machines(id, name, hostname, os, version, last_heartbeat_at)
