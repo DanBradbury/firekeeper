@@ -37,27 +37,12 @@ func (p *providerList) Set(value string) error {
 	return nil
 }
 
-// tokenEnv names the environment variable that supplies the bearer token.
-const tokenEnv = "FIREKEEPER_TOKEN"
-
-// tokenFlag registers --token and returns a getter that falls back to
-// FIREKEEPER_TOKEN when the flag is unset.
-func tokenFlag(fs *flag.FlagSet) func() string {
-	v := fs.String("token", "", "ingest token for the dashboard server (default $"+tokenEnv+")")
-	return func() string {
-		if *v != "" {
-			return *v
-		}
-		return os.Getenv(tokenEnv)
-	}
-}
-
 func runReport(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper report", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfg := reporter.Config{Out: stdout}
 	fs.StringVar(&cfg.Server, "server", reporter.DefaultServer, "dashboard server URL")
-	tokenFlag := tokenFlag(fs)
+	token := tokenFlag(fs)
 	var providers providerList
 	fs.Var(&providers, "provider", "upload this provider's sessions (repeatable); with none, nothing is uploaded")
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "print what would be uploaded without uploading")
@@ -76,9 +61,13 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "firekeeper report: --since must not be negative")
 		return 2
 	}
-	cfg.Providers = providers
-	cfg.Token = tokenFlag()
-	if len(providers) == 0 && !cfg.DryRun {
+	c, err := loadConfig(configFlags{fs: fs, server: &cfg.Server, token: token, providers: &providers})
+	if err != nil {
+		fmt.Fprintf(stderr, "firekeeper report: %v\n", err)
+		return 2
+	}
+	applyReporterConfig(&cfg, c)
+	if len(cfg.Providers) == 0 && !cfg.DryRun {
 		fmt.Fprintln(stderr, "firekeeper report: no --provider given; uploading nothing. Showing what would be uploaded.")
 	}
 

@@ -54,7 +54,7 @@ func TestIngestIdempotentAndFTS(t *testing.T) {
 		t.Fatalf("fts %v %v", hits, err)
 	}
 	v, _ := s.SchemaVersion(ctx)
-	if v != 3 {
+	if v != 4 {
 		t.Fatalf("version %d", v)
 	}
 }

@@ -46,6 +46,11 @@ type Config struct {
 	// Prices is the per-model price table for usage cost, per million
 	// tokens. Nil means usage shows tokens only.
 	Prices map[string]store.Price
+	// FileLink is the template linking a session's changed files to their
+	// repository host, such as
+	// "https://github.com/me/{project}/blob/{ref}/{path}". Empty means no
+	// links. See api.ValidateFileLink.
+	FileLink string
 	// OnListen, if set, is called with the base URL once the listener is
 	// bound and before requests are served.
 	OnListen func(url string)
@@ -85,6 +90,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	if _, _, err := net.SplitHostPort(listen); err != nil {
 		return fmt.Errorf("invalid listen address %q: %w", listen, err)
+	}
+	if cfg.FileLink != "" {
+		if err := api.ValidateFileLink(cfg.FileLink); err != nil {
+			return err
+		}
 	}
 	dbPath := cfg.DB
 	if dbPath == "" {
@@ -129,7 +139,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// the whole grace period. End them as soon as shutdown begins.
 	stopping, stopStreams := context.WithCancel(context.Background())
 	defer stopStreams()
-	var apiHandler http.Handler = api.Handler(s, api.WithPrices(cfg.Prices))
+	var apiHandler http.Handler = api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink))
 	if len(tokens) > 0 {
 		apiHandler = auth.New(s).Wrap(apiHandler)
 	}

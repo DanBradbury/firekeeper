@@ -2,7 +2,8 @@
   "sessions": [
     {
       "uid": "m-studio:019a-long", "machine_id": "m-studio", "session_id": "019a-long", "provider": "codex",
-      "cwd": "/Users/example/src/firekeeper", "project": "firekeeper", "branch": "dash/sprites", "model": "gpt-5-codex",
+      "cwd": "/Users/example/src/firekeeper", "project": "firekeeper", "branch": "dash/sprites",
+      "commit": "4f5ef2f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6", "model": "gpt-5-codex",
       "state": "ACTIVE", "title": "Refactor sprite compositor (5,000 events)",
       "started_at": "2026-10-07T08:00:00Z", "last_activity_at": "2026-10-07T12:00:00Z",
       "event_count": 5000, "tokens": { "input": 4182330, "output": 391204, "cache": 2910442 }

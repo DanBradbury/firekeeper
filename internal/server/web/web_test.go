@@ -131,6 +131,8 @@ func TestMockFixturesMatchAPI(t *testing.T) {
 	if len(sessions.Sessions) == 0 {
 		t.Fatal("no mock sessions")
 	}
+	var files map[string][]store.SessionFile
+	decodeStrict(t, "files.json", &files)
 	uids := map[string]store.Session{}
 	for _, s := range sessions.Sessions {
 		if s.UID != store.UID(s.MachineID, s.SessionID) {
@@ -140,6 +142,11 @@ func TestMockFixturesMatchAPI(t *testing.T) {
 			t.Errorf("session %q: invalid provider %q", s.UID, s.Provider)
 		}
 		uids[s.UID] = s
+	}
+	for uid := range files {
+		if _, ok := uids[uid]; !ok {
+			t.Errorf("files for unknown session %q", uid)
+		}
 	}
 
 	var machines struct {

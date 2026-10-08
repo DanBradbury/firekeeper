@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/daemon"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 )
@@ -24,11 +25,13 @@ var daemonRun = daemon.Run
 var newService = daemon.NewService
 
 // daemonFlags are the flags the daemon runs with. install takes the same
-// ones and writes them into the service definition.
+// ones and writes the ones given into the service definition. cfg is the
+// merged configuration once parsed.
 type daemonFlags struct {
 	server    string
 	providers providerList
 	interval  time.Duration
+	cfg       config.Config
 }
 
 func registerDaemonFlags(fs *flag.FlagSet) *daemonFlags {
@@ -39,18 +42,25 @@ func registerDaemonFlags(fs *flag.FlagSet) *daemonFlags {
 	return f
 }
 
-// parseDaemonFlags parses args into fs and checks the daemon flags. It
-// returns an exit code and false when the command should stop.
+// parseDaemonFlags parses args into fs, merges them with the config file
+// and environment into f.cfg, and checks the result. It returns an exit
+// code and false when the command should stop.
 func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []string, stderr io.Writer) (int, bool) {
 	if code, ok := parseNoArgs(name, fs, args, stderr); !ok {
 		return code, false
 	}
-	if f.interval < daemon.MinInterval {
+	c, err := loadConfig(configFlags{fs: fs, server: &f.server, providers: &f.providers, interval: &f.interval})
+	if err != nil {
+		fmt.Fprintf(stderr, "%s: %v\n", name, err)
+		return 2, false
+	}
+	f.cfg = c
+	if c.Interval < daemon.MinInterval {
 		fmt.Fprintf(stderr, "%s: --interval must be at least %s\n", name, daemon.MinInterval)
 		return 2, false
 	}
-	if len(f.providers) == 0 {
-		fmt.Fprintf(stderr, "%s: no --provider given; the daemon uploads nothing without one\n", name)
+	if len(c.Providers) == 0 {
+		fmt.Fprintf(stderr, "%s: no --provider given (or providers in the config file); the daemon uploads nothing without one\n", name)
 		return 2, false
 	}
 	return 0, true
@@ -94,12 +104,11 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	if code, ok := parseDaemonFlags("firekeeper daemon", fs, flags, args, stderr); !ok {
 		return code
 	}
-	cfg := daemon.Config{Interval: flags.interval}
+	cfg := daemon.Config{Interval: flags.cfg.Interval}
 	if !*quiet {
 		cfg.Out = stderr
 	}
-	cfg.Reporter.Server = flags.server
-	cfg.Reporter.Providers = flags.providers
+	applyReporterConfig(&cfg.Reporter, flags.cfg)
 
 	// The first signal stops gracefully after the batch in flight. Offsets
 	// are saved after every batch, so a second signal can exit at once.
@@ -136,13 +145,22 @@ func runDaemonInstall(args []string, stdout, stderr io.Writer) int {
 	if code, ok := parseDaemonFlags(name, fs, flags, args, stderr); !ok {
 		return code
 	}
-	// The service runs the daemon with these flags, captured now. --quiet
+	// The service runs the daemon with the flags given now; settings left
+	// to the config file are read by the daemon each time it starts, so
+	// editing the file and restarting the service takes effect. --quiet
 	// keeps it from writing every log line twice.
-	daemonArgs := []string{"--quiet", "--server", flags.server}
+	set := map[string]bool{}
+	fs.Visit(func(fl *flag.Flag) { set[fl.Name] = true })
+	daemonArgs := []string{"--quiet"}
+	if set["server"] {
+		daemonArgs = append(daemonArgs, "--server", flags.server)
+	}
 	for _, p := range flags.providers {
 		daemonArgs = append(daemonArgs, "--provider", string(p))
 	}
-	daemonArgs = append(daemonArgs, "--interval", flags.interval.String())
+	if set["interval"] {
+		daemonArgs = append(daemonArgs, "--interval", flags.interval.String())
+	}
 
 	svc, err := newService(daemonArgs, stdout)
 	if err != nil {
