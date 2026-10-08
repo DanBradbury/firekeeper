@@ -18,7 +18,7 @@ var subcommands = []subcommand{
 	{"snapshot", "print currently discovered sessions (--json)", runSnapshot},
 	{"export", "export local transcripts (not implemented)", runExport},
 	{"report", "upload session metadata and redacted transcripts once", runReport},
-	{"serve", "run the local dashboard server (not implemented)", runServe},
+	{"serve", "run the local dashboard server and web UI", runServe},
 	{"daemon", "report continuously in the background (not implemented)", runDaemon},
 }
 
