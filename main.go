@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"image"
@@ -15,13 +15,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi/kitty"
 )
@@ -1809,31 +1808,22 @@ func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
 func refreshProcesses() tea.Cmd {
 	return func() tea.Msg {
 		result := processResultMsg{refreshed: time.Now()}
-		output, err := discoverProcesses()
-		if err != nil {
-			result.err = fmt.Errorf("run ps: %w", err)
-			return result
+		metas, err := session.Discover(context.Background(), session.Options{})
+		var warning *session.Warning
+		if errors.As(err, &warning) {
+			result.metadataWarning = warning.Error()
+		} else {
+			result.err = err
 		}
-		result.groups = groupProcesses(parseProcesses(string(output)))
-		var metadataWarnings []string
-		if err := enrichCodexSessions(result.groups); err != nil {
-			metadataWarnings = append(metadataWarnings, "Codex: "+sanitizeProcessCommand(err.Error()))
+		seen := make(map[int]bool)
+		for _, meta := range metas {
+			if !seen[meta.Runtime.Root.PID] {
+				seen[meta.Runtime.Root.PID] = true
+				result.groups = append(result.groups, fromProcessGroup(meta.Runtime))
+			}
 		}
-		if err := enrichCopilotSessions(result.groups); err != nil {
-			metadataWarnings = append(metadataWarnings, "Copilot: "+sanitizeProcessCommand(err.Error()))
-		}
-		if err := enrichKimiSessions(result.groups); err != nil {
-			metadataWarnings = append(metadataWarnings, "Kimi: "+sanitizeProcessCommand(err.Error()))
-		}
-		result.metadataWarning = strings.Join(metadataWarnings, "; ")
 		return result
 	}
-}
-
-func discoverProcesses() ([]byte, error) {
-	// Both BSD and Linux ps support -ww for unlimited command width. Without
-	// it, long Node installation paths can hide the harness name or session ID.
-	return exec.Command("ps", "-ww", "-axo", "pid=,ppid=,tty=,etime=,command=").Output()
 }
 
 type terminalAdapter struct {
@@ -2074,346 +2064,18 @@ func focusTerminalSessionWith(
 	return "", fmt.Errorf("no supported terminal session owns %s", targetTTY)
 }
 
-func groupProcesses(processes []processInfo) []processGroup {
-	byPID := make(map[int]processInfo, len(processes))
-	for _, process := range processes {
-		byPID[process.pid] = process
-	}
-
-	grouped := make(map[int][]processInfo)
-	roots := make(map[int]processInfo)
-	for _, process := range processes {
-		root := process
-		seen := map[int]bool{root.pid: true}
-		for {
-			parent, ok := byPID[root.ppid]
-			if !ok || parent.tool != process.tool || seen[parent.pid] {
-				break
-			}
-			seen[parent.pid] = true
-			root = parent
-		}
-		grouped[root.pid] = append(grouped[root.pid], process)
-		roots[root.pid] = root
-	}
-
-	groups := make([]processGroup, 0, len(grouped))
-	for rootPID, members := range grouped {
-		sort.Slice(members, func(i, j int) bool { return members[i].pid < members[j].pid })
-		groups = append(groups, processGroup{
-			tool:      roots[rootPID].tool,
-			root:      roots[rootPID],
-			processes: members,
-		})
-	}
-	sort.Slice(groups, func(i, j int) bool {
-		if groups[i].tool == groups[j].tool {
-			return groups[i].root.pid < groups[j].root.pid
-		}
-		return groups[i].tool < groups[j].tool
-	})
-	return groups
-}
-
-type threadMetadataRow struct {
-	ID          string `json:"id"`
-	Name        string `json:"display_name"`
-	CWD         string `json:"cwd"`
-	Model       string `json:"model"`
-	Source      string `json:"source"`
-	GitBranch   string `json:"git_branch"`
-	UpdatedAtMS int64  `json:"updated_at_ms"`
-	TokensUsed  int64  `json:"tokens_used"`
-}
-
-func enrichCodexSessions(groups []processGroup) error {
-	var rootPIDs []int
-	for _, group := range groups {
-		if group.tool == "Codex" {
-			rootPIDs = append(rootPIDs, group.root.pid)
-		}
-	}
-	if len(rootPIDs) == 0 {
-		return nil
-	}
-
-	rollouts, err := discoverOpenRollouts(rootPIDs)
-	if err != nil {
-		return err
-	}
-	threadIDs := make(map[string]bool)
-	for _, paths := range rollouts {
-		for _, path := range paths {
-			if id, ok := threadIDFromRolloutPath(path); ok {
-				threadIDs[id] = true
-			}
-		}
-	}
-	if len(threadIDs) == 0 {
-		return nil
-	}
-
-	metadata, err := readThreadMetadata(threadIDs)
-	if err != nil {
-		return err
-	}
-	for groupIndex := range groups {
-		group := &groups[groupIndex]
-		if group.tool != "Codex" {
-			continue
-		}
-		seen := make(map[string]bool)
-		for _, rolloutPath := range dropSupersededForkRollouts(rollouts[group.root.pid]) {
-			threadID, ok := threadIDFromRolloutPath(rolloutPath)
-			if !ok || seen[threadID] {
-				continue
-			}
-			seen[threadID] = true
-			row, ok := metadata[threadID]
-			if !ok {
-				continue
-			}
-			name := sanitizeProcessCommand(row.Name)
-			if name == "" {
-				name = row.ID
-			}
-			state, _ := readRolloutSessionState(rolloutPath)
-			group.sessions = append(group.sessions, sessionInfo{
-				id:          row.ID,
-				name:        name,
-				state:       state,
-				cwd:         sanitizeProcessCommand(row.CWD),
-				model:       sanitizeProcessCommand(row.Model),
-				source:      sanitizeProcessCommand(row.Source),
-				gitBranch:   sanitizeProcessCommand(row.GitBranch),
-				rolloutPath: rolloutPath,
-				updatedAt:   time.UnixMilli(row.UpdatedAtMS),
-				tokensUsed:  row.TokensUsed,
-			})
-		}
-		sort.Slice(group.sessions, func(i, j int) bool {
-			return group.sessions[i].updatedAt.After(group.sessions[j].updatedAt)
-		})
-	}
-	return nil
-}
-
-func discoverOpenRollouts(rootPIDs []int) (map[int][]string, error) {
-	pidStrings := make([]string, len(rootPIDs))
-	for index, pid := range rootPIDs {
-		pidStrings[index] = strconv.Itoa(pid)
-	}
-	output, err := exec.Command("lsof", "-Fn", "-p", strings.Join(pidStrings, ",")).Output()
-	if err != nil && len(output) == 0 {
-		return nil, fmt.Errorf("run lsof: %w", err)
-	}
-
-	rollouts := make(map[int][]string)
-	currentPID := 0
-	for _, line := range strings.Split(string(output), "\n") {
-		if len(line) < 2 {
-			continue
-		}
-		switch line[0] {
-		case 'p':
-			currentPID, _ = strconv.Atoi(line[1:])
-		case 'n':
-			path := line[1:]
-			if currentPID == 0 || !strings.HasPrefix(filepath.Base(path), "rollout-") || filepath.Ext(path) != ".jsonl" {
-				continue
-			}
-			if _, ok := threadIDFromRolloutPath(path); !ok {
-				continue
-			}
-			rollouts[currentPID] = append(rollouts[currentPID], path)
-		}
-	}
-	return rollouts, nil
-}
+type threadMetadataRow = session.ThreadMetadataRow
 
 // dropSupersededForkRollouts removes rollout files whose thread was forked
 // into a newer thread that the same process still holds open. Codex keeps the
 // parent rollout file open after forking, which would otherwise surface one
 // runtime as two sessions (and two party members).
-func dropSupersededForkRollouts(paths []string) []string {
-	if len(paths) < 2 {
-		return paths
-	}
-	parents := make(map[string]bool, len(paths))
-	for _, path := range paths {
-		if parent := readRolloutParentThreadID(path); parent != "" {
-			parents[parent] = true
-		}
-	}
-	if len(parents) == 0 {
-		return paths
-	}
-	kept := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if id, ok := threadIDFromRolloutPath(path); ok && parents[id] {
-			continue
-		}
-		kept = append(kept, path)
-	}
-	return kept
-}
-
-func threadIDFromRolloutPath(path string) (string, bool) {
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	if len(name) < 36 {
-		return "", false
-	}
-	id := name[len(name)-36:]
-	if !validUUID(id) {
-		return "", false
-	}
-	return id, true
-}
-
-func validUUID(value string) bool {
-	if len(value) != 36 {
-		return false
-	}
-	for index, character := range value {
-		if index == 8 || index == 13 || index == 18 || index == 23 {
-			if character != '-' {
-				return false
-			}
-			continue
-		}
-		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F')) {
-			return false
-		}
-	}
-	return true
-}
-
-func readThreadMetadata(threadIDs map[string]bool) (map[string]threadMetadataRow, error) {
-	ids := make([]string, 0, len(threadIDs))
-	for id := range threadIDs {
-		if validUUID(id) {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
-		return nil, fmt.Errorf("no valid Codex thread IDs found")
-	}
-	sort.Strings(ids)
-	quoted := make([]string, len(ids))
-	for index, id := range ids {
-		quoted[index] = "'" + id + "'"
-	}
-
-	statePath, err := codexStatePath()
-	if err != nil {
-		return nil, err
-	}
-	query := fmt.Sprintf(`
-		SELECT
-			id,
-			COALESCE(NULLIF(name, ''), NULLIF(title, ''), NULLIF(preview, ''), id) AS display_name,
-			cwd,
-			COALESCE(model, '') AS model,
-			COALESCE(thread_source, source, '') AS source,
-			COALESCE(git_branch, '') AS git_branch,
-			COALESCE(updated_at_ms, updated_at * 1000) AS updated_at_ms,
-			tokens_used
-		FROM threads
-		WHERE id IN (%s)
-	`, strings.Join(quoted, ","))
-	output, err := exec.Command("sqlite3", "-readonly", "-json", statePath, query).Output()
-	if err != nil {
-		return nil, fmt.Errorf("read Codex state: %w", err)
-	}
-	if len(bytes.TrimSpace(output)) == 0 {
-		return map[string]threadMetadataRow{}, nil
-	}
-
-	var rows []threadMetadataRow
-	if err := json.Unmarshal(output, &rows); err != nil {
-		return nil, fmt.Errorf("decode Codex state: %w", err)
-	}
-	result := make(map[string]threadMetadataRow, len(rows))
-	for _, row := range rows {
-		result[row.ID] = row
-	}
-	return result, nil
-}
-
-func codexStatePath() (string, error) {
-	codexHome := os.Getenv("CODEX_HOME")
-	if codexHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("find home directory: %w", err)
-		}
-		codexHome = filepath.Join(home, ".codex")
-	}
-	path := filepath.Join(codexHome, "state_5.sqlite")
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("find Codex state database: %w", err)
-	}
-	return path, nil
-}
-
-func emptyFallback(value, fallback string) string {
-	if value == "" {
-		return fallback
-	}
-	return value
-}
 
 func formatSessionTime(value time.Time) string {
 	if value.IsZero() || value.UnixMilli() == 0 {
 		return "unknown"
 	}
 	return value.Format("2006-01-02 15:04:05")
-}
-
-func parseProcesses(output string) []processInfo {
-	var processes []processInfo
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
-			continue
-		}
-
-		pid, pidErr := strconv.Atoi(fields[0])
-		ppid, ppidErr := strconv.Atoi(fields[1])
-		if pidErr != nil || ppidErr != nil {
-			continue
-		}
-
-		command := sanitizeProcessCommand(strings.Join(fields[4:], " "))
-		tool := classifyProcess(command)
-		if tool == "" {
-			continue
-		}
-		processes = append(processes, processInfo{
-			tool:    tool,
-			pid:     pid,
-			ppid:    ppid,
-			tty:     normalizeTTY(fields[2]),
-			elapsed: fields[3],
-			command: command,
-		})
-	}
-
-	sort.Slice(processes, func(i, j int) bool {
-		if processes[i].tool == processes[j].tool {
-			return processes[i].pid < processes[j].pid
-		}
-		return processes[i].tool < processes[j].tool
-	})
-	return processes
-}
-
-func normalizeTTY(value string) string {
-	value = strings.TrimSpace(strings.TrimPrefix(value, "/dev/"))
-	if value == "" || value == "??" || value == "?" || value == "-" {
-		return ""
-	}
-	return value
 }
 
 func displayTTY(value string) string {
@@ -2428,31 +2090,6 @@ func deviceTTY(value string) string {
 		return "/dev/" + value
 	}
 	return ""
-}
-
-func classifyProcess(command string) string {
-	lower := strings.ToLower(command)
-	switch {
-	case strings.Contains(lower, "opencode"):
-		return "OpenCode"
-	case strings.Contains(lower, "copilot"):
-		return "Copilot"
-	case strings.Contains(lower, "codex"):
-		return "Codex"
-	case strings.Contains(lower, "kimi"):
-		return "Kimi"
-	default:
-		return ""
-	}
-}
-
-func sanitizeProcessCommand(command string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		return r
-	}, command)
 }
 
 func newAppConfig(renderer string, columns, rows int, getenv func(string) string) (appConfig, error) {

@@ -4,14 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	tea "github.com/charmbracelet/bubbletea"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 type kimiUsageSummary struct {
@@ -80,20 +79,6 @@ func refreshKimiUsage() tea.Cmd {
 		snapshot, err := fetchKimiUsage()
 		return kimiUsageResultMsg{snapshot: snapshot, refreshed: time.Now(), err: err}
 	}
-}
-
-func kimiHome() (string, error) {
-	if home := os.Getenv("KIMI_CODE_HOME"); home != "" {
-		return home, nil
-	}
-	if home := os.Getenv("KIMI_SHARE_DIR"); home != "" {
-		return home, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("find home directory: %w", err)
-	}
-	return filepath.Join(home, ".kimi-code"), nil
 }
 
 func fetchKimiUsage() (kimiUsageSnapshot, error) {
