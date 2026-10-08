@@ -2,6 +2,9 @@
 // generates a long session, then answers with the same shapes and paging
 // rules as the v1 API. No data here comes from a real provider.
 
+import { auth } from "./api.js";
+import { mockAuth } from "./mock_auth.js";
+
 const LONG_UID = "m-studio:019a-long";
 const LONG_COUNT = 5000;
 const LATENCY_MS = 120;
@@ -239,8 +242,13 @@ export async function createMockAPI() {
   const order = (a, b) => (b.last_activity_at || "").localeCompare(a.last_activity_at || "") || b.uid.localeCompare(a.uid);
   const notFound = () => Promise.reject(Object.assign(new Error("session not found"), { status: 404, code: "not_found" }));
 
-  return {
+  const api = {
     mock: true,
+
+    // Sign-in is simulated by mock_auth.js; see the login page in mock mode.
+    signedIn: () => mockAuth.signedIn(),
+    account: () => mockAuth.account(),
+    logout: () => mockAuth.logout(),
 
     listSessions(filters, cursor, limit = 50) {
       const q = (filters.q || "").toLowerCase();
@@ -288,6 +296,10 @@ export async function createMockAPI() {
       onStatus(true);
       const r = rng(99);
       const timer = setInterval(() => {
+        if (!mockAuth.signedIn()) {
+          auth.onUnauthorized();
+          return;
+        }
         const list = events.get(LONG_UID);
         const seq = list.length;
         const ev = makeEvent(r, long.machine_id, long.session_id, seq, Date.now());
@@ -300,4 +312,20 @@ export async function createMockAPI() {
       return () => clearInterval(timer);
     },
   };
+
+  // Data calls behave like the real API once the mock session is gone: they
+  // answer 401, which sends the reader back to the sign-in page.
+  for (const name of ["listSessions", "getSession", "listEvents", "listMachines", "usage"]) {
+    const call = api[name];
+    api[name] = (...args) => {
+      try {
+        mockAuth.check();
+      } catch (err) {
+        auth.onUnauthorized();
+        return Promise.reject(err);
+      }
+      return call(...args);
+    };
+  }
+  return api;
 }

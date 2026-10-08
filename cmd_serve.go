@@ -25,6 +25,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "account" {
 		return runAccount(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "admin" {
+		return runAdmin(args[1:], stdout, stderr)
+	}
 	if len(args) > 0 && args[0] == "invite" {
 		return runInvite(args[1:], stdout, stderr)
 	}
