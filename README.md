@@ -227,6 +227,7 @@ reporting subcommands are being added; `firekeeper --help` lists them.
 firekeeper snapshot --json   # print currently discovered sessions as JSON
 firekeeper report --dry-run  # show what one upload pass would send
 firekeeper report --provider codex --provider copilot
+firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 ```
 
 `report` runs one pass: it discovers running sessions, reads transcript
@@ -260,8 +261,29 @@ server accepts a batch, so an interrupted pass can be rerun without losing
 or duplicating events. A transcript that shrinks is re-read from the start;
 the server drops events it already has.
 
-`export`, `serve`, and `daemon` are placeholders that print
-`not implemented` and exit with status 2.
+`serve` runs the dashboard: the v1 API under `/v1/` and the web UI at `/`,
+on one port. It prints the URL on startup and runs until interrupted. On
+Ctrl-C or `SIGTERM` it stops accepting connections, gives in-flight requests
+five seconds, and closes the database.
+
+```sh
+firekeeper serve                         # http://127.0.0.1:7777/
+firekeeper report --provider codex       # in another terminal
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--listen ADDR` | Address to listen on. Default `127.0.0.1:7777`. |
+| `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
+| `--insecure` | Allow a `--listen` address other than loopback. |
+
+The dashboard has no authentication yet. `serve` refuses to listen on
+anything but a loopback address unless `--insecure` is passed, and then
+prints a warning: anyone who can reach the port can read every stored
+transcript and upload new ones.
+
+`export` and `daemon` are placeholders that print `not implemented` and
+exit with status 2.
 
 ## How session discovery works
 
