@@ -39,6 +39,9 @@ type Source struct {
 	CopilotHome string
 	// Home overrides the user's home directory when set.
 	Home string
+
+	// open and run replace os.Open and command execution in tests.
+	open func(name string) (io.ReadCloser, error)
 }
 
 // Locate returns the events.jsonl for meta. Discovery already sets

@@ -91,6 +91,29 @@ counts add up to `total_tokens`.
 - An undecodable line keeps its bytes in `raw` as a JSON string so that `raw`
   stays valid JSON.
 
+## Enumeration
+
+`Enumerate` (T2.5) lists every rollout under `sessions/*/*/*/` and
+`archived_sessions/` for backfill, including ended threads. In order, per
+rollout:
+
+1. `stat` only: the file name must carry a thread uuid, the file must be
+   newer than `ModifiedAfter`, and an empty file is counted as skipped.
+2. `state_5.sqlite` `threads` (one `sqlite3 -readonly -json` query for the
+   schema, one for the rows): `name`/`title`, `cwd`, `model`, `git_branch`,
+   `created_at[_ms]`, `updated_at[_ms]`. `preview` and `first_user_message`
+   hold conversation text and are not read.
+3. If the row gave a `cwd`, `Skip` runs now, before the rollout is opened.
+4. Only if `cwd`, branch, model, or start time is still missing, the first
+   64 KiB of the rollout are read for `session_meta` (`cwd`, `git.branch`,
+   `timestamp`) and `turn_context` (`model`). A head with no decodable line is
+   counted as corrupt.
+5. If `Skip` has not run yet, it runs now.
+
+Title and last activity come only from the database. Event counts and token
+totals stay zero. A thread present in both directories is listed once, from
+the newer file.
+
 ## Known gaps
 
 - **Injected context looks like user input.** Codex sends AGENTS.md contents
