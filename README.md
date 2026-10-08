@@ -416,6 +416,17 @@ routes that need no credentials. `/signup` follows `--signup`: closed shows a
 without accounts, open `/?mock=1`: it uses synthetic fixtures and simulates
 sign-in (password `firekeeper-mock`), and never contacts the API.
 
+The landing page is a **Machines** overview with one card per machine in the
+account: name, hostname, OS, version, online or offline, session counts by
+state, and last activity. A machine is offline when its last heartbeat is
+more than 90 seconds old; cards update from the live stream and the clock, so
+no reload is needed. A new account with no machines shows how to link one,
+and a machine that has linked but uploaded nothing shows as online with zero
+sessions. **Sessions** lists every machine's sessions, newest first, with the
+machine name on each row; the machine filter narrows it and search spans all
+machines. In mock mode, `?mock=1&machines=none` and `?mock=1&machines=linked`
+show those two empty states.
+
 ```sh
 firekeeper serve admin create-account --email you@example.com   # asks for the password twice
 printf '%s' "$PASSWORD" | firekeeper serve account create --email you@example.com --password-stdin  # for scripts
