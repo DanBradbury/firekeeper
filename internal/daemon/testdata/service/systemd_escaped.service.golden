@@ -1,0 +1,15 @@
+# Written by firekeeper daemon install. Remove it with firekeeper daemon uninstall.
+[Unit]
+Description=Firekeeper daemon: uploads agent session transcripts to a Firekeeper dashboard
+Documentation=https://github.com/DanBradbury/firekeeper
+
+[Service]
+Type=simple
+ExecStart="/home/dev/My Tools/fire&keeper" "daemon" "--quiet" "--server" "http://h:1/a?b=1&c=\"%%x$$y\\z" "--provider" "kimi" "--interval" "1m0s"
+Environment="COPILOT_HOME=/home/dev/<co>pilot 100%%$HOME"
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

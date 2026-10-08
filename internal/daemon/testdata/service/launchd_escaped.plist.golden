@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Written by firekeeper daemon install. Remove it with firekeeper daemon uninstall. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.firekeeper.daemon</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/home/dev/My Tools/fire&amp;keeper</string>
+		<string>daemon</string>
+		<string>--quiet</string>
+		<string>--server</string>
+		<string>http://h:1/a?b=1&amp;c=&#34;%x$y\z</string>
+		<string>--provider</string>
+		<string>kimi</string>
+		<string>--interval</string>
+		<string>1m0s</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>COPILOT_HOME</key>
+		<string>/home/dev/&lt;co&gt;pilot 100%$HOME</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>/home/dev/.firekeeper/daemon.stderr.log</string>
+	<key>StandardErrorPath</key>
+	<string>/home/dev/.firekeeper/daemon.stderr.log</string>
+</dict>
+</plist>
