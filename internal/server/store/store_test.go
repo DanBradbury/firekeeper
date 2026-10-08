@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
@@ -95,5 +96,50 @@ func TestNotifyAndHeartbeat(t *testing.T) {
 	}
 	if st, _ := s.Stats(ctx, "m", "s"); st.State != "WAITING" {
 		t.Fatalf("state %s", st.State)
+	}
+}
+
+func TestLastActivityOrdersSubSecondTimes(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	m := Machine{ID: "m"}
+	whole := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	frac := whole.Add(500 * time.Millisecond)
+	for _, ts := range []time.Time{whole, frac} {
+		b := batch("s", 0, 0)
+		b.Meta.LastActivityAt = &ts
+		if _, _, err := s.Ingest(ctx, m, []SessionBatch{b}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var got string
+	if err := s.db.QueryRowContext(ctx, `SELECT last_activity_at FROM sessions`).Scan(&got); err != nil {
+		t.Fatal(err)
+	}
+	if want := frac.Format(timeLayout); got != want {
+		t.Fatalf("last_activity_at = %s, want %s", got, want)
+	}
+}
+
+func TestCloseDuringIngest(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "fk.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < 20; i++ {
+				s.Ingest(ctx, Machine{ID: "m"}, []SessionBatch{batch("s", i, 1)})
+			}
+		}()
+	}
+	s.Close()
+	wg.Wait()
+	if err := s.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
 	}
 }
