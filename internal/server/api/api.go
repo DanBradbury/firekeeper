@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
@@ -23,6 +24,13 @@ type Option func(*options)
 type options struct {
 	prices   map[string]store.Price
 	fileLink string
+	limits   Limits
+}
+
+// WithLimits sets the per-account limits ingest enforces. Without it there
+// are none.
+func WithLimits(l Limits) Option {
+	return func(o *options) { o.limits = l }
 }
 
 // WithPrices sets the per-model price table /v1/usage uses to add cost.
@@ -48,14 +56,20 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	go h.run(s.Changes())
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /v1/ingest", ingest(s))
+	var rate *rateLimiter
+	if o.limits.IngestPerMinute > 0 {
+		rate = newRateLimiter(o.limits.IngestPerMinute, time.Minute)
+	}
+	mux.HandleFunc("POST /v1/ingest", ingest(s, o.limits, rate))
 	mux.HandleFunc("POST /v1/heartbeat", heartbeat(s))
 	mux.HandleFunc("GET /v1/sessions", listSessions(s))
 	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s, o.fileLink))
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
 	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))
-	mux.HandleFunc("GET /v1/account", account(s))
+	mux.HandleFunc("GET /v1/account", account(s, o.limits))
+	mux.HandleFunc("DELETE /v1/account", deleteAccount(s))
+	mux.HandleFunc("GET /v1/account/export", exportAccount(s))
 	mux.HandleFunc("POST /v1/auth/logout", logout(s))
 	mux.HandleFunc("GET /v1/tokens", listTokens(s))
 	mux.HandleFunc("POST /v1/tokens", createToken(s))
@@ -134,11 +148,30 @@ func storeErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	if errors.Is(err, store.ErrStorageLimit) {
+		writeErr(w, http.StatusRequestEntityTooLarge, "storage_limit", err.Error())
+		return
+	}
+	if errors.Is(err, store.ErrSessionLimit) {
+		writeErr(w, http.StatusRequestEntityTooLarge, "session_limit", err.Error())
+		return
+	}
 	writeErr(w, http.StatusInternalServerError, "internal", "internal error")
 }
 
-func ingest(s *store.Store) http.HandlerFunc {
+func ingest(s *store.Store, lim Limits, rate *rateLimiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		acct := accountID(r)
+		exempt := acct == store.DefaultAccountID
+		// Count the request before reading it, so a flood of oversized or
+		// invalid bodies is limited too.
+		if rate != nil && !exempt {
+			if ok, wait := rate.allow(acct); !ok {
+				w.Header().Set("Retry-After", retryAfterSeconds(wait))
+				writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many ingest requests; slow down and retry")
+				return
+			}
+		}
 		var req ingestRequest
 		if !decode(w, r, &req) || !machineAllowed(w, r, req.Machine.ID) {
 			return
@@ -151,7 +184,11 @@ func ingest(s *store.Store) http.HandlerFunc {
 			writeErr(w, http.StatusRequestEntityTooLarge, "too_many_events", "at most 500 events per request")
 			return
 		}
-		accepted, dups, err := s.Ingest(r.Context(), accountID(r), req.Machine, req.Sessions)
+		var sl store.Limits
+		if !exempt {
+			sl = lim.store()
+		}
+		accepted, dups, err := s.IngestLimited(r.Context(), acct, req.Machine, req.Sessions, sl)
 		if err != nil {
 			storeErr(w, err)
 			return

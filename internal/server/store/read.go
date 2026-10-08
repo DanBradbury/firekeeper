@@ -53,6 +53,11 @@ type MachineInfo struct {
 	Machine
 	LastHeartbeatAt *time.Time `json:"last_heartbeat_at"`
 	SessionCount    int64      `json:"session_count"`
+	// StateCounts maps each session state present on the machine to its
+	// session count; it is empty, never null, for a machine with none.
+	StateCounts map[string]int64 `json:"state_counts"`
+	// LastActivityAt is the newest session activity on the machine.
+	LastActivityAt *time.Time `json:"last_activity_at"`
 }
 
 // SessionFilter selects sessions for ListSessions. Empty fields do not
@@ -277,9 +282,43 @@ FROM machines m WHERE m.account_id = ? ORDER BY m.id`, accountID)
 			return nil, err
 		}
 		mi.LastHeartbeatAt = parseTime(hb)
+		mi.StateCounts = map[string]int64{}
 		out = append(out, mi)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return out, nil
+	}
+	byID := make(map[string]*MachineInfo, len(out))
+	for i := range out {
+		byID[out[i].ID] = &out[i]
+	}
+	srows, err := s.db.QueryContext(ctx, `
+SELECT machine_id, state, COUNT(*), MAX(last_activity_at)
+FROM sessions WHERE account_id = ? GROUP BY machine_id, state`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer srows.Close()
+	for srows.Next() {
+		var id, state string
+		var n int64
+		var last sql.NullString
+		if err := srows.Scan(&id, &state, &n, &last); err != nil {
+			return nil, err
+		}
+		mi := byID[id]
+		if mi == nil {
+			continue
+		}
+		mi.StateCounts[state] += n
+		if t := parseTime(last); t != nil && (mi.LastActivityAt == nil || t.After(*mi.LastActivityAt)) {
+			mi.LastActivityAt = t
+		}
+	}
+	return out, srows.Err()
 }
 
 const (

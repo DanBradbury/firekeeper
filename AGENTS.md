@@ -175,6 +175,8 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 | `POST /v1/tokens` | Body `{name, scope, machine_id?}` (`machine_id` required for `ingest`). Returns `201` with the token's fields plus `token`, the secret, shown once. Browser session only. |
 | `DELETE /v1/tokens/{id}` | Revoke one of the account's tokens; another account's id is `404`. Browser session only. |
 | `DELETE /v1/tokens/current` | The bearer token making the request revokes itself, whatever its scope. |
+| `DELETE /v1/account` | Delete the caller's account, its tokens, and all its machines, sessions and events. Needs a browser session and body `{confirm}` equal to the account's email. Returns `{deleted: true}`. |
+| `GET /v1/account/export` | Stream everything stored for the caller's account as JSON Lines, one typed record per line. |
 
 `machine` is `{id, name, hostname, os, version}`. The server listens on `127.0.0.1:7777` by default. Errors are JSON `{error, code}` with a standard HTTP status.
 

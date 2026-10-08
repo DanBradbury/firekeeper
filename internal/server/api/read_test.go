@@ -250,8 +250,10 @@ func TestListMachines(t *testing.T) {
 	if get(t, h, "/v1/machines", &resp); resp.Machines == nil || len(resp.Machines) != 0 {
 		t.Fatalf("empty: %+v", resp)
 	}
-	ingestSeed(t, s, seed{machine: "m1", session: "a", provider: "codex"})
-	ingestSeed(t, s, seed{machine: "m1", session: "b", provider: "codex"})
+	older := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+	ingestSeed(t, s, seed{machine: "m1", session: "a", provider: "codex", state: "ACTIVE", activity: &older})
+	ingestSeed(t, s, seed{machine: "m1", session: "b", provider: "codex", state: "ENDED", activity: &newer})
 	ingestSeed(t, s, seed{machine: "m2", session: "c", provider: "codex"})
 	if code := get(t, h, "/v1/machines", &resp); code != 200 || len(resp.Machines) != 2 {
 		t.Fatalf("%d %+v", code, resp)
@@ -259,6 +261,10 @@ func TestListMachines(t *testing.T) {
 	m := resp.Machines[0]
 	if m.ID != "m1" || m.Name != "m1-name" || m.SessionCount != 2 || m.LastHeartbeatAt == nil {
 		t.Fatalf("machine %+v", m)
+	}
+	if m.StateCounts["ACTIVE"] != 1 || m.StateCounts["ENDED"] != 1 || len(m.StateCounts) != 2 ||
+		m.LastActivityAt == nil || !m.LastActivityAt.Equal(newer) {
+		t.Fatalf("state counts %+v, last activity %v", m.StateCounts, m.LastActivityAt)
 	}
 }
 

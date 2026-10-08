@@ -215,14 +215,28 @@ function shiftTimes(obj, offset, keys) {
 export async function createMockAPI() {
   const [m, s, e, f] = await Promise.all([load("machines.json"), load("sessions.json"), load("events.json"), load("files.json")]);
   const sessions = s.sessions;
-  const machines = m.machines;
+  // ?mock=1&machines=none shows a new account with no machines, and
+  // machines=linked shows one machine that has linked but uploaded nothing.
+  // The default is three machines in mixed states: studio is online and
+  // beating, laptop's heartbeat is 50s old and stops, so it goes offline
+  // about 40s after load, and the build box has been offline for hours.
+  const variant = new URLSearchParams(location.search).get("machines");
+  const machines = m.machines.filter((x) =>
+    variant === "none" ? false : variant === "linked" ? x.id === "m-new" : x.id !== "m-new");
+  // Heartbeat age at load, and whether the machine keeps beating. The
+  // fixture's own heartbeat times only keep its shape realistic.
+  const HEARTBEAT = { "m-studio": [5, true], "m-laptop": [50, false], "m-build": [40000, false], "m-new": [10, true] };
+  const beats = (x) => HEARTBEAT[x.id]?.[1];
+  const beat = (x, ageS = 0) => { x.last_heartbeat_at = new Date(Date.now() - ageS * 1000).toISOString(); };
+  for (const x of machines) beat(x, HEARTBEAT[x.id]?.[0] ?? 0);
+  if (variant === "linked") sessions.length = 0;
 
   // Shift fixture times so the newest session was active a minute ago.
-  const newest = Math.max(...sessions.map((x) => Date.parse(x.last_activity_at || 0) || 0));
+  const newest = Math.max(0, ...sessions.map((x) => Date.parse(x.last_activity_at || 0) || 0));
   const offset = Date.now() - 60e3 - newest;
   for (const x of sessions) shiftTimes(x, offset, ["started_at", "last_activity_at"]);
-  for (const x of machines) shiftTimes(x, offset, ["last_heartbeat_at"]);
-  sessions.push(...filler(40, Date.now()));
+  if (variant !== "linked") sessions.push(...filler(40, Date.now()));
+  if (variant === "none") sessions.length = 0;
 
   const events = new Map();
   for (const [uid, list] of Object.entries(e)) {
@@ -235,7 +249,7 @@ export async function createMockAPI() {
     }));
   }
   const long = sessions.find((x) => x.uid === LONG_UID);
-  events.set(LONG_UID, generateLong(Date.parse(long.started_at), LONG_COUNT));
+  if (long) events.set(LONG_UID, generateLong(Date.parse(long.started_at), LONG_COUNT));
 
   const usage = generateUsage(new Date());
 
@@ -256,6 +270,8 @@ export async function createMockAPI() {
     signedIn: () => mockAuth.signedIn(),
     account: () => mockAuth.account(),
     logout: () => mockAuth.logout(),
+    deleteAccount: (confirm) => mockAuth.deleteAccount(confirm),
+    exportURL: "",
 
     listTokens() {
       return delay([...tokens].reverse());
@@ -306,7 +322,14 @@ export async function createMockAPI() {
     },
 
     listMachines() {
-      return delay({ machines });
+      const out = machines.map((x) => {
+        const mine = sessions.filter((se) => se.machine_id === x.id);
+        const state_counts = {};
+        for (const se of mine) state_counts[se.state] = (state_counts[se.state] || 0) + 1;
+        const last = mine.map((se) => se.last_activity_at || "").sort().pop();
+        return { ...x, session_count: mine.length, state_counts, last_activity_at: last || null };
+      });
+      return delay({ machines: out });
     },
 
     usage(from, to, groupBy) {
@@ -321,11 +344,21 @@ export async function createMockAPI() {
     subscribe(onEvent, onStatus) {
       onStatus(true);
       const r = rng(99);
+      // Machines that keep beating send a heartbeat every 30s.
+      const beater = setInterval(() => {
+        if (!mockAuth.signedIn()) return;
+        for (const x of machines) {
+          if (!beats(x)) continue;
+          beat(x);
+          onEvent("machine.status", { machine_id: x.id });
+        }
+      }, 30e3);
       const timer = setInterval(() => {
         if (!mockAuth.signedIn()) {
           auth.onUnauthorized();
           return;
         }
+        if (!long) return;
         const list = events.get(LONG_UID);
         const seq = list.length;
         const ev = makeEvent(r, long.machine_id, long.session_id, seq, Date.now());
@@ -335,7 +368,10 @@ export async function createMockAPI() {
         onEvent("event.appended", { uid: LONG_UID, machine_id: long.machine_id, session_id: long.session_id, seq });
         onEvent("session.updated", { uid: LONG_UID, machine_id: long.machine_id, session_id: long.session_id });
       }, 8000);
-      return () => clearInterval(timer);
+      return () => {
+        clearInterval(timer);
+        clearInterval(beater);
+      };
     },
   };
 

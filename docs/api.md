@@ -35,11 +35,13 @@ Every error is a JSON object with a standard HTTP status:
 | 404 | `link_invalid` | A link code that is unknown, expired, or already used. |
 | 410 | `link_expired` | A device code polled after its 10 minutes. |
 | 415 | `unsupported_media_type` | Login or signup without a JSON `Content-Type`. |
-| 429 | `rate_limited` | Too many failed attempts from this IP or for this email. `Retry-After` says how long. |
+| 429 | `rate_limited` | Too many failed attempts from this IP or for this email, or too many ingest requests from this account. `Retry-After` says how many seconds to wait. |
 | 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, or state, an invalid cursor, or an event whose `machine_id`/`session_id` does not match its batch. |
 | 404 | `not_found` | Unknown session. |
 | 413 | `payload_too_large` | Body over 5 MiB. |
 | 413 | `too_many_events` | More than 500 events in one ingest request. |
+| 413 | `storage_limit` | The request would take the account past its stored-bytes limit. Nothing from it was stored. |
+| 413 | `session_limit` | The request would take the account past its session limit. Nothing from it was stored. |
 | 500 | `internal` | Server-side failure. Details are not exposed. |
 | 503 | `unavailable` | Stream requested while the server is shutting down, or too many link codes pending. |
 
@@ -120,7 +122,11 @@ session get `400`.
 ### `GET /v1/account`
 
 ```json
-{ "id": "9f2c...", "email": "you@example.com", "single_user": false, "csrf_token": "..." }
+{
+  "id": "9f2c...", "email": "you@example.com", "single_user": false, "csrf_token": "...",
+  "usage": { "machines": 1, "sessions": 12, "events": 3400, "tokens": 1, "stored_bytes": 8400000 },
+  "limits": { "max_bytes": 1073741824, "max_sessions": 5000, "ingest_per_minute": 120 }
+}
 ```
 
 `csrf_token` appears only for browser sessions, so a page can recover it after
@@ -128,7 +134,70 @@ a reload. In single-user mode the account is `{"id": "default", "email": "",
 "single_user": true}`. Any valid credential may call this, ingest tokens
 included. For a bearer token the response also carries a `token` object, the
 same fields as in [Tokens](#tokens) without a secret, which is how
-`firekeeper whoami` finds the machine name.
+`firekeeper whoami` finds the machine name. `usage` is what the account stores now (`tokens`
+counts active ones); `limits` are the server's per-account limits, where `0`
+means no limit. See [Limits](#limits).
+
+### `DELETE /v1/account`
+
+Permanently deletes the caller's account and everything it owns: its
+tokens, browser sessions, machines, sessions, changed-file records and events,
+including their search index entries. Invites the account issued or used are
+removed too (a used invite stays unusable). Other accounts are unaffected, and
+the email can be registered again.
+
+```json
+{ "confirm": "you@example.com" }
+```
+
+`confirm` must be the account's email (case-insensitive). The request needs a
+browser session and its `X-CSRF-Token`; bearer tokens, including read tokens,
+get `403`, and so does the built-in `default` account, which has no owner to
+sign in as. A wrong or missing `confirm` is `400 invalid_request`. Response
+`200`: `{ "deleted": true }`, with the session cookie cleared. It cannot be
+undone. The operator can do the same from the server with
+`firekeeper serve admin delete-account`.
+
+### `GET /v1/account/export`
+
+Streams everything stored for the caller's account as JSON Lines
+(`application/x-ndjson`, sent as an attachment named `firekeeper-export.jsonl`).
+It works with a browser session or a read token. Each line is a JSON object
+with a `type`:
+
+| `type` | Fields |
+| --- | --- |
+| `account` | `id`, `email`, `created_at`. Always the first line. |
+| `machine` | The [Machine](#machine) fields plus `last_heartbeat_at` and `session_count`. |
+| `token` | `id`, `name`, `scope`, `machine_id`, `created_at`, `revoked_at`. Metadata only: secrets are never stored, and hashes are not exported. |
+| `session` | The [Session](#session) fields, without `files`. |
+| `file` | `machine_id`, `session_id`, and the changed-file fields from `GET /v1/sessions/{uid}`. |
+| `event` | The [Event](#event) object, as `GET /v1/sessions/{uid}/events` returns it. |
+
+Sessions follow the account's machines and tokens, in `(machine_id,
+session_id)` order. Each is followed by its files and then its events in `seq`
+order. The export is not a snapshot: data ingested while it runs may or may
+not be included. If it fails after the first byte, the last line is
+`{"type":"error", ...}` and the export is incomplete.
+
+## Limits
+
+`firekeeper serve` limits each account so one cannot fill the disk or flood
+ingest. Set them with `--max-bytes`, `--max-sessions` and
+`--max-ingest-per-minute`; `0` turns one off.
+
+| Limit | Default | Counts | When exceeded |
+| --- | --- | --- | --- |
+| Stored bytes | 1 GiB | Newly stored event `text` plus `raw`, in bytes | `413 storage_limit` |
+| Sessions | 5000 | Stored sessions | `413 session_limit` |
+| Ingest requests | 120 per minute | `POST /v1/ingest` requests in a rolling minute, accepted or not | `429 rate_limited` with `Retry-After` |
+
+An over-limit request writes nothing: the whole batch is rolled back, so a
+reporter can retry it later without losing or duplicating events. Only newly
+stored data counts, so re-sending what the account already holds always
+succeeds, and an account that is over a limit because it was lowered can still
+update the sessions it has. The built-in `default` account (single-user data)
+is never limited. Heartbeats are not rate limited.
 
 ## Machine linking
 
@@ -444,12 +513,17 @@ Lists the account's machines ordered by `id`:
 {
   "machines": [
     { "id": "m1", "name": "laptop", "hostname": "laptop.local", "os": "darwin", "version": "0.4.0",
-      "last_heartbeat_at": "2026-10-07T12:06:00Z", "session_count": 4 }
+      "last_heartbeat_at": "2026-10-07T12:06:00Z", "session_count": 4,
+      "state_counts": { "ACTIVE": 1, "ENDED": 3 }, "last_activity_at": "2026-10-07T12:05:12Z" }
   ]
 }
 ```
 
-Clients decide whether a machine is online from `last_heartbeat_at`.
+`state_counts` maps each session state present on the machine to its count
+(`{}` when it has none), and `last_activity_at` is its newest session
+activity (`null` when it has none). Clients decide whether a machine is online
+from `last_heartbeat_at`; the dashboard treats 90 seconds without a heartbeat
+as offline.
 
 ### `GET /v1/usage`
 
