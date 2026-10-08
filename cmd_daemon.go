@@ -15,6 +15,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/daemon"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
+	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
 
 // daemonRun is replaced in tests so daemon never takes the real lock.
@@ -23,6 +24,15 @@ var daemonRun = daemon.Run
 // newService is replaced in tests so install and uninstall never touch the
 // real home directory or run launchctl or systemctl.
 var newService = daemon.NewService
+
+// detectDaemonProviders is replaced in tests to avoid inspecting user data.
+var detectDaemonProviders = func() ([]transcript.Provider, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, errors.New("find home directory")
+	}
+	return daemon.DetectProviders(home, nil, nil), nil
+}
 
 // daemonFlags are the flags the daemon runs with. install takes the same
 // ones and writes the ones given into the service definition. cfg is the
@@ -37,7 +47,7 @@ type daemonFlags struct {
 func registerDaemonFlags(fs *flag.FlagSet) *daemonFlags {
 	f := &daemonFlags{}
 	fs.StringVar(&f.server, "server", reporter.DefaultServer, "dashboard server URL")
-	fs.Var(&f.providers, "provider", "upload this provider's sessions (repeatable); at least one is required")
+	fs.Var(&f.providers, "provider", "upload this provider's sessions (repeatable); required for foreground daemon; install detects local providers by default")
 	fs.DurationVar(&f.interval, "interval", daemon.DefaultInterval, fmt.Sprintf("time between passes (at least %s)", daemon.MinInterval))
 	return f
 }
@@ -53,6 +63,19 @@ func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []stri
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return 2, false
+	}
+	if name == "firekeeper daemon install" && c.Sources["providers"] == "default" {
+		providers, err := detectDaemonProviders()
+		if err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", name, err)
+			return 2, false
+		}
+		if len(providers) == 0 {
+			fmt.Fprintf(stderr, "%s: no supported providers detected; install Codex, Copilot, or Claude Code, or specify --provider NAME\n", name)
+			return 2, false
+		}
+		c.Providers = providers
+		c.Sources["providers"] = "detected"
 	}
 	f.cfg = c
 	if c.Interval < daemon.MinInterval {
@@ -96,7 +119,7 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper daemon", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "Usage:\n  firekeeper daemon --provider NAME [flags]\n  firekeeper daemon install --provider NAME [flags] [--dry-run]\n  firekeeper daemon uninstall [--purge]\n  firekeeper daemon status\n  firekeeper daemon logs [-n LINES] [-f]\n\nFlags:\n")
+		fmt.Fprintf(stderr, "Usage:\n  firekeeper daemon --provider NAME [flags]\n  firekeeper daemon install [flags] [--dry-run]\n  firekeeper daemon uninstall [--purge]\n  firekeeper daemon status\n  firekeeper daemon logs [-n LINES] [-f]\n\nFlags:\n")
 		fs.PrintDefaults()
 	}
 	flags := registerDaemonFlags(fs)
@@ -155,7 +178,18 @@ func runDaemonInstall(args []string, stdout, stderr io.Writer) int {
 	if set["server"] {
 		daemonArgs = append(daemonArgs, "--server", flags.server)
 	}
-	for _, p := range flags.providers {
+	providers := flags.providers
+	if flags.cfg.Sources["providers"] == "detected" || flags.cfg.Sources["providers"] == "env" {
+		providers = flags.cfg.Providers
+	}
+	if flags.cfg.Sources["providers"] == "detected" {
+		names := make([]string, len(providers))
+		for i, p := range providers {
+			names[i] = string(p)
+		}
+		fmt.Fprintf(stdout, "detected providers: %s\n", strings.Join(names, ", "))
+	}
+	for _, p := range providers {
 		daemonArgs = append(daemonArgs, "--provider", string(p))
 	}
 	if set["interval"] {

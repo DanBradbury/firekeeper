@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -207,7 +208,7 @@ func TestDaemonInstallRejectsBadFlags(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"install"}, "no --provider given"},
+
 		{[]string{"install", "--provider", "codex", "--interval", "1s"}, "--interval must be at least"},
 		{[]string{"install", "--provider", "codex", "extra"}, "unexpected argument"},
 		{[]string{"install", "--provider", "codex", "--quiet"}, "not defined"},
@@ -325,4 +326,96 @@ func TestDaemonLogs(t *testing.T) {
 	if stdout.String() != "b\nc\n" || !strings.Contains(stderr.String(), "daemon.stderr.log") {
 		t.Fatalf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
+}
+
+func TestDaemonInstallDetectsProviders(t *testing.T) {
+	for _, dryRun := range []bool{false, true} {
+		t.Run(fmt.Sprint(dryRun), func(t *testing.T) {
+			isolateDaemonConfig(t)
+			args, runner, _ := stubService(t, "linux")
+			previous := detectDaemonProviders
+			detectDaemonProviders = func() ([]transcript.Provider, error) {
+				return []transcript.Provider{transcript.ProviderCodex, transcript.ProviderClaude}, nil
+			}
+			t.Cleanup(func() { detectDaemonProviders = previous })
+			command := []string{"install"}
+			if dryRun {
+				command = append(command, "--dry-run")
+			}
+			var stdout, stderr bytes.Buffer
+			if code := runDaemon(command, &stdout, &stderr); code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+			if !slices.Equal(*args, []string{"--quiet", "--provider", "codex", "--provider", "claude"}) {
+				t.Fatalf("args = %q", *args)
+			}
+			if !strings.Contains(stdout.String(), "detected providers: codex, claude") {
+				t.Fatalf("missing detection summary")
+			}
+			if dryRun && len(runner.calls) != 0 {
+				t.Fatal("dry run ran service commands")
+			}
+		})
+	}
+}
+
+func TestDaemonInstallDetectionPrecedence(t *testing.T) {
+	for _, source := range []string{"none", "flag", "env", "file", "empty file"} {
+		t.Run(source, func(t *testing.T) {
+			home := isolateDaemonConfig(t)
+			args, runner, _ := stubService(t, "linux")
+			called := false
+			previous := detectDaemonProviders
+			detectDaemonProviders = func() ([]transcript.Provider, error) { called = true; return nil, nil }
+			t.Cleanup(func() { detectDaemonProviders = previous })
+			command := []string{"install", "--dry-run"}
+			switch source {
+			case "flag":
+				command = append(command, "--provider", "copilot")
+			case "env":
+				t.Setenv("FIREKEEPER_PROVIDERS", "copilot")
+			case "file", "empty file":
+				path := filepath.Join(home, "config.toml")
+				content := "providers = [\"copilot\"]"
+				if source == "empty file" {
+					content = "providers = []"
+				}
+				if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("FIREKEEPER_CONFIG", path)
+			}
+			var stdout, stderr bytes.Buffer
+			code := runDaemon(command, &stdout, &stderr)
+			if source == "none" || source == "empty file" {
+				if code != 2 {
+					t.Fatalf("code = %d", code)
+				}
+				if source == "none" && !strings.Contains(stderr.String(), "no supported providers detected") {
+					t.Fatalf("stderr = %q", stderr.String())
+				}
+			} else if code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+			if called != (source == "none") {
+				t.Fatalf("detection called = %v", called)
+			}
+			if source == "env" && !slices.Equal(*args, []string{"--quiet", "--provider", "copilot"}) {
+				t.Fatalf("env providers not persisted: %q", *args)
+			}
+			if len(runner.calls) != 0 {
+				t.Fatal("ran service commands")
+			}
+		})
+	}
+}
+
+func isolateDaemonConfig(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, key := range []string{"FIREKEEPER_CONFIG", "FIREKEEPER_PROVIDERS", "FIREKEEPER_SERVER", "FIREKEEPER_INTERVAL", "FIREKEEPER_TOKEN"} {
+		t.Setenv(key, "")
+	}
+	return home
 }
