@@ -27,7 +27,7 @@ func Heartbeat(ctx context.Context, cfg Config, summary Summary) error {
 	if !cfg.Uploading() {
 		return nil
 	}
-	r, err := newRun(cfg)
+	r, err := newRun(ctx, cfg)
 	if err != nil {
 		return err
 	}
