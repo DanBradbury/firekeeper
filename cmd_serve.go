@@ -17,12 +17,15 @@ import (
 var serveRun = server.Run
 
 func runServe(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "token" {
+		return runToken(args[1:], stdout, stderr)
+	}
 	fs := flag.NewFlagSet("firekeeper serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfg := server.Config{Out: stdout, Err: stderr}
 	fs.StringVar(&cfg.Listen, "listen", server.DefaultListen, "address to listen on")
 	fs.StringVar(&cfg.DB, "db", "", "dashboard database path (default ~/.firekeeper/dashboard.db)")
-	fs.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback --listen address; there is no authentication yet")
+	fs.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback --listen address with no tokens; the API is then unauthenticated")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0

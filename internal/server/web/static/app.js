@@ -2,7 +2,7 @@
 // URL fragment. All transcript text is inserted with textContent, never as
 // HTML.
 
-import { realAPI } from "./api.js";
+import { realAPI, auth } from "./api.js";
 
 const PROVIDERS = ["codex", "copilot", "kimi", "claude"];
 const STATES = ["ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"];
@@ -114,7 +114,35 @@ function parseRoute() {
 
 const sessionHref = (uid) => `#/s/${encodeURIComponent(uid)}`;
 
+function loginView() {
+  const input = el("input", { type: "password", id: "token", autocomplete: "off", required: "" });
+  const form = el("form", { class: "login" },
+    el("h1", null, "Sign in"),
+    el("p", null, "Enter a read token created with `firekeeper serve token create`. It is kept in this tab's sessionStorage only."),
+    el("label", { for: "token" }, "Read token"),
+    input,
+    el("button", { type: "submit" }, "Sign in"),
+  );
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    auth.set(input.value.trim());
+    render();
+  });
+  return form;
+}
+
+let loggingIn = false;
+auth.onUnauthorized = () => {
+  if (loggingIn) return;
+  loggingIn = true;
+  auth.clear();
+  current?.dispose();
+  current = null;
+  app.replaceChildren(notice("Authentication required.", true), loginView());
+};
+
 function render() {
+  loggingIn = false;
   current?.dispose();
   current = null;
   app.replaceChildren();

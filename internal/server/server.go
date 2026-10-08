@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/server/api"
+	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/server/web"
 )
@@ -28,7 +29,7 @@ const ShutdownGrace = 5 * time.Second
 
 // ErrNotLoopback marks a listen address refused because it is reachable
 // from other machines and Config.Insecure is not set.
-var ErrNotLoopback = errors.New("refusing to listen on a non-loopback address without --insecure")
+var ErrNotLoopback = errors.New("refusing to listen on a non-loopback address without a token or --insecure")
 
 // Config configures Run.
 type Config struct {
@@ -37,8 +38,8 @@ type Config struct {
 	// DB is the dashboard database path. Its directory is created with
 	// mode 0700 if missing. Empty means DefaultDBPath.
 	DB string
-	// Insecure allows a non-loopback Listen address. There is no
-	// authentication yet, so anyone who can reach it can read and upload.
+	// Insecure allows a non-loopback Listen address when no token exists.
+	// The API is then open: anyone who can reach it can read and upload.
 	Insecure bool
 	// Out receives the startup URL; Err receives warnings. Nil discards.
 	Out, Err io.Writer
@@ -82,18 +83,18 @@ func Run(ctx context.Context, cfg Config) error {
 	if _, _, err := net.SplitHostPort(listen); err != nil {
 		return fmt.Errorf("invalid listen address %q: %w", listen, err)
 	}
-	if !Loopback(listen) {
-		if !cfg.Insecure {
-			return fmt.Errorf("%w: %s", ErrNotLoopback, listen)
-		}
-		fmt.Fprintf(errOut, "warning: listening on %s with no authentication; anyone who can reach this address can read and upload transcripts\n", listen)
-	}
-
 	dbPath := cfg.DB
 	if dbPath == "" {
 		var err error
 		if dbPath, err = DefaultDBPath(); err != nil {
 			return err
+		}
+	}
+	loopback := Loopback(listen)
+	// Without a database there cannot be a token; refuse before creating one.
+	if !loopback && !cfg.Insecure {
+		if _, err := os.Stat(dbPath); err != nil {
+			return fmt.Errorf("%w: %s", ErrNotLoopback, listen)
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
@@ -105,6 +106,17 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer s.Close()
 
+	tokens, err := s.ListTokens(ctx, true)
+	if err != nil {
+		return fmt.Errorf("list tokens: %w", err)
+	}
+	if !loopback && len(tokens) == 0 {
+		if !cfg.Insecure {
+			return fmt.Errorf("%w: %s", ErrNotLoopback, listen)
+		}
+		fmt.Fprintf(errOut, "warning: listening on %s with no authentication; anyone who can reach this address can read and upload transcripts\n", listen)
+	}
+
 	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
@@ -114,7 +126,10 @@ func Run(ctx context.Context, cfg Config) error {
 	// the whole grace period. End them as soon as shutdown begins.
 	stopping, stopStreams := context.WithCancel(context.Background())
 	defer stopStreams()
-	apiHandler := api.Handler(s)
+	var apiHandler http.Handler = api.Handler(s)
+	if len(tokens) > 0 {
+		apiHandler = auth.New(s).Wrap(apiHandler)
+	}
 	mux := http.NewServeMux()
 	mux.Handle("/v1/", apiHandler)
 	mux.Handle("/v1/stream", endWith(stopping, apiHandler))
