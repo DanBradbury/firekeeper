@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
@@ -31,12 +32,12 @@ type streamEvent struct {
 // buffer is full is dropped so a slow reader never blocks ingest.
 type hub struct {
 	mu      sync.Mutex
-	clients map[chan store.Change]struct{}
+	clients map[chan store.Change]string // value is the client's account id
 	done    bool
 }
 
 func newHub() *hub {
-	return &hub{clients: make(map[chan store.Change]struct{})}
+	return &hub{clients: make(map[chan store.Change]string)}
 }
 
 // run forwards changes until the store closes the channel, then ends every
@@ -57,7 +58,11 @@ func (h *hub) run(changes <-chan store.Change) {
 func (h *hub) broadcast(c store.Change) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for ch := range h.clients {
+	for ch, acct := range h.clients {
+		// A client only ever sees its own account's changes.
+		if acct != c.AccountID {
+			continue
+		}
 		select {
 		case ch <- c:
 		default:
@@ -67,15 +72,15 @@ func (h *hub) broadcast(c store.Change) {
 	}
 }
 
-// subscribe registers a client. It returns nil when the hub has stopped.
-func (h *hub) subscribe() chan store.Change {
+// subscribe registers a client for one account's changes. It returns nil when the hub has stopped.
+func (h *hub) subscribe(accountID string) chan store.Change {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.done {
 		return nil
 	}
 	ch := make(chan store.Change, clientBuffer)
-	h.clients[ch] = struct{}{}
+	h.clients[ch] = accountID
 	return ch
 }
 
@@ -88,10 +93,10 @@ func (h *hub) unsubscribe(ch chan store.Change) {
 	}
 }
 
-func stream(h *hub) http.HandlerFunc {
+func stream(s *store.Store, h *hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rc := http.NewResponseController(w)
-		ch := h.subscribe()
+		ch := h.subscribe(accountID(r))
 		if ch == nil {
 			writeErr(w, http.StatusServiceUnavailable, "unavailable", "server is shutting down")
 			return
@@ -115,6 +120,11 @@ func stream(h *hub) http.HandlerFunc {
 			case <-r.Context().Done():
 				return
 			case <-ticker.C:
+				// A signed-out, expired or disabled browser session must not
+				// keep reading.
+				if p, ok := auth.From(r.Context()); ok && p.SessionID != "" && !s.WebSessionAlive(r.Context(), p.SessionID, time.Now()) {
+					return
+				}
 				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil || rc.Flush() != nil {
 					return
 				}

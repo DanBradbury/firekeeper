@@ -37,24 +37,24 @@ func TestIngestIdempotentAndFTS(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
 	m := Machine{ID: "m1"}
-	a, d, err := s.Ingest(ctx, m, []SessionBatch{batch("s1", 0, 5)})
+	a, d, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{batch("s1", 0, 5)})
 	if err != nil || a != 5 || d != 0 {
 		t.Fatalf("first: %d %d %v", a, d, err)
 	}
-	a2, d2, err := s.Ingest(ctx, m, []SessionBatch{batch("s1", 0, 5)})
+	a2, d2, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{batch("s1", 0, 5)})
 	if err != nil || a2 != 0 || d2 != a {
 		t.Fatalf("second: %d %d %v", a2, d2, err)
 	}
-	st, _ := s.Stats(ctx, "m1", "s1")
+	st, _ := s.Stats(ctx, DefaultAccountID, "m1", "s1")
 	if st.EventCount != 5 || st.Input != 10 || st.Output != 15 || st.Cache != 5 {
 		t.Fatalf("stats %+v", st)
 	}
-	hits, err := s.SearchText(ctx, "needle", 10)
+	hits, err := s.SearchText(ctx, DefaultAccountID, "needle", 10)
 	if err != nil || len(hits) != 5 {
 		t.Fatalf("fts %v %v", hits, err)
 	}
 	v, _ := s.SchemaVersion(ctx)
-	if v != 3 {
+	if v != 4 {
 		t.Fatalf("version %d", v)
 	}
 }
@@ -68,14 +68,14 @@ func TestConcurrentIngest(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < 5; i++ {
-				if _, _, err := s.Ingest(ctx, Machine{ID: "m"}, []SessionBatch{batch("s", i*10, 20)}); err != nil {
+				if _, _, err := s.Ingest(ctx, DefaultAccountID, Machine{ID: "m"}, []SessionBatch{batch("s", i*10, 20)}); err != nil {
 					t.Error(err)
 				}
 			}
 		}()
 	}
 	wg.Wait()
-	st, _ := s.Stats(ctx, "m", "s")
+	st, _ := s.Stats(ctx, DefaultAccountID, "m", "s")
 	if st.EventCount != 60 {
 		t.Fatalf("count %d", st.EventCount)
 	}
@@ -85,16 +85,16 @@ func TestNotifyAndHeartbeat(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
 	m := Machine{ID: "m"}
-	if _, _, err := s.Ingest(ctx, m, []SessionBatch{batch("s", 0, 1)}); err != nil {
+	if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{batch("s", 0, 1)}); err != nil {
 		t.Fatal(err)
 	}
 	if len(s.Changes()) < 2 {
 		t.Fatal("expected notifications")
 	}
-	if err := s.Heartbeat(ctx, m, []Heartbeat{{SessionID: "s", State: "WAITING"}}); err != nil {
+	if err := s.Heartbeat(ctx, DefaultAccountID, m, []Heartbeat{{SessionID: "s", State: "WAITING"}}); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := s.Stats(ctx, "m", "s"); st.State != "WAITING" {
+	if st, _ := s.Stats(ctx, DefaultAccountID, "m", "s"); st.State != "WAITING" {
 		t.Fatalf("state %s", st.State)
 	}
 }
@@ -108,7 +108,7 @@ func TestLastActivityOrdersSubSecondTimes(t *testing.T) {
 	for _, ts := range []time.Time{whole, frac} {
 		b := batch("s", 0, 0)
 		b.Meta.LastActivityAt = &ts
-		if _, _, err := s.Ingest(ctx, m, []SessionBatch{b}); err != nil {
+		if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{b}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -133,7 +133,7 @@ func TestCloseDuringIngest(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < 20; i++ {
-				s.Ingest(ctx, Machine{ID: "m"}, []SessionBatch{batch("s", i, 1)})
+				s.Ingest(ctx, DefaultAccountID, Machine{ID: "m"}, []SessionBatch{batch("s", i, 1)})
 			}
 		}()
 	}

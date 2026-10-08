@@ -48,7 +48,9 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
 	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))
-	mux.HandleFunc("GET /v1/stream", stream(h))
+	mux.HandleFunc("GET /v1/account", account(s))
+	mux.HandleFunc("POST /v1/auth/logout", logout(s))
+	mux.HandleFunc("GET /v1/stream", stream(s, h))
 	return mux
 }
 
@@ -96,6 +98,16 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// accountID is the tenant a request acts for. The auth middleware always
+// attaches one. Without it (a Handler mounted bare, as in single-user tests)
+// requests act as the default account.
+func accountID(r *http.Request) string {
+	if p, ok := auth.From(r.Context()); ok {
+		return p.AccountID
+	}
+	return store.DefaultAccountID
+}
+
 // machineAllowed rejects a request whose machine differs from the one the
 // caller's ingest token is bound to.
 func machineAllowed(w http.ResponseWriter, r *http.Request, machineID string) bool {
@@ -128,7 +140,7 @@ func ingest(s *store.Store) http.HandlerFunc {
 			writeErr(w, http.StatusRequestEntityTooLarge, "too_many_events", "at most 500 events per request")
 			return
 		}
-		accepted, dups, err := s.Ingest(r.Context(), req.Machine, req.Sessions)
+		accepted, dups, err := s.Ingest(r.Context(), accountID(r), req.Machine, req.Sessions)
 		if err != nil {
 			storeErr(w, err)
 			return
@@ -143,7 +155,7 @@ func heartbeat(s *store.Store) http.HandlerFunc {
 		if !decode(w, r, &req) || !machineAllowed(w, r, req.Machine.ID) {
 			return
 		}
-		if err := s.Heartbeat(r.Context(), req.Machine, req.Sessions); err != nil {
+		if err := s.Heartbeat(r.Context(), accountID(r), req.Machine, req.Sessions); err != nil {
 			storeErr(w, err)
 			return
 		}

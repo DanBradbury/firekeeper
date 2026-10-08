@@ -68,11 +68,13 @@ const (
 	MachineStatus  ChangeKind = "machine.status"
 )
 
-// Change is emitted after a transaction commits. SessionID is empty for
-// machine-level changes. Seq is the highest newly stored seq for
+// Change is emitted after a transaction commits. AccountID names the tenant
+// it belongs to; consumers must not deliver it to anyone else. SessionID is
+// empty for machine-level changes. Seq is the highest newly stored seq for
 // EventAppended.
 type Change struct {
 	Kind      ChangeKind
+	AccountID string
 	MachineID string
 	SessionID string
 	Seq       int64
@@ -220,27 +222,39 @@ func fmtTime(t *time.Time) any {
 	return t.UTC().Format(timeLayout)
 }
 
-func upsertMachine(ctx context.Context, tx *sql.Tx, m Machine, now time.Time, heartbeat bool) error {
+func upsertMachine(ctx context.Context, tx *sql.Tx, accountID string, m Machine, now time.Time, heartbeat bool) error {
 	var hb any
 	if heartbeat {
 		hb = now.UTC().Format(timeLayout)
 	}
 	_, err := tx.ExecContext(ctx, `
-INSERT INTO machines(id, name, hostname, os, version, last_heartbeat_at)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
+INSERT INTO machines(account_id, id, name, hostname, os, version, last_heartbeat_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(account_id, id) DO UPDATE SET
     name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE machines.name END,
     hostname = CASE WHEN excluded.hostname <> '' THEN excluded.hostname ELSE machines.hostname END,
     os = CASE WHEN excluded.os <> '' THEN excluded.os ELSE machines.os END,
     version = CASE WHEN excluded.version <> '' THEN excluded.version ELSE machines.version END,
     last_heartbeat_at = COALESCE(excluded.last_heartbeat_at, machines.last_heartbeat_at)`,
-		m.ID, m.Name, m.Hostname, m.OS, m.Version, hb)
+		accountID, m.ID, m.Name, m.Hostname, m.OS, m.Version, hb)
 	return err
 }
 
-// Ingest stores one request in a single transaction. It returns how many
-// events were newly stored and how many already existed.
-func (s *Store) Ingest(ctx context.Context, m Machine, batches []SessionBatch) (accepted, duplicates int, err error) {
+// requireAccount rejects an empty account id so a missing tenant can never
+// turn into an unscoped write.
+func requireAccount(accountID string) error {
+	if accountID == "" {
+		return fmt.Errorf("%w: account is required", ErrInvalid)
+	}
+	return nil
+}
+
+// Ingest stores one request for an account in a single transaction. It
+// returns how many events were newly stored and how many already existed.
+func (s *Store) Ingest(ctx context.Context, accountID string, m Machine, batches []SessionBatch) (accepted, duplicates int, err error) {
+	if err := requireAccount(accountID); err != nil {
+		return 0, 0, err
+	}
 	if m.ID == "" {
 		return 0, 0, fmt.Errorf("%w: machine.id is required", ErrInvalid)
 	}
@@ -274,11 +288,11 @@ func (s *Store) Ingest(ctx context.Context, m Machine, batches []SessionBatch) (
 	defer tx.Rollback()
 
 	now := time.Now()
-	if err := upsertMachine(ctx, tx, m, now, true); err != nil {
+	if err := upsertMachine(ctx, tx, accountID, m, now, true); err != nil {
 		return 0, 0, err
 	}
 	var changes []Change
-	changes = append(changes, Change{Kind: MachineStatus, MachineID: m.ID})
+	changes = append(changes, Change{Kind: MachineStatus, AccountID: accountID, MachineID: m.ID})
 
 	for _, b := range batches {
 		sm := b.Meta
@@ -287,9 +301,9 @@ func (s *Store) Ingest(ctx context.Context, m Machine, batches []SessionBatch) (
 			state = "UNKNOWN"
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO sessions(machine_id, session_id, provider, cwd, project, branch, model, state, title, started_at, last_activity_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(machine_id, session_id) DO UPDATE SET
+INSERT INTO sessions(account_id, machine_id, session_id, provider, cwd, project, branch, model, state, title, started_at, last_activity_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(account_id, machine_id, session_id) DO UPDATE SET
     provider = excluded.provider,
     cwd = CASE WHEN excluded.cwd <> '' THEN excluded.cwd ELSE sessions.cwd END,
     project = CASE WHEN excluded.project <> '' THEN excluded.project ELSE sessions.project END,
@@ -302,7 +316,7 @@ ON CONFLICT(machine_id, session_id) DO UPDATE SET
         WHEN sessions.last_activity_at IS NULL OR excluded.last_activity_at > sessions.last_activity_at
         THEN COALESCE(excluded.last_activity_at, sessions.last_activity_at)
         ELSE sessions.last_activity_at END`,
-			m.ID, sm.SessionID, sm.Provider, sm.CWD, sm.Project, sm.Branch, sm.Model, state, sm.Title,
+			accountID, m.ID, sm.SessionID, sm.Provider, sm.CWD, sm.Project, sm.Branch, sm.Model, state, sm.Title,
 			fmtTime(sm.StartedAt), fmtTime(sm.LastActivityAt), sm.State); err != nil {
 			return 0, 0, err
 		}
@@ -314,10 +328,10 @@ ON CONFLICT(machine_id, session_id) DO UPDATE SET
 				raw = "null"
 			}
 			res, err := tx.ExecContext(ctx, `
-INSERT INTO events(machine_id, session_id, seq, provider, ts, role, text, tool_name, model, input_tokens, output_tokens, cache_tokens, raw)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(machine_id, session_id, seq) DO NOTHING`,
-				m.ID, sm.SessionID, e.Seq, sm.Provider, fmtTime(e.TS), string(e.Role), e.Text,
+INSERT INTO events(account_id, machine_id, session_id, seq, provider, ts, role, text, tool_name, model, input_tokens, output_tokens, cache_tokens, raw)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(account_id, machine_id, session_id, seq) DO NOTHING`,
+				accountID, m.ID, sm.SessionID, e.Seq, sm.Provider, fmtTime(e.TS), string(e.Role), e.Text,
 				e.ToolName, e.Model, e.Tokens.Input, e.Tokens.Output, e.Tokens.Cache, raw)
 			if err != nil {
 				return 0, 0, err
@@ -334,16 +348,16 @@ ON CONFLICT(machine_id, session_id, seq) DO NOTHING`,
 
 		if _, err := tx.ExecContext(ctx, `
 UPDATE sessions SET
-    event_count = (SELECT COUNT(*) FROM events e WHERE e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
-    input_tokens = (SELECT COALESCE(SUM(input_tokens), 0) FROM events e WHERE e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
-    output_tokens = (SELECT COALESCE(SUM(output_tokens), 0) FROM events e WHERE e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
-    cache_tokens = (SELECT COALESCE(SUM(cache_tokens), 0) FROM events e WHERE e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id)
-WHERE machine_id = ? AND session_id = ?`, m.ID, sm.SessionID); err != nil {
+    event_count = (SELECT COUNT(*) FROM events e WHERE e.account_id = sessions.account_id AND e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
+    input_tokens = (SELECT COALESCE(SUM(input_tokens), 0) FROM events e WHERE e.account_id = sessions.account_id AND e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
+    output_tokens = (SELECT COALESCE(SUM(output_tokens), 0) FROM events e WHERE e.account_id = sessions.account_id AND e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id),
+    cache_tokens = (SELECT COALESCE(SUM(cache_tokens), 0) FROM events e WHERE e.account_id = sessions.account_id AND e.machine_id = sessions.machine_id AND e.session_id = sessions.session_id)
+WHERE account_id = ? AND machine_id = ? AND session_id = ?`, accountID, m.ID, sm.SessionID); err != nil {
 			return 0, 0, err
 		}
-		changes = append(changes, Change{Kind: SessionUpdated, MachineID: m.ID, SessionID: sm.SessionID})
+		changes = append(changes, Change{Kind: SessionUpdated, AccountID: accountID, MachineID: m.ID, SessionID: sm.SessionID})
 		if maxNew >= 0 {
-			changes = append(changes, Change{Kind: EventAppended, MachineID: m.ID, SessionID: sm.SessionID, Seq: maxNew})
+			changes = append(changes, Change{Kind: EventAppended, AccountID: accountID, MachineID: m.ID, SessionID: sm.SessionID, Seq: maxNew})
 		}
 	}
 
@@ -356,7 +370,10 @@ WHERE machine_id = ? AND session_id = ?`, m.ID, sm.SessionID); err != nil {
 
 // Heartbeat marks the machine online and updates session states. Unknown
 // sessions are ignored.
-func (s *Store) Heartbeat(ctx context.Context, m Machine, hbs []Heartbeat) error {
+func (s *Store) Heartbeat(ctx context.Context, accountID string, m Machine, hbs []Heartbeat) error {
+	if err := requireAccount(accountID); err != nil {
+		return err
+	}
 	if m.ID == "" {
 		return fmt.Errorf("%w: machine.id is required", ErrInvalid)
 	}
@@ -373,23 +390,23 @@ func (s *Store) Heartbeat(ctx context.Context, m Machine, hbs []Heartbeat) error
 		return err
 	}
 	defer tx.Rollback()
-	if err := upsertMachine(ctx, tx, m, time.Now(), true); err != nil {
+	if err := upsertMachine(ctx, tx, accountID, m, time.Now(), true); err != nil {
 		return err
 	}
-	changes := []Change{{Kind: MachineStatus, MachineID: m.ID}}
+	changes := []Change{{Kind: MachineStatus, AccountID: accountID, MachineID: m.ID}}
 	for _, h := range hbs {
 		res, err := tx.ExecContext(ctx, `
 UPDATE sessions SET state = ?,
     last_activity_at = CASE
         WHEN ? IS NOT NULL AND (last_activity_at IS NULL OR ? > last_activity_at) THEN ?
         ELSE last_activity_at END
-WHERE machine_id = ? AND session_id = ?`,
-			h.State, fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), m.ID, h.SessionID)
+WHERE account_id = ? AND machine_id = ? AND session_id = ?`,
+			h.State, fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), accountID, m.ID, h.SessionID)
 		if err != nil {
 			return err
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
-			changes = append(changes, Change{Kind: SessionUpdated, MachineID: m.ID, SessionID: h.SessionID})
+			changes = append(changes, Change{Kind: SessionUpdated, AccountID: accountID, MachineID: m.ID, SessionID: h.SessionID})
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -407,21 +424,21 @@ type SessionStats struct {
 }
 
 // Stats returns stored totals for a session (used by tests and handlers).
-func (s *Store) Stats(ctx context.Context, machineID, sessionID string) (SessionStats, error) {
+func (s *Store) Stats(ctx context.Context, accountID, machineID, sessionID string) (SessionStats, error) {
 	var st SessionStats
 	err := s.db.QueryRowContext(ctx, `SELECT event_count, input_tokens, output_tokens, cache_tokens, state
-FROM sessions WHERE machine_id = ? AND session_id = ?`, machineID, sessionID).
+FROM sessions WHERE account_id = ? AND machine_id = ? AND session_id = ?`, accountID, machineID, sessionID).
 		Scan(&st.EventCount, &st.Input, &st.Output, &st.Cache, &st.State)
 	return st, err
 }
 
 // SearchText returns "machine:session:seq" keys of events whose text matches
 // the FTS5 query.
-func (s *Store) SearchText(ctx context.Context, query string, limit int) ([]string, error) {
+func (s *Store) SearchText(ctx context.Context, accountID, query string, limit int) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT e.machine_id, e.session_id, e.seq FROM events_fts f
 JOIN events e ON e.rowid = f.rowid
-WHERE events_fts MATCH ? ORDER BY e.machine_id, e.session_id, e.seq LIMIT ?`, query, limit)
+WHERE events_fts MATCH ? AND e.account_id = ? ORDER BY e.machine_id, e.session_id, e.seq LIMIT ?`, query, accountID, limit)
 	if err != nil {
 		return nil, err
 	}

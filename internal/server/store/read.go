@@ -142,15 +142,18 @@ func scanSession(sc interface{ Scan(...any) error }) (Session, string, error) {
 // ListSessions returns sessions newest activity first, with sessions that
 // have no activity time last. It returns the cursor for the next page, or ""
 // when there are no more rows.
-func (s *Store) ListSessions(ctx context.Context, f SessionFilter) ([]Session, string, error) {
+func (s *Store) ListSessions(ctx context.Context, accountID string, f SessionFilter) ([]Session, string, error) {
+	if err := requireAccount(accountID); err != nil {
+		return nil, "", err
+	}
 	if f.Limit < 1 {
 		return nil, "", fmt.Errorf("%w: limit must be positive", ErrInvalid)
 	}
 	if strings.TrimSpace(f.Q) != "" {
-		return s.searchSessions(ctx, f)
+		return s.searchSessions(ctx, accountID, f)
 	}
-	var where []string
-	var args []any
+	where := []string{"s.account_id = ?"}
+	args := []any{accountID}
 	for _, eq := range []struct{ col, val string }{
 		{"s.machine_id", f.Machine}, {"s.provider", f.Provider},
 		{"s.project", f.Project}, {"s.state", f.State},
@@ -202,9 +205,9 @@ func (s *Store) ListSessions(ctx context.Context, f SessionFilter) ([]Session, s
 }
 
 // GetSession returns one session or ErrNotFound.
-func (s *Store) GetSession(ctx context.Context, machineID, sessionID string) (Session, error) {
+func (s *Store) GetSession(ctx context.Context, accountID, machineID, sessionID string) (Session, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+sessionColumns+` FROM sessions s
-WHERE s.machine_id = ? AND s.session_id = ?`, machineID, sessionID)
+WHERE s.account_id = ? AND s.machine_id = ? AND s.session_id = ?`, accountID, machineID, sessionID)
 	se, _, err := scanSession(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return se, ErrNotFound
@@ -215,14 +218,14 @@ WHERE s.machine_id = ? AND s.session_id = ?`, machineID, sessionID)
 // ListEvents returns up to limit events with seq greater than afterSeq, in
 // seq order. hasMore reports whether further events follow. Pass afterSeq -1
 // to start from the first event.
-func (s *Store) ListEvents(ctx context.Context, machineID, sessionID string, afterSeq int64, limit int) (events []transcript.Event, hasMore bool, err error) {
+func (s *Store) ListEvents(ctx context.Context, accountID, machineID, sessionID string, afterSeq int64, limit int) (events []transcript.Event, hasMore bool, err error) {
 	if limit < 1 {
 		return nil, false, fmt.Errorf("%w: limit must be positive", ErrInvalid)
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT seq, provider, ts, role, text, tool_name, model, input_tokens, output_tokens, cache_tokens, raw
-FROM events WHERE machine_id = ? AND session_id = ? AND seq > ?
-ORDER BY seq LIMIT ?`, machineID, sessionID, afterSeq, limit+1)
+FROM events WHERE account_id = ? AND machine_id = ? AND session_id = ? AND seq > ?
+ORDER BY seq LIMIT ?`, accountID, machineID, sessionID, afterSeq, limit+1)
 	if err != nil {
 		return nil, false, err
 	}
@@ -255,12 +258,12 @@ ORDER BY seq LIMIT ?`, machineID, sessionID, afterSeq, limit+1)
 	return events, false, nil
 }
 
-// ListMachines returns every machine ordered by id.
-func (s *Store) ListMachines(ctx context.Context) ([]MachineInfo, error) {
+// ListMachines returns the account's machines ordered by id.
+func (s *Store) ListMachines(ctx context.Context, accountID string) ([]MachineInfo, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT m.id, m.name, m.hostname, m.os, m.version, m.last_heartbeat_at,
-    (SELECT COUNT(*) FROM sessions s WHERE s.machine_id = m.id)
-FROM machines m ORDER BY m.id`)
+    (SELECT COUNT(*) FROM sessions s WHERE s.account_id = m.account_id AND s.machine_id = m.id)
+FROM machines m WHERE m.account_id = ? ORDER BY m.id`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +298,7 @@ func highlight(s string) string {
 // fallback, session titles). Sessions are ranked by their best-matching
 // event using bm25; title-only matches rank after transcript matches. Each
 // result carries up to MaxSnippets snippets. Pages are offset-based.
-func (s *Store) searchSessions(ctx context.Context, f SessionFilter) ([]Session, string, error) {
+func (s *Store) searchSessions(ctx context.Context, accountID string, f SessionFilter) ([]Session, string, error) {
 	q := strings.TrimSpace(f.Q)
 	phrase := ftsPhrase(q)
 	offset := 0
@@ -306,8 +309,8 @@ func (s *Store) searchSessions(ctx context.Context, f SessionFilter) ([]Session,
 		}
 		offset = c.Offset
 	}
-	where := []string{`(h.sid IS NOT NULL OR instr(lower(s.title), lower(?)) > 0)`}
-	args := []any{phrase, q}
+	where := []string{`s.account_id = ?`, `(h.sid IS NOT NULL OR instr(lower(s.title), lower(?)) > 0)`}
+	args := []any{phrase, accountID, accountID, q}
 	for _, eq := range []struct{ col, val string }{
 		{"s.machine_id", f.Machine}, {"s.provider", f.Provider},
 		{"s.project", f.Project}, {"s.state", f.State},
@@ -321,7 +324,7 @@ func (s *Store) searchSessions(ctx context.Context, f SessionFilter) ([]Session,
 	query := `WITH hits AS (
     SELECT e.machine_id AS mid, e.session_id AS sid, MIN(events_fts.rank) AS score
     FROM events_fts JOIN events e ON e.rowid = events_fts.rowid
-    WHERE events_fts MATCH ? GROUP BY e.machine_id, e.session_id)
+    WHERE events_fts MATCH ? AND e.account_id = ? GROUP BY e.machine_id, e.session_id)
 SELECT ` + sessionColumns + ` FROM sessions s
 LEFT JOIN hits h ON h.mid = s.machine_id AND h.sid = s.session_id
 WHERE ` + strings.Join(where, " AND ") + `
@@ -352,7 +355,7 @@ LIMIT ? OFFSET ?`
 		next = encodeCursor(cursor{Offset: offset + f.Limit})
 	}
 	for i := range out {
-		sn, err := s.snippets(ctx, out[i].MachineID, out[i].SessionID, phrase)
+		sn, err := s.snippets(ctx, accountID, out[i].MachineID, out[i].SessionID, phrase)
 		if err != nil {
 			return nil, "", err
 		}
@@ -361,11 +364,11 @@ LIMIT ? OFFSET ?`
 	return out, next, nil
 }
 
-func (s *Store) snippets(ctx context.Context, machineID, sessionID, phrase string) ([]Snippet, error) {
+func (s *Store) snippets(ctx context.Context, accountID, machineID, sessionID, phrase string) ([]Snippet, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT e.seq, snippet(events_fts, 0, ?, ?, '…', 24)
 FROM events_fts JOIN events e ON e.rowid = events_fts.rowid
-WHERE events_fts MATCH ? AND e.machine_id = ? AND e.session_id = ?
-ORDER BY events_fts.rank, e.seq LIMIT ?`, markOpen, markClose, phrase, machineID, sessionID, MaxSnippets)
+WHERE events_fts MATCH ? AND e.account_id = ? AND e.machine_id = ? AND e.session_id = ?
+ORDER BY events_fts.rank, e.seq LIMIT ?`, markOpen, markClose, phrase, accountID, machineID, sessionID, MaxSnippets)
 	if err != nil {
 		return nil, err
 	}
