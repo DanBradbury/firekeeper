@@ -113,6 +113,7 @@ function parseRoute() {
   if (h === "/usage" || h.startsWith("/usage?")) {
     return { view: "usage", params: new URLSearchParams(h.slice(7)) };
   }
+  if (h === "/tokens") return { view: "tokens" };
   if (h.startsWith("/s/")) {
     try {
       return { view: "session", uid: decodeURIComponent(h.slice(3)) };
@@ -190,7 +191,7 @@ function render() {
   current = null;
   app.replaceChildren();
   const r = parseRoute();
-  for (const [id, view] of [["nav-machines", "machines"], ["nav-sessions", "list"], ["nav-usage", "usage"]]) {
+  for (const [id, view] of [["nav-machines", "machines"], ["nav-sessions", "list"], ["nav-usage", "usage"], ["nav-tokens", "tokens"]]) {
     const a = document.getElementById(id);
     if (view === r.view) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -200,6 +201,7 @@ function render() {
   else if (r.view === "session") current = sessionView(r.uid);
   else if (r.view === "usage") current = usageView(r.params);
   else if (r.view === "account") current = accountView();
+  else if (r.view === "tokens") current = tokensView();
   else current = listView(r.params);
   window.scrollTo(0, 0);
 }
@@ -1396,6 +1398,129 @@ function accountView() {
   })();
 
   return { dispose() { alive = false; }, onStream() {} };
+
+// ---------- tokens ----------
+
+function tokensView() {
+  let alive = true;
+  const list = el("div", {}, el("div", { class: "loading", text: "Loading tokens…" }));
+  const secretBox = el("div");
+  const formErr = el("div");
+
+  const name = el("input", { type: "text", name: "name", required: true, maxlength: "64", autocomplete: "off", placeholder: "ci-runner" });
+  const scope = el("select", { name: "scope" },
+    el("option", { value: "ingest", text: "ingest (a machine uploads)" }),
+    el("option", { value: "read", text: "read (view only)" }));
+  const machine = el("input", { type: "text", name: "machine_id", maxlength: "128", autocomplete: "off", placeholder: "contents of ~/.firekeeper/machine-id" });
+  const machineLabel = el("label", {}, "Machine id", machine);
+  const submit = el("button", { type: "submit", text: "Create token" });
+  const syncScope = () => {
+    machineLabel.hidden = scope.value !== "ingest";
+    machine.required = scope.value === "ingest";
+  };
+  scope.addEventListener("change", syncScope);
+  syncScope();
+
+  async function reload() {
+    try {
+      const toks = await api.listTokens();
+      if (alive) list.replaceChildren(table(toks));
+    } catch (err) {
+      if (alive) list.replaceChildren(notice(tokenError(err), true));
+    }
+  }
+
+  function tokenError(err) {
+    if (err.code === "session_required") return "Managing tokens needs a signed-in account. Create one with firekeeper serve account create, then sign in.";
+    return err.message;
+  }
+
+  function table(toks) {
+    if (!toks.length) return el("p", { class: "empty", text: "No tokens yet. Link a machine or create one below." });
+    const row = (t) => el("tr", { class: t.revoked_at ? "revoked" : undefined },
+      el("td", { class: "project", text: t.name }),
+      el("td", { text: t.scope }),
+      el("td", { class: "model hide-sm", title: t.machine_id, text: t.machine_id ? t.machine_id.slice(0, 8) : "—" }),
+      el("td", {}, timeEl(t.created_at)),
+      el("td", {}, t.last_used_at ? timeEl(t.last_used_at) : el("span", { class: "muted", text: "never" })),
+      el("td", {}, t.revoked_at
+        ? el("span", { class: "muted", text: "revoked" })
+        : el("button", { type: "button", text: "Revoke", onclick: () => revoke(t) })));
+    return el("table", { class: "data" },
+      el("thead", {}, el("tr", {},
+        ...["Name", "Scope"].map((h) => el("th", { scope: "col", text: h })),
+        el("th", { scope: "col", class: "hide-sm", text: "Machine" }),
+        ...["Created", "Last used", ""].map((h) => el("th", { scope: "col", text: h })))),
+      el("tbody", {}, ...toks.map(row)));
+  }
+
+  async function revoke(t) {
+    if (!confirm(`Revoke "${t.name}"? Anything using it stops uploading at its next request.`)) return;
+    try {
+      await api.revokeToken(t.id);
+    } catch (err) {
+      list.prepend(notice(tokenError(err), true));
+      return;
+    }
+    await reload();
+  }
+
+  function showSecret(created) {
+    const code = el("code", { class: "secret", text: created.token });
+    const copy = el("button", { type: "button", text: "Copy", onclick: async () => {
+      try {
+        await navigator.clipboard.writeText(created.token);
+        copy.textContent = "Copied";
+      } catch {
+        const r = document.createRange();
+        r.selectNodeContents(code);
+        getSelection().removeAllRanges();
+        getSelection().addRange(r);
+      }
+    } });
+    secretBox.replaceChildren(el("div", { class: "panel secret-panel", role: "status" },
+      el("p", { text: `Token “${created.name}” created. Copy it now: it is shown once and cannot be recovered.` }),
+      el("div", { class: "secret-row" }, code, copy),
+      el("p", { class: "muted", text: created.scope === "ingest"
+        ? "On the machine, run: FIREKEEPER_TOKEN=… firekeeper report --provider NAME, or set token in ~/.firekeeper/config.toml."
+        : "Send it as an Authorization: Bearer header." })));
+  }
+
+  const form = el("form", { class: "panel token-form", onsubmit: async (e) => {
+    e.preventDefault();
+    submit.disabled = true;
+    formErr.replaceChildren();
+    try {
+      const created = await api.createToken(name.value.trim(), scope.value, machine.value.trim());
+      showSecret(created);
+      name.value = "";
+      machine.value = "";
+      await reload();
+    } catch (err) {
+      formErr.append(notice(tokenError(err), true));
+    }
+    submit.disabled = false;
+  } },
+    el("h2", { text: "Create a token" }),
+    el("p", { class: "muted", text: "For CI and headless machines. A browser-linked laptop does not need one." }),
+    formErr,
+    el("label", {}, "Name", name),
+    el("label", {}, "Scope", scope),
+    machineLabel,
+    submit);
+
+  app.append(
+    el("h1", { text: "Tokens" }),
+    el("p", { class: "range-note" }, "Link a laptop without copying secrets: run ",
+      el("code", { class: "inline", text: `firekeeper login --server ${location.origin}` }), " on it."),
+    el("div", { class: "panel table-wrap" }, list),
+    secretBox,
+    form);
+  reload();
+  return {
+    dispose() { alive = false; },
+    onStream() {},
+  };
 }
 
 // ---------- boot ----------

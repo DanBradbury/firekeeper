@@ -71,6 +71,10 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("DELETE /v1/account", deleteAccount(s))
 	mux.HandleFunc("GET /v1/account/export", exportAccount(s))
 	mux.HandleFunc("POST /v1/auth/logout", logout(s))
+	mux.HandleFunc("GET /v1/tokens", listTokens(s))
+	mux.HandleFunc("POST /v1/tokens", createToken(s))
+	mux.HandleFunc("DELETE /v1/tokens/current", revokeCurrent(s))
+	mux.HandleFunc("DELETE /v1/tokens/{id}", revokeToken(s))
 	mux.HandleFunc("GET /v1/stream", stream(s, h))
 	return mux
 }

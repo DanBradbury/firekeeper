@@ -4,30 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>Firekeeper</title>
+<title>Link a machine · Firekeeper</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="app.css">
-<script type="module" src="app.js"></script>
+<script type="module" src="link.js"></script>
 </head>
 <body>
 <!--banner-->
 <header class="topbar">
-  <a class="brand" href="./#/">
+  <a class="brand" href="./">
     <img src="favicon.svg" alt="" width="24" height="24" class="brand-icon">
     <span>Firekeeper</span>
   </a>
   <nav class="nav" aria-label="Views">
-    <a href="./#/" id="nav-machines">Machines</a>
-    <a href="./#/sessions" id="nav-sessions">Sessions</a>
-    <a href="./#/usage" id="nav-usage">Usage</a>
-    <a href="./#/tokens" id="nav-tokens">Tokens</a>
+    <a href="./#/tokens">Tokens</a>
   </nav>
   <span id="mock-badge" class="mock-badge" hidden>mock data</span>
-  <span id="live" class="live" title="Live updates"></span>
-  <span id="account" class="account" hidden></span>
 </header>
 <main id="app" aria-live="polite"></main>
-<noscript><p class="notice">The Firekeeper dashboard needs JavaScript.</p></noscript>
-<footer class="footer"><a href="privacy">Privacy</a> · transcripts are stored on this server</footer>
+<noscript><p class="notice">Linking a machine needs JavaScript.</p></noscript>
 </body>
 </html>

@@ -256,6 +256,13 @@ export async function createMockAPI() {
   const order = (a, b) => (b.last_activity_at || "").localeCompare(a.last_activity_at || "") || b.uid.localeCompare(a.uid);
   const notFound = () => Promise.reject(Object.assign(new Error("session not found"), { status: 404, code: "not_found" }));
 
+  // Tokens live in memory only. Secrets are fake and never stored.
+  const tokens = [
+    { id: "a1b2c3d4", name: "studio-mac", scope: "ingest", machine_id: "m-studio-0000", created_at: new Date(Date.now() - 12 * 864e5).toISOString(), last_used_at: new Date(Date.now() - 90e3).toISOString(), revoked_at: null },
+    { id: "e5f6a7b8", name: "ci-runner", scope: "ingest", machine_id: "ci-0000", created_at: new Date(Date.now() - 3 * 864e5).toISOString(), last_used_at: null, revoked_at: null },
+    { id: "c9d0e1f2", name: "old-laptop", scope: "ingest", machine_id: "m-old-0000", created_at: new Date(Date.now() - 40 * 864e5).toISOString(), last_used_at: new Date(Date.now() - 30 * 864e5).toISOString(), revoked_at: new Date(Date.now() - 29 * 864e5).toISOString() },
+  ];
+
   const api = {
     mock: true,
 
@@ -265,6 +272,25 @@ export async function createMockAPI() {
     logout: () => mockAuth.logout(),
     deleteAccount: (confirm) => mockAuth.deleteAccount(confirm),
     exportURL: "",
+
+    listTokens() {
+      return delay([...tokens].reverse());
+    },
+
+    createToken(name, scope, machineID) {
+      if (!name) return Promise.reject(Object.assign(new Error("token name is required"), { status: 400, code: "invalid_request" }));
+      if (scope === "ingest" && !machineID) return Promise.reject(Object.assign(new Error("ingest tokens need a machine id"), { status: 400, code: "invalid_request" }));
+      const t = { id: Math.random().toString(16).slice(2, 10), name, scope, machine_id: scope === "ingest" ? machineID : "", created_at: new Date().toISOString(), last_used_at: null, revoked_at: null };
+      tokens.push(t);
+      return delay({ ...t, token: "fk_MOCK-NOT-A-REAL-SECRET" });
+    },
+
+    revokeToken(id) {
+      const t = tokens.find((x) => x.id === id && !x.revoked_at);
+      if (!t) return Promise.reject(Object.assign(new Error("no active token with that id"), { status: 404, code: "not_found" }));
+      t.revoked_at = new Date().toISOString();
+      return delay({ ok: true });
+    },
 
     listSessions(filters, cursor, limit = 50) {
       const q = (filters.q || "").toLowerCase();
@@ -351,7 +377,7 @@ export async function createMockAPI() {
 
   // Data calls behave like the real API once the mock session is gone: they
   // answer 401, which sends the reader back to the sign-in page.
-  for (const name of ["listSessions", "getSession", "listEvents", "listMachines", "usage"]) {
+  for (const name of ["listSessions", "getSession", "listEvents", "listMachines", "usage", "listTokens", "createToken", "revokeToken"]) {
     const call = api[name];
     api[name] = (...args) => {
       try {
