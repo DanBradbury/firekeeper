@@ -159,7 +159,7 @@ func Run(ctx context.Context, cfg Config) error {
 	mux.Handle("POST /v1/auth/signup", am.Signup())
 	mux.Handle("/v1/", apiHandler)
 	mux.Handle("/v1/stream", endWith(stopping, apiHandler))
-	mux.Handle("/", web.Handler())
+	mux.Handle("/", web.Handler(web.WithGate(am.Page)))
 
 	// No WriteTimeout: it would cut /v1/stream off.
 	srv := &http.Server{
@@ -170,6 +170,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	url := "http://" + ln.Addr().String() + "/"
 	fmt.Fprintf(out, "firekeeper dashboard at %s\n", url)
+	fmt.Fprintf(out, "mode: %s\n", am.Mode(ctx))
 	if cfg.OnListen != nil {
 		cfg.OnListen(url)
 	}

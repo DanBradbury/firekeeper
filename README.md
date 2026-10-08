@@ -374,9 +374,10 @@ firekeeper serve token revoke NAME_OR_ID
 
 `create` prints the token once; only its SHA-256 hash is stored. Ingest tokens
 (for `report`, bound to one machine id, see `~/.firekeeper/machine-id`) can
-only call `/v1/ingest` and `/v1/heartbeat`; read tokens can only read, and the
-web UI accepts one under "Use a read token instead" on its sign-in page and keeps
-it in `sessionStorage`. Once any active token exists, every `/v1/*` request
+only call `/v1/ingest` and `/v1/heartbeat`; read tokens can only read. On a
+server with tokens but no accounts, the web UI's `/login` page asks for a read
+token and keeps it in `sessionStorage`; once an account exists the browser
+signs in with email and password instead. Once any active token exists, every `/v1/*` request
 needs an `Authorization: Bearer TOKEN` header (or a browser session; see
 [Accounts](#accounts)). Failed attempts are rate limited per IP. `token create`
 takes `--account EMAIL` to assign the token to an account.
@@ -395,13 +396,29 @@ or upload into another's.
 - **Single user, the default.** A server with no tokens and no accounts needs
   no signup or login; everything belongs to a built-in default account.
   Existing databases are upgraded to this automatically.
-- **Accounts.** Creating the first account turns login on for everyone.
-  People sign in on the web UI with email and password (stored as argon2id
-  hashes), which sets a 14-day browser session cookie. Browser sessions can
-  read but not upload; uploads use ingest tokens.
+- **Accounts.** Creating the first account turns login on for everyone, even
+  while the server is running. People sign in at `/login` with email and
+  password (stored as argon2id hashes), which sets a 14-day browser session
+  cookie. Browser sessions can read but not upload; uploads use ingest tokens.
+
+`serve` prints which mode it started in: `single-user` (open),
+`single-user, token-protected` (no accounts, API needs a token), or
+`multi-user`.
+
+In multi-user mode every dashboard page load without a valid session
+redirects to `/login`, and a session that ends while the page is open (it
+expired, was signed out elsewhere, or the account was disabled) sends the
+reader back there with a notice. After signing in, the reader returns to the
+view they were on. The header shows the signed-in email and a **Sign out**
+button. Static assets and the `/login` and `/signup` pages are the only
+routes that need no credentials. `/signup` follows `--signup`: closed shows a
+"signup is closed" notice, invite asks for a code. To check these screens
+without accounts, open `/?mock=1`: it uses synthetic fixtures and simulates
+sign-in (password `firekeeper-mock`), and never contacts the API.
 
 ```sh
-printf '%s' "$PASSWORD" | firekeeper serve account create --email you@example.com --password-stdin
+firekeeper serve admin create-account --email you@example.com   # asks for the password twice
+printf '%s' "$PASSWORD" | firekeeper serve account create --email you@example.com --password-stdin  # for scripts
 firekeeper serve account list
 firekeeper serve account disable you@example.com   # or: enable
 firekeeper serve invite create [--ttl 168h] [--account EMAIL]
@@ -410,7 +427,9 @@ firekeeper serve --signup invite                    # closed (default) | invite 
 ```
 
 `--signup closed` refuses every signup; the owner creates accounts with
-`account create`. `invite` lets a person sign up with a one-time code from
+`admin create-account`, which works whatever `--signup` says and reads the
+password only from a terminal prompt (never a flag or argument), or with
+`account create --password-stdin` in scripts. `invite` lets a person sign up with a one-time code from
 `invite create`; `open` lets anyone who can reach the server. Without
 `--account`, `token create` and `invite create` act for the single-user
 default account, whose existing tokens keep working. Data uploaded before

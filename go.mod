@@ -7,6 +7,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/x/ansi v0.10.1
 	golang.org/x/crypto v0.57.0
+	golang.org/x/term v0.46.0
 	modernc.org/sqlite v1.60.1
 )
 

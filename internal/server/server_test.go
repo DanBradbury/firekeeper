@@ -274,7 +274,7 @@ func TestRunNonLoopbackWithAccount(t *testing.T) {
 		t.Fatalf("no credentials: %d", resp.StatusCode)
 	}
 	if resp, _ := get(t, url+"/"); resp.StatusCode != http.StatusOK {
-		t.Fatalf("UI must stay reachable to show the login page: %d", resp.StatusCode)
+		t.Fatalf("UI must reach the login page: %d", resp.StatusCode)
 	}
 }
 
