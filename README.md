@@ -225,9 +225,42 @@ reporting subcommands are being added; `firekeeper --help` lists them.
 
 ```sh
 firekeeper snapshot --json   # print currently discovered sessions as JSON
+firekeeper report --dry-run  # show what one upload pass would send
+firekeeper report --provider codex --provider copilot
 ```
 
-`export`, `report`, `serve`, and `daemon` are placeholders that print
+`report` runs one pass: it discovers running sessions, reads transcript
+events added since the last pass, redacts them, and uploads them to a
+dashboard server in batches of at most 500 events. It prints one line per
+session with event, batch, duplicate, and redaction counts, never transcript
+text.
+
+| Flag | Meaning |
+| --- | --- |
+| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
+| `--provider NAME` | Upload this provider's sessions. Repeatable. Codex and Copilot have transcript readers today. |
+| `--dry-run` | Read and redact, print counts, upload nothing. |
+| `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
+
+Upload is opt-in. With no `--provider`, `report` uploads nothing and behaves
+like `--dry-run`. A dry run never opens a network connection and never moves
+read offsets.
+
+Redaction is best effort. It catches common secret shapes (cloud and GitHub
+tokens, API keys, bearer tokens, private keys, JWTs, `SECRET=...`-style
+assignments) and rewrites your home directory to `~`, but it cannot recognize
+every secret. Treat uploaded transcripts as sensitive.
+
+Sessions are never read when their working directory is unknown, or when the
+directory or any parent up to its Git root contains a `.firekeeper-ignore`
+file.
+
+Read offsets live in `~/.firekeeper/state.json` and advance only after the
+server accepts a batch, so an interrupted pass can be rerun without losing
+or duplicating events. A transcript that shrinks is re-read from the start;
+the server drops events it already has.
+
+`export`, `serve`, and `daemon` are placeholders that print
 `not implemented` and exit with status 2.
 
 ## How session discovery works
