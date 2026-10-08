@@ -16,11 +16,20 @@ const (
 	MaxBodyBytes    = 5 << 20
 )
 
-// Handler routes the ingest and heartbeat endpoints.
+// Handler routes the v1 API. It consumes s.Changes() to drive /v1/stream,
+// so create at most one Handler per Store. Streams end when s is closed.
 func Handler(s *store.Store) http.Handler {
+	h := newHub()
+	go h.run(s.Changes())
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/ingest", ingest(s))
 	mux.HandleFunc("POST /v1/heartbeat", heartbeat(s))
+	mux.HandleFunc("GET /v1/sessions", listSessions(s))
+	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s))
+	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
+	mux.HandleFunc("GET /v1/machines", listMachines(s))
+	mux.HandleFunc("GET /v1/stream", stream(h))
 	return mux
 }
 
