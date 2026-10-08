@@ -235,6 +235,12 @@ exposes process information without provider-specific session metadata.
 Codex Desktop helper processes that cannot be matched to rollout metadata are
 not shown as sessions.
 
+Discovery is also callable without the TUI through
+`internal/session.Discover(ctx, opts)`. It returns normalized session metadata,
+including the project basename (Git root or working directory) and
+a stable UUID stored in `~/.firekeeper/machine-id`, created on first use.
+Provider enrichment failures return usable runtime metadata with a warning.
+
 All monitoring stays local. Firekeeper does not proxy prompts or replace agent
 clients.
 
