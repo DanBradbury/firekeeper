@@ -231,7 +231,7 @@ under Usage.
 **Reporting mode** is a set of explicit subcommands: `snapshot`, `export`,
 `report`, `backfill`, `daemon`, and `serve`. `report`, `backfill`, and `daemon`
 send session metadata and full transcripts to a dashboard server that you run
-(see [docs/self-hosting.md](docs/self-hosting.md)). Nothing is sent until you
+(see [docs/self-hosting.md](docs/self-hosting.md), or [docs/hosting.md](docs/hosting.md) for HTTPS on a VPS). Nothing is sent until you
 name a provider, with `--provider` or the config file, and point at a server.
 `report --dry-run` shows what would be sent without opening a connection.
 Agent CLIs never depend on any of these commands.

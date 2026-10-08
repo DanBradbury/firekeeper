@@ -187,6 +187,7 @@ func Run(ctx context.Context, cfg Config) error {
 	mux.Handle("POST /v1/link/start", am.LinkStart())
 	mux.Handle("POST /v1/link/poll", am.LinkPoll())
 	mux.Handle("POST /v1/link/approve", am.Wrap(am.LinkApprove()))
+	mux.HandleFunc("GET /healthz", healthz)
 	mux.Handle("/v1/", apiHandler)
 	mux.Handle("/v1/stream", endWith(stopping, apiHandler))
 	mux.Handle("/", web.Handler(web.WithGate(am.Page), web.WithBanner(strings.TrimSpace(cfg.Banner))))
@@ -226,6 +227,14 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("close database: %w", err)
 	}
 	return nil
+}
+
+// healthz answers liveness probes. It needs no credentials and returns no
+// data, so it is safe to leave outside the auth gate.
+func healthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	io.WriteString(w, "ok\n")
 }
 
 // endWith cancels each request's context when stop is done.

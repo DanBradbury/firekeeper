@@ -30,3 +30,8 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
+
+# Deployment: backups hold transcripts, .env holds host settings
+/deploy/.env
+/deploy/backups/
+firekeeper-*.db

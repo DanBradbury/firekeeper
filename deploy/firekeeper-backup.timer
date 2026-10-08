@@ -1,0 +1,11 @@
+# Example. Enable with: systemctl enable --now firekeeper-backup.timer
+[Unit]
+Description=Daily Firekeeper database backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
