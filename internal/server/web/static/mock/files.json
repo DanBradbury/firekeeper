@@ -1,0 +1,8 @@
+{
+  "m-studio:019a-long": [
+    { "path": "/tmp/sprite-dump.png", "absolute": true, "first_seq": 4410, "last_seq": 4410, "changes": 1 },
+    { "path": "forest_scene.go", "absolute": false, "first_seq": 120, "last_seq": 4802, "changes": 14 },
+    { "path": "internal/render/compose.go", "absolute": false, "first_seq": 88, "last_seq": 3120, "changes": 6 },
+    { "path": "main_test.go", "absolute": false, "first_seq": 901, "last_seq": 901, "changes": 1 }
+  ]
+}

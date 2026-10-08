@@ -21,13 +21,20 @@ const (
 type Option func(*options)
 
 type options struct {
-	prices map[string]store.Price
+	prices   map[string]store.Price
+	fileLink string
 }
 
 // WithPrices sets the per-model price table /v1/usage uses to add cost.
 // With no table, usage reports tokens only; prices are never built in.
 func WithPrices(p map[string]store.Price) Option {
 	return func(o *options) { o.prices = p }
+}
+
+// WithFileLink sets the template that links a session's changed files to
+// their repository host. See ValidateFileLink. With none, files carry no URL.
+func WithFileLink(tmpl string) Option {
+	return func(o *options) { o.fileLink = tmpl }
 }
 
 // Handler routes the v1 API. It consumes s.Changes() to drive /v1/stream,
@@ -44,7 +51,7 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("POST /v1/ingest", ingest(s))
 	mux.HandleFunc("POST /v1/heartbeat", heartbeat(s))
 	mux.HandleFunc("GET /v1/sessions", listSessions(s))
-	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s))
+	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s, o.fileLink))
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
 	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))

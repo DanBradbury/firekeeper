@@ -78,6 +78,7 @@ Returned by the read endpoints:
   "cwd": "/path/to/repo",
   "project": "repo",
   "branch": "main",
+  "commit": "4f5ef2f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6",
   "model": "gpt-5",
   "state": "ACTIVE | WAITING | NEEDS_INPUT | ENDED | UNKNOWN",
   "title": "string",
@@ -112,7 +113,7 @@ transaction.
     {
       "meta": {
         "session_id": "0199-abc", "provider": "codex", "cwd": "/repo", "project": "repo",
-        "branch": "main", "model": "gpt-5", "state": "ACTIVE", "title": "Fix parser",
+        "branch": "main", "commit": "4f5ef2f…", "model": "gpt-5", "state": "ACTIVE", "title": "Fix parser",
         "started_at": "2026-10-07T12:00:00Z", "last_activity_at": "2026-10-07T12:05:00Z"
       },
       "events": [ { "provider": "codex", "seq": 0, "role": "user", "text": "...", "tokens": {"input": 0, "output": 0, "cache": 0}, "raw": {} } ]
@@ -126,10 +127,13 @@ transaction.
   batches.
 - Idempotency: a stored event key is never overwritten. Re-sending an event
   counts it as a duplicate.
-- Metadata: empty strings keep the stored values. `started_at` keeps its first
-  value. `last_activity_at` only moves forward. An empty `state` keeps the
+- Metadata: empty strings keep the stored values. `started_at` and `commit`
+  (the commit checked out when the session started; optional) keep their
+  first value. `last_activity_at` only moves forward. An empty `state` keeps the
   stored state, or `UNKNOWN` for a new session.
 - Ingest also counts as a heartbeat for the machine.
+- Files: newly stored events are scanned for file-changing tool calls (see
+  `GET /v1/sessions/{uid}`). Re-sent events are not scanned again.
 
 Response `200`:
 
@@ -184,7 +188,32 @@ already read.
 
 ### `GET /v1/sessions/{uid}`
 
-Returns one Session. A malformed uid gets 400, and an unknown session gets 404.
+Returns one Session plus `files`, the files its tool calls changed, ordered
+by path. A malformed uid gets 400, and an unknown session gets 404.
+
+```json
+{
+  "uid": "m1:0199-abc",
+  "...": "the Session fields above",
+  "files": [
+    { "path": "/etc/hosts", "absolute": true, "first_seq": 9, "last_seq": 9, "changes": 1 },
+    { "path": "src/main.go", "absolute": false, "first_seq": 4, "last_seq": 12, "changes": 3,
+      "url": "https://github.com/me/repo/blob/4f5ef2f…/src/main.go" }
+  ]
+}
+```
+
+- `path` is relative to the session's `cwd`, or absolute (`absolute: true`)
+  when the file is outside it. Paths come from events that were redacted
+  before upload, so they carry the same `~` and `[REDACTED:...]` rewrites.
+- `first_seq` and `last_seq` are the first and last events that changed the
+  file; `changes` counts those events.
+- `url` is present only when the server has a file link template
+  (`serve --file-link`), the path is relative and unredacted, and every
+  placeholder the template uses has a value.
+- Detection reads Claude Code, Codex, and Copilot tool calls. It is best
+  effort: files changed by arbitrary shell commands are not listed.
+- `files` is always an array, and is not included by `GET /v1/sessions`.
 
 ### `GET /v1/sessions/{uid}/events`
 

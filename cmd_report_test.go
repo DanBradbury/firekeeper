@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -88,7 +89,7 @@ func TestReportExitCodes(t *testing.T) {
 func TestReportToken(t *testing.T) {
 	cfg := stubReport(t, reporter.Summary{}, nil)
 	var stdout, stderr bytes.Buffer
-	t.Setenv(tokenEnv, "fk_env")
+	t.Setenv(config.EnvToken, "fk_env")
 	if code := runReport(nil, &stdout, &stderr); code != 0 || cfg.Token != "fk_env" {
 		t.Fatalf("env: code=%d token=%q", code, cfg.Token)
 	}

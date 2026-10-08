@@ -95,11 +95,27 @@ func sessionFromPath(s *store.Store, w http.ResponseWriter, r *http.Request) (st
 	return se, true
 }
 
-func getSession(s *store.Store) http.HandlerFunc {
+// sessionDetail is one session plus the files its tool calls changed.
+type sessionDetail struct {
+	store.Session
+	Files []store.SessionFile `json:"files"`
+}
+
+func getSession(s *store.Store, linkTmpl string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if se, ok := sessionFromPath(s, w, r); ok {
-			writeJSON(w, http.StatusOK, se)
+		se, ok := sessionFromPath(s, w, r)
+		if !ok {
+			return
 		}
+		files, err := s.ListFiles(r.Context(), se.MachineID, se.SessionID)
+		if err != nil {
+			storeErr(w, err)
+			return
+		}
+		for i := range files {
+			files[i].URL = fileLink(linkTmpl, se, files[i])
+		}
+		writeJSON(w, http.StatusOK, sessionDetail{se, files})
 	}
 }
 
