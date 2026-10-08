@@ -1809,7 +1809,7 @@ func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
 func refreshProcesses() tea.Cmd {
 	return func() tea.Msg {
 		result := processResultMsg{refreshed: time.Now()}
-		output, err := exec.Command("ps", "-axo", "pid=,ppid=,tty=,etime=,command=").Output()
+		output, err := discoverProcesses()
 		if err != nil {
 			result.err = fmt.Errorf("run ps: %w", err)
 			return result
@@ -1828,6 +1828,12 @@ func refreshProcesses() tea.Cmd {
 		result.metadataWarning = strings.Join(metadataWarnings, "; ")
 		return result
 	}
+}
+
+func discoverProcesses() ([]byte, error) {
+	// Both BSD and Linux ps support -ww for unlimited command width. Without
+	// it, long Node installation paths can hide the harness name or session ID.
+	return exec.Command("ps", "-ww", "-axo", "pid=,ppid=,tty=,etime=,command=").Output()
 }
 
 type terminalAdapter struct {
