@@ -25,7 +25,7 @@ func TestRunSubcommandDispatch(t *testing.T) {
 		{args: []string{"-sprite-cols", "32", "snapshot"}, handled: false},
 		{args: []string{"unknown"}, handled: false},
 		{args: []string{"export"}, handled: true, code: 2, wantStderr: "firekeeper export: not implemented"},
-		{args: []string{"report", "--dry-run"}, handled: true, code: 2, wantStderr: "firekeeper report: not implemented"},
+		{args: []string{"report", "--bogus"}, handled: true, code: 2},
 		{args: []string{"serve"}, handled: true, code: 2, wantStderr: "firekeeper serve: not implemented"},
 		{args: []string{"daemon"}, handled: true, code: 2, wantStderr: "firekeeper daemon: not implemented"},
 		{args: []string{"snapshot"}, handled: true, code: 2, wantStderr: "only --json"},
