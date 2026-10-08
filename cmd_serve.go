@@ -1,7 +1,47 @@
 package main
 
-import "io"
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/DanBradbury/firekeeper/internal/server"
+)
+
+// serveRun is replaced in tests so serve never binds a real port.
+var serveRun = server.Run
 
 func runServe(args []string, stdout, stderr io.Writer) int {
-	return notImplemented("serve", stderr)
+	fs := flag.NewFlagSet("firekeeper serve", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	cfg := server.Config{Out: stdout, Err: stderr}
+	fs.StringVar(&cfg.Listen, "listen", server.DefaultListen, "address to listen on")
+	fs.StringVar(&cfg.DB, "db", "", "dashboard database path (default ~/.firekeeper/dashboard.db)")
+	fs.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback --listen address; there is no authentication yet")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "firekeeper serve: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := serveRun(ctx, cfg); err != nil {
+		fmt.Fprintf(stderr, "firekeeper serve: %v\n", err)
+		if errors.Is(err, server.ErrNotLoopback) {
+			return 2
+		}
+		return 1
+	}
+	return 0
 }
