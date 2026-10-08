@@ -228,6 +228,7 @@ firekeeper snapshot --json   # print currently discovered sessions as JSON
 firekeeper report --dry-run  # show what one upload pass would send
 firekeeper report --provider codex --provider copilot
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
+firekeeper daemon --provider codex   # report every 15 seconds until stopped
 ```
 
 `report` runs one pass: it discovers running sessions, reads transcript
@@ -299,8 +300,56 @@ With no tokens the API is open, which is only acceptable on loopback.
 `--insecure` is passed, and then warns that anyone who can reach the port can
 read every stored transcript and upload new ones.
 
-`export` and `daemon` are placeholders that print `not implemented` and
-exit with status 2.
+`daemon` runs the `report` pass in a loop, in the foreground, until it gets
+Ctrl-C or `SIGTERM`. It is optional: nothing else in Firekeeper, and no
+agent CLI, needs it running. Each cycle runs one pass and then sends a
+heartbeat, so the dashboard shows the machine online even when there is
+nothing new.
+
+```sh
+firekeeper daemon --provider codex --provider copilot
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
+| `--provider NAME` | Upload this provider's sessions. Repeatable. Required: the daemon refuses to start without one. |
+| `--interval DURATION` | Time between passes. Default `15s`, minimum `5s`. |
+
+- The provider allowlist works exactly as it does for `report`. Heartbeats
+  list only sessions the pass was allowed to read, never sessions from
+  other providers or ignored directories.
+- When a pass or heartbeat fails, including when any one session fails to
+  upload, the daemon retries after 2 seconds, doubling up to 5 minutes,
+  with each wait shortened by up to a quarter at random. The first
+  successful cycle returns to the normal interval.
+- The first Ctrl-C or `SIGTERM` lets the batch in flight finish, saves
+  its offset, and exits without starting another. A second one exits at
+  once. Offsets are saved after every batch, so even `kill -9` loses
+  nothing; the next run re-sends at most the one unconfirmed batch, and
+  the server drops the duplicates.
+- Only one daemon runs per home directory. It holds an exclusive lock on
+  `~/.firekeeper/daemon.lock`; a second one exits with an error. The lock
+  is released when the process exits, however it exits.
+- It logs to `~/.firekeeper/daemon.log`, and to stderr. The log carries
+  counts, session ids, and errors, never transcript text. At 10 MiB it is
+  rotated to `daemon.log.1`, and up to three old files (`.1` to `.3`) are
+  kept.
+- The daemon does not detach or install itself as a service. Run it under
+  `launchd`, `systemd --user`, `tmux`, or `nohup` if you want it in the
+  background.
+
+Idle cost was measured on Linux (12 cores) with the daemon at the default
+interval, a local `serve`, and no new transcript events, by reading
+`/proc/<pid>/stat` CPU ticks for the daemon and its reaped children over
+120 seconds. The daemon itself used 0.2% of one core and about 18 MiB
+resident. The `ps`, `lsof`, and `git` commands that session discovery runs
+each pass used another 1.3%, so the cost scales with how many agent
+processes are running and with `--interval`. Between passes the daemon is
+blocked on a timer and does no work.
+
+`export` is a placeholder that prints `not implemented` and exits with
+status 2.
 
 ## How session discovery works
 

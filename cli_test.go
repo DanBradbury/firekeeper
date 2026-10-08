@@ -28,7 +28,7 @@ func TestRunSubcommandDispatch(t *testing.T) {
 		{args: []string{"report", "--bogus"}, handled: true, code: 2},
 		{args: []string{"serve", "--bogus"}, handled: true, code: 2},
 		{args: []string{"serve", "extra"}, handled: true, code: 2, wantStderr: "unexpected argument"},
-		{args: []string{"daemon"}, handled: true, code: 2, wantStderr: "firekeeper daemon: not implemented"},
+		{args: []string{"daemon"}, handled: true, code: 2, wantStderr: "firekeeper daemon: no --provider given"},
 		{args: []string{"snapshot"}, handled: true, code: 2, wantStderr: "only --json"},
 		{args: []string{"snapshot", "--bogus"}, handled: true, code: 2},
 		{args: []string{"snapshot", "--json", "extra"}, handled: true, code: 2, wantStderr: "unexpected argument"},
