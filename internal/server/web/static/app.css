@@ -518,7 +518,42 @@ table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 .partial { color: var(--waiting); }
 .footnote { margin: 8px 12px; color: var(--muted); font-size: 12px; }
 
+/* Machines overview */
+.page-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 12px; }
+.page-head h1 { margin: 0; }
+.page-head .summary { margin: 0; color: var(--muted); font: 13px var(--mono); }
+.page-head .all-sessions { margin-left: auto; font: 13px var(--mono); }
+.machines { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.machine { background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--shadow); padding: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.machine.offline { opacity: 0.8; }
+.machine-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.machine-head h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.presence { font: 12px var(--mono); white-space: nowrap; }
+.presence.online { color: var(--active); }
+.presence.offline { color: var(--muted); }
+.machine-meta { margin: 0; color: var(--muted); font: 12px var(--mono); overflow-wrap: anywhere; }
+.machine-facts { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.machine-facts dt { color: var(--muted); font-size: 12px; }
+.machine-facts dd { margin: 0; font-size: 13px; }
+.state-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.state-chip { font: 12px var(--mono); padding: 2px 6px; border: 2px solid var(--line); background: var(--panel-2); color: var(--text); text-decoration: none; }
+.state-chip:hover { border-color: var(--ember); }
+.state-chip.ACTIVE b { color: var(--active); }
+.state-chip.WAITING b { color: var(--waiting); }
+.state-chip.NEEDS_INPUT b { color: var(--needs); }
+.state-chip.ENDED b { color: var(--ended); }
+.state-chip.UNKNOWN b { color: var(--unknown); }
+.machine-empty { margin: 0; color: var(--muted); font-size: 13px; }
+.machine-link { margin-top: auto; font: 13px var(--mono); }
+.onboarding { padding: 16px; }
+.onboarding h2 { margin-top: 0; }
+.onboarding pre.cmd { margin: 8px 0; padding: 10px; background: var(--code-bg); border: 2px solid var(--line); overflow-x: auto; font: 13px var(--mono); }
+
 @media (max-width: 720px) {
+  .topbar { flex-wrap: wrap; gap: 6px 12px; padding: 8px 16px; }
+  .nav { order: 5; flex: 1 0 100%; }
+  .account { margin-left: auto; min-width: 0; }
+  .account-email { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sessions .hide-sm { display: none; }
   .data .hide-sm { display: none; }
   .filters label { flex: 1 1 140px; }
@@ -543,3 +578,21 @@ table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 .secret-panel p { margin: 0; }
 .secret-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .secret { font: 13px var(--mono); overflow-wrap: anywhere; user-select: all; padding: 4px 6px; background: var(--panel-2); border: 1px solid var(--line); }
+
+/* Test-bed banner, footer and the privacy notice (T5.4). */
+.banner { padding: 6px 16px; background: var(--panel-2); color: var(--text); font: 13px/1.3 var(--mono); text-align: center; border-bottom: 3px solid var(--waiting); }
+.footer { max-width: 760px; margin: 32px auto 16px; padding: 0 16px; font: 12px/1.4 var(--mono); color: var(--muted); }
+.footer a { color: var(--muted); }
+.prose { max-width: 760px; margin: 0 auto; padding: 16px; line-height: 1.55; }
+.prose h1 { font: 700 20px/1.2 var(--mono); }
+.prose h2 { margin: 20px 0 6px; font: 700 15px/1.3 var(--mono); }
+.prose p, .prose li { margin: 6px 0; }
+
+.account-page { max-width: 640px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+.account-page section { padding: 12px 14px; background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--shadow); display: grid; gap: 8px; }
+.account-page h1, .account-page h2 { margin: 0; font: 700 16px/1.2 var(--mono); }
+.account-page p { margin: 0; color: var(--muted); }
+.account-page dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font: 13px/1.4 var(--mono); }
+.account-page dd { margin: 0; }
+.account-page .danger { border-color: var(--ember-2); }
+.account-page .danger button { justify-self: start; }

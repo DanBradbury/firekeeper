@@ -17,6 +17,7 @@ const REASONS = {
   expired: "Your session ended. Sign in again to continue.",
   required: "Sign in to continue.",
   signed_out: "You are signed out.",
+  deleted: "Your account and all its data were deleted.",
 };
 
 function el(tag, attrs, ...children) {
@@ -63,6 +64,7 @@ function closedView() {
   return el("div", { class: "login" },
     el("h1", null, "Create account"),
     notice("Signup is closed on this server. Ask its administrator to create an account for you.", true),
+    el("a", { href: "privacy" }, "Privacy notice"),
     el("a", { href: href("login") }, "Sign in"));
 }
 
@@ -75,7 +77,7 @@ function formView() {
   const invite = el("input", { type: "text", id: "invite", name: "invite", autocomplete: "off", spellcheck: "false" });
   const errBox = el("div");
   const reason = REASONS[params.get("reason")];
-  if (reason) errBox.append(notice(reason, params.get("reason") !== "signed_out"));
+  if (reason) errBox.append(notice(reason, !["signed_out", "deleted"].includes(params.get("reason"))));
   const submit = el("button", { type: "submit" }, isSignup ? "Create account" : "Sign in");
 
   const form = el("form", { class: "login", method: "post", novalidate: false },
@@ -87,6 +89,9 @@ function formView() {
     email,
     el("label", { for: "password" }, isSignup ? "Password (10 characters or more)" : "Password"),
     password,
+    isSignup && el("p", { class: "privacy-note" },
+      "Your session transcripts are uploaded to and stored on this server, the operator can read them, and redaction is best effort. ",
+      el("a", { href: "privacy" }, "Read the privacy notice"), " before you sign up."),
     isSignup && signupMode === "invite" && el("label", { for: "invite" }, "Invite code"),
     isSignup && signupMode === "invite" && invite,
     submit,

@@ -1,7 +1,57 @@
 {
   "machines": [
-    { "id": "m-studio", "name": "studio", "hostname": "studio.local", "os": "darwin", "version": "0.5.0", "last_heartbeat_at": "2026-10-07T12:00:00Z", "session_count": 2 },
-    { "id": "m-laptop", "name": "laptop", "hostname": "laptop.local", "os": "darwin", "version": "0.5.0", "last_heartbeat_at": "2026-10-07T11:58:00Z", "session_count": 3 },
-    { "id": "m-build", "name": "build box", "hostname": "build-01", "os": "linux", "version": "0.4.2", "last_heartbeat_at": "2026-10-06T22:10:00Z", "session_count": 40 }
+    {
+      "id": "m-studio",
+      "name": "studio",
+      "hostname": "studio.local",
+      "os": "darwin",
+      "version": "0.5.0",
+      "last_heartbeat_at": "2026-10-07T12:00:00Z",
+      "session_count": 2,
+      "state_counts": {
+        "ACTIVE": 1,
+        "WAITING": 1
+      },
+      "last_activity_at": "2026-10-07T12:00:00Z"
+    },
+    {
+      "id": "m-laptop",
+      "name": "laptop",
+      "hostname": "laptop.local",
+      "os": "darwin",
+      "version": "0.5.0",
+      "last_heartbeat_at": "2026-10-07T11:59:10Z",
+      "session_count": 3,
+      "state_counts": {
+        "NEEDS_INPUT": 1,
+        "ENDED": 1,
+        "UNKNOWN": 1
+      },
+      "last_activity_at": "2026-10-07T11:31:00Z"
+    },
+    {
+      "id": "m-build",
+      "name": "build box",
+      "hostname": "build-01",
+      "os": "linux",
+      "version": "0.4.2",
+      "last_heartbeat_at": "2026-10-06T22:10:00Z",
+      "session_count": 40,
+      "state_counts": {
+        "ENDED": 40
+      },
+      "last_activity_at": "2026-10-06T22:00:00Z"
+    },
+    {
+      "id": "m-new",
+      "name": "new-mac",
+      "hostname": "new-mac.local",
+      "os": "darwin",
+      "version": "0.5.0",
+      "last_heartbeat_at": "2026-10-07T12:00:00Z",
+      "session_count": 0,
+      "state_counts": {},
+      "last_activity_at": null
+    }
   ]
 }
