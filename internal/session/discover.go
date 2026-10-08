@@ -160,6 +160,12 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	return metas, nil
 }
 
+// MachineID returns the id stored in home/.firekeeper/machine-id, creating
+// it on first use. An empty home means the user's home directory.
+func MachineID(home string) (string, error) {
+	return machineID(home)
+}
+
 var machineMu sync.Mutex
 
 func machineID(home string) (string, error) {

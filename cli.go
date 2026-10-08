@@ -19,7 +19,7 @@ var subcommands = []subcommand{
 	{"export", "export local transcripts (not implemented)", runExport},
 	{"report", "upload session metadata and redacted transcripts once", runReport},
 	{"serve", "run the local dashboard server and web UI", runServe},
-	{"daemon", "report continuously in the background (not implemented)", runDaemon},
+	{"daemon", "upload continuously until stopped (--provider required)", runDaemon},
 }
 
 // runSubcommand dispatches on the first argument. It reports false when the
