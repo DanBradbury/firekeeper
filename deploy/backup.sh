@@ -3,7 +3,8 @@
 #
 #   BACKUP_DIR  where copies go (default /var/backups/firekeeper)
 #   KEEP        how many to keep (default 14)
-#   COMPOSE     compose file (default: compose.yml beside this script)
+#   COMPOSE     compose file (default: compose.yml beside this script, else
+#               compose.nginx.yml)
 #
 # Uses SQLite VACUUM INTO inside the container, so it is safe while the
 # server runs. Copies stay on this host; moving them elsewhere is up to you.
@@ -12,6 +13,7 @@ set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
 compose=${COMPOSE:-$here/compose.yml}
+[ -f "$compose" ] || compose=$here/compose.nginx.yml
 dir=${BACKUP_DIR:-/var/backups/firekeeper}
 keep=${KEEP:-14}
 case $keep in
