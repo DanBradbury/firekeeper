@@ -51,7 +51,20 @@ export const mockAuth = {
 
   async account() {
     if (!read()) throw unauthorized();
-    return delay({ id: "mock-account", email: read(), single_user: false });
+    return delay({
+      id: "mock-account", email: read(), single_user: false,
+      usage: { machines: 1, sessions: 12, events: 3400, tokens: 1, stored_bytes: 8400000 },
+      limits: { max_bytes: 1073741824, max_sessions: 5000, ingest_per_minute: 120 },
+    });
+  },
+
+  async deleteAccount(confirm) {
+    if (confirm !== read()) {
+      await delay();
+      throw new APIError(400, "invalid_request", "confirm must be the account's email address");
+    }
+    write("");
+    return delay(undefined);
   },
 
   async logout() {
