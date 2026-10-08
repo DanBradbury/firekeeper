@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,7 +156,7 @@ func TestListSessionsFilters(t *testing.T) {
 		{"project=fk", []string{"m1:b", "m1:a"}},
 		{"state=ACTIVE", []string{"m2:c", "m1:a"}},
 		{"provider=codex&project=fk", []string{"m1:a"}},
-		{"q=parser", []string{"m1:b", "m1:a"}},  // title match and transcript match
+		{"q=parser", []string{"m1:a", "m1:b"}},  // transcript match outranks title-only match
 		{"q=" + url.QueryEscape(`"x" OR`), nil}, // FTS syntax is quoted, not parsed
 		{"machine=nobody", nil},
 	}
@@ -258,5 +259,43 @@ func TestListMachines(t *testing.T) {
 	m := resp.Machines[0]
 	if m.ID != "m1" || m.Name != "m1-name" || m.SessionCount != 2 || m.LastHeartbeatAt == nil {
 		t.Fatalf("machine %+v", m)
+	}
+}
+
+func TestSearchSnippetsAndRanking(t *testing.T) {
+	s := newStore(t)
+	h := Handler(s)
+	ingestSeed(t, s, seed{machine: "m1", session: "few", provider: "codex", text: "needle <b>hay</b>", events: 1, activity: at(5)})
+	ingestSeed(t, s, seed{machine: "m1", session: "many", provider: "codex", text: "needle needle needle", events: 5, activity: at(1)})
+	ingestSeed(t, s, seed{machine: "m1", session: "none", provider: "codex", text: "other", events: 1, activity: at(9)})
+
+	var page sessionsPage
+	if code := get(t, h, "/v1/sessions?q=needle", &page); code != 200 {
+		t.Fatalf("status %d", code)
+	}
+	if len(page.Sessions) != 2 {
+		t.Fatalf("got %v", uids(page.Sessions))
+	}
+	for _, se := range page.Sessions {
+		if len(se.Snippets) == 0 || len(se.Snippets) > 3 {
+			t.Errorf("%s: %d snippets", se.UID, len(se.Snippets))
+		}
+		if !strings.Contains(se.Snippets[0].Text, "<mark>needle</mark>") {
+			t.Errorf("%s: snippet %q", se.UID, se.Snippets[0].Text)
+		}
+	}
+	for _, se := range page.Sessions {
+		if se.SessionID == "few" && !strings.Contains(se.Snippets[0].Text, "&lt;b&gt;") {
+			t.Errorf("snippet not escaped: %q", se.Snippets[0].Text)
+		}
+	}
+	var p1, p2 sessionsPage
+	get(t, h, "/v1/sessions?q=needle&limit=1", &p1)
+	if p1.NextCursor == "" || len(p1.Sessions) != 1 {
+		t.Fatalf("page1 %v %q", uids(p1.Sessions), p1.NextCursor)
+	}
+	get(t, h, "/v1/sessions?q=needle&limit=1&cursor="+url.QueryEscape(p1.NextCursor), &p2)
+	if len(p2.Sessions) != 1 || p2.Sessions[0].UID == p1.Sessions[0].UID || p2.NextCursor != "" {
+		t.Fatalf("page2 %v", uids(p2.Sessions))
 	}
 }
