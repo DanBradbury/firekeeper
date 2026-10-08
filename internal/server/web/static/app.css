@@ -529,3 +529,21 @@ table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
+
+/* Test-bed banner, footer and the privacy notice (T5.4). */
+.banner { padding: 6px 16px; background: var(--panel-2); color: var(--text); font: 13px/1.3 var(--mono); text-align: center; border-bottom: 3px solid var(--waiting); }
+.footer { max-width: 760px; margin: 32px auto 16px; padding: 0 16px; font: 12px/1.4 var(--mono); color: var(--muted); }
+.footer a { color: var(--muted); }
+.prose { max-width: 760px; margin: 0 auto; padding: 16px; line-height: 1.55; }
+.prose h1 { font: 700 20px/1.2 var(--mono); }
+.prose h2 { margin: 20px 0 6px; font: 700 15px/1.3 var(--mono); }
+.prose p, .prose li { margin: 6px 0; }
+
+.account-page { max-width: 640px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+.account-page section { padding: 12px 14px; background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--shadow); display: grid; gap: 8px; }
+.account-page h1, .account-page h2 { margin: 0; font: 700 16px/1.2 var(--mono); }
+.account-page p { margin: 0; color: var(--muted); }
+.account-page dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font: 13px/1.4 var(--mono); }
+.account-page dd { margin: 0; }
+.account-page .danger { border-color: var(--ember-2); }
+.account-page .danger button { justify-self: start; }
