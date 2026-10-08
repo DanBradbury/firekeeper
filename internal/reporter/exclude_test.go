@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"os"
 	"path/filepath"
 	"strings"
@@ -186,7 +187,7 @@ func TestRedactPathsApplied(t *testing.T) {
 	if _, err := RunOnce(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
-	events, _, err := srv.store.ListEvents(context.Background(), testMachine, testSession, -1, 10)
+	events, _, err := srv.store.ListEvents(context.Background(), store.DefaultAccountID, testMachine, testSession, -1, 10)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("events %d %v", len(events), err)
 	}

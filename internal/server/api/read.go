@@ -60,7 +60,7 @@ func listSessions(s *store.Store) http.HandlerFunc {
 			writeErr(w, http.StatusBadRequest, "bad_request", "invalid state")
 			return
 		}
-		sessions, next, err := s.ListSessions(r.Context(), f)
+		sessions, next, err := s.ListSessions(r.Context(), accountID(r), f)
 		if err != nil {
 			storeErr(w, err)
 			return
@@ -83,7 +83,7 @@ func sessionFromPath(s *store.Store, w http.ResponseWriter, r *http.Request) (st
 		writeErr(w, http.StatusBadRequest, "bad_request", "uid must be <machine_id>:<session_id>")
 		return store.Session{}, false
 	}
-	se, err := s.GetSession(r.Context(), m, sid)
+	se, err := s.GetSession(r.Context(), accountID(r), m, sid)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "not_found", "session not found")
 		return se, false
@@ -107,7 +107,7 @@ func getSession(s *store.Store, linkTmpl string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		files, err := s.ListFiles(r.Context(), se.MachineID, se.SessionID)
+		files, err := s.ListFiles(r.Context(), accountID(r), se.MachineID, se.SessionID)
 		if err != nil {
 			storeErr(w, err)
 			return
@@ -139,7 +139,7 @@ func listEvents(s *store.Store) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		events, more, err := s.ListEvents(r.Context(), se.MachineID, se.SessionID, after, limit)
+		events, more, err := s.ListEvents(r.Context(), accountID(r), se.MachineID, se.SessionID, after, limit)
 		if err != nil {
 			storeErr(w, err)
 			return
@@ -156,7 +156,7 @@ func listEvents(s *store.Store) http.HandlerFunc {
 
 func listMachines(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		machines, err := s.ListMachines(r.Context())
+		machines, err := s.ListMachines(r.Context(), accountID(r))
 		if err != nil {
 			storeErr(w, err)
 			return

@@ -38,9 +38,12 @@ type Config struct {
 	// DB is the dashboard database path. Its directory is created with
 	// mode 0700 if missing. Empty means DefaultDBPath.
 	DB string
-	// Insecure allows a non-loopback Listen address when no token exists.
-	// The API is then open: anyone who can reach it can read and upload.
+	// Insecure allows a non-loopback Listen address when no token or account
+	// exists. The API is then open: anyone who can reach it can read and
+	// upload.
 	Insecure bool
+	// Signup says who may create an account. Empty means closed.
+	Signup auth.SignupMode
 	// Out receives the startup URL; Err receives warnings. Nil discards.
 	Out, Err io.Writer
 	// Prices is the per-model price table for usage cost, per million
@@ -123,7 +126,15 @@ func Run(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("list tokens: %w", err)
 	}
-	if !loopback && len(tokens) == 0 {
+	accounts, err := s.HasAccounts(ctx)
+	if err != nil {
+		return fmt.Errorf("list accounts: %w", err)
+	}
+	signup := cfg.Signup
+	if signup == "" {
+		signup = auth.SignupClosed
+	}
+	if !loopback && len(tokens) == 0 && !accounts {
 		if !cfg.Insecure {
 			return fmt.Errorf("%w: %s", ErrNotLoopback, listen)
 		}
@@ -139,11 +150,13 @@ func Run(ctx context.Context, cfg Config) error {
 	// the whole grace period. End them as soon as shutdown begins.
 	stopping, stopStreams := context.WithCancel(context.Background())
 	defer stopStreams()
-	var apiHandler http.Handler = api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink))
-	if len(tokens) > 0 {
-		apiHandler = auth.New(s).Wrap(apiHandler)
-	}
+	// The middleware resolves every request to an account. It leaves the API
+	// open to the default account only while no token and no account exists.
+	am := auth.New(s, auth.WithSignup(signup))
+	apiHandler := am.Wrap(api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink)))
 	mux := http.NewServeMux()
+	mux.Handle("POST /v1/auth/login", am.Login())
+	mux.Handle("POST /v1/auth/signup", am.Signup())
 	mux.Handle("/v1/", apiHandler)
 	mux.Handle("/v1/stream", endWith(stopping, apiHandler))
 	mux.Handle("/", web.Handler())

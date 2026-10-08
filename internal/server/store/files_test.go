@@ -39,7 +39,7 @@ func ingestFixture(t *testing.T, s *Store, provider transcript.Provider, path st
 		e, _ = redact.Event(e, opts)
 		b.Events = append(b.Events, e)
 	}
-	if _, _, err := s.Ingest(context.Background(), Machine{ID: "m1"}, []SessionBatch{b}); err != nil {
+	if _, _, err := s.Ingest(context.Background(), DefaultAccountID, Machine{ID: "m1"}, []SessionBatch{b}); err != nil {
 		t.Fatal(err)
 	}
 	return b
@@ -79,7 +79,7 @@ func TestSessionFilesFromFixtures(t *testing.T) {
 			ctx := context.Background()
 			s := open(t)
 			b := ingestFixture(t, s, tt.provider, tt.fixture)
-			got, err := s.ListFiles(ctx, "m1", b.Meta.SessionID)
+			got, err := s.ListFiles(ctx, DefaultAccountID, "m1", b.Meta.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,10 +93,10 @@ func TestSessionFilesFromFixtures(t *testing.T) {
 			}
 
 			// Re-sending the same events stores nothing new.
-			if _, _, err := s.Ingest(ctx, Machine{ID: "m1"}, []SessionBatch{b}); err != nil {
+			if _, _, err := s.Ingest(ctx, DefaultAccountID, Machine{ID: "m1"}, []SessionBatch{b}); err != nil {
 				t.Fatal(err)
 			}
-			again, err := s.ListFiles(ctx, "m1", b.Meta.SessionID)
+			again, err := s.ListFiles(ctx, DefaultAccountID, "m1", b.Meta.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -137,11 +137,11 @@ func TestCommitFirstValueKept(t *testing.T) {
 	m := Machine{ID: "m1"}
 	for _, commit := range []string{"", "aaaa", "bbbb", ""} {
 		b := SessionBatch{Meta: SessionMeta{SessionID: "s1", Provider: "codex", Commit: commit}}
-		if _, _, err := s.Ingest(ctx, m, []SessionBatch{b}); err != nil {
+		if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{b}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	se, err := s.GetSession(ctx, "m1", "s1")
+	se, err := s.GetSession(ctx, DefaultAccountID, "m1", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,17 +156,17 @@ func TestFilesUseStoredCwd(t *testing.T) {
 	s := open(t)
 	m := Machine{ID: "m1"}
 	first := SessionBatch{Meta: SessionMeta{SessionID: "s1", Provider: "claude", CWD: "/work/demo"}}
-	if _, _, err := s.Ingest(ctx, m, []SessionBatch{first}); err != nil {
+	if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{first}); err != nil {
 		t.Fatal(err)
 	}
 	raw := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/work/demo/x.go"}}]}}`
 	second := SessionBatch{Meta: SessionMeta{SessionID: "s1", Provider: "claude"}, Events: []transcript.Event{
 		{Provider: transcript.ProviderClaude, Seq: 0, Role: transcript.RoleToolCall, Raw: json.RawMessage(raw)},
 	}}
-	if _, _, err := s.Ingest(ctx, m, []SessionBatch{second}); err != nil {
+	if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{second}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.ListFiles(ctx, "m1", "s1")
+	got, err := s.ListFiles(ctx, DefaultAccountID, "m1", "s1")
 	if err != nil {
 		t.Fatal(err)
 	}

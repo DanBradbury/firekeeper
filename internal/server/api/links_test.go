@@ -66,7 +66,7 @@ func TestGetSessionFiles(t *testing.T) {
 			{Provider: transcript.ProviderClaude, Seq: 1, Role: transcript.RoleToolCall, Raw: raw("/etc/hosts")},
 		},
 	}
-	if _, _, err := s.Ingest(context.Background(), store.Machine{ID: "m1"}, []store.SessionBatch{b}); err != nil {
+	if _, _, err := s.Ingest(context.Background(), store.DefaultAccountID, store.Machine{ID: "m1"}, []store.SessionBatch{b}); err != nil {
 		t.Fatal(err)
 	}
 	ingestSeed(t, s, seed{machine: "m1", session: "empty", provider: "codex"})

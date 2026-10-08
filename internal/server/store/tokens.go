@@ -23,6 +23,7 @@ const TokenPrefix = "fk_"
 // Token is a stored token. Only the SHA-256 hash of the secret is kept.
 type Token struct {
 	ID        string
+	AccountID string
 	Name      string
 	Scope     string
 	MachineID string // set for ingest tokens
@@ -37,9 +38,10 @@ func HashToken(secret string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CreateToken generates a token, stores its hash, and returns the secret,
-// which is never recoverable afterwards. Ingest tokens need a machine id.
-func (s *Store) CreateToken(ctx context.Context, name, scope, machineID string) (Token, string, error) {
+// CreateToken generates a token owned by accountID, stores its hash, and
+// returns the secret, which is never recoverable afterwards. Ingest tokens
+// need a machine id.
+func (s *Store) CreateToken(ctx context.Context, accountID, name, scope, machineID string) (Token, string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return Token{}, "", fmt.Errorf("%w: token name is required", ErrInvalid)
@@ -63,10 +65,10 @@ func (s *Store) CreateToken(ctx context.Context, name, scope, machineID string) 
 	if _, err := rand.Read(id[:]); err != nil {
 		return Token{}, "", err
 	}
-	t := Token{ID: hex.EncodeToString(id[:]), Name: name, Scope: scope, MachineID: machineID,
+	t := Token{ID: hex.EncodeToString(id[:]), AccountID: accountID, Name: name, Scope: scope, MachineID: machineID,
 		Hash: HashToken(secret), CreatedAt: time.Now().UTC().Truncate(time.Second)}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO tokens(id, name, scope, machine_id, hash, created_at) VALUES(?,?,?,?,?,?)`,
-		t.ID, t.Name, t.Scope, t.MachineID, t.Hash, t.CreatedAt.Format(time.RFC3339))
+	_, err := s.db.ExecContext(ctx, `INSERT INTO tokens(id, account_id, name, scope, machine_id, hash, created_at) VALUES(?,?,?,?,?,?,?)`,
+		t.ID, t.AccountID, t.Name, t.Scope, t.MachineID, t.Hash, t.CreatedAt.Format(time.RFC3339))
 	if err != nil {
 		return Token{}, "", err
 	}
@@ -76,7 +78,7 @@ func (s *Store) CreateToken(ctx context.Context, name, scope, machineID string) 
 // ListTokens returns all tokens, oldest first. Revoked ones are included
 // unless activeOnly is set.
 func (s *Store) ListTokens(ctx context.Context, activeOnly bool) ([]Token, error) {
-	q := `SELECT id, name, scope, machine_id, hash, created_at, revoked_at FROM tokens`
+	q := `SELECT id, account_id, name, scope, machine_id, hash, created_at, revoked_at FROM tokens`
 	if activeOnly {
 		q += ` WHERE revoked_at IS NULL`
 	}
@@ -90,7 +92,7 @@ func (s *Store) ListTokens(ctx context.Context, activeOnly bool) ([]Token, error
 		var t Token
 		var created string
 		var revoked *string
-		if err := rows.Scan(&t.ID, &t.Name, &t.Scope, &t.MachineID, &t.Hash, &created, &revoked); err != nil {
+		if err := rows.Scan(&t.ID, &t.AccountID, &t.Name, &t.Scope, &t.MachineID, &t.Hash, &created, &revoked); err != nil {
 			return nil, err
 		}
 		t.CreatedAt, _ = time.Parse(time.RFC3339, created)
