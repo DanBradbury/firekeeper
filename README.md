@@ -242,6 +242,7 @@ text.
 | `--provider NAME` | Upload this provider's sessions. Repeatable. Codex and Copilot have transcript readers today. |
 | `--dry-run` | Read and redact, print counts, upload nothing. |
 | `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
+| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`. |
 
 Upload is opt-in. With no `--provider`, `report` uploads nothing and behaves
 like `--dry-run`. A dry run never opens a network connection and never moves
@@ -277,10 +278,26 @@ firekeeper report --provider codex       # in another terminal
 | `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
 | `--insecure` | Allow a `--listen` address other than loopback. |
 
-The dashboard has no authentication yet. `serve` refuses to listen on
-anything but a loopback address unless `--insecure` is passed, and then
-prints a warning: anyone who can reach the port can read every stored
-transcript and upload new ones.
+### Tokens
+
+```sh
+firekeeper serve token create --name laptop --scope ingest --machine MACHINE_ID
+firekeeper serve token create --name me --scope read
+firekeeper serve token list
+firekeeper serve token revoke NAME_OR_ID
+```
+
+`create` prints the token once; only its SHA-256 hash is stored. Ingest tokens
+(for `report`, bound to one machine id, see `~/.firekeeper/machine-id`) can
+only call `/v1/ingest` and `/v1/heartbeat`; read tokens can only read, and the
+web UI asks for one on a login page and keeps it in `sessionStorage`. Once any
+active token exists, every `/v1/*` request needs `Authorization: Bearer TOKEN` header.
+Failed attempts are rate limited per IP.
+
+With no tokens the API is open, which is only acceptable on loopback.
+`serve` refuses a non-loopback `--listen` address unless a token exists or
+`--insecure` is passed, and then warns that anyone who can reach the port can
+read every stored transcript and upload new ones.
 
 `export` and `daemon` are placeholders that print `not implemented` and
 exit with status 2.

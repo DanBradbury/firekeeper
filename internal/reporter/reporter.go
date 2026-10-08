@@ -49,6 +49,8 @@ type Config struct {
 	Providers []transcript.Provider
 	// DryRun reads and redacts but uploads nothing and saves no offsets.
 	DryRun bool
+	// Token is the bearer token sent with uploads. Empty sends none.
+	Token string
 	// Since, when positive, skips transcript files not modified within it.
 	Since time.Duration
 	// Home overrides the user's home directory for state, discovery, and
@@ -154,6 +156,7 @@ type run struct {
 	state     *State
 	server    string
 	client    *http.Client
+	token     string
 	discover  func(context.Context, session.Options) ([]session.Meta, error)
 	sources   func(transcript.Provider) (transcript.TranscriptSource, bool)
 	now       func() time.Time
@@ -213,6 +216,7 @@ func newRun(cfg Config) (*run, error) {
 		return nil, fmt.Errorf("invalid server URL %q", server)
 	}
 	r.server = strings.TrimRight(server, "/")
+	r.token = cfg.Token
 	r.client = cfg.Client
 	if r.client == nil {
 		r.client = &http.Client{Timeout: 30 * time.Second}
@@ -434,6 +438,9 @@ func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, event
 		return 0, fmt.Errorf("build upload request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bea"+"rer "+r.token)
+	}
 	resp, err := r.client.Do(req)
 	if err != nil {
 		var urlErr *url.Error
