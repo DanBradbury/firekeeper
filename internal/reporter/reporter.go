@@ -62,6 +62,10 @@ type Config struct {
 	Version string
 	// Out receives one summary line per session. Nil discards them.
 	Out io.Writer
+	// Stop, when closed, ends the pass early: the batch in flight finishes
+	// and its offset is saved, then RunOnce returns with Summary.Stopped
+	// set. Cancelling ctx instead aborts the request in flight.
+	Stop <-chan struct{}
 
 	// Discover, Sources, Client, and Now replace the real implementations
 	// in tests. Nil means session.Discover, transcript.For,
@@ -88,6 +92,10 @@ type SessionResult struct {
 	Duplicates int
 	Redactions int
 	Err        error
+	// State and LastActivityAt are the session's discovered state, sent in
+	// heartbeats.
+	State          string
+	LastActivityAt *time.Time
 }
 
 // Summary is the outcome of RunOnce.
@@ -95,6 +103,10 @@ type Summary struct {
 	Sessions []SessionResult
 	// Warning holds partial discovery failures that did not stop the pass.
 	Warning error
+	// MachineID is the discovered machine id, empty when no session had one.
+	MachineID string
+	// Stopped reports that Config.Stop ended the pass early.
+	Stopped bool
 }
 
 // Failed reports whether any session hit an error.
@@ -140,11 +152,30 @@ func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
 		if err := ctx.Err(); err != nil {
 			return summary, err
 		}
+		if r.stopping() {
+			break
+		}
+		if summary.MachineID == "" {
+			summary.MachineID = meta.MachineID
+		}
 		result := r.session(ctx, meta)
 		summary.Sessions = append(summary.Sessions, result)
 		r.print(result)
 	}
+	summary.Stopped = r.stopping()
 	return summary, nil
+}
+
+// errStopped ends a session's pass when Config.Stop closes between batches.
+var errStopped = errors.New("stopped")
+
+func (r *run) stopping() bool {
+	select {
+	case <-r.cfg.Stop:
+		return true
+	default:
+		return false
+	}
 }
 
 type run struct {
@@ -227,7 +258,8 @@ func newRun(cfg Config) (*run, error) {
 }
 
 func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
-	result := SessionResult{Provider: meta.Provider, SessionID: meta.ID, Project: meta.Project}
+	result := SessionResult{Provider: meta.Provider, SessionID: meta.ID, Project: meta.Project,
+		State: stateName(meta.State), LastActivityAt: meta.LastActivityAt}
 	provider := transcript.Provider(meta.Provider)
 	source, ok := r.sources(provider)
 	switch {
@@ -256,7 +288,9 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 	sessionMeta := r.sessionMeta(meta, &result)
 	for _, path := range paths {
 		if err := r.file(ctx, source, meta, sessionMeta, path, &result); err != nil {
-			result.Err = err
+			if !errors.Is(err, errStopped) {
+				result.Err = err
+			}
 			return result
 		}
 	}
@@ -312,6 +346,9 @@ func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta
 		return err
 	}
 	for _, batch := range batches {
+		if r.stopping() {
+			return errStopped
+		}
 		dups, err := r.post(ctx, meta.MachineID, sessionMeta, batch)
 		if err != nil {
 			return err
@@ -411,7 +448,6 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		result.Redactions += counts.Total()
 		return out
 	}
-	state, _ := json.Marshal(meta.State)
 	return ingestMeta{
 		SessionID:      meta.ID,
 		Provider:       meta.Provider,
@@ -419,23 +455,43 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		Project:        meta.Project,
 		Branch:         clean(meta.Branch),
 		Model:          meta.Model,
-		State:          strings.Trim(string(state), `"`),
+		State:          stateName(meta.State),
 		Title:          clean(meta.Title),
 		StartedAt:      meta.StartedAt,
 		LastActivityAt: meta.LastActivityAt,
 	}
 }
 
+// stateName is the wire name of a session state, such as NEEDS_INPUT.
+func stateName(state session.SessionState) string {
+	name, _ := json.Marshal(state)
+	return strings.Trim(string(name), `"`)
+}
+
 func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, events []transcript.Event) (duplicates int, err error) {
 	m := r.machine
 	m.ID = machineID
-	body, err := json.Marshal(ingestRequest{Machine: m, Sessions: []ingestSession{{Meta: meta, Events: events}}})
+	data, err := r.postJSON(ctx, "/v1/ingest", "upload", ingestRequest{Machine: m, Sessions: []ingestSession{{Meta: meta, Events: events}}})
 	if err != nil {
-		return 0, fmt.Errorf("encode upload: %w", err)
+		return 0, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.server+"/v1/ingest", bytes.NewReader(body))
+	var ok ingestResponse
+	if err := json.Unmarshal(data, &ok); err != nil {
+		return 0, errors.New("upload: server response is not valid JSON")
+	}
+	return ok.Duplicates, nil
+}
+
+// postJSON sends body to path and returns the response body of a 200
+// reply. Errors start with what and never include either body.
+func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte, error) {
+	payload, err := json.Marshal(body)
 	if err != nil {
-		return 0, fmt.Errorf("build upload request: %w", err)
+		return nil, fmt.Errorf("encode %s: %w", what, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.server+path, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build %s request: %w", what, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if r.token != "" {
@@ -447,22 +503,18 @@ func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, event
 		if errors.As(err, &urlErr) {
 			err = urlErr.Err
 		}
-		return 0, fmt.Errorf("upload: %w", err)
+		return nil, fmt.Errorf("%s: %w", what, err)
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode != http.StatusOK {
 		var e errorResponse
 		if json.Unmarshal(data, &e) == nil && e.Code != "" {
-			return 0, fmt.Errorf("upload: server returned %d (%s)", resp.StatusCode, e.Code)
+			return nil, fmt.Errorf("%s: server returned %d (%s)", what, resp.StatusCode, e.Code)
 		}
-		return 0, fmt.Errorf("upload: server returned %d", resp.StatusCode)
+		return nil, fmt.Errorf("%s: server returned %d", what, resp.StatusCode)
 	}
-	var ok ingestResponse
-	if err := json.Unmarshal(data, &ok); err != nil {
-		return 0, errors.New("upload: server response is not valid JSON")
-	}
-	return ok.Duplicates, nil
+	return data, nil
 }
 
 func (r *run) print(res SessionResult) {
