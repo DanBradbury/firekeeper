@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/redact"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -52,6 +53,12 @@ type Config struct {
 	DryRun bool
 	// Token is the bearer token sent with uploads. Empty sends none.
 	Token string
+	// Exclude lists directory globs and Git remote patterns whose sessions
+	// are never read or uploaded; see config.Config.Excluded.
+	Exclude []string
+	// RedactPaths are extra directories scrubbed from every event and from
+	// session metadata; see redact.Options.Paths.
+	RedactPaths []string
 	// Since, when positive, skips transcript files not modified within it.
 	Since time.Duration
 	// Home overrides the user's home directory for state, discovery, and
@@ -296,14 +303,14 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 	case len(r.allowed) > 0 && !r.allowed[provider]:
 		result.Skipped = "provider not allowlisted"
 		return result
-	case meta.CWD == "":
-		// Without a directory the ignore rules cannot be checked.
-		result.Skipped = "working directory unknown"
+	}
+	// Exclusion is decided before Locate, so an excluded session's
+	// transcript is never opened.
+	if reason := r.skipReason(meta); reason != "" {
+		result.Skipped = reason
 		return result
-	case ignored(meta.CWD):
-		result.Skipped = ".firekeeper-ignore"
-		return result
-	case r.upload && meta.MachineID == "":
+	}
+	if r.upload && meta.MachineID == "" {
 		result.Err = errors.New("machine id unavailable")
 		return result
 	}
@@ -362,7 +369,7 @@ func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta
 		}
 		e.MachineID = meta.MachineID
 		e.SessionID = meta.ID
-		redacted, counts := redact.Event(e, redact.Options{HomeDir: r.home})
+		redacted, counts := redact.Event(e, r.redactOptions())
 		result.Redactions += counts.Total()
 		pending = append(pending, redacted)
 	}
@@ -472,6 +479,7 @@ type ingestMeta struct {
 	CWD            string     `json:"cwd"`
 	Project        string     `json:"project"`
 	Branch         string     `json:"branch"`
+	Commit         string     `json:"commit,omitempty"`
 	Model          string     `json:"model"`
 	State          string     `json:"state"`
 	Title          string     `json:"title"`
@@ -500,20 +508,24 @@ type errorResponse struct {
 }
 
 // sessionMeta builds the redacted metadata sent with every batch. Free-text
-// fields can carry paths and pasted secrets, so they are redacted too.
+// fields can carry paths and pasted secrets, so they are redacted too. The
+// commit, and the branch when the provider reported none, come from the
+// repository as it was when the session started; see gitAtStart.
 func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
-	opts := redact.Options{HomeDir: r.home}
+	opts := r.redactOptions()
 	clean := func(s string) string {
 		out, counts := redact.String(s, opts)
 		result.Redactions += counts.Total()
 		return out
 	}
+	branch, commit := gitAtStart(meta.CWD, meta.StartedAt)
 	return ingestMeta{
 		SessionID:      meta.ID,
 		Provider:       meta.Provider,
 		CWD:            clean(meta.CWD),
 		Project:        meta.Project,
-		Branch:         clean(meta.Branch),
+		Branch:         clean(session.FirstNonEmpty(meta.Branch, branch)),
+		Commit:         clean(commit),
 		Model:          meta.Model,
 		State:          stateName(meta.State),
 		Title:          clean(meta.Title),
@@ -626,6 +638,37 @@ func plural(n int, one, many string) string {
 		return one
 	}
 	return many
+}
+
+func (r *run) redactOptions() redact.Options {
+	return redact.Options{HomeDir: r.home, Paths: r.cfg.RedactPaths}
+}
+
+// skipReason returns why a session must not be read, or "" when it may be.
+// A session is skipped when its directory is unknown (the rules below
+// cannot be checked without it), when its cwd or Git root matches
+// Config.Exclude, when its repository has a remote matching
+// Config.Exclude, or when .firekeeper-ignore marks it. Only the repository's
+// own files (.git/config and markers) are read, never the transcript.
+func (r *run) skipReason(meta session.Meta) string {
+	if meta.CWD == "" {
+		return "working directory unknown"
+	}
+	if ignored(meta.CWD) {
+		return ".firekeeper-ignore"
+	}
+	if len(r.cfg.Exclude) == 0 {
+		return ""
+	}
+	root, gitDir := findRepo(meta.CWD)
+	var remotes []string
+	if gitDir != "" {
+		remotes = remoteURLs(gitDir)
+	}
+	if pattern, ok := (config.Config{Exclude: r.cfg.Exclude}).Excluded([]string{meta.CWD, root}, remotes); ok {
+		return "excluded by config: " + pattern
+	}
+	return ""
 }
 
 // ignored reports whether dir is inside a repository, or below a

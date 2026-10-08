@@ -33,12 +33,15 @@ type Machine struct {
 
 // SessionMeta is the session metadata carried by an ingest request.
 // Event count and token totals are always recomputed from stored events.
+// Commit is the commit checked out when the session started; the first
+// non-empty value stored for a session is kept.
 type SessionMeta struct {
 	SessionID      string     `json:"session_id"`
 	Provider       string     `json:"provider"`
 	CWD            string     `json:"cwd"`
 	Project        string     `json:"project"`
 	Branch         string     `json:"branch"`
+	Commit         string     `json:"commit,omitempty"`
 	Model          string     `json:"model"`
 	State          string     `json:"state"`
 	Title          string     `json:"title"`
@@ -287,13 +290,14 @@ func (s *Store) Ingest(ctx context.Context, m Machine, batches []SessionBatch) (
 			state = "UNKNOWN"
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO sessions(machine_id, session_id, provider, cwd, project, branch, model, state, title, started_at, last_activity_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO sessions(machine_id, session_id, provider, cwd, project, branch, "commit", model, state, title, started_at, last_activity_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(machine_id, session_id) DO UPDATE SET
     provider = excluded.provider,
     cwd = CASE WHEN excluded.cwd <> '' THEN excluded.cwd ELSE sessions.cwd END,
     project = CASE WHEN excluded.project <> '' THEN excluded.project ELSE sessions.project END,
     branch = CASE WHEN excluded.branch <> '' THEN excluded.branch ELSE sessions.branch END,
+    "commit" = CASE WHEN sessions."commit" = '' THEN excluded."commit" ELSE sessions."commit" END,
     model = CASE WHEN excluded.model <> '' THEN excluded.model ELSE sessions.model END,
     state = CASE WHEN ? <> '' THEN excluded.state ELSE sessions.state END,
     title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE sessions.title END,
@@ -302,12 +306,13 @@ ON CONFLICT(machine_id, session_id) DO UPDATE SET
         WHEN sessions.last_activity_at IS NULL OR excluded.last_activity_at > sessions.last_activity_at
         THEN COALESCE(excluded.last_activity_at, sessions.last_activity_at)
         ELSE sessions.last_activity_at END`,
-			m.ID, sm.SessionID, sm.Provider, sm.CWD, sm.Project, sm.Branch, sm.Model, state, sm.Title,
+			m.ID, sm.SessionID, sm.Provider, sm.CWD, sm.Project, sm.Branch, sm.Commit, sm.Model, state, sm.Title,
 			fmtTime(sm.StartedAt), fmtTime(sm.LastActivityAt), sm.State); err != nil {
 			return 0, 0, err
 		}
 
 		var maxNew int64 = -1
+		var touched []touch
 		for _, e := range b.Events {
 			raw := string(e.Raw)
 			if raw == "" {
@@ -327,9 +332,18 @@ ON CONFLICT(machine_id, session_id, seq) DO NOTHING`,
 				if e.Seq > maxNew {
 					maxNew = e.Seq
 				}
+				// Only newly stored events count, so a re-sent batch
+				// never inflates a file's change count.
+				e.Provider = transcript.Provider(sm.Provider)
+				for _, p := range transcript.TouchedFiles(e) {
+					touched = append(touched, touch{path: p, seq: e.Seq})
+				}
 			} else {
 				duplicates++
 			}
+		}
+		if err := storeFiles(ctx, tx, m.ID, sm.SessionID, touched); err != nil {
+			return 0, 0, err
 		}
 
 		if _, err := tx.ExecContext(ctx, `

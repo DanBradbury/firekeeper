@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/DanBradbury/firekeeper/internal/server"
+	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
 // serveRun is replaced in tests so serve never binds a real port.
@@ -25,6 +26,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	cfg := server.Config{Out: stdout, Err: stderr}
 	fs.StringVar(&cfg.Listen, "listen", server.DefaultListen, "address to listen on")
 	fs.StringVar(&cfg.DB, "db", "", "dashboard database path (default ~/.firekeeper/dashboard.db)")
+	fs.StringVar(&cfg.FileLink, "file-link", "", "URL template linking changed files to the repository host, using {project}, {ref}, {commit}, {branch}, and {path} (default repo_url_template in the config file)")
 	fs.BoolVar(&cfg.Insecure, "insecure", false, "allow a non-loopback --listen address with no tokens; the API is then unauthenticated")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -35,6 +37,21 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "firekeeper serve: unexpected argument %q\n", fs.Arg(0))
 		return 2
+	}
+
+	c, err := loadConfig(configFlags{})
+	if err != nil {
+		fmt.Fprintf(stderr, "firekeeper serve: %v\n", err)
+		return 2
+	}
+	if cfg.FileLink == "" {
+		cfg.FileLink = c.RepoURLTemplate
+	}
+	if len(c.Prices) > 0 {
+		cfg.Prices = make(map[string]store.Price, len(c.Prices))
+		for model, p := range c.Prices {
+			cfg.Prices[model] = store.Price{Input: p.Input, Output: p.Output, Cache: p.Cache}
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

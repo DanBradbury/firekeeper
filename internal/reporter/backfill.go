@@ -62,8 +62,19 @@ type Plan struct {
 	Notes []string
 	// Uploading reports whether the pass will upload once confirmed.
 	Uploading bool
+	// Skipped lists the sessions excluded from the plan and why, without
+	// their transcripts having been opened.
+	Skipped []SkippedSession
 
 	sessions []plannedSession
+}
+
+// SkippedSession is one session a backfill will not read.
+type SkippedSession struct {
+	Provider  transcript.Provider
+	SessionID string
+	Project   string
+	Reason    string
 }
 
 // ProviderPlan totals one provider's share of a plan.
@@ -79,8 +90,8 @@ type ProviderPlan struct {
 	Requests int
 	// Oldest and Newest are the range of the sessions' last activity.
 	Oldest, Newest time.Time
-	// Excluded counts sessions dropped by .firekeeper-ignore or an unknown
-	// working directory; UpToDate those already fully uploaded; OverLimit
+	// Excluded counts sessions dropped by .firekeeper-ignore, Config.Exclude,
+	// or an unknown working directory; UpToDate those already fully uploaded; OverLimit
 	// those left for a later pass by Limit.
 	Excluded, UpToDate, OverLimit int
 }
@@ -126,6 +137,13 @@ func (p Plan) Write(w io.Writer) {
 	}
 	if len(p.Providers) > 1 {
 		fmt.Fprintf(w, "%-8s %s\n", "total", p.Total().line())
+	}
+	for _, s := range p.Skipped {
+		project := s.Project
+		if project == "" {
+			project = "-"
+		}
+		fmt.Fprintf(w, "skipped %s %s %s: %s\n", s.Provider, s.SessionID, project, s.Reason)
 	}
 	for _, note := range p.Notes {
 		fmt.Fprintf(w, "note: %s\n", note)
@@ -318,7 +336,6 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 		}
 	}
 	plan := Plan{Uploading: r.upload}
-	plan.Notes = append(plan.Notes, "exclude globs are not applied yet; sessions in directories with .firekeeper-ignore are skipped")
 
 	var all []plannedSession
 	byProvider := map[transcript.Provider]*ProviderPlan{}
@@ -340,11 +357,13 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 		metas, err := enumerator.Enumerate(ctx, transcript.EnumerateOptions{
 			ModifiedAfter: cutoff,
 			Skip: func(meta session.Meta) bool {
-				if meta.CWD == "" || ignored(meta.CWD) {
-					pp.Excluded++
-					return true
+				reason := r.skipReason(meta)
+				if reason == "" {
+					return false
 				}
-				return false
+				pp.Excluded++
+				plan.Skipped = append(plan.Skipped, SkippedSession{Provider: provider, SessionID: meta.ID, Project: meta.Project, Reason: reason})
+				return true
 			},
 		})
 		if err != nil {

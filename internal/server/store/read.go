@@ -26,6 +26,7 @@ type Session struct {
 	CWD            string            `json:"cwd"`
 	Project        string            `json:"project"`
 	Branch         string            `json:"branch"`
+	Commit         string            `json:"commit"`
 	Model          string            `json:"model"`
 	State          string            `json:"state"`
 	Title          string            `json:"title"`
@@ -120,7 +121,7 @@ func ftsPhrase(q string) string {
 	return `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
 }
 
-const sessionColumns = `s.machine_id, s.session_id, s.provider, s.cwd, s.project, s.branch, s.model,
+const sessionColumns = `s.machine_id, s.session_id, s.provider, s.cwd, s.project, s.branch, s."commit", s.model,
     s.state, s.title, s.started_at, s.last_activity_at, s.event_count,
     s.input_tokens, s.output_tokens, s.cache_tokens`
 
@@ -128,7 +129,7 @@ func scanSession(sc interface{ Scan(...any) error }) (Session, string, error) {
 	var se Session
 	var started, last sql.NullString
 	err := sc.Scan(&se.MachineID, &se.SessionID, &se.Provider, &se.CWD, &se.Project, &se.Branch,
-		&se.Model, &se.State, &se.Title, &started, &last, &se.EventCount,
+		&se.Commit, &se.Model, &se.State, &se.Title, &started, &last, &se.EventCount,
 		&se.Tokens.Input, &se.Tokens.Output, &se.Tokens.Cache)
 	if err != nil {
 		return se, "", err

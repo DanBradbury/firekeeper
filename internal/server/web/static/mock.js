@@ -210,7 +210,7 @@ function shiftTimes(obj, offset, keys) {
 }
 
 export async function createMockAPI() {
-  const [m, s, e] = await Promise.all([load("machines.json"), load("sessions.json"), load("events.json")]);
+  const [m, s, e, f] = await Promise.all([load("machines.json"), load("sessions.json"), load("events.json"), load("files.json")]);
   const sessions = s.sessions;
   const machines = m.machines;
 
@@ -259,7 +259,7 @@ export async function createMockAPI() {
 
     getSession(uid) {
       const se = sessions.find((x) => x.uid === uid);
-      return se ? delay(se) : notFound();
+      return se ? delay({ ...se, files: f[uid] || [] }) : notFound();
     },
 
     listEvents(uid, afterSeq = -1, limit = 200) {

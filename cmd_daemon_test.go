@@ -175,7 +175,8 @@ func TestDaemonInstallDefaults(t *testing.T) {
 	if code := runDaemon([]string{"install", "--provider", "codex"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
 	}
-	want := []string{"--quiet", "--server", reporter.DefaultServer, "--provider", "codex", "--interval", "15s"}
+	// Unset flags are left to the config file and defaults at run time.
+	want := []string{"--quiet", "--provider", "codex"}
 	if !slices.Equal(*args, want) {
 		t.Fatalf("args = %q, want %q", *args, want)
 	}

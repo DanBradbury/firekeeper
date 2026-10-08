@@ -245,7 +245,10 @@ text.
 | `--provider NAME` | Upload this provider's sessions. Repeatable. Codex, Copilot, and Claude Code (`claude`) have transcript readers today. |
 | `--dry-run` | Read and redact, print counts, upload nothing. |
 | `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
-| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`. |
+| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`, then the config file. |
+
+Every flag here can also come from the config file (see
+[Configuration](#configuration)).
 
 Upload is opt-in. With no `--provider`, `report` uploads nothing and behaves
 like `--dry-run`. A dry run never opens a network connection and never moves
@@ -256,9 +259,12 @@ tokens, API keys, bearer tokens, private keys, JWTs, `SECRET=...`-style
 assignments) and rewrites your home directory to `~`, but it cannot recognize
 every secret. Treat uploaded transcripts as sensitive.
 
-Sessions are never read when their working directory is unknown, or when the
+Sessions are never read when their working directory is unknown, when the
 directory or any parent up to its Git root contains a `.firekeeper-ignore`
-file.
+file, or when the directory, its Git root, or one of the repository's remotes
+matches `exclude` in the config file. The decision is made before the
+transcript is located, so an excluded transcript is never opened, and each
+skipped session is printed with the reason, in dry runs too.
 
 Read offsets live in `~/.firekeeper/state.json` and advance only after the
 server accepts a batch, so an interrupted pass can be rerun without losing
@@ -306,11 +312,13 @@ keeps the state discovery reports for it.
 | `--limit N` | Import at most N sessions, newest first. Run again to continue. |
 | `--dry-run` | Print the plan, upload nothing. |
 | `--yes` | Upload without asking. Required when input is not a terminal. |
-| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`. |
+| `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`, then the config file. |
 
-Sessions in a directory with `.firekeeper-ignore`, or whose working directory
-is unknown, are skipped as they are by `report`. Exclude globs are not
-applied yet.
+Sessions are excluded exactly as by `report`, and the plan lists each one
+with the reason. For Codex and Copilot sessions whose working directory is in
+the provider's local database, the check happens before the transcript is
+opened; otherwise the start of the transcript (at most 64 KiB) is read to
+learn the directory, and nothing more of an excluded transcript is read.
 
 `serve` runs the dashboard: the v1 API under `/v1/` and the web UI at `/`,
 on one port. It prints the URL on startup and runs until interrupted. On
@@ -326,6 +334,7 @@ firekeeper report --provider codex       # in another terminal
 | --- | --- |
 | `--listen ADDR` | Address to listen on. Default `127.0.0.1:7777`. |
 | `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
+| `--file-link TEMPLATE` | Link changed files to their repository host, for example `https://github.com/me/{project}/blob/{ref}/{path}`. Placeholders: `{project}`, `{ref}` (the commit, else the branch), `{commit}`, `{branch}`, and `{path}`. Must be an `http` or `https` URL containing `{path}`. Default `repo_url_template` from the config file. |
 | `--insecure` | Allow a `--listen` address other than loopback. |
 
 The web UI has two views, picked in the top bar. **Sessions** lists sessions
@@ -333,7 +342,25 @@ and opens transcripts. **Usage** charts daily token use by model for the last
 7, 30, or 90 days or a custom range, with totals by project and a daily
 table. Days are UTC, and only events with a timestamp are counted. Cost
 appears only when a per-model price table is configured; Firekeeper never
-ships prices, and `serve` has no way to set one yet.
+ships prices; set them under `[prices]` in the config file.
+
+A session's page shows the commit it started on and a **Files changed**
+panel: the files its tool calls edited, wrote, or patched (Claude Code
+`Edit`, `MultiEdit`, `Write`, and `NotebookEdit`; Codex `apply_patch`,
+including patches run through a shell tool; Copilot `edit`, `create`,
+`write`, `str_replace_editor`, and `apply_patch`). Paths are relative to the
+session's working directory, or absolute when outside it. They are read from
+transcript events after redaction, so a home directory shows as `~` and a
+secret-shaped file name as a `[REDACTED:...]` marker. Files changed by shell
+commands such as `sed -i` or `>` are not detected, and the list says what
+the agent asked to change, not what the repository ended up with. Events
+ingested before this feature are not scanned.
+
+The reporter reads the commit, and the branch when the provider gives none,
+from the repository's `HEAD` reflog as it was at the session's start time. It
+runs no Git command and sends neither when the reflog has no entry before
+the session started, which is common for sessions older than the reflog's
+retention.
 
 ### Tokens
 
@@ -419,12 +446,14 @@ firekeeper daemon uninstall
 ```
 
 `daemon install` takes the same `--server`, `--provider`, and `--interval`
-flags as `daemon`, writes them into a per-user service definition, and
-starts the service. The service runs the binary you ran `install` with
+flags as `daemon`, writes the ones you pass into a per-user service
+definition, and starts the service. Settings left to the config file are read
+each time the daemon starts, so after editing the file, restart the service
+(`install` again) to apply it. The service runs the binary you ran `install` with
 (symlinks resolved) as `firekeeper daemon --quiet ...`, so after moving or
 reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
-`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_CONFIG_HOME` from
+`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, `XDG_CONFIG_HOME`, and `FIREKEEPER_CONFIG` from
 your shell into the definition when they are set. It refuses to install a
 temporary `go run` build. Nothing here needs or uses `sudo`.
 
@@ -448,9 +477,50 @@ temporary `go run` build. Nothing here needs or uses `sudo`.
 | `daemon status` | Show whether the service is installed and running, its pid, and its last exit status. Exits 0 when running and 3 otherwise. |
 | `daemon logs [-n LINES] [-f]` | Print the last lines of `~/.firekeeper/daemon.log` (default 50); `-f` keeps printing new lines, across rotations, until interrupted. |
 
-The installed daemon does not send a bearer token yet: `daemon` has no
-`--token` flag, and `install` does not write secrets into service files.
-Use it with a dashboard that has no tokens, on loopback.
+`daemon` has no `--token` flag, and `install` never writes a token into a
+service file. Put the ingest token in the config file (`token = "..."`); the
+daemon reads it from there, or from `$FIREKEEPER_TOKEN` when run by hand.
+
+### Configuration
+
+`report`, `backfill`, `daemon`, and `serve` read `~/.firekeeper/config.toml`,
+or the file `$FIREKEEPER_CONFIG` names. Precedence is flags, then environment
+(`FIREKEEPER_SERVER`, `FIREKEEPER_TOKEN`, `FIREKEEPER_PROVIDERS` as a comma
+list, `FIREKEEPER_INTERVAL`), then the file, then defaults. The file is
+optional; unknown keys are an error, so a typo cannot silently drop an
+exclusion. It holds a token, so keep it private (`chmod 600`).
+
+```toml
+server = "https://dash.example:7777"
+token = "fk_..."                 # ingest token
+providers = ["codex", "claude"]  # upload allowlist; empty uploads nothing
+interval = "30s"                 # daemon only
+exclude = [
+  "~/clients",                   # this directory and everything below it
+  "~/work/*-secret",             # globs: * stays within one path segment
+  "github.com/acme",             # every repository with an acme remote
+  "gitlab.example.com/team/*-private",
+]
+repo_url_template = "https://github.com/me/{project}/blob/{ref}/{path}"  # serve: file links
+
+[redact]
+paths = ["~/clients"]            # also scrubbed to [REDACTED:path] in uploads
+
+[prices."gpt-5"]                 # serve: cost per million tokens on Usage
+input = 1.25
+output = 10
+cache = 0.125
+```
+
+`exclude` entries that start with `/` or `~` are directory globs, matched
+against a session's working directory and its Git root and their parents.
+Anything else is a Git remote pattern, matched against every `url` in the
+repository's `.git/config` after both are reduced to `host/owner/repo`, so
+`git@github.com:acme/api.git` and `https://github.com/acme/api` both read as
+`github.com/acme/api`. `.firekeeper-ignore` still works as before.
+
+`firekeeper config show` prints the merged configuration with the token
+masked and notes where each layered setting came from.
 
 ## How session discovery works
 
