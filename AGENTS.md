@@ -9,7 +9,7 @@
 - Current harness support: Codex, GitHub Copilot CLI, and OpenCode process discovery. Codex and Copilot also have session metadata adapters.
 - Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2.
 
-Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting and dashboard") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `daemon`, and `serve`. Do not make agent CLIs depend on any of them.
+Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting and dashboard") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `serve`. Do not make agent CLIs depend on any of them.
 
 ## Before changing code
 

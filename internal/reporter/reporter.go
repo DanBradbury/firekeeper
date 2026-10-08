@@ -75,6 +75,9 @@ type Config struct {
 	Sources  func(transcript.Provider) (transcript.TranscriptSource, bool)
 	Client   *http.Client
 	Now      func() time.Time
+
+	// lockWait overrides DefaultLockWait in tests.
+	lockWait time.Duration
 }
 
 // Uploading reports whether cfg can upload anything.
@@ -127,7 +130,7 @@ func (s Summary) Failed() bool {
 // stop the others; their errors are in the summary. RunOnce returns an
 // error only when the pass cannot start.
 func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
-	r, err := newRun(cfg)
+	r, err := newRun(ctx, cfg)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -193,9 +196,15 @@ type run struct {
 	sources   func(transcript.Provider) (transcript.TranscriptSource, bool)
 	now       func() time.Time
 	machine   machine
+	lockWait  time.Duration
+	// replaced holds the stale entry for each file this pass restarted after
+	// truncation, so saving does not merge the old position back in.
+	replaced map[string]FileState
+	// send posts one batch. Backfill wraps post with retries and backoff.
+	send func(ctx context.Context, machineID string, meta ingestMeta, events []transcript.Event) (int, error)
 }
 
-func newRun(cfg Config) (*run, error) {
+func newRun(ctx context.Context, cfg Config) (*run, error) {
 	r := &run{
 		cfg:       cfg,
 		upload:    cfg.Uploading(),
@@ -205,6 +214,12 @@ func newRun(cfg Config) (*run, error) {
 		discover:  cfg.Discover,
 		sources:   cfg.Sources,
 		now:       cfg.Now,
+		lockWait:  cfg.lockWait,
+		replaced:  map[string]FileState{},
+	}
+	r.send = r.post
+	if r.lockWait <= 0 {
+		r.lockWait = DefaultLockWait
 	}
 	for _, p := range cfg.Providers {
 		if !p.Valid() {
@@ -231,11 +246,22 @@ func newRun(cfg Config) (*run, error) {
 	if r.now == nil {
 		r.now = time.Now
 	}
-	state, err := LoadState(r.statePath)
+	// A pass that saves nothing reads without the lock: Save replaces the
+	// file atomically, so a read never sees a partial write.
+	load := func() error {
+		state, err := LoadState(r.statePath)
+		r.state = state
+		return err
+	}
+	var err error
+	if r.upload {
+		err = withStateLock(ctx, r.statePath, r.lockWait, load)
+	} else {
+		err = load()
+	}
 	if err != nil {
 		return nil, err
 	}
-	r.state = state
 	if !r.upload {
 		return r, nil
 	}
@@ -319,6 +345,9 @@ func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta
 	if !known || info.Size() < pos.Size {
 		// New, truncated, or rotated: start over and let the server's
 		// idempotency drop anything it already has.
+		if known {
+			r.replaced[abs] = pos
+		}
 		pos = newFileState()
 	}
 	events, newOffset, err := source.Read(abs, pos.Offset)
@@ -350,15 +379,14 @@ func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta
 		if r.stopping() {
 			return errStopped
 		}
-		dups, err := r.post(ctx, meta.MachineID, sessionMeta, batch)
+		dups, err := r.send(ctx, meta.MachineID, sessionMeta, batch)
 		if err != nil {
 			return err
 		}
 		result.Batches++
 		result.Duplicates += dups
 		pos.LastSeq = max(pos.LastSeq, batch[len(batch)-1].Seq)
-		r.state.Files[abs] = pos
-		if err := r.state.Save(r.statePath); err != nil {
+		if pos, err = r.saveFile(ctx, abs, pos); err != nil {
 			return err
 		}
 	}
@@ -368,8 +396,39 @@ func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta
 	pos.Offset = newOffset
 	pos.Size = max(info.Size(), newOffset)
 	pos.Mtime = info.ModTime().UTC()
-	r.state.Files[abs] = pos
-	return r.state.Save(r.statePath)
+	_, err = r.saveFile(ctx, abs, pos)
+	return err
+}
+
+// saveFile records pos for abs under the state lock. It reloads state.json
+// first, so positions other passes saved since this one loaded are kept, and
+// merges pos with the file's saved position so it never moves backwards. It
+// returns the position saved.
+func (r *run) saveFile(ctx context.Context, abs string, pos FileState) (FileState, error) {
+	err := withStateLock(ctx, r.statePath, r.lockWait, func() error {
+		state, err := LoadState(r.statePath)
+		if err != nil {
+			return err
+		}
+		size := int64(-1)
+		if info, err := os.Stat(abs); err == nil {
+			size = info.Size()
+		}
+		var replaced *FileState
+		if old, ok := r.replaced[abs]; ok {
+			replaced = &old
+		}
+		disk, known := state.Files[abs]
+		pos = mergeFileState(pos, disk, known, replaced, size)
+		state.Files[abs] = pos
+		if err := state.Save(r.statePath); err != nil {
+			return err
+		}
+		delete(r.replaced, abs)
+		r.state = state
+		return nil
+	})
+	return pos, err
 }
 
 // split groups events into batches within the ingest limits.
@@ -509,19 +568,40 @@ func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode != http.StatusOK {
+		statusErr := &StatusError{What: what, Status: resp.StatusCode}
 		var e errorResponse
-		if json.Unmarshal(data, &e) == nil && e.Code != "" {
-			return nil, fmt.Errorf("%s: server returned %d (%s)", what, resp.StatusCode, e.Code)
+		if json.Unmarshal(data, &e) == nil {
+			statusErr.Code = e.Code
 		}
-		return nil, fmt.Errorf("%s: server returned %d", what, resp.StatusCode)
+		return nil, statusErr
 	}
 	return data, nil
+}
+
+// StatusError is a non-200 reply from the server. It carries the status and
+// the JSON error code, never the body.
+type StatusError struct {
+	What   string
+	Status int
+	Code   string
+}
+
+func (e *StatusError) Error() string {
+	if e.Code != "" {
+		return fmt.Sprintf("%s: server returned %d (%s)", e.What, e.Status, e.Code)
+	}
+	return fmt.Sprintf("%s: server returned %d", e.What, e.Status)
 }
 
 func (r *run) print(res SessionResult) {
 	if r.cfg.Out == nil {
 		return
 	}
+	fmt.Fprintln(r.cfg.Out, r.status(res))
+}
+
+// status is the one-line summary of a session's pass.
+func (r *run) status(res SessionResult) string {
 	project := res.Project
 	if project == "" {
 		project = "-"
@@ -538,7 +618,7 @@ func (r *run) print(res SessionResult) {
 		status = fmt.Sprintf("uploaded %d events in %d %s (%d duplicates, %d redactions)",
 			res.Events, res.Batches, plural(res.Batches, "batch", "batches"), res.Duplicates, res.Redactions)
 	}
-	fmt.Fprintf(r.cfg.Out, "%s %s %s: %s\n", res.Provider, res.SessionID, project, status)
+	return fmt.Sprintf("%s %s %s: %s", res.Provider, res.SessionID, project, status)
 }
 
 func plural(n int, one, many string) string {
