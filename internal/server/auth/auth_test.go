@@ -27,11 +27,11 @@ func setup(t *testing.T) env {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	_, ing, err := s.CreateToken(ctx, "ing", store.ScopeIngest, "m1")
+	_, ing, err := s.CreateToken(ctx, store.DefaultAccountID, "ing", store.ScopeIngest, "m1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, rd, err := s.CreateToken(ctx, "rd", store.ScopeRead, "")
+	_, rd, err := s.CreateToken(ctx, store.DefaultAccountID, "rd", store.ScopeRead, "")
 	if err != nil {
 		t.Fatal(err)
 	}

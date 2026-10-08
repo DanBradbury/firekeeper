@@ -68,10 +68,10 @@ func usageFixture(t *testing.T, s *store.Store) {
 	}
 	beta.Events[0].Provider = transcript.ProviderClaude
 	ctx := context.Background()
-	if _, _, err := s.Ingest(ctx, store.Machine{ID: "m1"}, []store.SessionBatch{alpha}); err != nil {
+	if _, _, err := s.Ingest(ctx, store.DefaultAccountID, store.Machine{ID: "m1"}, []store.SessionBatch{alpha}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Ingest(ctx, store.Machine{ID: "m2"}, []store.SessionBatch{beta}); err != nil {
+	if _, _, err := s.Ingest(ctx, store.DefaultAccountID, store.Machine{ID: "m2"}, []store.SessionBatch{beta}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -255,7 +255,7 @@ func TestUsageNinetyDays(t *testing.T) {
 		for i := 0; i < len(b.Events); i += MaxIngestEvents {
 			part := b
 			part.Events = b.Events[i:min(i+MaxIngestEvents, len(b.Events))]
-			if _, _, err := s.Ingest(ctx, store.Machine{ID: "m"}, []store.SessionBatch{part}); err != nil {
+			if _, _, err := s.Ingest(ctx, store.DefaultAccountID, store.Machine{ID: "m"}, []store.SessionBatch{part}); err != nil {
 				t.Fatal(err)
 			}
 		}

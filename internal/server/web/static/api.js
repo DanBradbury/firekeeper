@@ -11,13 +11,24 @@ export class APIError extends Error {
 
 const TOKEN_KEY = "firekeeper.token";
 
+const signInWaiters = [];
+
 export const auth = {
   get: () => sessionStorage.getItem(TOKEN_KEY) || "",
   set: (t) => sessionStorage.setItem(TOKEN_KEY, t),
   clear: () => sessionStorage.removeItem(TOKEN_KEY),
   // onUnauthorized is called when the server answers 401.
   onUnauthorized: () => {},
+  // waitForSignIn resolves after signedIn(); the live stream parks on it
+  // instead of retrying with credentials the server already refused.
+  waitForSignIn: () => new Promise((resolve) => signInWaiters.push(resolve)),
+  signedIn: () => signInWaiters.splice(0).forEach((resolve) => resolve()),
 };
+
+// The browser session's CSRF token. The server returns it from login,
+// signup and GET v1/account; it lives in memory only and must accompany
+// every write.
+let csrfToken = "";
 
 function authHeaders(extra) {
   const h = { ...extra };
@@ -51,10 +62,61 @@ async function getJSON(path, params) {
   return body;
 }
 
+async function postJSON(path, body) {
+  const headers = authHeaders({ Accept: "application/json", "Content-Type": "application/json" });
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  let res;
+  try {
+    res = await fetch(path, { method: "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch {
+    throw new APIError(0, "network", "Could not reach the Firekeeper server.");
+  }
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // Fall through with an empty body.
+  }
+  if (!res.ok) {
+    throw new APIError(res.status, data?.code || "http_error", data?.error || `Request failed (${res.status}).`);
+  }
+  return data;
+}
+
 const sessionPath = (uid) => `v1/sessions/${encodeURIComponent(uid)}`;
 
 export const realAPI = {
   mock: false,
+
+  // account returns who is signed in: { id, email, single_user }. It also
+  // picks up the session's CSRF token after a page reload.
+  async account() {
+    const a = await getJSON("v1/account");
+    csrfToken = a.csrf_token || "";
+    return a;
+  },
+
+  async login(email, password) {
+    const r = await postJSON("v1/auth/login", { email, password });
+    csrfToken = r.csrf_token || "";
+    return r.account;
+  },
+
+  async signup(email, password, inviteCode) {
+    const r = await postJSON("v1/auth/signup", { email, password, invite_code: inviteCode || undefined });
+    csrfToken = r.csrf_token || "";
+    return r.account;
+  },
+
+  async logout() {
+    try {
+      await postJSON("v1/auth/logout");
+    } catch (err) {
+      // An expired session is already signed out.
+      if (err.status !== 401) throw err;
+    }
+    csrfToken = "";
+  },
 
   listSessions(filters, cursor, limit = 50) {
     return getJSON("v1/sessions", { ...filters, cursor, limit });
@@ -107,6 +169,8 @@ export const realAPI = {
           });
           if (res.status === 401) {
             auth.onUnauthorized();
+            await auth.waitForSignIn();
+            continue;
           } else if (res.ok && res.body) {
             onStatus(true);
             const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();

@@ -164,8 +164,14 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 | `GET /v1/sessions/{uid}/events` | Events with `after_seq` and `limit` (default 200, max 1000). |
 | `GET /v1/machines` | Each machine with `last_heartbeat_at` and session count. |
 | `GET /v1/stream` | Server-sent events: `session.updated`, `event.appended`, `machine.status`. |
+| `POST /v1/auth/signup` | Create an account and sign in. Body `{email, password, invite_code?}`. Controlled by `serve --signup closed\|invite\|open` (default `closed`; `invite` needs a valid invite code). Returns `201 {account, csrf_token}` and sets the session cookie. |
+| `POST /v1/auth/login` | Body `{email, password}`. Returns `{account, csrf_token}` and sets an HttpOnly, SameSite=Lax session cookie (Secure over HTTPS). |
+| `POST /v1/auth/logout` | End the browser session and clear the cookie. Needs the CSRF token. |
+| `GET /v1/account` | The caller's account `{id, email, single_user, csrf_token?}`. |
 
-`machine` is `{id, name, hostname, os, version}`. The server listens on `127.0.0.1:7777` by default with no auth until bearer tokens land. Errors are JSON `{error, code}` with a standard HTTP status.
+`machine` is `{id, name, hostname, os, version}`. The server listens on `127.0.0.1:7777` by default. Errors are JSON `{error, code}` with a standard HTTP status.
+
+**Tenancy.** Every machine, session, event and token belongs to one account. A request authenticates with a bearer token or a browser session cookie, and either resolves to a principal carrying `account_id`; every read, write, search, usage query and stream notification is filtered on it, so one account can never list, read, stream or ingest into another's data. `uid` stays `<machine_id>:<session_id>`, but two accounts may hold the same `machine_id` and `session_id` without colliding, and a `uid` that exists only in another account is `404`. Browser sessions are read-only; only ingest tokens write. Every cookie-authenticated write needs the `X-CSRF-Token` header (returned by login, signup and `GET /v1/account`). A server with no tokens and no accounts is single-user: requests need no credentials and act as the built-in `default` account. The first token or account turns authentication on.
 
 ### Local state
 

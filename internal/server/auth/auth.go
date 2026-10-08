@@ -1,4 +1,6 @@
-// Package auth guards the v1 API with bearer tokens.
+// Package auth resolves every v1 request to a Principal: a bearer token or
+// a browser session, each tied to one account. It also serves signup and
+// login.
 package auth
 
 import (
@@ -6,8 +8,9 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/server/store"
@@ -19,10 +22,24 @@ const (
 	Window      = time.Minute
 )
 
-// Principal is the authenticated token.
+// SessionTTL is how long a browser session lasts. It does not slide.
+const SessionTTL = 14 * 24 * time.Hour
+
+// CSRFHeader carries the CSRF token on cookie-authenticated writes.
+const CSRFHeader = "X-CSRF-Token"
+
+// Principal is who a request acts as.
 type Principal struct {
-	Scope     string
+	// AccountID is the tenant every store query is scoped to.
+	AccountID string
+	// Scope is the token scope; browser sessions are read-only.
+	Scope string
+	// MachineID binds an ingest token to one machine.
 	MachineID string
+	// SessionID and CSRF are set for browser sessions only. SessionID is
+	// the stored session id, not the cookie value.
+	SessionID string
+	CSRF      string
 }
 
 const challenge = "Bearer realm=\"firekeeper\""
@@ -35,55 +52,189 @@ func From(ctx context.Context) (Principal, bool) {
 	return p, ok
 }
 
-// Middleware requires a valid bearer token on every request to next.
+// Middleware authenticates requests and serves the signup and login
+// endpoints.
 type Middleware struct {
-	store *store.Store
-	now   func() time.Time
+	store  *store.Store
+	now    func() time.Time
+	signup SignupMode
 
-	mu       sync.Mutex
-	failures map[string][]time.Time
+	// guarded is true when the server started with active tokens. Auth is
+	// then required for good, even if every token is later revoked.
+	guarded atomic.Bool
+	// accounts latches true once any real account exists.
+	accounts atomic.Bool
+
+	bearerFails *limiter
+	loginFails  *limiter
+	signups     *limiter
 }
 
-// New returns a Middleware backed by s.
-func New(s *store.Store) *Middleware {
-	return &Middleware{store: s, now: time.Now, failures: map[string][]time.Time{}}
+// Option configures New.
+type Option func(*Middleware)
+
+// WithSignup sets who may create accounts. The default is SignupClosed.
+func WithSignup(mode SignupMode) Option { return func(m *Middleware) { m.signup = mode } }
+
+// New returns a Middleware backed by s. Authentication is required when s
+// holds an active token or any account besides the default one. Otherwise
+// every request acts as the default account, which keeps a fresh
+// single-user server free of signup and login. The first account created
+// later turns authentication on.
+func New(s *store.Store, opts ...Option) *Middleware {
+	m := &Middleware{
+		store:       s,
+		now:         time.Now,
+		signup:      SignupClosed,
+		bearerFails: newLimiter(MaxFailures, Window),
+		loginFails:  newLimiter(MaxFailures, Window),
+		signups:     newLimiter(MaxSignups, Window),
+	}
+	for _, o := range opts {
+		o(m)
+	}
+	// Fail closed: if the store cannot be read, require authentication.
+	toks, err := s.ListTokens(context.Background(), true)
+	m.guarded.Store(err != nil || len(toks) > 0)
+	return m
 }
 
-// Wrap returns next guarded by token authentication. Ingest and heartbeat
-// need an ingest token; every other route needs a read token.
+// Required reports whether requests must authenticate.
+func (m *Middleware) Required(ctx context.Context) (bool, error) {
+	if m.guarded.Load() || m.accounts.Load() {
+		return true, nil
+	}
+	has, err := m.store.HasAccounts(ctx)
+	if err != nil {
+		return true, err
+	}
+	if has {
+		m.accounts.Store(true)
+	}
+	return has, nil
+}
+
+// Wrap returns next guarded by authentication. Ingest and heartbeat need an
+// ingest token; every other route needs a read token or a browser session.
 func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		now := m.now()
 		ip := clientIP(r)
-		if m.limited(ip) {
+		if m.bearerFails.limited(ip, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts")
 			return
 		}
-		secret, ok := bearer(r.Header.Get("Authorization"))
-		if !ok {
-			m.fail(ip)
-			w.Header().Set("WWW-Authenticate", challenge)
-			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token")
-			return
-		}
-		tok, err := m.lookup(r.Context(), secret)
+		required, err := m.Required(r.Context())
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, "internal", "internal error")
 			return
 		}
-		if tok == nil {
-			m.fail(ip)
-			w.Header().Set("WWW-Authenticate", challenge)
-			writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked token")
+		if !required {
+			p := Principal{AccountID: store.DefaultAccountID}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)))
 			return
 		}
-		if tok.Scope != requiredScope(r) {
+
+		var p Principal
+		if h := r.Header.Get("Authorization"); h != "" {
+			var ok bool
+			if p, ok = m.bearerPrincipal(w, r, h, ip, now); !ok {
+				return
+			}
+		} else if c, err := r.Cookie(CookieName); err == nil {
+			var ok bool
+			if p, ok = m.sessionPrincipal(w, r, c.Value, now); !ok {
+				return
+			}
+		} else {
+			m.bearerFails.record(ip, now)
+			w.Header().Set("WWW-Authenticate", challenge)
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token")
+			return
+		}
+		if p.Scope != requiredScope(r) {
 			writeErr(w, http.StatusForbidden, "forbidden", "token scope does not permit this request")
 			return
 		}
-		ctx := context.WithValue(r.Context(), ctxKey{}, Principal{Scope: tok.Scope, MachineID: tok.MachineID})
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, p)))
 	})
+}
+
+func (m *Middleware) bearerPrincipal(w http.ResponseWriter, r *http.Request, header, ip string, now time.Time) (Principal, bool) {
+	secret, ok := bearer(header)
+	if !ok {
+		m.bearerFails.record(ip, now)
+		w.Header().Set("WWW-Authenticate", challenge)
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token")
+		return Principal{}, false
+	}
+	tok, err := m.lookup(r.Context(), secret)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal", "internal error")
+		return Principal{}, false
+	}
+	if tok != nil {
+		acct, err := m.store.GetAccount(r.Context(), tok.AccountID)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "internal", "internal error")
+			return Principal{}, false
+		}
+		if acct.Disabled {
+			tok = nil
+		}
+	}
+	if tok == nil {
+		m.bearerFails.record(ip, now)
+		w.Header().Set("WWW-Authenticate", challenge)
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked token")
+		return Principal{}, false
+	}
+	return Principal{AccountID: tok.AccountID, Scope: tok.Scope, MachineID: tok.MachineID}, true
+}
+
+// sessionPrincipal authenticates a browser session. Cookies ride along on
+// cross-site requests, so every write must also carry the session's CSRF
+// token and come from the same origin.
+func (m *Middleware) sessionPrincipal(w http.ResponseWriter, r *http.Request, cookie string, now time.Time) (Principal, bool) {
+	ws, err := m.store.LookupWebSession(r.Context(), cookie, now)
+	if err == store.ErrNotFound {
+		// A stale cookie is not a guessing attempt, so it is not counted.
+		ClearCookie(w, r)
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "session expired or invalid")
+		return Principal{}, false
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "internal", "internal error")
+		return Principal{}, false
+	}
+	if !safeMethod(r.Method) {
+		if !sameOrigin(r) {
+			writeErr(w, http.StatusForbidden, "csrf_failed", "cross-origin request refused")
+			return Principal{}, false
+		}
+		got := r.Header.Get(CSRFHeader)
+		if subtle.ConstantTimeCompare([]byte(got), []byte(ws.CSRFToken)) != 1 {
+			writeErr(w, http.StatusForbidden, "csrf_failed", "missing or invalid CSRF token")
+			return Principal{}, false
+		}
+	}
+	return Principal{AccountID: ws.AccountID, Scope: store.ScopeRead, SessionID: ws.ID, CSRF: ws.CSRFToken}, true
+}
+
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
+
+// sameOrigin accepts a request with no Origin header (not a browser form or
+// fetch from another site) or one whose Origin host is the request host.
+func sameOrigin(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return true
+	}
+	u, err := url.Parse(o)
+	return err == nil && u.Host != "" && u.Host == r.Host
 }
 
 func requiredScope(r *http.Request) string {
@@ -128,39 +279,6 @@ func clientIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
-}
-
-func (m *Middleware) prune(ip string, now time.Time) []time.Time {
-	var keep []time.Time
-	for _, t := range m.failures[ip] {
-		if now.Sub(t) < Window {
-			keep = append(keep, t)
-		}
-	}
-	if len(keep) == 0 {
-		delete(m.failures, ip)
-	} else {
-		m.failures[ip] = keep
-	}
-	return keep
-}
-
-func (m *Middleware) limited(ip string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.prune(ip, m.now())) >= MaxFailures
-}
-
-func (m *Middleware) fail(ip string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := m.now()
-	if len(m.failures) > 10000 {
-		for k := range m.failures {
-			m.prune(k, now)
-		}
-	}
-	m.failures[ip] = append(m.prune(ip, now), now)
 }
 
 func writeErr(w http.ResponseWriter, status int, code, msg string) {

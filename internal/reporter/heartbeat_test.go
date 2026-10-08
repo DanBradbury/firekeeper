@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
@@ -179,7 +180,7 @@ func TestHeartbeatMarksMachineOnline(t *testing.T) {
 	if err := Heartbeat(context.Background(), cfg, summary); err != nil {
 		t.Fatal(err)
 	}
-	machines, err := ts.store.ListMachines(context.Background())
+	machines, err := ts.store.ListMachines(context.Background(), store.DefaultAccountID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -203,7 +203,7 @@ func TestRunNonLoopbackWithToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, secret, err := s.CreateToken(context.Background(), "r", store.ScopeRead, "")
+	_, secret, err := s.CreateToken(context.Background(), store.DefaultAccountID, "r", store.ScopeRead, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,5 +250,65 @@ func TestLoopback(t *testing.T) {
 		if got := Loopback(addr); got != want {
 			t.Errorf("Loopback(%q) = %v, want %v", addr, got, want)
 		}
+	}
+}
+
+// An account counts as authentication: a non-loopback server may start with
+// accounts and no tokens, and then requires a login.
+func TestRunNonLoopbackWithAccount(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "d", "dashboard.db")
+	if err := os.MkdirAll(filepath.Dir(db), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Open(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateAccount(context.Background(), "a@example.com", "$argon2id$stub", "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	base, _ := start(t, Config{Listen: "0.0.0.0:0", DB: db})
+	url := "http://127.0.0.1" + base[strings.LastIndex(base, ":"):]
+	if resp, _ := get(t, url+"/v1/machines"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no credentials: %d", resp.StatusCode)
+	}
+	if resp, _ := get(t, url+"/"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("UI must stay reachable to show the login page: %d", resp.StatusCode)
+	}
+}
+
+// Signup defaults to closed, and the first signup on a single-user server
+// turns authentication on.
+func TestRunSignup(t *testing.T) {
+	post := func(url, body string) (*http.Response, string) {
+		resp, err := http.Post(url, "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, string(b)
+	}
+	const body = `{"email":"a@example.com","password":"correct horse battery"}`
+
+	closed, _ := start(t, Config{})
+	if resp, _ := post(closed+"/v1/auth/signup", body); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("closed signup: %d", resp.StatusCode)
+	}
+	if resp, _ := get(t, closed+"/v1/machines"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("single-user server needs no login: %d", resp.StatusCode)
+	}
+
+	open, _ := start(t, Config{Signup: "open"})
+	resp, _ := post(open+"/v1/auth/signup", body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("open signup: %d", resp.StatusCode)
+	}
+	if c := resp.Cookies(); len(c) != 1 || !c[0].HttpOnly {
+		t.Fatalf("cookies = %v", c)
+	}
+	if resp, _ := get(t, open+"/v1/machines"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("after first signup: %d", resp.StatusCode)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
@@ -137,15 +138,15 @@ func TestSlowClientDroppedWithoutBlockingIngest(t *testing.T) {
 	h := newHub()
 	changes := make(chan store.Change)
 	go h.run(changes)
-	slow := h.subscribe()
-	fast := h.subscribe()
+	slow := h.subscribe(store.DefaultAccountID)
+	fast := h.subscribe(store.DefaultAccountID)
 
 	// Nobody reads slow; sending past its buffer must not block.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := 0; i < clientBuffer+10; i++ {
-			changes <- store.Change{Kind: store.EventAppended, MachineID: "m", SessionID: "s", Seq: int64(i)}
+			changes <- store.Change{Kind: store.EventAppended, AccountID: store.DefaultAccountID, MachineID: "m", SessionID: "s", Seq: int64(i)}
 			<-fast
 		}
 	}()
@@ -167,7 +168,7 @@ func TestSlowClientDroppedWithoutBlockingIngest(t *testing.T) {
 	if _, ok := <-fast; ok {
 		t.Fatal("fast client not closed on shutdown")
 	}
-	if h.subscribe() != nil {
+	if h.subscribe(store.DefaultAccountID) != nil {
 		t.Fatal("subscribe after shutdown should fail")
 	}
 }
@@ -186,5 +187,82 @@ func TestStreamEndsWhenStoreCloses(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("stream did not end after store close")
+	}
+}
+
+func TestHubDeliversOnlyToTheChangesAccount(t *testing.T) {
+	h := newHub()
+	changes := make(chan store.Change)
+	go h.run(changes)
+	alice, bob := h.subscribe("alice"), h.subscribe("bob")
+	changes <- store.Change{Kind: store.SessionUpdated, AccountID: "alice", MachineID: "m", SessionID: "s"}
+	changes <- store.Change{Kind: store.SessionUpdated, AccountID: "bob", MachineID: "m", SessionID: "s"}
+	close(changes)
+	for _, tc := range []struct {
+		name string
+		ch   chan store.Change
+		want string
+	}{{"alice", alice, "alice"}, {"bob", bob, "bob"}} {
+		var got []string
+		for c := range tc.ch {
+			got = append(got, c.AccountID)
+		}
+		if len(got) != 1 || got[0] != tc.want {
+			t.Fatalf("%s received %v, want only [%s]", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A stream opened with a browser session ends once that session does, so
+// signing out cannot leave a tab reading transcripts.
+func TestStreamEndsWhenBrowserSessionEnds(t *testing.T) {
+	old := keepaliveInterval
+	keepaliveInterval = 20 * time.Millisecond
+	defer func() { keepaliveInterval = old }()
+
+	s := newStore(t)
+	ctx := context.Background()
+	acct, err := s.CreateAccount(ctx, "a@example.com", "$argon2id$stub", "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cookie, ws, err := s.CreateWebSession(ctx, acct.ID, time.Hour, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(auth.New(s).Wrap(Handler(s)))
+	t.Cleanup(srv.Close)
+
+	rctx, cancel := context.WithCancel(ctx)
+	t.Cleanup(cancel)
+	req, _ := http.NewRequestWithContext(rctx, "GET", srv.URL+"/v1/stream", nil)
+	req.AddCookie(&http.Cookie{Name: auth.CookieName, Value: cookie})
+	resp, err := srv.Client().Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("stream: %v %v", resp, err)
+	}
+	t.Cleanup(func() { resp.Body.Close() })
+	frames := readFrames(bufio.NewReader(resp.Body))
+	next(t, frames) // connected
+
+	out, _ := http.NewRequest("POST", srv.URL+"/v1/auth/logout", nil)
+	out.AddCookie(&http.Cookie{Name: auth.CookieName, Value: cookie})
+	out.Header.Set(auth.CSRFHeader, ws.CSRFToken)
+	lr, err := srv.Client().Do(out)
+	if err != nil || lr.StatusCode != 200 {
+		t.Fatalf("logout: %v %v", lr, err)
+	}
+	lr.Body.Close()
+
+	done := make(chan struct{})
+	go func() {
+		for range frames {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream outlived its browser session")
 	}
 }
