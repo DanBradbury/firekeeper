@@ -951,6 +951,42 @@ func TestParseProcessesFiltersClassifiesAndSanitizes(t *testing.T) {
 	}
 }
 
+func TestDiscoverProcessesPreservesLongCopilotCommand(t *testing.T) {
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("requires BSD or Linux ps")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	t.Setenv("COLUMNS", "80")
+	command := "node /opt/" + strings.Repeat("long-installation-path/", 12) + "@github/copilot/index.js --resume=" + testCopilotSessionID
+	child := exec.Command("bash", "-c", `exec -a "$1" sleep 60`, "firekeeper-test", command)
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	}()
+	// Wait for bash to replace itself with the synthetic runtime.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		output, err := discoverProcesses()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, process := range parseProcesses(string(output)) {
+			if process.pid == child.Process.Pid && process.tool == "Copilot" && process.command == command+" 60" {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("process scan did not preserve the long Copilot command and session ID")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestFocusTerminalSessionSelectsMatchingMacAdapter(t *testing.T) {
 	var gotTTY string
 	app, err := focusTerminalSessionWith(

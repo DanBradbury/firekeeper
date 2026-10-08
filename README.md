@@ -221,7 +221,9 @@ running outside tmux first when testing Kitty rendering.
 ## How session discovery works
 
 Firekeeper scans local processes every two seconds and collapses related
-processes into runtime groups. For Codex, it locates open rollout files and
+processes into runtime groups. The scan requests full command lines on macOS
+and Linux so long installation paths do not hide harness names. For Codex, it
+locates open rollout files and
 queries `~/.codex/state_5.sqlite` read-only for available session metadata. For
 Kimi Code, it maps runtime PIDs to their working directory and reads session
 `state.json` under `KIMI_CODE_HOME` without modifying it. For
