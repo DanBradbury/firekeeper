@@ -1,0 +1,10 @@
+id: 0199b2c3-d4e5-7f60-8a9b-1c2d3e4f5a6b
+cwd: /work/demo
+git_root: /work/demo
+repository: example/demo
+host_type: github
+branch: main
+client_name: github/cli
+name: Demo session
+created_at: 2026-01-02T03:04:05.000Z
+updated_at: 2026-01-02T03:05:00.000Z
