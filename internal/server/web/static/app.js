@@ -122,9 +122,25 @@ const sessionHref = (uid) => `#/s/${encodeURIComponent(uid)}`;
 // ---------- sign in ----------
 
 const accountBox = document.getElementById("account");
+const mockMode = new URLSearchParams(location.search).get("mock") === "1";
 
-// Shows who is signed in with a sign-out button. Single-user servers and
-// token sign-ins have no account to show.
+// toLogin leaves for the sign-in page, keeping the current route in the
+// fragment so signing in returns here. reason picks the page's notice.
+let leaving = false;
+function toLogin(reason) {
+  if (leaving) return;
+  leaving = true;
+  current?.dispose();
+  current = null;
+  const qs = new URLSearchParams();
+  if (mockMode) qs.set("mock", "1");
+  if (reason) qs.set("reason", reason);
+  location.replace(`login?${qs}${location.hash}`);
+}
+
+// refreshAccount shows who is signed in with a sign-out button. Single-user
+// servers have no account to show; a read-token sign-in shows only the
+// button.
 async function refreshAccount() {
   if (!api.account) return;
   const acct = await api.account();
@@ -145,114 +161,24 @@ async function refreshAccount() {
 
 async function signOut() {
   try {
-    await api.logout?.();
+    if (!auth.get()) await api.logout?.();
   } catch (err) {
     app.replaceChildren(notice(err.message, true));
     return;
   }
   auth.clear();
-  accountBox.replaceChildren();
-  accountBox.hidden = true;
-  showAuth(null);
+  toLogin("signed_out");
 }
 
-function authError(err) {
-  if (err.code === "rate_limited") return "Too many attempts. Wait a minute and try again.";
-  return err.message || "Something went wrong.";
-}
-
-// authView builds the sign-in or sign-up form. The server decides whether
-// signup is open, closed, or invite-only; a refusal is shown as returned.
-function authView(mode, message) {
-  const signup = mode === "signup";
-  const email = el("input", { type: "email", id: "email", autocomplete: "username", required: "", maxlength: "254" });
-  const password = el("input", {
-    type: "password", id: "password", required: "", maxlength: "256",
-    autocomplete: signup ? "new-password" : "current-password", minlength: signup ? "10" : undefined,
-  });
-  const invite = el("input", { type: "text", id: "invite", autocomplete: "off", spellcheck: "false" });
-  const errBox = el("div", { role: "alert" });
-  if (message) errBox.append(notice(message, true));
-  const submit = el("button", { type: "submit" }, signup ? "Create account" : "Sign in");
-
-  const form = el("form", { class: "login" },
-    el("h1", null, signup ? "Create account" : "Sign in"),
-    errBox,
-    el("label", { for: "email" }, "Email"),
-    email,
-    el("label", { for: "password" }, signup ? "Password (10 characters or more)" : "Password"),
-    password,
-    signup && el("label", { for: "invite" }, "Invite code (if the server asks for one)"),
-    signup && invite,
-    submit,
-    el("button", {
-      type: "button", class: "login-switch",
-      onclick: () => showAuth(null, signup ? "login" : "signup"),
-    }, signup ? "Have an account? Sign in" : "New here? Create an account"),
-  );
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    submit.disabled = true;
-    errBox.replaceChildren();
-    try {
-      if (signup) await api.signup(email.value, password.value, invite.value.trim());
-      else await api.login(email.value, password.value);
-    } catch (err) {
-      errBox.append(notice(authError(err), true));
-      submit.disabled = false;
-      return;
-    }
-    auth.clear(); // a stale read token must not shadow the new session
-    password.value = "";
-    try {
-      await refreshAccount();
-    } catch {
-      // The header is cosmetic; the views report real failures.
-    }
-    auth.signedIn();
-    render();
-  });
-
-  const tokenInput = el("input", { type: "password", id: "token", autocomplete: "off", required: "" });
-  const tokenForm = el("form", null,
-    el("p", null, "Enter a read token created with `firekeeper serve token create`. It is kept in this tab's sessionStorage only."),
-    el("label", { for: "token" }, "Read token"),
-    tokenInput,
-    el("button", { type: "submit" }, "Use token"),
-  );
-  tokenForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    auth.set(tokenInput.value.trim());
-    try {
-      await refreshAccount();
-    } catch {
-      // A bad token surfaces as the 401 handler's login view.
-    }
-    auth.signedIn();
-    render();
-  });
-  form.append(el("details", null, el("summary", null, "Use a read token instead"), tokenForm));
-  return form;
-}
-
-let loggingIn = false;
-function showAuth(message, mode = "login") {
-  loggingIn = true;
-  current?.dispose();
-  current = null;
-  app.replaceChildren(authView(mode, message));
-}
-
+// Any 401 during use means the session ended or was never there: go to the
+// sign-in page with a notice rather than leaving a blank or broken view.
 auth.onUnauthorized = () => {
-  if (loggingIn) return;
+  const hadSession = !accountBox.hidden;
   auth.clear();
-  accountBox.replaceChildren();
-  accountBox.hidden = true;
-  showAuth("Sign in to continue.");
+  toLogin(hadSession ? "expired" : "required");
 };
 
 function render() {
-  loggingIn = false;
   current?.dispose();
   current = null;
   app.replaceChildren();
@@ -1282,6 +1208,10 @@ async function boot() {
       return;
     }
     document.getElementById("mock-badge").hidden = false;
+    if (!api.signedIn()) {
+      toLogin();
+      return;
+    }
   }
   window.addEventListener("hashchange", () => {
     if (parseRoute().view === "list") lastListHash = location.hash || "#/";
@@ -1299,9 +1229,9 @@ async function boot() {
   try {
     await refreshAccount();
   } catch {
-    // A 401 already showed the sign-in form; other errors show in the views.
+    // A 401 already left for the sign-in page; other errors show in the views.
   }
-  if (!loggingIn) render();
+  if (!leaving) render();
 }
 
 boot();
