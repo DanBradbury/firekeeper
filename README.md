@@ -39,7 +39,8 @@ firekeeper
 Use either command; both install the same release binary and need no Go
 toolchain. Release binaries exist for macOS (Apple Silicon and Intel) and
 Linux (amd64 and arm64). macOS is the supported platform; Linux is best
-effort.
+effort, and the install script is the simpler path there because the Homebrew
+package is a cask.
 
 The install script detects your OS and architecture, downloads the matching
 archive from the latest GitHub release, verifies its SHA-256 checksum, and
@@ -528,6 +529,9 @@ clients.
    ```sh
    rm -rf ~/.firekeeper
    ```
+
+   With Homebrew, `brew uninstall --zap firekeeper` removes the binary and
+   `~/.firekeeper` in one step.
 
    TUI settings live separately in `firekeeper/settings.json` under your
    user config directory (`~/Library/Application Support` on macOS,

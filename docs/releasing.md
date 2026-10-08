@@ -12,10 +12,13 @@ Each release contains:
   the CC BY 3.0 license requires). Binaries are built with `CGO_ENABLED=0`.
 - `firekeeper_<version>_checksums.txt` with the SHA-256 of every archive.
   `install.sh` refuses to install an archive whose checksum does not match.
-- A Homebrew formula pushed to
+- A Homebrew cask pushed to
   [`DanBradbury/homebrew-tap`](https://github.com/DanBradbury/homebrew-tap)
-  as `Formula/firekeeper.rb`. It is a formula rather than a cask, so Homebrew
-  does not quarantine the binary and macOS shows no Gatekeeper prompt.
+  as `Casks/firekeeper.rb`. Homebrew quarantines cask downloads and the
+  binary is not notarized, so the cask's `postflight` hook removes the
+  `com.apple.quarantine` attribute; without it macOS would show a Gatekeeper
+  prompt on first launch. `brew uninstall --zap firekeeper` also deletes
+  `~/.firekeeper`.
 
 `<version>` is the tag without its leading `v`. The binary reports it through
 `firekeeper --version`, along with the commit and build date, and the
@@ -30,7 +33,7 @@ request.
    `DanBradbury/homebrew-tap` with a `main` branch (initialize it with a
    README). Homebrew maps `brew install DanBradbury/tap/firekeeper` to this
    repository by name, so the name must be exactly `homebrew-tap`. GoReleaser
-   creates `Formula/firekeeper.rb` on the first release.
+   creates `Casks/firekeeper.rb` on the first release.
 2. **Create a token for the tap.** Create a fine-grained personal access
    token (GitHub → Settings → Developer settings → Personal access tokens →
    Fine-grained tokens) with:
@@ -51,8 +54,7 @@ request.
    `GITHUB_TOKEN`.
 5. **Choose a license.** The repository has no license file yet. Pick one and
    add `LICENSE` before the first public release; then add it to the
-   `archives.files` list in `.goreleaser.yaml` and a `license` line to the
-   `brews` section.
+   `archives.files` list in `.goreleaser.yaml`.
 
 ## Cutting a release
 
@@ -69,13 +71,13 @@ request.
 
 3. Watch the **Release** workflow. It runs the tests, builds every target,
    publishes the GitHub release with the archives and checksums, and pushes
-   the formula to the tap.
+   the cask to the tap.
 4. Check both install paths on a Mac (see below).
 
 ### Prereleases
 
 Tags with a prerelease suffix, such as `v0.1.0-rc1`, publish as GitHub
-prereleases. The Homebrew formula is not updated for a prerelease, and the
+prereleases. The Homebrew cask is not updated for a prerelease, and the
 installer's default "latest" lookup skips prereleases, so only people who ask
 for one get it:
 
@@ -135,6 +137,9 @@ curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install
 ~/.local/bin/firekeeper daemon install --provider codex --dry-run
 ```
 
-`firekeeper --version` must print the tagged version, not `dev`. Drop
+`firekeeper --version` must print the tagged version, not `dev`, and the
+Homebrew-installed binary must start without a Gatekeeper prompt (check
+with `xattr /opt/homebrew/bin/firekeeper`, which should list no
+`com.apple.quarantine`). Drop
 `--dry-run` to install the LaunchAgent for real, then remove it with
 `firekeeper daemon uninstall`.
