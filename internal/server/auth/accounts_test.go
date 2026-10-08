@@ -43,6 +43,9 @@ func newStack(t *testing.T, mode auth.SignupMode) *stack {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/auth/login", st.m.Login())
 	mux.Handle("POST /v1/auth/signup", st.m.Signup())
+	mux.Handle("POST /v1/link/start", st.m.LinkStart())
+	mux.Handle("POST /v1/link/poll", st.m.LinkPoll())
+	mux.Handle("POST /v1/link/approve", st.m.Wrap(st.m.LinkApprove()))
 	mux.Handle("/v1/", st.m.Wrap(api.Handler(s)))
 	st.h = mux
 	return st

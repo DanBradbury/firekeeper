@@ -83,6 +83,28 @@ async function postJSON(path, body) {
   return data;
 }
 
+async function deleteJSON(path) {
+  const headers = authHeaders({ Accept: "application/json" });
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  let res;
+  try {
+    res = await fetch(path, { method: "DELETE", headers });
+  } catch {
+    throw new APIError(0, "network", "Could not reach the Firekeeper server.");
+  }
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // Fall through with an empty body.
+  }
+  if (res.status === 401) auth.onUnauthorized();
+  if (!res.ok) {
+    throw new APIError(res.status, data?.code || "http_error", data?.error || `Request failed (${res.status}).`);
+  }
+  return data;
+}
+
 const sessionPath = (uid) => `v1/sessions/${encodeURIComponent(uid)}`;
 
 export const realAPI = {
@@ -116,6 +138,25 @@ export const realAPI = {
       if (err.status !== 401) throw err;
     }
     csrfToken = "";
+  },
+
+  // Tokens belong to the signed-in account. The secret comes back from
+  // createToken once and is never listed.
+  async listTokens() {
+    return (await getJSON("v1/tokens")).tokens;
+  },
+
+  createToken(name, scope, machineID) {
+    return postJSON("v1/tokens", { name, scope, machine_id: machineID || "" });
+  },
+
+  revokeToken(id) {
+    return deleteJSON(`v1/tokens/${encodeURIComponent(id)}`);
+  },
+
+  // approveLink approves the code a machine printed during `firekeeper login`.
+  approveLink(userCode, machineName) {
+    return postJSON("v1/link/approve", { user_code: userCode, machine_name: machineName });
   },
 
   listSessions(filters, cursor, limit = 50) {
