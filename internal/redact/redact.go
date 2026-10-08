@@ -5,7 +5,8 @@
 // (AWS access key IDs, GitHub tokens, "sk-" style API keys, Bearer tokens,
 // PEM private key blocks, JWTs, and KEY=value assignments whose key names
 // mention SECRET, TOKEN, PASSWORD, or KEY) and replaces each match with
-// "[REDACTED:<kind>]". It cannot recognize every credential: passwords in
+// "[REDACTED:<kind>]". Directories listed in Options.Paths become
+// "[REDACTED:path]". It cannot recognize every credential: passwords in
 // prose, secrets with unusual formats, values split across records, and
 // encoded or encrypted data pass through unchanged. Treat redacted output as
 // sensitive.
@@ -37,6 +38,8 @@ const (
 	KindAPIKey           Kind = "api_key"
 	KindBearerToken      Kind = "bearer_token"
 	KindSecretAssignment Kind = "secret_assignment"
+	// KindPath marks a configured private path (Options.Paths).
+	KindPath Kind = "path"
 	// KindHomeDir counts home directory prefixes rewritten to "~". It is not
 	// a secret and has no "[REDACTED:...]" marker.
 	KindHomeDir Kind = "home_dir"
@@ -46,7 +49,7 @@ const (
 func Kinds() []Kind {
 	return []Kind{
 		KindPrivateKey, KindJWT, KindGitHubToken, KindAWSAccessKey,
-		KindAPIKey, KindBearerToken, KindSecretAssignment, KindHomeDir,
+		KindAPIKey, KindBearerToken, KindSecretAssignment, KindPath, KindHomeDir,
 	}
 }
 
@@ -83,6 +86,10 @@ type Options struct {
 	// path prefix ("/Users/me/src" becomes "~/src"; "/Users/meg" is left
 	// alone).
 	HomeDir string
+	// Paths are absolute directories replaced by "[REDACTED:path]" wherever
+	// they appear as a whole path prefix, before HomeDir is rewritten. A
+	// path under HomeDir is also matched in its "~/" form.
+	Paths []string
 }
 
 // Event returns a copy of e with Text and every string in Raw redacted,
@@ -119,6 +126,12 @@ func redactString(s string, opts Options, counts Counts) string {
 		s = d.apply(s, counts)
 	}
 	s = redactAssignments(s, counts)
+	for _, p := range opts.Paths {
+		s = redactPrefix(s, p, Marker(KindPath), KindPath, counts)
+		if tilde, ok := homeForm(p, opts.HomeDir); ok {
+			s = redactPrefix(s, tilde, Marker(KindPath), KindPath, counts)
+		}
+	}
 	return redactHome(s, opts.HomeDir, counts)
 }
 
@@ -334,7 +347,22 @@ func isValueEnd(c byte) bool {
 // preceded by a path-name byte and followed by a separator or a non-path
 // byte.
 func redactHome(s, home string, counts Counts) string {
-	home = strings.TrimRight(home, `/\`)
+	return redactPrefix(s, home, "~", KindHomeDir, counts)
+}
+
+// homeForm returns p with a leading home directory written as "~".
+func homeForm(p, home string) (string, bool) {
+	p, home = strings.TrimRight(p, `/\`), strings.TrimRight(home, `/\`)
+	if home == "" || !strings.HasPrefix(p, home) || len(p) <= len(home) || (p[len(home)] != '/' && p[len(home)] != '\\') {
+		return "", false
+	}
+	return "~" + p[len(home):], true
+}
+
+// redactPrefix replaces prefix with replacement wherever it appears as a
+// whole path: not inside a longer name on either side.
+func redactPrefix(s, prefix, replacement string, kind Kind, counts Counts) string {
+	home := strings.TrimRight(prefix, `/\`)
 	if home == "" || !strings.Contains(s, home) {
 		return s
 	}
@@ -355,10 +383,10 @@ func redactHome(s, home string, counts Counts) string {
 			continue
 		}
 		b.WriteString(s[last:start])
-		b.WriteByte('~')
+		b.WriteString(replacement)
 		last = end
 		pos = end
-		counts[KindHomeDir]++
+		counts[kind]++
 	}
 	if last == 0 {
 		return s

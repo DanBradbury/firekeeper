@@ -33,7 +33,7 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	cfg := reporter.BackfillConfig{Config: reporter.Config{Out: stdout}, Progress: stderr}
 	fs.StringVar(&cfg.Server, "server", reporter.DefaultServer, "dashboard server URL")
-	tokenFlag := tokenFlag(fs)
+	token := tokenFlag(fs)
 	var providers providerList
 	fs.Var(&providers, "provider", "upload this provider's sessions (repeatable); with none, only the plan is shown")
 	fs.DurationVar(&cfg.Since, "since", 0, "only import transcripts modified within this duration (for example 720h)")
@@ -71,9 +71,13 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 		}
 		cfg.After = t
 	}
-	cfg.Providers = providers
-	cfg.Token = tokenFlag()
-	if len(providers) == 0 && !cfg.DryRun {
+	c, err := loadConfig(configFlags{fs: fs, server: &cfg.Server, token: token, providers: &providers})
+	if err != nil {
+		fmt.Fprintf(stderr, "firekeeper backfill: %v\n", err)
+		return 2
+	}
+	applyReporterConfig(&cfg.Config, c)
+	if len(cfg.Providers) == 0 && !cfg.DryRun {
 		fmt.Fprintln(stderr, "firekeeper backfill: no --provider given; uploading nothing. Showing the plan.")
 	}
 	if !*yes {

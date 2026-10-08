@@ -499,6 +499,7 @@ function sessionHeader(s) {
       fact("machine", s.machine_id),
       fact("project", s.project),
       fact("branch", s.branch),
+      fact("commit", s.commit ? el("code", { title: s.commit, text: s.commit.slice(0, 12) }) : null),
       fact("model", s.model),
       fact("tokens", el("span", { title: tokensTitle(s.tokens), text: tokensText(s.tokens) })),
       fact("events", (s.event_count || 0).toLocaleString()),
@@ -506,6 +507,34 @@ function sessionHeader(s) {
       fact("last activity", timeEl(s.last_activity_at)),
       fact("cwd", s.cwd),
       fact("session", s.session_id)));
+}
+
+// filesPanel lists the files a session's tool calls changed. Paths are
+// relative to the session's cwd unless the file was outside it. A path
+// links to the repository host only when the server has a link template.
+function filesPanel(s, ui) {
+  const files = s.files || [];
+  const details = el("details", { class: "panel files" },
+    el("summary", {}, el("span", { text: "Files changed" }), el("span", { class: "count", text: files.length.toLocaleString() })));
+  details.open = ui.filesOpen;
+  details.addEventListener("toggle", () => { ui.filesOpen = details.open; });
+  if (!files.length) {
+    details.append(el("p", { class: "empty", text: "No file edits found in this transcript." }));
+    return details;
+  }
+  const list = el("ul");
+  for (const f of files) {
+    const name = f.url
+      ? el("a", { href: f.url, target: "_blank", rel: "noopener noreferrer", text: f.path })
+      : el("span", { text: f.path });
+    const seqs = f.first_seq === f.last_seq ? `#${f.first_seq}` : `#${f.first_seq}–${f.last_seq}`;
+    list.append(el("li", {},
+      el("span", { class: "path" + (f.absolute ? " outside" : ""), title: f.absolute ? "Outside the session's working directory" : null }, name),
+      el("span", { class: "meta", title: `Changed by ${f.changes} tool ${f.changes === 1 ? "call" : "calls"}; events ${seqs}` },
+        `${f.changes}× · ${seqs}`)));
+  }
+  details.append(list);
+  return details;
 }
 
 function sessionView(uid) {
@@ -523,7 +552,7 @@ function sessionView(uid) {
   const sentinel = el("div", { class: "sentinel", "aria-hidden": "true" });
   const count = el("span", { class: "count" });
   const nextBtn = el("button", { type: "button", hidden: true, text: "Load more", onclick: () => loadMore() });
-  const ui = { expanded: false, open: new Map(), raw: new Set() };
+  const ui = { expanded: false, open: new Map(), raw: new Set(), filesOpen: true };
   const expandBtn = el("button", { type: "button", text: "Expand tool events" });
   expandBtn.addEventListener("click", () => {
     ui.expanded = !ui.expanded;
@@ -594,7 +623,7 @@ function sessionView(uid) {
       const s = await api.getSession(uid);
       if (!alive) return;
       session = s;
-      head.replaceChildren(sessionHeader(s));
+      head.replaceChildren(sessionHeader(s), filesPanel(s, ui));
       document.title = `${s.title || s.session_id} · Firekeeper`;
       updateCount();
     } catch (err) {

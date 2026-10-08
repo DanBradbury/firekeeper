@@ -321,3 +321,28 @@ func TestUnquoteMatchesEncodingJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactConfiguredPaths(t *testing.T) {
+	opts := Options{HomeDir: "/home/me", Paths: []string{"/home/me/clients/acme", "/srv/private/"}}
+	tests := []struct{ in, want string }{
+		{"open /home/me/clients/acme/plan.md", "open [REDACTED:path]/plan.md"},
+		{"cd ~/clients/acme && ls", "cd [REDACTED:path] && ls"},
+		{"/home/me/clients/acme-two/x stays", "~/clients/acme-two/x stays"},
+		{"cat /srv/private/key /srv/privateer", "cat [REDACTED:path]/key /srv/privateer"},
+		{"/home/me/src is home only", "~/src is home only"},
+	}
+	for _, tt := range tests {
+		got, _ := String(tt.in, opts)
+		if got != tt.want {
+			t.Errorf("String(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+		again, counts := String(got, opts)
+		if again != got || counts.Total() != 0 {
+			t.Errorf("not idempotent: %q -> %q (%v)", got, again, counts)
+		}
+	}
+	_, counts := String("/home/me/clients/acme and ~/clients/acme", opts)
+	if counts[KindPath] != 2 {
+		t.Fatalf("path count = %d", counts[KindPath])
+	}
+}

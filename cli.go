@@ -20,6 +20,7 @@ var subcommands = []subcommand{
 	{"report", "upload session metadata and redacted transcripts once", runReport},
 	{"backfill", "upload sessions already on this machine once (--provider required)", runBackfill},
 	{"serve", "run the local dashboard server and web UI", runServe},
+	{"config", "print the merged reporting configuration (show)", runConfig},
 	{"daemon", "upload continuously (--provider required); install, uninstall, status, logs", runDaemon},
 }
 
