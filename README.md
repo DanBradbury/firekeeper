@@ -230,7 +230,7 @@ firekeeper report --provider codex --provider copilot
 firekeeper backfill --provider codex --dry-run   # plan importing past sessions
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 firekeeper daemon --provider codex   # report every 15 seconds until stopped
-firekeeper daemon install --provider codex   # run the daemon at login
+firekeeper daemon install   # detect providers and run the daemon at login
 ```
 
 `report` runs one pass: it discovers running sessions, reads transcript
@@ -439,11 +439,23 @@ status 2.
 ### Running the daemon at login
 
 ```sh
-firekeeper daemon install --provider codex --provider copilot
+firekeeper daemon install
 firekeeper daemon status
 firekeeper daemon logs -f
 firekeeper daemon uninstall
 ```
+
+With no provider flags or configured allowlist, `daemon install` detects
+Codex, Copilot, and Claude Code from their CLI executables on `PATH` or existing
+local data directories, honoring `CODEX_HOME`, `COPILOT_HOME`, and
+`CLAUDE_CONFIG_DIR`. Installing opts into transcript uploads for those detected
+providers; it prints and saves the allowlist in the service definition. Use
+`--dry-run` to preview it, or `--provider` to select providers explicitly.
+Environment and config-file allowlists take precedence over detection, including
+an empty config-file allowlist (which prevents installation). If no supported
+provider is detected, installation stops with guidance. Rerun install after
+adding a provider. Kimi and OpenCode are not detected for uploading because they
+have no transcript readers yet.
 
 `daemon install` takes the same `--server`, `--provider`, and `--interval`
 flags as `daemon`, writes the ones you pass into a per-user service
