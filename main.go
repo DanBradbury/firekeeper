@@ -2579,6 +2579,10 @@ func fitLine(s string, width int) string {
 }
 
 func main() {
+	if code, ok := runSubcommand(os.Args[1:], os.Stdout, os.Stderr); ok {
+		os.Exit(code)
+	}
+	flag.Usage = func() { printUsage(flag.CommandLine) }
 	rendererFlag := flag.String("renderer", "auto", "sprite renderer: auto, kitty, or blocks")
 	spriteColumnsFlag := flag.Int("sprite-cols", defaultSpriteColumns, "sprite width in terminal columns")
 	spriteRowsFlag := flag.Int("sprite-rows", defaultSpriteRows, "sprite height in terminal rows")
