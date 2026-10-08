@@ -72,6 +72,12 @@ export const realAPI = {
     return getJSON("v1/machines");
   },
 
+  // usage returns token sums for [from, to] (YYYY-MM-DD, UTC) grouped by
+  // the listed keys.
+  usage(from, to, groupBy) {
+    return getJSON("v1/usage", { from, to, group_by: groupBy.join(",") });
+  },
+
   // subscribe opens /v1/stream and calls onEvent(type, data). onStatus gets
   // true while connected. It returns a function that closes the stream.
   subscribe(onEvent, onStatus) {

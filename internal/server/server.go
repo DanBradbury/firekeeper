@@ -43,6 +43,9 @@ type Config struct {
 	Insecure bool
 	// Out receives the startup URL; Err receives warnings. Nil discards.
 	Out, Err io.Writer
+	// Prices is the per-model price table for usage cost, per million
+	// tokens. Nil means usage shows tokens only.
+	Prices map[string]store.Price
 	// OnListen, if set, is called with the base URL once the listener is
 	// bound and before requests are served.
 	OnListen func(url string)
@@ -126,7 +129,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// the whole grace period. End them as soon as shutdown begins.
 	stopping, stopStreams := context.WithCancel(context.Background())
 	defer stopStreams()
-	var apiHandler http.Handler = api.Handler(s)
+	var apiHandler http.Handler = api.Handler(s, api.WithPrices(cfg.Prices))
 	if len(tokens) > 0 {
 		apiHandler = auth.New(s).Wrap(apiHandler)
 	}

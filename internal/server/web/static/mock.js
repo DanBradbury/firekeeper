@@ -134,6 +134,75 @@ function filler(n, now) {
   return out;
 }
 
+// Synthetic usage: one record per day, model, and project for the last
+// USAGE_DAYS days, with a quiet gap so empty days show in the chart.
+const USAGE_DAYS = 120;
+const USAGE_MODELS = [
+  ["gpt-5-codex", "codex", "m-studio"], ["gpt-5", "codex", "m-studio"],
+  ["claude-sonnet-5-5", "copilot", "m-laptop"], ["claude-opus-5-5", "claude", "m-laptop"],
+  ["kimi-k2", "kimi", "m-laptop"], ["o4-mini", "codex", "m-build"],
+  ["gpt-5-mini", "codex", "m-build"], ["claude-haiku-5-5", "claude", "m-build"],
+  ["", "claude", "m-build"], ["qwen3-coder", "copilot", "m-build"],
+];
+const USAGE_PROJECTS = ["firekeeper", "dotfiles", "notes", "service-0", ""];
+// Made-up prices for the mock only, per million tokens. The real server
+// shows cost only when the user configures a price table. kimi-k2 is left
+// out so the partial-cost marker shows.
+const MOCK_PRICES = {
+  "gpt-5-codex": { input: 1, output: 8, cache: 0.1 }, "gpt-5": { input: 1, output: 8, cache: 0.1 },
+  "claude-sonnet-5-5": { input: 3, output: 15, cache: 0.3 }, "claude-opus-5-5": { input: 15, output: 75, cache: 1.5 },
+  "o4-mini": { input: 1, output: 4, cache: 0.25 }, "gpt-5-mini": { input: 0.25, output: 2, cache: 0.03 },
+  "claude-haiku-5-5": { input: 1, output: 5, cache: 0.1 }, "qwen3-coder": { input: 0.5, output: 2, cache: 0 },
+};
+
+function generateUsage(now) {
+  const r = rng(4242);
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const out = [];
+  for (let d = USAGE_DAYS - 1; d >= 0; d--) {
+    if (d >= 40 && d < 44) continue;
+    const day = new Date(today - d * 86400e3).toISOString().slice(0, 10);
+    const weekend = [0, 6].includes(new Date(day).getUTCDay());
+    USAGE_MODELS.forEach(([model, provider, machine], mi) => {
+      if (r() < 0.25 + mi * 0.06) return;
+      const project = USAGE_PROJECTS[Math.floor(r() * USAGE_PROJECTS.length)];
+      const scale = (weekend ? 0.3 : 1) * (1 / (1 + mi * 0.5));
+      const input = Math.round((20000 + r() * 400000) * scale);
+      out.push({ day, model, provider, machine, project,
+        tokens: { input, output: Math.round(input * (0.05 + r() * 0.1)), cache: Math.round(input * r() * 0.8) } });
+    });
+  }
+  return out;
+}
+
+function aggregateUsage(records, from, to, groupBy) {
+  const rows = new Map();
+  const add = (row, rec) => {
+    row.tokens.input += rec.tokens.input;
+    row.tokens.output += rec.tokens.output;
+    row.tokens.cache += rec.tokens.cache;
+    const p = MOCK_PRICES[rec.model];
+    if (p) row.cost += (rec.tokens.input * p.input + rec.tokens.output * p.output + rec.tokens.cache * p.cache) / 1e6;
+    else row.unpriced_tokens += rec.tokens.input + rec.tokens.output + rec.tokens.cache;
+  };
+  const blank = (group) => ({ group, tokens: { input: 0, output: 0, cache: 0 }, cost: 0, unpriced_tokens: 0 });
+  const totals = blank({});
+  for (const rec of records) {
+    if (rec.day < from || rec.day > to) continue;
+    const group = Object.fromEntries(groupBy.map((k) => [k, rec[k]]));
+    const id = JSON.stringify(group);
+    if (!rows.has(id)) rows.set(id, blank(group));
+    add(rows.get(id), rec);
+    add(totals, rec);
+  }
+  const sum = (t) => t.input + t.output + t.cache;
+  const list = [...rows.values()].sort((a, b) =>
+    (a.group.day || "").localeCompare(b.group.day || "") || sum(b.tokens) - sum(a.tokens));
+  for (const row of [...list, totals]) if (!row.unpriced_tokens) delete row.unpriced_tokens;
+  delete totals.group;
+  return { group_by: groupBy, priced: true, rows: list, totals };
+}
+
 function shiftTimes(obj, offset, keys) {
   for (const k of keys) {
     if (obj[k]) obj[k] = new Date(Date.parse(obj[k]) + offset).toISOString();
@@ -164,6 +233,8 @@ export async function createMockAPI() {
   }
   const long = sessions.find((x) => x.uid === LONG_UID);
   events.set(LONG_UID, generateLong(Date.parse(long.started_at), LONG_COUNT));
+
+  const usage = generateUsage(new Date());
 
   const order = (a, b) => (b.last_activity_at || "").localeCompare(a.last_activity_at || "") || b.uid.localeCompare(a.uid);
   const notFound = () => Promise.reject(Object.assign(new Error("session not found"), { status: 404, code: "not_found" }));
@@ -202,6 +273,13 @@ export async function createMockAPI() {
 
     listMachines() {
       return delay({ machines });
+    },
+
+    usage(from, to, groupBy) {
+      const res = aggregateUsage(usage, from, to, groupBy);
+      res.from = `${from}T00:00:00Z`;
+      res.to = new Date(Date.parse(to) + 86400e3).toISOString();
+      return delay(res);
     },
 
     // subscribe appends a synthetic event to the long session every few

@@ -219,6 +219,53 @@ Lists every machine ordered by `id`:
 
 Clients decide whether a machine is online from `last_heartbeat_at`.
 
+### `GET /v1/usage`
+
+Token sums from stored events, for usage charts.
+
+| Parameter | Meaning |
+| --- | --- |
+| `from` | Start of the range: a `YYYY-MM-DD` date (start of that UTC day) or an RFC 3339 time. Default: 30 days before `to`. |
+| `to` | End of the range: a `YYYY-MM-DD` date includes that whole UTC day; an RFC 3339 time is exclusive. Default: the end of today (UTC). |
+| `group_by` | Comma-separated keys from `day`, `model`, `provider`, `machine`, `project`, each at most once. Empty returns only totals. |
+
+The range must be non-empty and at most 400 days. `day` is the event's UTC
+date. `model` is the event's model, falling back to its session's model, and
+may be `""` when neither is known. `machine` is the machine id, and `project`
+is the session's project.
+
+Only events with a timestamp count; events with `ts: null` cannot be placed
+in a range and are left out, so totals here can be lower than a session's
+`tokens`. Each counter is summed as stored, so whether `input` already
+includes `cache` depends on the provider.
+
+```json
+{
+  "from": "2026-10-01T00:00:00Z",
+  "to": "2026-10-05T00:00:00Z",
+  "group_by": ["day", "model"],
+  "priced": true,
+  "rows": [
+    { "group": { "day": "2026-10-01", "model": "gpt-5" },
+      "tokens": { "input": 100, "output": 10, "cache": 50 }, "cost": 0.000205 },
+    { "group": { "day": "2026-10-02", "model": "o3" },
+      "tokens": { "input": 1000, "output": 100, "cache": 0 }, "cost": 0, "unpriced_tokens": 1100 }
+  ],
+  "totals": { "tokens": { "input": 1100, "output": 110, "cache": 50 }, "cost": 0.000205, "unpriced_tokens": 1100 }
+}
+```
+
+Rows are sorted by `day` ascending when grouped by day, then by total tokens
+descending. Days with no usage are omitted; clients fill gaps. An empty range
+returns `"rows": []` with zero totals.
+
+Cost appears only when the server has a per-model price table (per million
+tokens of each kind). Firekeeper ships no prices. Then `priced` is `true`,
+and every row and the totals carry `cost`, computed from priced models only.
+`unpriced_tokens`, when present, counts the tokens from models with no price
+that `cost` leaves out. Without a table, `priced` is `false` and `cost` is
+never sent.
+
 ## Live stream
 
 ### `GET /v1/stream`
