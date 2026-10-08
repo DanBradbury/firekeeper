@@ -153,3 +153,73 @@ warn unless you use `-k`. Machines should not upload to this: their
 - Authentication turns on when the server starts. If you create the first
   token or account while it runs, restart it. The steps above create the
   account first, so this does not arise.
+
+## Hosting on a server that already runs nginx
+
+If the host already serves other sites with nginx and `certbot --nginx` (as the
+`golf` and `money` subdomains do), do not use `deploy/compose.yml`: its Caddy
+would fight nginx for ports 80 and 443. Use `deploy/compose.nginx.yml`
+instead. It runs only the app, published on `127.0.0.1:7777`, and nginx proxies
+to it. Deploys come from the **Publish and deploy** workflow over SSH.
+
+The nginx vhost (`deploy/nginx/firekeeper.danbradbury.net.conf`) sets
+`X-Forwarded-Proto`, turns off buffering and compression for `/v1/stream`, and
+allows 6 MB bodies (ingest requests are at most 5 MiB).
+
+### One-time setup (Owner)
+
+1. **DNS.** Add an `A` record for `firekeeper.danbradbury.net` pointing at the host.
+2. **Docker.** Check it is installed and that the `deploy` user can run it
+   without sudo: `ssh deploy@HOST docker ps`. If not, install it and run
+   `sudo usermod -aG docker deploy`, then log in again.
+3. **Port.** Check that 7777 is free on the host loopback:
+   `ss -ltn | grep 7777`. If not, put `FIREKEEPER_PORT=NNNN` in
+   `/opt/firekeeper/.env` and change `127.0.0.1:7777` in the vhost to match.
+4. **nginx vhost.** From a checkout on the host (or copy `deploy/`):
+   ```sh
+   sudo bash deploy/setup-nginx.sh
+   ```
+   This creates `/opt/firekeeper`, installs the vhost, and reloads nginx.
+5. **Certificate**, once DNS resolves:
+   ```sh
+   sudo certbot --nginx -d firekeeper.danbradbury.net
+   ```
+6. **Image access.** Either make the GHCR package `firekeeper` public
+   (GitHub, Packages, package settings), or on the host run
+   `docker login ghcr.io` once with a token that has only `read:packages`.
+7. **GitHub secrets.** In the firekeeper repository add an environment named
+   `prod` with secrets `SERVER_IP` and `SSH_PRIVATE_KEY` (a key authorised for
+   `deploy`). Secrets are per repository: golfeo's do not carry over. Optionally
+   add `SSH_KNOWN_HOSTS` (output of `ssh-keyscan HOST`) so the workflow does not
+   trust the host on first sight. Consider required reviewers on `prod`.
+8. **Publish an image.** Push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+   Wait for the **image** job to finish.
+9. **Create the first account** on the host, before the first deploy. The
+   compose file needs an image, so give it the tag:
+   ```sh
+   cp deploy/compose.nginx.yml /opt/firekeeper/   # from your checkout on the host
+   cd /opt/firekeeper
+   echo FIREKEEPER_IMAGE=ghcr.io/danbradbury/firekeeper:v0.1.0 > .env
+   docker compose -f compose.nginx.yml run --rm firekeeper \
+     serve admin create-account --db /data/firekeeper.db --email you@example.com
+   ```
+10. **Deploy.** GitHub, Actions, **Publish and deploy**, Run workflow, tag
+    `v0.1.0`. It copies the compose file and backup scripts, pulls the image,
+    restarts, and waits for `/healthz`.
+11. **Backups.** Scripts are in `/opt/firekeeper`. Use the systemd units or
+    cron line above with `/opt/firekeeper/backup.sh`; it finds
+    `compose.nginx.yml` itself. Run `/opt/firekeeper/restore-test.sh` on a
+    backup once; it uses the image in `.env`.
+
+### Upgrade and rollback
+
+Run `./backup.sh` on the host, push a new tag, wait for the image, then run the
+workflow with that tag. To roll back, run the workflow with the earlier tag.
+If the new version changed the database schema, restore the pre-upgrade
+backup too (see Rollback above).
+
+### Checks on this path
+
+The vhost, the loopback compose file and SSE through nginx were tested locally
+against `nginx:alpine`; the workflow passes `actionlint`. A real SSH deploy, the
+GHCR pull and the certificate were not tested here.

@@ -1,4 +1,5 @@
-# Example. Copy to /etc/systemd/system/ and adjust the paths.
+# Example. Copy to /etc/systemd/system/ and adjust the paths. For the nginx
+# setup, scripts live in /opt/firekeeper (the deploy workflow copies them).
 [Unit]
 Description=Firekeeper database backup
 Requires=docker.service
