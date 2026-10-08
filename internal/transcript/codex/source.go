@@ -7,6 +7,7 @@ package codex
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,10 @@ type Source struct {
 	CodexHome string
 	// Home overrides the user's home directory when set.
 	Home string
+
+	// open and run replace os.Open and command execution in tests.
+	open func(name string) (io.ReadCloser, error)
+	run  func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 // Locate returns the rollout for meta. Discovery already maps running Codex
