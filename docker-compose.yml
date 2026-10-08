@@ -1,0 +1,18 @@
+# Self-hosted Firekeeper dashboard. See docs/self-hosting.md.
+services:
+  firekeeper:
+    build: .
+    image: firekeeper:local
+    restart: unless-stopped
+    # --insecure lets the server listen on the container's network while the
+    # database has no token or account yet. The port is published on the
+    # host's loopback only. Once you create a token or account, every request
+    # needs credentials.
+    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--insecure"]
+    ports:
+      - "127.0.0.1:${FIREKEEPER_PORT:-7777}:7777"
+    volumes:
+      - firekeeper-data:/data
+
+volumes:
+  firekeeper-data:

@@ -20,7 +20,7 @@ More harnesses and providers are planned.
 - View Codex limits, recent token usage, active models, and local Kimi token usage.
 - Jump to a selected agent terminal or Herdr pane on macOS.
 - Show a static Codex character portrait in Settings.
-- Keep existing CLI workflows: no daemon, remote argument, or wrapper required.
+- Keep existing CLI workflows: running `firekeeper` needs no daemon, remote argument, or wrapper, and uploads nothing. Reporting is a separate, opt-in mode (see [Local-only and reporting modes](#local-only-and-reporting-modes)).
 - Navigate everything from a pixel-art, keyboard-driven TUI.
 
 ## Install
@@ -217,6 +217,50 @@ firekeeper --renderer blocks --sprite-cols 32 --sprite-rows 16
 portable true-color half blocks elsewhere. Kitty, Ghostty, WezTerm, Konsole,
 Warp, iTerm2, and current Windows Terminal versions provide best results. Try
 running outside tmux first when testing Kitty rendering.
+
+## Local-only and reporting modes
+
+Firekeeper has two modes. They never mix by accident.
+
+**Local-only mode** is plain `firekeeper`. It reads process lists and local
+provider files on your machine to draw the dashboard. It starts no daemon,
+proxy, or wrapper, changes no agent launch command, and makes no upload.
+Codex usage may start a short-lived local `codex app-server`, as described
+under Usage.
+
+**Reporting mode** is a set of explicit subcommands: `snapshot`, `export`,
+`report`, `backfill`, `daemon`, and `serve`. `report`, `backfill`, and `daemon`
+send session metadata and full transcripts to a dashboard server that you run
+(see [docs/self-hosting.md](docs/self-hosting.md)). Nothing is sent until you
+name a provider, with `--provider` or the config file, and point at a server.
+`report --dry-run` shows what would be sent without opening a connection.
+Agent CLIs never depend on any of these commands.
+
+### What is uploaded
+
+For each allowed provider, per session: metadata (provider, session id,
+working directory, project name, branch, model, state, title, timestamps,
+event count, token totals) and every transcript event: prompts, assistant
+replies, tool calls and their output, plus each event's original record
+(`raw`). Tool output over 64 KiB is cut in `text` but kept in `raw`. Machine
+details (id, name, hostname, OS, Firekeeper version) go with each request.
+Sessions in an excluded directory or a repository containing
+`.firekeeper-ignore` are never read.
+
+### What redaction does and does not catch
+
+**Redaction is best effort, not a guarantee.** Every event passes through it
+before leaving your machine. It replaces common, well-formed secret shapes
+with `[REDACTED:kind]` markers: AWS access key IDs, GitHub tokens, `sk-` style
+API keys, bearer tokens, PEM private keys, JWTs, and `KEY=value` assignments
+whose key names mention SECRET, TOKEN, PASSWORD, or KEY. It rewrites your home
+directory to `~` and replaces configured private paths.
+
+It does **not** reliably catch passwords written in prose, secrets in unusual
+formats, values split across lines or events, encoded or encrypted data,
+source code, customer data, or anything else that is sensitive without looking
+like a credential. Treat uploaded transcripts as sensitive, and only upload to
+a server you control and trust.
 
 ## Subcommands
 
