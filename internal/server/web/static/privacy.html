@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Privacy · Firekeeper</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!--banner-->
+<header class="topbar">
+  <a class="brand" href="./">
+    <img src="favicon.svg" alt="" width="24" height="24" class="brand-icon">
+    <span>Firekeeper</span>
+  </a>
+</header>
+<main class="prose">
+  <h1>Privacy</h1>
+  <p>This is what happens to your data if you send it to this Firekeeper server. Read it before you upload anything.</p>
+
+  <h2>Your transcripts are uploaded and stored here</h2>
+  <p>When you connect a reporter to this server, the full text of your coding-agent sessions leaves your machine and is stored on this server: prompts, replies, tool calls and their output, file paths, repository names and branches, and token counts. Nothing is uploaded until you turn it on for a provider, and you can turn it off at any time. Data already uploaded stays here until you delete it.</p>
+
+  <h2>Redaction is best effort</h2>
+  <p>The reporter tries to remove secrets such as API keys and tokens before anything is sent. It is pattern matching, so it misses things. <strong>Secrets, personal data and private code may get through.</strong> Do not upload sessions that contain anything you could not afford to have read by someone else.</p>
+
+  <h2>The operator can read what is stored</h2>
+  <p>Whoever runs this server can read every account's stored data, including yours, directly from its database and backups. Other accounts cannot see your data through the dashboard or the API, but the operator is not bound by that. If you do not trust the operator with your transcripts, do not use this server.</p>
+
+  <h2>This is a test bed</h2>
+  <p>This server is for trying Firekeeper out. It can break, change or be shut down, and <strong>its data may be wiped at any time without notice</strong>. Keep your own copy of anything you care about: your original session files stay on your machine, and you can download everything stored here first.</p>
+
+  <h2>How to delete everything</h2>
+  <ol>
+    <li>Sign in and open <a href="./#/account">your account page</a>.</li>
+    <li>Choose <em>Download my data</em> if you want a copy (a JSON Lines file of everything stored).</li>
+    <li>Choose <em>Delete my account</em> and confirm with your email address. This removes your account, your access tokens, and every machine, session and event you uploaded, including the search index. It cannot be undone.</li>
+  </ol>
+  <p>Without a browser, an API client signed in with a browser session can send <code>DELETE /v1/account</code> and read <code>GET /v1/account/export</code>. If you cannot sign in, ask the operator to delete your account; they can do it from the server.</p>
+  <p>Deleting your account does not delete the session files on your own machine, and it does not stop a reporter that is still running: stop it, or it will have nowhere to upload.</p>
+
+  <p><a href="./">Back to the dashboard</a></p>
+</main>
+<footer class="footer"><a href="privacy">Privacy</a></footer>
+</body>
+</html>

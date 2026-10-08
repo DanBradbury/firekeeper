@@ -255,6 +255,16 @@ func requireAccount(accountID string) error {
 // Ingest stores one request for an account in a single transaction. It
 // returns how many events were newly stored and how many already existed.
 func (s *Store) Ingest(ctx context.Context, accountID string, m Machine, batches []SessionBatch) (accepted, duplicates int, err error) {
+	return s.IngestLimited(ctx, accountID, m, batches, Limits{})
+}
+
+// IngestLimited is Ingest under per-account limits. A request that would
+// take the account past a limit fails with ErrStorageLimit or
+// ErrSessionLimit and writes nothing: the whole request rolls back. Only
+// newly stored bytes and newly created sessions count, so re-sending data
+// the account already holds always succeeds, and an account already over a
+// limit (because it was lowered) can still update what it has.
+func (s *Store) IngestLimited(ctx context.Context, accountID string, m Machine, batches []SessionBatch, lim Limits) (accepted, duplicates int, err error) {
 	if err := requireAccount(accountID); err != nil {
 		return 0, 0, err
 	}
@@ -296,9 +306,18 @@ func (s *Store) Ingest(ctx context.Context, accountID string, m Machine, batches
 	}
 	var changes []Change
 	changes = append(changes, Change{Kind: MachineStatus, AccountID: accountID, MachineID: m.ID})
+	var addedBytes, newSessions int64
 
 	for _, b := range batches {
 		sm := b.Meta
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sessions WHERE account_id = ? AND machine_id = ? AND session_id = ?)`,
+			accountID, m.ID, sm.SessionID).Scan(&exists); err != nil {
+			return 0, 0, err
+		}
+		if exists == 0 {
+			newSessions++
+		}
 		state := sm.State
 		if state == "" {
 			state = "UNKNOWN"
@@ -343,6 +362,7 @@ ON CONFLICT(account_id, machine_id, session_id, seq) DO NOTHING`,
 			}
 			if n, _ := res.RowsAffected(); n > 0 {
 				accepted++
+				addedBytes += eventBytes(e.Text, raw)
 				if e.Seq > maxNew {
 					maxNew = e.Seq
 				}
@@ -372,6 +392,26 @@ WHERE account_id = ? AND machine_id = ? AND session_id = ?`, accountID, m.ID, sm
 		changes = append(changes, Change{Kind: SessionUpdated, AccountID: accountID, MachineID: m.ID, SessionID: sm.SessionID})
 		if maxNew >= 0 {
 			changes = append(changes, Change{Kind: EventAppended, AccountID: accountID, MachineID: m.ID, SessionID: sm.SessionID, Seq: maxNew})
+		}
+	}
+
+	if newSessions > 0 && lim.MaxSessions > 0 {
+		var n int64
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE account_id = ?`, accountID).Scan(&n); err != nil {
+			return 0, 0, err
+		}
+		if n > lim.MaxSessions {
+			return 0, 0, fmt.Errorf("%w: at most %d sessions per account", ErrSessionLimit, lim.MaxSessions)
+		}
+	}
+	if addedBytes > 0 {
+		var total int64
+		if err := tx.QueryRowContext(ctx, `UPDATE accounts SET stored_bytes = stored_bytes + ? WHERE id = ? RETURNING stored_bytes`,
+			addedBytes, accountID).Scan(&total); err != nil {
+			return 0, 0, err
+		}
+		if lim.MaxBytes > 0 && total > lim.MaxBytes {
+			return 0, 0, fmt.Errorf("%w: at most %d bytes of transcript per account", ErrStorageLimit, lim.MaxBytes)
 		}
 	}
 

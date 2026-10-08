@@ -249,6 +249,8 @@ export async function createMockAPI() {
     signedIn: () => mockAuth.signedIn(),
     account: () => mockAuth.account(),
     logout: () => mockAuth.logout(),
+    deleteAccount: (confirm) => mockAuth.deleteAccount(confirm),
+    exportURL: "",
 
     listSessions(filters, cursor, limit = 50) {
       const q = (filters.q || "").toLowerCase();
