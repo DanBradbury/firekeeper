@@ -109,6 +109,7 @@ function parseRoute() {
   // The landing page is the machines overview; the session list lives at
   // /sessions. An old "#/?machine=..." link still opens the list.
   if (h === "/" || h === "/machines") return { view: "machines" };
+  if (h === "/account") return { view: "account" };
   if (h === "/usage" || h.startsWith("/usage?")) {
     return { view: "usage", params: new URLSearchParams(h.slice(7)) };
   }
@@ -159,7 +160,7 @@ async function refreshAccount() {
     return;
   }
   accountBox.append(
-    el("span", { class: "account-email", title: acct.email, text: acct.email }),
+    el("a", { class: "account-email", href: "#/account", title: `${acct.email} · account settings`, text: acct.email }),
     el("button", { type: "button", onclick: signOut }, "Sign out"),
   );
   accountBox.hidden = false;
@@ -198,6 +199,7 @@ function render() {
   if (r.view === "machines") current = machinesView();
   else if (r.view === "session") current = sessionView(r.uid);
   else if (r.view === "usage") current = usageView(r.params);
+  else if (r.view === "account") current = accountView();
   else current = listView(r.params);
   window.scrollTo(0, 0);
 }
@@ -1299,6 +1301,101 @@ function usageView(params) {
       refreshTimer = setTimeout(() => load(true), 5000);
     },
   };
+}
+
+// ---------- account ----------
+
+function bytesText(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return `${n} B`;
+  const units = ["KiB", "MiB", "GiB", "TiB"];
+  let i = -1;
+  do {
+    n /= 1024;
+    i++;
+  } while (n >= 1024 && i < units.length - 1);
+  return `${n.toFixed(n < 10 ? 2 : 1)} ${units[i]}`;
+}
+
+// ofLimit renders "used of limit", or just "used" when there is no limit.
+const ofLimit = (used, max, fmt) => (max > 0 ? `${fmt(used)} of ${fmt(max)}` : fmt(used));
+
+// accountView is the signed-in person's own page: what is stored, a full
+// export, and permanent deletion confirmed with the account's email.
+function accountView() {
+  let alive = true;
+  const box = el("div", { class: "account-page" });
+  app.append(box);
+  box.append(el("p", { text: "Loading…" }));
+
+  (async () => {
+    let acct;
+    try {
+      acct = await api.account();
+    } catch (err) {
+      if (alive) box.replaceChildren(notice(err.message, true));
+      return;
+    }
+    if (!alive) return;
+    if (acct.single_user || !acct.email) {
+      box.replaceChildren(el("h1", { text: "Account" }),
+        notice("This server is in single-user mode, so there is no account to export or delete.", false));
+      return;
+    }
+    const u = acct.usage || {};
+    const l = acct.limits || {};
+    const status = el("div");
+    const confirm = el("input", { type: "email", id: "confirm-email", autocomplete: "off", spellcheck: "false", placeholder: acct.email });
+    const del = el("button", { type: "button", disabled: true }, "Delete my account");
+    confirm.addEventListener("input", () => {
+      del.disabled = confirm.value.trim().toLowerCase() !== acct.email.toLowerCase();
+    });
+    del.addEventListener("click", async () => {
+      del.disabled = true;
+      status.replaceChildren();
+      try {
+        await api.deleteAccount(confirm.value.trim());
+      } catch (err) {
+        status.append(notice(err.message, true));
+        del.disabled = false;
+        return;
+      }
+      auth.clear();
+      toLogin("deleted");
+    });
+
+    box.replaceChildren(
+      el("h1", { text: "Account" }),
+      el("section", null,
+        el("h2", { text: acct.email }),
+        el("dl", null,
+          el("dt", { text: "Sessions" }), el("dd", { text: ofLimit(u.sessions || 0, l.max_sessions, (n) => n.toLocaleString()) }),
+          el("dt", { text: "Events" }), el("dd", { text: (u.events || 0).toLocaleString() }),
+          el("dt", { text: "Stored" }), el("dd", { text: ofLimit(u.stored_bytes || 0, l.max_bytes, bytesText) }),
+          l.ingest_per_minute > 0 && el("dt", { text: "Upload rate" }),
+          l.ingest_per_minute > 0 && el("dd", { text: `${l.ingest_per_minute} requests per minute` }),
+        ),
+        el("p", null, "Transcripts are stored on this server and the operator can read them. ", el("a", { href: "privacy" }, "Privacy notice"), "."),
+      ),
+      el("section", null,
+        el("h2", { text: "Download my data" }),
+        el("p", { text: "Everything stored for your account as a JSON Lines file: machines, sessions, changed files and every event, as uploaded." }),
+        api.exportURL
+          ? el("a", { href: api.exportURL, download: "firekeeper-export.jsonl" }, "Download firekeeper-export.jsonl")
+          : el("p", { text: "Export is not available in mock mode." }),
+      ),
+      el("section", { class: "danger" },
+        el("h2", { text: "Delete my account" }),
+        el("p", { text: "Permanently removes your account, your access tokens, and every machine, session and event you uploaded, including the search index. This cannot be undone. Your local session files are not touched." }),
+        el("label", { for: "confirm-email", text: "Type your email address to confirm" }),
+        confirm,
+        del,
+        status,
+      ),
+    );
+  })();
+
+  return { dispose() { alive = false; }, onStream() {} };
 }
 
 // ---------- boot ----------

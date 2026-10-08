@@ -30,7 +30,7 @@ type stack struct {
 	mu  sync.Mutex
 }
 
-func newStack(t *testing.T, mode auth.SignupMode) *stack {
+func newStack(t *testing.T, mode auth.SignupMode, opts ...api.Option) *stack {
 	t.Helper()
 	s, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "d.db"))
 	if err != nil {
@@ -43,7 +43,7 @@ func newStack(t *testing.T, mode auth.SignupMode) *stack {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/auth/login", st.m.Login())
 	mux.Handle("POST /v1/auth/signup", st.m.Signup())
-	mux.Handle("/v1/", st.m.Wrap(api.Handler(s)))
+	mux.Handle("/v1/", st.m.Wrap(api.Handler(s, opts...)))
 	st.h = mux
 	return st
 }

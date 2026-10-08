@@ -62,12 +62,12 @@ async function getJSON(path, params) {
   return body;
 }
 
-async function postJSON(path, body) {
+async function sendJSON(method, path, body) {
   const headers = authHeaders({ Accept: "application/json", "Content-Type": "application/json" });
   if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
   let res;
   try {
-    res = await fetch(path, { method: "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   } catch {
     throw new APIError(0, "network", "Could not reach the Firekeeper server.");
   }
@@ -83,6 +83,8 @@ async function postJSON(path, body) {
   return data;
 }
 
+const postJSON = (path, body) => sendJSON("POST", path, body);
+
 const sessionPath = (uid) => `v1/sessions/${encodeURIComponent(uid)}`;
 
 export const realAPI = {
@@ -94,6 +96,17 @@ export const realAPI = {
     const a = await getJSON("v1/account");
     csrfToken = a.csrf_token || "";
     return a;
+  },
+
+  // exportURL downloads everything stored for the account as JSON Lines.
+  // It is a plain link, so it works with the session cookie.
+  exportURL: "v1/account/export",
+
+  // deleteAccount removes the account and all its data. confirm must be the
+  // account's email. The server ends the browser session.
+  async deleteAccount(confirm) {
+    await sendJSON("DELETE", "v1/account", { confirm });
+    csrfToken = "";
   },
 
   async login(email, password) {
