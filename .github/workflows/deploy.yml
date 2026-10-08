@@ -1,11 +1,18 @@
-# Builds the container image and pushes it to GHCR when a version tag is
-# pushed. It does not deploy: roll out by hand (docs/hosting.md). No host
-# credentials belong here.
-name: Publish image
+# Image: pushing a v* tag builds the container image and pushes it to GHCR.
+# Deploy: a manual run ("Run workflow", with a tag) pulls that image on the
+# host over SSH. Nothing deploys on its own. To roll back, run it again with
+# an older tag. Host credentials live in the `prod` environment's secrets
+# (SERVER_IP, SSH_PRIVATE_KEY, optional SSH_KNOWN_HOSTS), never in the repo.
+name: Publish and deploy
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to deploy, such as v0.1.0
+        required: true
 
 permissions:
   contents: read
@@ -13,6 +20,7 @@ permissions:
 
 jobs:
   image:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,3 +42,84 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    if: github.event_name == 'workflow_dispatch'
+    environment: prod
+    runs-on: ubuntu-latest
+    concurrency: deploy-prod
+    env:
+      SITE: firekeeper.danbradbury.net
+      APP_DIR: /opt/firekeeper
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "tag must look like v1.2.3" >&2; exit 1 ;;
+          esac
+          if printf '%s' "$TAG" | grep -q '[^0-9A-Za-z._-]'; then
+            echo "tag has unexpected characters" >&2; exit 1
+          fi
+
+      - name: Set up SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          mkdir -p ~/.ssh
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$SERVER_IP" > ~/.ssh/known_hosts
+          fi
+
+      - name: Copy compose file and scripts
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          scp -i ~/.ssh/deploy_key \
+            deploy/compose.nginx.yml deploy/backup.sh deploy/restore-test.sh \
+            "deploy@$SERVER_IP:$APP_DIR/"
+
+      - name: Pull and restart
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "deploy@$SERVER_IP" bash -s "$TAG" <<'REMOTE'
+          set -euo pipefail
+          cd /opt/firekeeper
+          touch .env
+          grep -v '^FIREKEEPER_IMAGE=' .env > .env.new || true
+          echo "FIREKEEPER_IMAGE=ghcr.io/danbradbury/firekeeper:$1" >> .env.new
+          mv .env.new .env
+          docker compose -f compose.nginx.yml pull
+          docker compose -f compose.nginx.yml up -d
+          port=$(grep -s '^FIREKEEPER_PORT=' .env | cut -d= -f2 || true)
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${port:-7777}/healthz" >/dev/null; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "not healthy after 30s" >&2
+          docker compose -f compose.nginx.yml ps >&2
+          exit 1
+          REMOTE
+
+      - name: Check the public URL
+        run: |
+          if curl -fsS "https://$SITE/healthz" >/dev/null; then
+            echo "https://$SITE/healthz ok"
+          else
+            echo "::warning::https://$SITE/healthz did not answer; check DNS, certbot and nginx"
+          fi

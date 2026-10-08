@@ -1,0 +1,22 @@
+# Firekeeper behind an nginx that already runs on the host.
+# Copied to /opt/firekeeper by the deploy workflow. See docs/hosting.md.
+#
+#   FIREKEEPER_IMAGE  required; the deploy workflow writes it to .env
+#   FIREKEEPER_PORT   host loopback port nginx proxies to (default 7777)
+name: firekeeper
+
+services:
+  firekeeper:
+    image: ${FIREKEEPER_IMAGE:?set FIREKEEPER_IMAGE in .env}
+    restart: unless-stopped
+    # No --insecure: the server refuses to start until the first account
+    # exists, so it is never open. Create it first (docs/hosting.md).
+    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed"]
+    # Loopback only; nginx is the only way in.
+    ports:
+      - "127.0.0.1:${FIREKEEPER_PORT:-7777}:7777"
+    volumes:
+      - firekeeper-data:/data
+
+volumes:
+  firekeeper-data:
