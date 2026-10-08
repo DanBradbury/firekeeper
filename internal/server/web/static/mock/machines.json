@@ -1,0 +1,7 @@
+{
+  "machines": [
+    { "id": "m-studio", "name": "studio", "hostname": "studio.local", "os": "darwin", "version": "0.5.0", "last_heartbeat_at": "2026-10-07T12:00:00Z", "session_count": 2 },
+    { "id": "m-laptop", "name": "laptop", "hostname": "laptop.local", "os": "darwin", "version": "0.5.0", "last_heartbeat_at": "2026-10-07T11:58:00Z", "session_count": 3 },
+    { "id": "m-build", "name": "build box", "hostname": "build-01", "os": "linux", "version": "0.4.2", "last_heartbeat_at": "2026-10-06T22:10:00Z", "session_count": 40 }
+  ]
+}

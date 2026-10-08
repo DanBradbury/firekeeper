@@ -1,0 +1,39 @@
+{
+  "sessions": [
+    {
+      "uid": "m-studio:019a-long", "machine_id": "m-studio", "session_id": "019a-long", "provider": "codex",
+      "cwd": "/Users/example/src/firekeeper", "project": "firekeeper", "branch": "dash/sprites", "model": "gpt-5-codex",
+      "state": "ACTIVE", "title": "Refactor sprite compositor (5,000 events)",
+      "started_at": "2026-10-07T08:00:00Z", "last_activity_at": "2026-10-07T12:00:00Z",
+      "event_count": 5000, "tokens": { "input": 4182330, "output": 391204, "cache": 2910442 }
+    },
+    {
+      "uid": "m-studio:019a-small", "machine_id": "m-studio", "session_id": "019a-small", "provider": "codex",
+      "cwd": "/Users/example/src/firekeeper", "project": "firekeeper", "branch": "main", "model": "gpt-5",
+      "state": "WAITING", "title": "Explain the polling loop",
+      "started_at": "2026-10-07T11:40:00Z", "last_activity_at": "2026-10-07T11:52:00Z",
+      "event_count": 8, "tokens": { "input": 18420, "output": 2210, "cache": 12000 }
+    },
+    {
+      "uid": "m-laptop:c0p1-77", "machine_id": "m-laptop", "session_id": "c0p1-77", "provider": "copilot",
+      "cwd": "/Users/example/dotfiles", "project": "dotfiles", "branch": "main", "model": "claude-sonnet-5-5",
+      "state": "NEEDS_INPUT", "title": "Tidy zsh startup",
+      "started_at": "2026-10-07T10:02:00Z", "last_activity_at": "2026-10-07T11:31:00Z",
+      "event_count": 0, "tokens": { "input": 0, "output": 0, "cache": 0 }
+    },
+    {
+      "uid": "m-laptop:kimi-3", "machine_id": "m-laptop", "session_id": "kimi-3", "provider": "kimi",
+      "cwd": "/Users/example/src/notes", "project": "notes", "branch": "", "model": "kimi-k2",
+      "state": "ENDED", "title": "",
+      "started_at": "2026-10-06T19:00:00Z", "last_activity_at": "2026-10-06T19:44:00Z",
+      "event_count": 0, "tokens": { "input": 0, "output": 0, "cache": 0 }
+    },
+    {
+      "uid": "m-laptop:cl-9", "machine_id": "m-laptop", "session_id": "cl-9", "provider": "claude",
+      "cwd": "", "project": "", "branch": "", "model": "",
+      "state": "UNKNOWN", "title": "",
+      "started_at": null, "last_activity_at": null,
+      "event_count": 0, "tokens": { "input": 0, "output": 0, "cache": 0 }
+    }
+  ]
+}
