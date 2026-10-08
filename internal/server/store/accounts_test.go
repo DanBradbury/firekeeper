@@ -94,8 +94,14 @@ func TestMigrationAssignsExistingRowsToDefaultAccount(t *testing.T) {
 	if _, _, err := s.Ingest(ctx, DefaultAccountID, Machine{ID: "m1"}, []SessionBatch{batch("s2", 0, 1)}); err != nil {
 		t.Fatalf("ingest after migration: %v", err)
 	}
-	if v, _ := s.SchemaVersion(ctx); v != 5 {
+	if v, _ := s.SchemaVersion(ctx); v != 6 {
 		t.Fatalf("schema version %d", v)
+	}
+	// The upgrade backfills storage accounting from the existing events:
+	// "legacy needle" and "plain" plus the default raw payload "null" each.
+	// The ingest above added "hello needle" and {"a":1}.
+	if st, err := s.AccountStats(ctx, DefaultAccountID); err != nil || st.StoredBytes != int64(13+4+5+4+12+7) {
+		t.Fatalf("stored bytes after upgrade = %+v, %v", st, err)
 	}
 	var violations int
 	rows, err := s.db.QueryContext(ctx, `PRAGMA foreign_key_check`)
