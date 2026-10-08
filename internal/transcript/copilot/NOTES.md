@@ -99,6 +99,26 @@ SQLite row cursor into a JSONL source and break the line-index `seq`.
 - An undecodable line keeps its bytes in `raw` as a JSON string so that `raw`
   stays valid JSON.
 
+## Enumeration
+
+`Enumerate` (T2.5) lists every `session-state/<uuid>/events.jsonl` for
+backfill, including ended sessions. In order, per session:
+
+1. `stat` only: the directory must be a uuid, the file must be newer than
+   `ModifiedAfter`, and an empty file is counted as skipped.
+2. `workspace.yaml`: `cwd`, `git_root`, `branch`, `name`, `repository`,
+   `created_at`, `updated_at`. `session-store.db` is not read.
+3. If `workspace.yaml` gave a `cwd`, `Skip` runs now, before `events.jsonl`
+   is opened.
+4. `workspace.yaml` has no model, so for every kept session the first 64 KiB
+   of `events.jsonl` are read for `session.start` (`context.cwd`, `gitRoot`,
+   `branch`, `startTime`) and the last model named by `session.model_change`
+   or `assistant.message`. These only fill fields `workspace.yaml` lacks. A
+   head with no decodable line is counted as corrupt.
+5. If `Skip` has not run yet, it runs now.
+
+Event counts and token totals stay zero.
+
 ## Known gaps
 
 - **Crashed runs lose main-agent tokens.** Totals arrive only with
