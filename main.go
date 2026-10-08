@@ -1776,13 +1776,13 @@ func (m *model) restoreProcessSelection(rootPID int) {
 func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGroup {
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
-		if (group.tool == "Codex" || group.tool == "Copilot" || group.tool == "Kimi") && len(group.sessions) > 0 {
+		if hasSessionMetadataAdapter(group.tool) && len(group.sessions) > 0 {
 			known[group.root.pid] = group
 		}
 	}
 	for index := range refreshed {
 		group := &refreshed[index]
-		if (group.tool != "Codex" && group.tool != "Copilot" && group.tool != "Kimi") || len(group.sessions) > 0 {
+		if !hasSessionMetadataAdapter(group.tool) || len(group.sessions) > 0 {
 			continue
 		}
 		old, ok := known[group.root.pid]
@@ -1792,6 +1792,16 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGro
 		group.sessions = append([]sessionInfo(nil), old.sessions...)
 	}
 	return refreshed
+}
+
+// hasSessionMetadataAdapter reports whether discovery enriches tool's runtimes
+// with session metadata worth retaining across a transient miss.
+func hasSessionMetadataAdapter(tool string) bool {
+	switch tool {
+	case "Codex", "Copilot", "Kimi", "Claude":
+		return true
+	}
+	return false
 }
 
 func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {

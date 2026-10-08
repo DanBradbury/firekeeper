@@ -6,9 +6,9 @@ Firekeeper is a terminal dashboard for developers working across multiple AI
 coding harnesses. It brings sessions, process state, model usage, and quotas
 into one local view without changing how those tools are launched.
 
-Current support includes Codex, Kimi Code, GitHub Copilot CLI, and OpenCode
-process discovery, with detailed local session state and metadata for Codex,
-Kimi, and Copilot.
+Current support includes Codex, Kimi Code, GitHub Copilot CLI, Claude Code, and
+OpenCode process discovery, with detailed local session state and metadata for
+Codex, Kimi, Copilot, and Claude Code.
 More harnesses and providers are planned.
 
 ## Highlights
@@ -241,7 +241,7 @@ text.
 | Flag | Meaning |
 | --- | --- |
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
-| `--provider NAME` | Upload this provider's sessions. Repeatable. Codex and Copilot have transcript readers today. |
+| `--provider NAME` | Upload this provider's sessions. Repeatable. Codex, Copilot, and Claude Code (`claude`) have transcript readers today. |
 | `--dry-run` | Read and redact, print counts, upload nothing. |
 | `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
 | `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`. |
@@ -369,7 +369,7 @@ starts the service. The service runs the binary you ran `install` with
 (symlinks resolved) as `firekeeper daemon --quiet ...`, so after moving or
 reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
-`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, and `XDG_CONFIG_HOME` from
+`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_CONFIG_HOME` from
 your shell into the definition when they are set. It refuses to install a
 temporary `go run` build. Nothing here needs or uses `sudo`.
 
@@ -408,7 +408,12 @@ Kimi Code, it maps runtime PIDs to their working directory and reads session
 `state.json` under `KIMI_CODE_HOME` without modifying it. For
 Copilot CLI, it maps runtime PIDs to `~/.copilot/session-state` and reads
 `workspace.yaml`, `events.jsonl`, and `session-store.db` without modifying them.
-`CODEX_HOME`, `KIMI_CODE_HOME`, and `COPILOT_HOME` overrides are honored. Provider events supply
+For Claude Code, it uses an explicit `--session-id` or `--resume` id when the
+command line has one, and otherwise maps the runtime's working directory to
+its project folder under `~/.claude/projects` and picks the most recently
+written transcript there; several Claude Code runtimes in one directory may be
+matched to the wrong transcript. Transcripts are read, never modified.
+`CODEX_HOME`, `KIMI_CODE_HOME`, `COPILOT_HOME`, and `CLAUDE_CONFIG_DIR` overrides are honored. Provider events supply
 best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. OpenCode currently
 exposes process information without provider-specific session metadata.
 Codex Desktop helper processes that cannot be matched to rollout metadata are

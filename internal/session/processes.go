@@ -111,6 +111,10 @@ func (d *discoverer) normalizeTTY(value string) string {
 func (d *discoverer) classifyProcess(command string) string {
 	lower := strings.ToLower(command)
 	switch {
+	case d.isClaudeCodeCommand(command):
+		// Checked first: Claude Code command lines can name other
+		// harnesses in resumed transcript paths.
+		return "Claude"
 	case strings.Contains(lower, "opencode"):
 		return "OpenCode"
 	case strings.Contains(lower, "copilot"):

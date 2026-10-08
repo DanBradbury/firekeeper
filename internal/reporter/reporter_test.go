@@ -527,6 +527,47 @@ func TestSessionsThatAreNotRead(t *testing.T) {
 	}
 }
 
+// Claude Code transcripts are read only when claude is allowlisted, like
+// every other provider.
+func TestClaudeIsOffUnlessAllowlisted(t *testing.T) {
+	const claudeSession = "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+	f := newFixture(t)
+	dir := filepath.Join(f.home, ".claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", dir)
+	path := filepath.Join(dir, "projects", "-src-demo", claudeSession+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := `{"type":"user","sessionId":"` + claudeSession + `","message":{"role":"user","content":"hello"}}` + "\n"
+	if err := os.WriteFile(path, []byte(record+record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.meta = session.Meta{ID: claudeSession, MachineID: testMachine, Provider: "claude", Project: "demo", CWD: f.repo, RolloutPath: path}
+
+	for _, tt := range []struct {
+		name      string
+		providers []transcript.Provider
+		want      string
+	}{
+		{"other provider allowlisted", []transcript.Provider{transcript.ProviderCodex}, "skipped (provider not allowlisted)"},
+		{"claude allowlisted", []transcript.Provider{transcript.ProviderClaude}, "would upload 2 events"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var out bytes.Buffer
+			cfg := f.config("http://127.0.0.1:1")
+			cfg.Providers = tt.providers
+			cfg.DryRun = true
+			cfg.Sources = nil // the registered sources
+			cfg.Out = &out
+			cfg.Client = &http.Client{Transport: failTransport{t}}
+			runOnce(t, cfg)
+			if !strings.Contains(out.String(), "claude "+claudeSession+" demo: "+tt.want) {
+				t.Fatalf("output %q, want %q", out.String(), tt.want)
+			}
+		})
+	}
+}
+
 func TestIgnoreMarkerOutsideRepoDoesNotApply(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
