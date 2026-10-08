@@ -1,0 +1,42 @@
+# Production stack: Firekeeper behind Caddy with automatic HTTPS.
+# See docs/hosting.md. Run from this directory.
+#
+#   FIREKEEPER_DOMAIN   site name Caddy gets a certificate for
+#   FIREKEEPER_IMAGE    image to run (default: build from the repository)
+#   HTTP_PORT/HTTPS_PORT  host ports; only change these for local testing
+services:
+  firekeeper:
+    image: ${FIREKEEPER_IMAGE:-firekeeper:local}
+    build: ..
+    restart: unless-stopped
+    # No --insecure: the server refuses to start until the first account
+    # exists, so it is never open. Create it first (docs/hosting.md).
+    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed"]
+    # Reachable on the Compose network only; nothing is published.
+    expose:
+      - "7777"
+    volumes:
+      - firekeeper-data:/data
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      firekeeper:
+        condition: service_healthy
+    environment:
+      FIREKEEPER_DOMAIN: ${FIREKEEPER_DOMAIN:-firekeeper.danbradbury.net}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+    ports:
+      - "${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+      - "${HTTPS_PORT:-443}:${HTTPS_PORT:-443}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  firekeeper-data:
+  caddy-data:
+  caddy-config:

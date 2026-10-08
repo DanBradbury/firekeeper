@@ -1,0 +1,20 @@
+{
+	http_port {$HTTP_PORT:80}
+	https_port {$HTTPS_PORT:443}
+}
+
+# Automatic TLS and the HTTP to HTTPS redirect come with a named site.
+# FIREKEEPER_DOMAIN=localhost uses Caddy's internal CA, for local testing.
+{$FIREKEEPER_DOMAIN:firekeeper.danbradbury.net} {
+	# Server-sent events: no compression, flush every write.
+	handle /v1/stream {
+		reverse_proxy firekeeper:7777 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		encode gzip
+		reverse_proxy firekeeper:7777
+	}
+}

@@ -16,5 +16,7 @@ USER firekeeper
 ENV HOME=/home/firekeeper
 VOLUME /data
 EXPOSE 7777
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1:7777/healthz || exit 1
 ENTRYPOINT ["firekeeper"]
 CMD ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db"]

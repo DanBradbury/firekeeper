@@ -1,0 +1,12 @@
+# Example. Copy to /etc/systemd/system/ and adjust the paths.
+[Unit]
+Description=Firekeeper database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/firekeeper/deploy
+Environment=BACKUP_DIR=/var/backups/firekeeper
+Environment=KEEP=14
+ExecStart=/opt/firekeeper/deploy/backup.sh
