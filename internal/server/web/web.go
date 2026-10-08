@@ -45,6 +45,10 @@ func WithGate(g Gate) Option { return func(o *options) { o.gate = g } }
 // request, since the CSP forbids inline scripts.
 const loginPage = "static/login.html"
 
+// linkPage approves a machine that ran `firekeeper login`. It is served at
+// /link and, like the dashboard, needs a browser session once accounts exist.
+const linkPage = "static/link.html"
+
 // Handler serves the UI. Views are routed by URL fragment, so unknown paths
 // return 404 rather than the index and API typos are not masked by HTML.
 // Static assets and the sign-in pages need no credentials; with a gate,
@@ -61,6 +65,10 @@ func Handler(opts ...Option) http.Handler {
 		panic(err)
 	}
 	loginHTML, err := static.ReadFile(loginPage)
+	if err != nil {
+		panic(err)
+	}
+	linkHTML, err := static.ReadFile(linkPage)
 	if err != nil {
 		panic(err)
 	}
@@ -94,6 +102,21 @@ func Handler(opts ...Option) http.Handler {
 					return
 				}
 			}
+		case "/link":
+			if o.gate != nil && !mock {
+				st, err := o.gate(r)
+				if err != nil || (st.Accounts && !st.SignedIn) {
+					// The browser carries the URL fragment (the code) across.
+					redirect(w, r, "/login?next=link")
+					return
+				}
+			}
+			h.Set("Content-Type", "text/html; charset=utf-8")
+			h.Set("Cache-Control", "no-store")
+			if r.Method != http.MethodHead {
+				w.Write(linkHTML)
+			}
+			return
 		case "/login", "/signup":
 			st := auth.PageState{Required: true, Signup: auth.SignupClosed}
 			if o.gate != nil && !mock {
@@ -104,6 +127,10 @@ func Handler(opts ...Option) http.Handler {
 				}
 				// Nothing to sign in to, or already signed in.
 				if !st.Required || (st.Accounts && st.SignedIn) {
+					if r.URL.Query().Get("next") == "link" {
+						redirect(w, r, "/link")
+						return
+					}
 					redirect(w, r, "/")
 					return
 				}

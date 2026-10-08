@@ -231,6 +231,9 @@ firekeeper backfill --provider codex --dry-run   # plan importing past sessions
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 firekeeper daemon --provider codex   # report every 15 seconds until stopped
 firekeeper daemon install   # detect providers and run the daemon at login
+firekeeper login --server https://dash.example   # link this machine without copying a token
+firekeeper whoami            # server, account and machine this machine reports as
+firekeeper logout            # revoke and remove this machine's token
 ```
 
 `report` runs one pass: it discovers running sessions, reads transcript
@@ -387,6 +390,41 @@ loopback. `serve` refuses a non-loopback `--listen` address unless a token or
 an account exists or `--insecure` is passed, and then warns that anyone who can
 reach the port can read every stored transcript and upload new ones.
 
+### Linking a machine
+
+On a server with accounts, a machine connects without anyone copying a token:
+
+```sh
+firekeeper login --server https://dash.example
+```
+
+It prints a URL and a short code and waits. Open the URL (sign in if asked),
+check that the page shows the same code, name the machine, and approve; the
+command then finishes and stores an ingest token, bound to this machine and
+your account, in `~/.firekeeper/config.toml` with mode `0600`, along with the
+server URL. Codes expire after 10 minutes and work once. `--name` suggests the
+machine name on the approval page (default: the host name).
+
+```sh
+firekeeper whoami   # server, account email and machine name; never the token
+firekeeper logout   # revokes the token on the server if reachable, then removes it from the file
+```
+
+After that, `firekeeper report --provider codex` and
+`firekeeper daemon install` use the stored server and token with no extra
+flags. `login` never enables a provider: with none in the allowlist,
+`report` and `daemon` upload nothing, whichever server is configured. `login`
+refuses a plain `http://` server that is not on this machine, so a token never
+crosses a network unencrypted; put HTTPS in front of a hosted server.
+
+The **Tokens** page of the web UI (`/#/tokens`) lists the account's tokens
+with machine name, scope, created and last-used times, and revokes them. It
+can also create a token for CI or a headless machine, shown once; an ingest
+token needs the machine id from that machine's `~/.firekeeper/machine-id`. A
+revoked token is refused on its next request. Linking and token management
+need a signed-in browser session, so a leaked token cannot add machines or
+mint tokens.
+
 ### Accounts
 
 One server can hold several people's data. Every machine, session, token and
@@ -399,7 +437,8 @@ or upload into another's.
 - **Accounts.** Creating the first account turns login on for everyone, even
   while the server is running. People sign in at `/login` with email and
   password (stored as argon2id hashes), which sets a 14-day browser session
-  cookie. Browser sessions can read but not upload; uploads use ingest tokens.
+  cookie. Browser sessions can read but not upload; uploads use ingest tokens,
+  which a signed-in person creates by [linking a machine](#linking-a-machine).
 
 `serve` prints which mode it started in: `single-user` (open),
 `single-user, token-protected` (no accounts, API needs a token), or
@@ -589,7 +628,9 @@ repository's `.git/config` after both are reduced to `host/owner/repo`, so
 `github.com/acme/api`. `.firekeeper-ignore` still works as before.
 
 `firekeeper config show` prints the merged configuration with the token
-masked and notes where each layered setting came from.
+masked and notes where each layered setting came from. `login` and `logout`
+edit only the top-level `server` and `token` keys, keep the rest of the file
+as it is, and leave it mode `0600`.
 
 ## How session discovery works
 

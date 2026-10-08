@@ -16,6 +16,9 @@ type accountResponse struct {
 	// CSRFToken is set for browser sessions: send it as X-CSRF-Token on
 	// every write.
 	CSRFToken string `json:"csrf_token,omitempty"`
+	// Token describes the bearer token the request used, so a linked
+	// machine can tell which machine and account it reports as.
+	Token *tokenView `json:"token,omitempty"`
 }
 
 // account serves GET /v1/account: who the caller is.
@@ -33,6 +36,12 @@ func account(s *store.Store) http.HandlerFunc {
 		resp := accountResponse{AccountInfo: auth.AccountInfo{ID: a.ID, Email: a.Email}, SingleUser: a.ID == store.DefaultAccountID}
 		if p, ok := auth.From(r.Context()); ok {
 			resp.CSRFToken = p.CSRF
+			if p.TokenID != "" {
+				if t, err := s.GetToken(r.Context(), p.AccountID, p.TokenID); err == nil {
+					v := viewOf(t)
+					resp.Token = &v
+				}
+			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, resp)
