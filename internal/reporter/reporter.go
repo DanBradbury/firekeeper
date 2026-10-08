@@ -26,6 +26,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 
 	// Register the transcript sources the reporter can read.
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
 )
