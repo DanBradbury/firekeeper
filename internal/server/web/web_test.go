@@ -38,6 +38,8 @@ func TestHandlerServesAssets(t *testing.T) {
 		{"/api.js", "javascript", "v1/sessions"},
 		{"/api.js", "javascript", "v1/usage"},
 		{"/app.js", "javascript", "usageView"},
+		{"/app.js", "javascript", "machinesView"},
+		{"/mock/machines.json", "application/json", `"m-laptop"`},
 		{"/api.js", "javascript", "v1/auth/login"},
 		{"/app.js", "javascript", "toLogin"},
 		{"/login", "text/html", `<script type="module" src="login.js">`},

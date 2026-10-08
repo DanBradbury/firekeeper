@@ -400,12 +400,17 @@ Lists the account's machines ordered by `id`:
 {
   "machines": [
     { "id": "m1", "name": "laptop", "hostname": "laptop.local", "os": "darwin", "version": "0.4.0",
-      "last_heartbeat_at": "2026-10-07T12:06:00Z", "session_count": 4 }
+      "last_heartbeat_at": "2026-10-07T12:06:00Z", "session_count": 4,
+      "state_counts": { "ACTIVE": 1, "ENDED": 3 }, "last_activity_at": "2026-10-07T12:05:12Z" }
   ]
 }
 ```
 
-Clients decide whether a machine is online from `last_heartbeat_at`.
+`state_counts` maps each session state present on the machine to its count
+(`{}` when it has none), and `last_activity_at` is its newest session
+activity (`null` when it has none). Clients decide whether a machine is online
+from `last_heartbeat_at`; the dashboard treats 90 seconds without a heartbeat
+as offline.
 
 ### `GET /v1/usage`
 

@@ -4,6 +4,9 @@
 
 import { realAPI, auth } from "./api.js";
 
+// A machine with no heartbeat for this long counts as offline.
+const OFFLINE_AFTER_MS = 90e3;
+
 const PROVIDERS = ["codex", "copilot", "kimi", "claude"];
 const STATES = ["ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"];
 const SESSION_PAGE = 50;
@@ -16,7 +19,7 @@ const liveDot = document.getElementById("live");
 
 let api = realAPI;
 let current = null; // { dispose(), onStream(type, data) }
-let lastListHash = "#/"; // the list, with the filters the reader came from
+let lastListHash = "#/sessions"; // the list, with the filters the reader came from
 
 // ---------- DOM helpers ----------
 
@@ -103,6 +106,9 @@ function badge(state) {
 
 function parseRoute() {
   const h = location.hash.replace(/^#/, "") || "/";
+  // The landing page is the machines overview; the session list lives at
+  // /sessions. An old "#/?machine=..." link still opens the list.
+  if (h === "/" || h === "/machines") return { view: "machines" };
   if (h === "/account") return { view: "account" };
   if (h === "/usage" || h.startsWith("/usage?")) {
     return { view: "usage", params: new URLSearchParams(h.slice(7)) };
@@ -184,12 +190,14 @@ function render() {
   current = null;
   app.replaceChildren();
   const r = parseRoute();
-  for (const [id, view] of [["nav-sessions", "list"], ["nav-usage", "usage"]]) {
+  for (const [id, view] of [["nav-machines", "machines"], ["nav-sessions", "list"], ["nav-usage", "usage"]]) {
     const a = document.getElementById(id);
     if (view === r.view) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
-  if (r.view === "session") current = sessionView(r.uid);
+  document.title = "Firekeeper";
+  if (r.view === "machines") current = machinesView();
+  else if (r.view === "session") current = sessionView(r.uid);
   else if (r.view === "usage") current = usageView(r.params);
   else if (r.view === "account") current = accountView();
   else current = listView(r.params);
@@ -251,7 +259,7 @@ function listView(params) {
   function syncHash() {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
-    const h = p.size ? `#/?${p}` : "#/";
+    const h = p.size ? `#/sessions?${p}` : "#/sessions";
     lastListHash = h;
     if (location.hash !== h) history.replaceState(null, "", h);
   }
@@ -347,6 +355,103 @@ function listView(params) {
       if (type !== "session.updated" && type !== "machine.status") return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => load(true, true), 1000);
+    },
+  };
+}
+
+// ---------- machines overview ----------
+
+const isOnline = (m, now = Date.now()) => {
+  const t = Date.parse(m.last_heartbeat_at || "");
+  return !Number.isNaN(t) && now - t < OFFLINE_AFTER_MS;
+};
+
+function machineCard(m, online) {
+  const counts = m.state_counts || {};
+  const total = Number(m.session_count) || 0;
+  const chips = STATES.filter((st) => counts[st] > 0).map((st) => {
+    const qs = new URLSearchParams({ machine: m.id, state: st });
+    return el("a", { class: `state-chip ${st}`, href: `#/sessions?${qs}`, title: `${st.replace("_", " ")} sessions on ${m.name || m.id}` },
+      el("b", { text: String(counts[st]) }), ` ${st.replace("_", " ").toLowerCase()}`);
+  });
+  const hostOS = [m.hostname, m.os, m.version && `v${m.version}`].filter(Boolean).join(" · ");
+  const sessionsHref = `#/sessions?${new URLSearchParams({ machine: m.id })}`;
+  return el("li", { class: `machine ${online ? "online" : "offline"}`, "data-machine": m.id },
+    el("div", { class: "machine-head" },
+      el("h2", { text: m.name || m.hostname || m.id }),
+      el("span", { class: `presence ${online ? "online" : "offline"}` }, online ? "● Online" : "○ Offline")),
+    el("p", { class: "machine-meta", text: hostOS || m.id }),
+    el("dl", { class: "machine-facts" },
+      el("div", {}, el("dt", { text: "Heartbeat" }), el("dd", {}, timeEl(m.last_heartbeat_at))),
+      el("div", {}, el("dt", { text: "Last activity" }), el("dd", {}, timeEl(m.last_activity_at)))),
+    total === 0
+      ? el("p", { class: "machine-empty", text: "Linked, no sessions uploaded yet." })
+      : el("div", { class: "state-chips" }, ...chips),
+    el("a", { class: "machine-link", href: sessionsHref, text: total === 0 ? "Filter sessions" : `View ${total} session${total === 1 ? "" : "s"} →` }));
+}
+
+function linkInstructions() {
+  return el("div", { class: "panel onboarding" },
+    el("h2", { text: "No machines yet" }),
+    el("p", { text: "Link a computer to this account, then send it your sessions:" }),
+    el("pre", { class: "cmd", text: "firekeeper login\nfirekeeper daemon install" }),
+    el("p", { class: "footnote", text: "Nothing is uploaded unless you opt a provider in. Machines appear here as soon as they link." }));
+}
+
+function machinesView() {
+  let alive = true;
+  let machines = null;
+  let refreshTimer = null;
+  const body = el("div", {}, el("div", { class: "loading", text: "Loading machines…" }));
+  const summary = el("p", { class: "summary" });
+  app.append(
+    el("div", { class: "page-head" }, el("h1", { text: "Machines" }), summary,
+      el("a", { class: "all-sessions", href: "#/sessions", text: "All sessions →" })),
+    body);
+
+  // paint draws from the last fetch, so the 90-second offline cutoff takes
+  // effect on the clock without another request.
+  function paint() {
+    if (!machines) return;
+    const now = Date.now();
+    if (machines.length === 0) {
+      summary.textContent = "";
+      body.replaceChildren(linkInstructions());
+      return;
+    }
+    const rows = machines.map((m) => ({ m, online: isOnline(m, now) }));
+    rows.sort((a, b) => b.online - a.online
+      || (b.m.last_activity_at || "").localeCompare(a.m.last_activity_at || "")
+      || (a.m.name || a.m.id).localeCompare(b.m.name || b.m.id));
+    const up = rows.filter((r) => r.online).length;
+    const sessions = machines.reduce((n, m) => n + (Number(m.session_count) || 0), 0);
+    summary.textContent = `${up} of ${machines.length} online · ${sessions} session${sessions === 1 ? "" : "s"}`;
+    body.replaceChildren(el("ul", { class: "machines" }, ...rows.map((r) => machineCard(r.m, r.online))));
+  }
+
+  async function load() {
+    try {
+      const res = await api.listMachines();
+      if (!alive) return;
+      machines = res.machines || [];
+      paint();
+    } catch (err) {
+      if (alive && !machines) body.replaceChildren(notice(err.message, true));
+    }
+  }
+  load();
+  const tick = setInterval(paint, 5000);
+
+  return {
+    dispose() {
+      alive = false;
+      clearInterval(tick);
+      clearTimeout(refreshTimer);
+    },
+    onStream(type) {
+      if (type !== "machine.status" && type !== "session.updated") return;
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(load, type === "machine.status" ? 300 : 1500);
     },
   };
 }
@@ -1311,10 +1416,10 @@ async function boot() {
     }
   }
   window.addEventListener("hashchange", () => {
-    if (parseRoute().view === "list") lastListHash = location.hash || "#/";
+    if (parseRoute().view === "list") lastListHash = location.hash || "#/sessions";
     render();
   });
-  if (parseRoute().view === "list") lastListHash = location.hash || "#/";
+  if (parseRoute().view === "list") lastListHash = location.hash || "#/sessions";
   api.subscribe(
     (type, data) => current?.onStream(type, data),
     (on) => {
