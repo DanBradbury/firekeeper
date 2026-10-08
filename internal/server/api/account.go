@@ -20,6 +20,9 @@ type accountResponse struct {
 	// CSRFToken is set for browser sessions: send it as X-CSRF-Token on
 	// every write.
 	CSRFToken string `json:"csrf_token,omitempty"`
+	// Token describes the bearer token the request used, so a linked
+	// machine can tell which machine and account it reports as.
+	Token *tokenView `json:"token,omitempty"`
 	// Usage is what the account stores now; Limits is what it may store.
 	// Zero limits mean none. The default account is never limited.
 	Usage  store.AccountStats `json:"usage"`
@@ -48,6 +51,12 @@ func account(s *store.Store, lim Limits) http.HandlerFunc {
 		}
 		if p, ok := auth.From(r.Context()); ok {
 			resp.CSRFToken = p.CSRF
+			if p.TokenID != "" {
+				if t, err := s.GetToken(r.Context(), p.AccountID, p.TokenID); err == nil {
+					v := viewOf(t)
+					resp.Token = &v
+				}
+			}
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, resp)

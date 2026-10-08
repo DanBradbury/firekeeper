@@ -36,6 +36,8 @@ type Principal struct {
 	Scope string
 	// MachineID binds an ingest token to one machine.
 	MachineID string
+	// TokenID is the id of the bearer token, empty for browser sessions.
+	TokenID string
 	// SessionID and CSRF are set for browser sessions only. SessionID is
 	// the stored session id, not the cookie value.
 	SessionID string
@@ -68,6 +70,8 @@ type Middleware struct {
 	bearerFails *limiter
 	loginFails  *limiter
 	signups     *limiter
+	linkStarts  *limiter
+	linkFails   *limiter
 }
 
 // Option configures New.
@@ -89,6 +93,8 @@ func New(s *store.Store, opts ...Option) *Middleware {
 		bearerFails: newLimiter(MaxFailures, Window),
 		loginFails:  newLimiter(MaxFailures, Window),
 		signups:     newLimiter(MaxSignups, Window),
+		linkStarts:  newLimiter(MaxLinkStarts, Window),
+		linkFails:   newLimiter(MaxFailures, Window),
 	}
 	for _, o := range opts {
 		o(m)
@@ -153,7 +159,7 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token")
 			return
 		}
-		if p.Scope != requiredScope(r) {
+		if want := requiredScope(r); want != "" && p.Scope != want {
 			writeErr(w, http.StatusForbidden, "forbidden", "token scope does not permit this request")
 			return
 		}
@@ -190,7 +196,9 @@ func (m *Middleware) bearerPrincipal(w http.ResponseWriter, r *http.Request, hea
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "invalid or revoked token")
 		return Principal{}, false
 	}
-	return Principal{AccountID: tok.AccountID, Scope: tok.Scope, MachineID: tok.MachineID}, true
+	// Last-used times are a convenience; a failed write must not fail the request.
+	_ = m.store.TouchToken(r.Context(), tok.ID, now)
+	return Principal{AccountID: tok.AccountID, Scope: tok.Scope, MachineID: tok.MachineID, TokenID: tok.ID}, true
 }
 
 // sessionPrincipal authenticates a browser session. Cookies ride along on
@@ -237,7 +245,12 @@ func sameOrigin(r *http.Request) bool {
 	return err == nil && u.Host != "" && u.Host == r.Host
 }
 
+// requiredScope is the token scope a route needs. Empty means any valid
+// credential: a token may ask who it is and revoke itself whatever its scope.
 func requiredScope(r *http.Request) string {
+	if r.URL.Path == "/v1/account" || r.URL.Path == "/v1/tokens/current" {
+		return ""
+	}
 	if r.URL.Path == "/v1/ingest" || r.URL.Path == "/v1/heartbeat" {
 		return store.ScopeIngest
 	}

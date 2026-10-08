@@ -41,6 +41,13 @@ func TestPageGate(t *testing.T) {
 		{"single-user login bounces home", gated(single, nil), "/login", http.StatusSeeOther, "/", ""},
 		{"token-only page loads for the token form", gated(tokenOnly, nil), "/", http.StatusOK, "", "app.js"},
 		{"token-only login offers tokens", gated(tokenOnly, nil), "/login", http.StatusOK, "", `data-accounts="false"`},
+		{"signed out link page redirects to sign-in", gated(multi, nil), "/link", http.StatusSeeOther, "/login?next=link", ""},
+		{"signed in link page loads", gated(signedIn, nil), "/link", http.StatusOK, "", "link.js"},
+		{"single-user link page loads", gated(single, nil), "/link", http.StatusOK, "", "link.js"},
+		{"mock link page is never gated", gated(multi, nil), "/link?mock=1", http.StatusOK, "", "link.js"},
+		{"signed in login returns to the link page", gated(signedIn, nil), "/login?next=link", http.StatusSeeOther, "/link", ""},
+		{"login ignores other next values", gated(signedIn, nil), "/login?next=https://evil.example", http.StatusSeeOther, "/", ""},
+		{"gate error on link fails closed", gated(single, errors.New("db down")), "/link", http.StatusSeeOther, "/login?next=link", ""},
 		{"gate error fails closed", gated(single, errors.New("db down")), "/", http.StatusSeeOther, "/login", ""},
 		{"gate error on login is a 500", gated(single, errors.New("db down")), "/login", http.StatusInternalServerError, "", ""},
 	}

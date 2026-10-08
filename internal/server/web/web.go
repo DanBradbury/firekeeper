@@ -57,6 +57,10 @@ func WithGate(g Gate) Option { return func(o *options) { o.gate = g } }
 // request, since the CSP forbids inline scripts.
 const loginPage = "static/login.html"
 
+// linkPage approves a machine that ran `firekeeper login`. It is served at
+// /link and, like the dashboard, needs a browser session once accounts exist.
+const linkPage = "static/link.html"
+
 // privacyPage is the plain-language privacy notice, served at /privacy to
 // anyone. It is static HTML with no script.
 const privacyPage = "static/privacy.html"
@@ -93,6 +97,10 @@ func Handler(opts ...Option) http.Handler {
 		bannerHTML = `<div class="banner" role="note">` + html.EscapeString(o.banner) + `</div>`
 	}
 	withBanner := func(page string) string { return strings.Replace(page, bannerMarker, bannerHTML, 1) }
+	linkHTML, err := static.ReadFile(linkPage)
+	if err != nil {
+		panic(err)
+	}
 	files := http.FileServerFS(sub)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -127,6 +135,17 @@ func Handler(opts ...Option) http.Handler {
 				servePage(w, r, withBanner(string(indexHTML)))
 				return
 			}
+		case "/link":
+			if o.gate != nil && !mock {
+				st, err := o.gate(r)
+				if err != nil || (st.Accounts && !st.SignedIn) {
+					// The browser carries the URL fragment (the code) across.
+					redirect(w, r, "/login?next=link")
+					return
+				}
+			}
+			servePage(w, r, withBanner(string(linkHTML)))
+			return
 		case "/privacy":
 			servePage(w, r, withBanner(string(privacyHTML)))
 			return
@@ -140,6 +159,10 @@ func Handler(opts ...Option) http.Handler {
 				}
 				// Nothing to sign in to, or already signed in.
 				if !st.Required || (st.Accounts && st.SignedIn) {
+					if r.URL.Query().Get("next") == "link" {
+						redirect(w, r, "/link")
+						return
+					}
 					redirect(w, r, "/")
 					return
 				}

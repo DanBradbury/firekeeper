@@ -37,9 +37,21 @@ function el(tag, attrs, ...children) {
 
 const notice = (message, isError) => el("div", { class: isError ? "notice error" : "notice", role: isError ? "alert" : "status", text: message });
 
+// After signing in, return to the page that sent the reader here. Only the
+// link page qualifies; anything else goes to the dashboard.
+const afterLogin = params.get("next") === "link" ? "link" : "./";
+
 // href keeps ?mock=1 and the dashboard route across the sign-in pages.
 function href(path) {
   return path + (mock ? "?mock=1" : "") + location.hash;
+}
+
+// pageHref is href for pages that carry ?next= along, such as signup.
+function pageHref(path) {
+  const qs = new URLSearchParams();
+  if (mock) qs.set("mock", "1");
+  if (params.get("next") === "link") qs.set("next", "link");
+  return path + (qs.size ? `?${qs}` : "") + location.hash;
 }
 
 function authError(err) {
@@ -84,8 +96,8 @@ function formView() {
     isSignup && signupMode === "invite" && invite,
     submit,
     isSignup
-      ? el("a", { class: "login-switch", href: href("login") }, "Have an account? Sign in")
-      : signupMode !== "closed" && el("a", { class: "login-switch", href: href("signup") }, "New here? Create an account"),
+      ? el("a", { class: "login-switch", href: pageHref("login") }, "Have an account? Sign in")
+      : signupMode !== "closed" && el("a", { class: "login-switch", href: pageHref("signup") }, "New here? Create an account"),
   );
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -102,7 +114,7 @@ function formView() {
       return;
     }
     auth.clear(); // a stale read token must not shadow the new session
-    location.replace(href("./"));
+    location.replace(href(afterLogin));
   });
 
   // A server with tokens but no accounts can only be read with a token.

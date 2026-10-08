@@ -131,6 +131,25 @@ export const realAPI = {
     csrfToken = "";
   },
 
+  // Tokens belong to the signed-in account. The secret comes back from
+  // createToken once and is never listed.
+  async listTokens() {
+    return (await getJSON("v1/tokens")).tokens;
+  },
+
+  createToken(name, scope, machineID) {
+    return postJSON("v1/tokens", { name, scope, machine_id: machineID || "" });
+  },
+
+  revokeToken(id) {
+    return sendJSON("DELETE", `v1/tokens/${encodeURIComponent(id)}`);
+  },
+
+  // approveLink approves the code a machine printed during `firekeeper login`.
+  approveLink(userCode, machineName) {
+    return postJSON("v1/link/approve", { user_code: userCode, machine_name: machineName });
+  },
+
   listSessions(filters, cursor, limit = 50) {
     return getJSON("v1/sessions", { ...filters, cursor, limit });
   },
