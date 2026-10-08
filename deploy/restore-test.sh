@@ -3,7 +3,8 @@
 # on it, and compare session and event counts with the backup file itself.
 #
 #   usage: restore-test.sh BACKUP.db
-#   FIREKEEPER_IMAGE  image to test with (default firekeeper:local)
+#   FIREKEEPER_IMAGE  image to test with (default: .env beside this script,
+#                     else firekeeper:local)
 #
 # Touches nothing but the temporary volume and container it creates, and
 # removes both. It never reads or prints transcript text, only counts.
@@ -11,6 +12,10 @@ set -eu
 
 file=${1:?usage: restore-test.sh BACKUP.db}
 [ -f "$file" ] || { echo "restore-test: no such file" >&2; exit 2; }
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -z "${FIREKEEPER_IMAGE:-}" ] && [ -f "$here/.env" ]; then
+	FIREKEEPER_IMAGE=$(sed -n 's/^FIREKEEPER_IMAGE=//p' "$here/.env" | tail -n 1)
+fi
 image=${FIREKEEPER_IMAGE:-firekeeper:local}
 dir=$(cd "$(dirname "$file")" && pwd)
 base=$(basename "$file")
