@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/DanBradbury/firekeeper/internal/server/auth"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
@@ -77,6 +78,16 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
+// machineAllowed rejects a request whose machine differs from the one the
+// caller's ingest token is bound to.
+func machineAllowed(w http.ResponseWriter, r *http.Request, machineID string) bool {
+	if p, ok := auth.From(r.Context()); ok && p.MachineID != "" && p.MachineID != machineID {
+		writeErr(w, http.StatusForbidden, "forbidden", "token is bound to a different machine")
+		return false
+	}
+	return true
+}
+
 func storeErr(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrInvalid) {
 		writeErr(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -88,7 +99,7 @@ func storeErr(w http.ResponseWriter, err error) {
 func ingest(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req ingestRequest
-		if !decode(w, r, &req) {
+		if !decode(w, r, &req) || !machineAllowed(w, r, req.Machine.ID) {
 			return
 		}
 		n := 0
@@ -111,7 +122,7 @@ func ingest(s *store.Store) http.HandlerFunc {
 func heartbeat(s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req heartbeatRequest
-		if !decode(w, r, &req) {
+		if !decode(w, r, &req) || !machineAllowed(w, r, req.Machine.ID) {
 			return
 		}
 		if err := s.Heartbeat(r.Context(), req.Machine, req.Sessions); err != nil {
