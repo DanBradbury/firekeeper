@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DanBradbury/firekeeper/docs/event.schema.json",
+  "title": "Firekeeper transcript event",
+  "description": "One normalized transcript event. The idempotency key is (machine_id, session_id, seq). Kept in sync with transcript.Event by internal/transcript/schema_test.go.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "machine_id",
+    "session_id",
+    "provider",
+    "seq",
+    "ts",
+    "role",
+    "text",
+    "tool_name",
+    "model",
+    "tokens",
+    "raw"
+  ],
+  "properties": {
+    "machine_id": {
+      "type": "string",
+      "description": "Per-machine id from ~/.firekeeper/machine-id."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Provider-native session id."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["codex", "copilot", "kimi", "claude"]
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Zero-based index of the event in its source; identical on every re-read. Line index for JSONL, row order by a stable key for SQLite."
+    },
+    "ts": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "RFC3339 timestamp, or null when the source has none."
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "assistant", "tool_call", "tool_result", "system", "meta"],
+      "description": "Records a parser cannot interpret are emitted with role meta, never dropped."
+    },
+    "text": {
+      "type": "string",
+      "description": "What a human would read; may be empty. Tool output longer than 64 KiB ends with a [truncated N bytes] marker."
+    },
+    "tool_name": {
+      "type": ["string", "null"]
+    },
+    "model": {
+      "type": ["string", "null"]
+    },
+    "tokens": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output", "cache"],
+      "properties": {
+        "input": { "type": "integer", "minimum": 0 },
+        "output": { "type": "integer", "minimum": 0 },
+        "cache": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "raw": {
+      "description": "The original record after redaction, untruncated."
+    }
+  }
+}
