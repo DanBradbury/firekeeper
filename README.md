@@ -256,6 +256,19 @@ Sessions are never read when their working directory is unknown, or when the
 directory or any parent up to its Git root contains a `.firekeeper-ignore`
 file.
 
+### Config file
+
+`~/.firekeeper/config.toml` (override with `FIREKEEPER_CONFIG`) may set
+`server`, `token`, `providers`, `interval`, `exclude`, `repo_url_template`,
+`[redact] paths`, and `[prices."model"]` (`input`, `output`, `cache`). Precedence
+is flags, then environment (`FIREKEEPER_SERVER`, `_TOKEN`, `_PROVIDERS`,
+`_INTERVAL`, `_EXCLUDE`, `_REDACT_PATHS`, `_REPO_URL_TEMPLATE`), then the file,
+then defaults. `exclude` takes directory globs (a match on the session's
+directory, a parent, or its Git root) and Git remote patterns such as
+`github.com/acme/*`; matching sessions are skipped without opening their
+transcripts, and `report --dry-run` lists them. `firekeeper config show`
+prints the merged config with the token masked.
+
 Read offsets live in `~/.firekeeper/state.json` and advance only after the
 server accepts a batch, so an interrupted pass can be rerun without losing
 or duplicating events. A transcript that shrinks is re-read from the start;

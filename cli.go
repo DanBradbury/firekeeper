@@ -19,6 +19,7 @@ var subcommands = []subcommand{
 	{"export", "export local transcripts (not implemented)", runExport},
 	{"report", "upload session metadata and redacted transcripts once", runReport},
 	{"serve", "run the local dashboard server and web UI", runServe},
+	{"config", "show the merged config (config show)", runConfig},
 	{"daemon", "report continuously in the background (not implemented)", runDaemon},
 }
 

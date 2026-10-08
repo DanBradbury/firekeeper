@@ -606,3 +606,57 @@ func TestDiscoveryWarningsDoNotStopThePass(t *testing.T) {
 		t.Fatalf("summary = %+v, err %v", summary, err)
 	}
 }
+
+// tripwireSource fails the test if the reporter locates or reads anything.
+type tripwireSource struct{ t *testing.T }
+
+func (s tripwireSource) Locate(session.Meta) ([]string, error) {
+	s.t.Error("excluded session's transcript was located")
+	return nil, nil
+}
+
+func (s tripwireSource) Read(string, int64) ([]transcript.Event, int64, error) {
+	s.t.Error("excluded session's transcript was read")
+	return nil, 0, nil
+}
+
+func TestExcludedSessionsAreNeverRead(t *testing.T) {
+	tests := []struct {
+		name    string
+		exclude func(f *fixture) []string
+		skipped bool
+	}{
+		{"directory glob", func(f *fixture) []string { return []string{filepath.Join(f.home, "src", "*")} }, true},
+		{"git remote", func(f *fixture) []string {
+			os.WriteFile(filepath.Join(f.repo, ".git", "config"), []byte("[remote \"origin\"]\n\turl = https://github.com/acme/secret.git\n"), 0o644)
+			return []string{"github.com/acme/*"}
+		}, true},
+		{"no match", func(f *fixture) []string { return []string{"/elsewhere"} }, false},
+	}
+	for _, tt := range tests {
+		for _, dry := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s dry=%v", tt.name, dry), func(t *testing.T) {
+				f := newFixture(t)
+				var out bytes.Buffer
+				cfg := f.config("http://127.0.0.1:1")
+				cfg.DryRun = dry
+				cfg.Out = &out
+				cfg.Exclude = tt.exclude(f)
+				cfg.Client = &http.Client{Transport: failTransport{t}}
+				if tt.skipped {
+					cfg.Sources = func(transcript.Provider) (transcript.TranscriptSource, bool) {
+						return tripwireSource{t}, true
+					}
+				}
+				got := runOnce(t, cfg)
+				if tt.skipped {
+					if got.Skipped != "excluded by config" || !strings.Contains(out.String(), "skipped (excluded by config)") {
+						t.Fatalf("result = %+v, output %q", got, out.String())
+					}
+				} else if got.Skipped != "" {
+					t.Fatalf("result = %+v", got)
+				}
+			})
+		}
+	}
+}

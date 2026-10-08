@@ -41,7 +41,12 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper report", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	cfg := reporter.Config{Out: stdout}
-	fs.StringVar(&cfg.Server, "server", reporter.DefaultServer, "dashboard server URL")
+	fileCfg, err := loadConfig()
+	if err != nil {
+		fmt.Fprintf(stderr, "firekeeper report: %v\n", err)
+		return 2
+	}
+	fs.StringVar(&cfg.Server, "server", fileCfg.Server, "dashboard server URL")
 	var providers providerList
 	fs.Var(&providers, "provider", "upload this provider's sessions (repeatable); with none, nothing is uploaded")
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "print what would be uploaded without uploading")
@@ -60,7 +65,18 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "firekeeper report: --since must not be negative")
 		return 2
 	}
+	if len(providers) == 0 {
+		for _, name := range fileCfg.Providers {
+			provider := transcript.Provider(strings.ToLower(name))
+			if !provider.Valid() {
+				fmt.Fprintf(stderr, "firekeeper report: config: unknown provider %q\n", name)
+				return 2
+			}
+			providers = append(providers, provider)
+		}
+	}
 	cfg.Providers = providers
+	cfg.Exclude = fileCfg.Exclude
 	if len(providers) == 0 && !cfg.DryRun {
 		fmt.Fprintln(stderr, "firekeeper report: no --provider given; uploading nothing. Showing what would be uploaded.")
 	}

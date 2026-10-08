@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -82,5 +84,51 @@ func TestReportExitCodes(t *testing.T) {
 				t.Fatalf("stderr = %q, want %q", stderr.String(), tt.stderr)
 			}
 		})
+	}
+}
+
+func TestReportConfigPrecedence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte("server = \"http://file:1\"\nproviders = [\"codex\"]\nexclude = [\"/x\"]\n"), 0o600)
+	t.Setenv("FIREKEEPER_CONFIG", path)
+	tests := []struct {
+		name       string
+		env        string
+		args       []string
+		wantServer string
+		wantProv   int
+	}{
+		{"file", "", nil, "http://file:1", 1},
+		{"env over file", "http://env:2", nil, "http://env:2", 1},
+		{"flag over env", "http://env:2", []string{"--server", "http://flag:3", "--provider", "copilot"}, "http://flag:3", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("FIREKEEPER_SERVER", tt.env)
+			cfg := stubReport(t, reporter.Summary{}, nil)
+			var stdout, stderr bytes.Buffer
+			if code := runReport(tt.args, &stdout, &stderr); code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+			if cfg.Server != tt.wantServer || len(cfg.Providers) != tt.wantProv || len(cfg.Exclude) != 1 {
+				t.Fatalf("config = %+v", *cfg)
+			}
+		})
+	}
+}
+
+func TestConfigShowMasksToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte("token = \"verysecrettoken\"\n"), 0o600)
+	t.Setenv("FIREKEEPER_CONFIG", path)
+	var stdout, stderr bytes.Buffer
+	if code := runConfig([]string{"show"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if strings.Contains(stdout.String(), "verysecrettoken") || !strings.Contains(stdout.String(), "****oken") {
+		t.Fatalf("output = %q", stdout.String())
+	}
+	if runConfig(nil, &stdout, &stderr) != 2 {
+		t.Fatal("want usage error")
 	}
 }

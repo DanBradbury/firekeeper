@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/redact"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -49,6 +50,9 @@ type Config struct {
 	Providers []transcript.Provider
 	// DryRun reads and redacts but uploads nothing and saves no offsets.
 	DryRun bool
+	// Exclude lists directory globs and Git remote patterns; matching
+	// sessions are skipped without opening their transcripts.
+	Exclude []string
 	// Since, when positive, skips transcript files not modified within it.
 	Since time.Duration
 	// Home overrides the user's home directory for state, discovery, and
@@ -158,6 +162,7 @@ type run struct {
 	sources   func(transcript.Provider) (transcript.TranscriptSource, bool)
 	now       func() time.Time
 	machine   machine
+	exclude   *config.Excluder
 }
 
 func newRun(cfg Config) (*run, error) {
@@ -184,6 +189,7 @@ func newRun(cfg Config) (*run, error) {
 		}
 		r.home = home
 	}
+	r.exclude = config.NewExcluder(cfg.Exclude, r.home)
 	if r.statePath == "" {
 		r.statePath = filepath.Join(r.home, ".firekeeper", "state.json")
 	}
@@ -236,6 +242,9 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 	case meta.CWD == "":
 		// Without a directory the ignore rules cannot be checked.
 		result.Skipped = "working directory unknown"
+		return result
+	case excluded(r.exclude, meta.CWD):
+		result.Skipped = "excluded by config"
 		return result
 	case ignored(meta.CWD):
 		result.Skipped = ".firekeeper-ignore"
@@ -506,4 +515,9 @@ func ignored(dir string) bool {
 		}
 		dir = parent
 	}
+}
+
+func excluded(e *config.Excluder, cwd string) bool {
+	_, ok := e.Excluded(cwd)
+	return ok
 }
