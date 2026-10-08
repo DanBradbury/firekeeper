@@ -312,3 +312,26 @@ func TestRunSignup(t *testing.T) {
 		t.Fatalf("after first signup: %d", resp.StatusCode)
 	}
 }
+
+func TestHealthzNeedsNoCredentials(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "d", "dashboard.db")
+	if err := os.MkdirAll(filepath.Dir(db), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Open(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.CreateToken(context.Background(), store.DefaultAccountID, "r", store.ScopeRead, ""); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	base, _ := start(t, Config{DB: db})
+	resp, body := get(t, base+"/healthz")
+	if resp.StatusCode != http.StatusOK || strings.TrimSpace(string(body)) != "ok" {
+		t.Fatalf("healthz: %d %q", resp.StatusCode, body)
+	}
+	if resp, _ := get(t, base+"/v1/machines"); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("auth still on: %d", resp.StatusCode)
+	}
+}
