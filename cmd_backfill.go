@@ -73,6 +73,7 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg.Providers = providers
 	cfg.Token = tokenFlag()
+	cfg.Version = reporterVersion()
 	if len(providers) == 0 && !cfg.DryRun {
 		fmt.Fprintln(stderr, "firekeeper backfill: no --provider given; uploading nothing. Showing the plan.")
 	}

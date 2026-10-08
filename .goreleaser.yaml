@@ -1,0 +1,84 @@
+# GoReleaser configuration for Firekeeper release binaries.
+# See docs/releasing.md for how a release is cut.
+version: 2
+
+project_name: firekeeper
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: firekeeper
+    main: .
+    binary: firekeeper
+    env:
+      # Every dependency is pure Go. If one ever needs cgo, the build fails
+      # here instead of silently producing a cgo binary.
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }} -X main.date={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: firekeeper
+    ids:
+      - firekeeper
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      # Embedded artwork is CC BY 3.0; its attribution travels with the binary.
+      - ASSETS.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge pull request"
+      - "^Merge branch"
+
+release:
+  github:
+    owner: DanBradbury
+    name: firekeeper
+  # Tags with a prerelease suffix, such as v0.1.0-rc1, publish as prereleases.
+  prerelease: auto
+
+# A Homebrew formula, not a cask: formulae are not quarantined, so macOS
+# shows no Gatekeeper prompt for the unsigned binary.
+brews:
+  - name: firekeeper
+    ids:
+      - firekeeper
+    repository:
+      owner: DanBradbury
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/DanBradbury/firekeeper
+    description: Keyboard-driven terminal dashboard for monitoring coding-agent harnesses
+    commit_msg_template: "firekeeper {{ .Tag }}"
+    # Prereleases such as v0.1.0-rc1 do not update the formula.
+    skip_upload: auto
+    install: |
+      bin.install "firekeeper"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/firekeeper --version")

@@ -116,9 +116,7 @@ func NewService(args []string, out io.Writer) (*Service, error) {
 	if err != nil {
 		return nil, errors.New("find the firekeeper executable")
 	}
-	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
-		exe = resolved
-	}
+	exe = serviceExecutable(exe, filepath.EvalSymlinks)
 	env := map[string]string{}
 	for _, key := range serviceEnv {
 		if v := os.Getenv(key); v != "" {
@@ -530,4 +528,18 @@ func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	line, _, _ := strings.Cut(s, "\n")
 	return strings.TrimSpace(line)
+}
+
+// serviceExecutable resolves symlinks in exe, except into a Homebrew Cellar:
+// there the resolved path names one version and is deleted by brew upgrade,
+// while the symlink in Homebrew's bin directory follows upgrades.
+func serviceExecutable(exe string, evalSymlinks func(string) (string, error)) string {
+	resolved, err := evalSymlinks(exe)
+	if err != nil {
+		return exe
+	}
+	if strings.Contains(filepath.ToSlash(resolved), "/Cellar/") {
+		return exe
+	}
+	return resolved
 }

@@ -100,6 +100,7 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	}
 	cfg.Reporter.Server = flags.server
 	cfg.Reporter.Providers = flags.providers
+	cfg.Reporter.Version = reporterVersion()
 
 	// The first signal stops gracefully after the batch in flight. Offsets
 	// are saved after every batch, so a second signal can exit at once.

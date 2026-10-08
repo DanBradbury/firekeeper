@@ -30,3 +30,6 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
+
+# GoReleaser output
+/dist/

@@ -25,24 +25,52 @@ More harnesses and providers are planned.
 
 ## Install
 
-Firekeeper currently builds from source and requires Go 1.26 or newer. From a
-repository checkout:
+Install with Homebrew or the install script, then launch Firekeeper:
 
 ```sh
-go build -o firekeeper .
+brew install DanBradbury/tap/firekeeper
+curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
 ```
 
-Or install directly with Go:
+```sh
+firekeeper
+```
+
+Use either command; both install the same release binary and need no Go
+toolchain. Release binaries exist for macOS (Apple Silicon and Intel) and
+Linux (amd64 and arm64). macOS is the supported platform; Linux is best
+effort.
+
+The install script detects your OS and architecture, downloads the matching
+archive from the latest GitHub release, verifies its SHA-256 checksum, and
+installs `firekeeper` to `~/.local/bin` without sudo. It prints a `PATH` hint
+if that directory is not on your `PATH`. Set `FIREKEEPER_INSTALL_DIR` to
+install elsewhere, or pin a release with `--version`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh -s -- --version v0.1.0
+```
+
+`firekeeper --version` (or `firekeeper version`) prints the version, commit,
+and build date.
+
+### From source
+
+Building from source requires Go 1.26 or newer:
 
 ```sh
 go install github.com/DanBradbury/firekeeper@latest
 ```
 
-Move the resulting binary somewhere on your `PATH`, then launch it:
+Or from a repository checkout:
 
 ```sh
-firekeeper
+go build -o firekeeper .
 ```
+
+Move the resulting binary somewhere on your `PATH`. Source builds report
+version `dev` unless built with the release `-ldflags`; `go install ...@vX.Y.Z`
+reports that module version.
 
 For local development:
 
@@ -475,6 +503,35 @@ Provider enrichment failures return usable runtime metadata with a warning.
 
 All monitoring stays local. Firekeeper does not proxy prompts or replace agent
 clients.
+
+## Uninstall
+
+1. If you installed the background daemon, remove its service first:
+
+   ```sh
+   firekeeper daemon uninstall
+   ```
+
+2. Remove the binary, the same way you installed it:
+
+   ```sh
+   brew uninstall firekeeper                # Homebrew
+   rm ~/.local/bin/firekeeper               # install script (or $FIREKEEPER_INSTALL_DIR/firekeeper)
+   rm "$(go env GOPATH)/bin/firekeeper"     # go install
+   ```
+
+3. Firekeeper's data stays in `~/.firekeeper` until you delete it: reporter
+   read offsets (`state.json`), the machine id (`machine-id`), daemon logs and
+   lock files, and the dashboard database from `serve` (`dashboard.db`,
+   including its token hashes). To remove all of it:
+
+   ```sh
+   rm -rf ~/.firekeeper
+   ```
+
+   TUI settings live separately in `firekeeper/settings.json` under your
+   user config directory (`~/Library/Application Support` on macOS,
+   `~/.config` on Linux); delete that folder too to remove them.
 
 ## Status
 

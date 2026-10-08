@@ -21,6 +21,7 @@ var subcommands = []subcommand{
 	{"backfill", "upload sessions already on this machine once (--provider required)", runBackfill},
 	{"serve", "run the local dashboard server and web UI", runServe},
 	{"daemon", "upload continuously (--provider required); install, uninstall, status, logs", runDaemon},
+	{"version", "print version, commit, and build date (also --version)", runVersion},
 }
 
 // runSubcommand dispatches on the first argument. It reports false when the
@@ -28,6 +29,11 @@ var subcommands = []subcommand{
 func runSubcommand(args []string, stdout, stderr io.Writer) (int, bool) {
 	if len(args) == 0 {
 		return 0, false
+	}
+	// --version is accepted only as the sole first argument, so the TUI's
+	// own flags stay unchanged.
+	if args[0] == "--version" || args[0] == "-version" {
+		return runVersion(args[1:], stdout, stderr), true
 	}
 	for _, cmd := range subcommands {
 		if cmd.name == args[0] {

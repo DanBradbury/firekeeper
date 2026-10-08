@@ -558,3 +558,26 @@ func TestNewServiceCapturesProviderHomes(t *testing.T) {
 		t.Fatal("unset variables must not be captured")
 	}
 }
+
+func TestServiceExecutableKeepsHomebrewSymlink(t *testing.T) {
+	links := map[string]string{
+		"/opt/homebrew/bin/firekeeper": "/opt/homebrew/Cellar/firekeeper/0.1.0/bin/firekeeper",
+		"/Users/dev/.local/bin/fk":     "/Users/dev/src/firekeeper/firekeeper",
+	}
+	eval := func(p string) (string, error) {
+		if r, ok := links[p]; ok {
+			return r, nil
+		}
+		return "", errors.New("no such file")
+	}
+	tests := map[string]string{
+		"/opt/homebrew/bin/firekeeper": "/opt/homebrew/bin/firekeeper",
+		"/Users/dev/.local/bin/fk":     "/Users/dev/src/firekeeper/firekeeper",
+		"/missing/firekeeper":          "/missing/firekeeper",
+	}
+	for exe, want := range tests {
+		if got := serviceExecutable(exe, eval); got != want {
+			t.Errorf("serviceExecutable(%q) = %q, want %q", exe, got, want)
+		}
+	}
+}
