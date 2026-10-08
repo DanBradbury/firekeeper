@@ -35,6 +35,8 @@ func TestHandlerServesAssets(t *testing.T) {
 		{"/", "text/html", `<script type="module" src="app.js">`},
 		{"/app.js", "javascript", "renderText"},
 		{"/api.js", "javascript", "v1/sessions"},
+		{"/api.js", "javascript", "v1/usage"},
+		{"/app.js", "javascript", "usageView"},
 		{"/mock.js", "javascript", "createMockAPI"},
 		{"/app.css", "text/css", ".event"},
 		{"/favicon.svg", "image/svg+xml", "<svg"},
@@ -92,6 +94,7 @@ func TestNoExternalReferences(t *testing.T) {
 			return err
 		}
 		s := strings.ReplaceAll(string(b), `xmlns="http://www.w3.org/2000/svg"`, "")
+		s = strings.ReplaceAll(s, `const SVG_NS = "http://www.w3.org/2000/svg";`, "")
 		if m := urlRe.FindString(s); m != "" {
 			t.Errorf("%s references external URL %q", path, m)
 		}
