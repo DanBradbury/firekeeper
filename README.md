@@ -229,6 +229,7 @@ firekeeper report --dry-run  # show what one upload pass would send
 firekeeper report --provider codex --provider copilot
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 firekeeper daemon --provider codex   # report every 15 seconds until stopped
+firekeeper daemon install --provider codex   # run the daemon at login
 ```
 
 `report` runs one pass: it discovers running sessions, reads transcript
@@ -315,6 +316,7 @@ firekeeper daemon --provider codex --provider copilot
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
 | `--provider NAME` | Upload this provider's sessions. Repeatable. Required: the daemon refuses to start without one. |
 | `--interval DURATION` | Time between passes. Default `15s`, minimum `5s`. |
+| `--quiet` | Log only to `~/.firekeeper/daemon.log`, not to stderr. |
 
 - The provider allowlist works exactly as it does for `report`. Heartbeats
   list only sessions the pass was allowed to read, never sessions from
@@ -335,9 +337,10 @@ firekeeper daemon --provider codex --provider copilot
   counts, session ids, and errors, never transcript text. At 10 MiB it is
   rotated to `daemon.log.1`, and up to three old files (`.1` to `.3`) are
   kept.
-- The daemon does not detach or install itself as a service. Run it under
-  `launchd`, `systemd --user`, `tmux`, or `nohup` if you want it in the
-  background.
+- `--quiet` logs only to `daemon.log`, not to stderr. The installed
+  service uses it.
+- `daemon` itself does not detach. To run it in the background at login,
+  install it as a service (below), or run it under `tmux` or `nohup`.
 
 Idle cost was measured on Linux (12 cores) with the daemon at the default
 interval, a local `serve`, and no new transcript events, by reading
@@ -350,6 +353,49 @@ blocked on a timer and does no work.
 
 `export` is a placeholder that prints `not implemented` and exits with
 status 2.
+
+### Running the daemon at login
+
+```sh
+firekeeper daemon install --provider codex --provider copilot
+firekeeper daemon status
+firekeeper daemon logs -f
+firekeeper daemon uninstall
+```
+
+`daemon install` takes the same `--server`, `--provider`, and `--interval`
+flags as `daemon`, writes them into a per-user service definition, and
+starts the service. The service runs the binary you ran `install` with
+(symlinks resolved) as `firekeeper daemon --quiet ...`, so after moving or
+reinstalling Firekeeper, or to change flags, run `install` again; it
+replaces the definition and restarts the service. `install` copies `PATH`,
+`CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, and `XDG_CONFIG_HOME` from
+your shell into the definition when they are set. It refuses to install a
+temporary `go run` build. Nothing here needs or uses `sudo`.
+
+- macOS: writes `~/Library/LaunchAgents/dev.firekeeper.daemon.plist` and
+  loads it with `launchctl bootstrap gui/$UID`. launchd restarts the daemon
+  if it exits with an error, at most every 30 seconds, but not after a
+  clean stop. Errors from before the daemon opens its log, such as another
+  daemon holding the lock, go to `~/.firekeeper/daemon.stderr.log`.
+- Linux (best effort, not yet tested on real hardware): writes
+  `~/.config/systemd/user/firekeeper.service` (or under
+  `$XDG_CONFIG_HOME`) and runs `systemctl --user daemon-reload`, `enable`,
+  and `restart`. Startup errors go to `journalctl --user -u
+  firekeeper.service`. User services stop when you log out unless lingering
+  is enabled for your user (`loginctl enable-linger`), which Firekeeper
+  does not do for you.
+
+| Command | Meaning |
+| --- | --- |
+| `daemon install [flags] [--dry-run]` | Write the service definition and start it. `--dry-run` prints the file and the commands without writing or running anything. |
+| `daemon uninstall [--purge]` | Stop the service and remove its definition. `~/.firekeeper` is left alone unless `--purge` is passed, which deletes the read offsets (`state.json`), the machine id, and the daemon's logs and lock file. A dashboard database from `serve` is never deleted. |
+| `daemon status` | Show whether the service is installed and running, its pid, and its last exit status. Exits 0 when running and 3 otherwise. |
+| `daemon logs [-n LINES] [-f]` | Print the last lines of `~/.firekeeper/daemon.log` (default 50); `-f` keeps printing new lines, across rotations, until interrupted. |
+
+The installed daemon does not send a bearer token yet: `daemon` has no
+`--token` flag, and `install` does not write secrets into service files.
+Use it with a dashboard that has no tokens, on loopback.
 
 ## How session discovery works
 
