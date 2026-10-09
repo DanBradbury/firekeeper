@@ -232,7 +232,7 @@ under Usage.
 `report`, `backfill`, `daemon`, and `serve`. `report`, `backfill`, and `daemon`
 send session metadata and full transcripts to a dashboard server that you run
 (see [docs/self-hosting.md](docs/self-hosting.md), or [docs/hosting.md](docs/hosting.md) for HTTPS on a VPS). Nothing is sent until you
-name a provider, with `--provider` or the config file, and point at a server.
+allow providers with `--provider`, `backfill --all`, or the config file, and point at a server.
 `report --dry-run` shows what would be sent without opening a connection.
 Agent CLIs never depend on any of these commands.
 
@@ -271,7 +271,8 @@ reporting subcommands are being added; `firekeeper --help` lists them.
 firekeeper snapshot --json   # print currently discovered sessions as JSON
 firekeeper report --dry-run  # show what one upload pass would send
 firekeeper report --provider codex --provider copilot
-firekeeper backfill --provider codex --dry-run   # plan importing past sessions
+firekeeper backfill --all --dry-run   # plan importing all supported local history
+firekeeper backfill --all             # confirm and import past sessions
 firekeeper serve             # run the dashboard at http://127.0.0.1:7777/
 firekeeper daemon --provider codex   # report every 15 seconds until stopped
 firekeeper daemon install   # detect providers and run the daemon at login
@@ -329,17 +330,27 @@ have ended, in one pass, then exits. Run it once when you start using the
 dashboard; `daemon` or `report` keeps new activity flowing afterwards.
 
 ```sh
-firekeeper backfill --provider codex --dry-run   # print the plan only
-firekeeper backfill --provider codex             # print the plan, ask, upload
+firekeeper backfill --all --dry-run              # detect providers and print the plan
+firekeeper backfill --all                        # print the plan, ask, upload all detected providers
+firekeeper backfill --all --yes                  # upload without the confirmation prompt
+firekeeper backfill --provider codex             # import only Codex
 ```
 
 It first prints a plan per provider: sessions, files, bytes, an estimated
 event and request count, and the range of last-activity dates, plus how many
 sessions were excluded or are already fully uploaded. The plan holds counts
-and dates only, never transcript text. Uploading needs `--provider` and a
+and dates only, never transcript text. Uploading needs `--all`, `--provider`,
+or a configured provider allowlist, and a
 `y` at the confirmation prompt; without a terminal to ask on, `backfill`
-refuses unless `--yes` is given. With no `--provider`, or with `--dry-run`,
+refuses unless `--yes` is given. With no provider opt-in, or with `--dry-run`,
 it prints the plan and stops without opening a network connection.
+
+`--all` detects Codex, Copilot, and Claude Code from their local data directories
+or executables on `PATH`, honoring provider home overrides. It allows those
+providers for this pass, replacing any configured allowlist without changing
+the config file. Use either `--all` or `--provider`, not both. After `login`,
+the saved server and token are used automatically. Kimi and OpenCode have no
+transcript upload adapters yet; Claude Code subagent files are not imported.
 
 Sessions upload newest first, so the dashboard is useful early, with one
 progress line per session on stderr. Uploads go through the same redaction,
@@ -353,7 +364,8 @@ keeps the state discovery reports for it.
 | Flag | Meaning |
 | --- | --- |
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`. |
-| `--provider NAME` | Import this provider's sessions. Repeatable. Codex and Copilot can be backfilled today; Claude Code sessions are uploaded only while running, by `report` and `daemon`. |
+| `--provider NAME` | Import this provider's sessions. Repeatable. Codex, Copilot, and Claude Code (`claude`) can be backfilled. |
+| `--all` | Import all supported providers found locally, for this pass only. |
 | `--since DURATION` | Only import transcripts modified within the duration, for example `720h`. |
 | `--after YYYY-MM-DD` | Only import transcripts modified after this local date. Use `--since` or `--after`, not both. |
 | `--limit N` | Import at most N sessions, newest first. Run again to continue. |
@@ -366,6 +378,9 @@ with the reason. For Codex and Copilot sessions whose working directory is in
 the provider's local database, the check happens before the transcript is
 opened; otherwise the start of the transcript (at most 64 KiB) is read to
 learn the directory, and nothing more of an excluded transcript is read.
+Claude Code also reads at most 64 KiB to learn the directory; unknown directories
+are excluded. Historical Claude metadata uses the first available branch and
+model in that head, with file modification time as last activity.
 
 `serve` runs the dashboard: the v1 API under `/v1/` and the web UI at `/`,
 on one port. It prints the URL on startup and runs until interrupted. On
