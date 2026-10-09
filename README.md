@@ -525,8 +525,13 @@ more than 90 seconds old; cards update from the live stream and the clock, so
 no reload is needed. A new account with no machines shows how to link one,
 and a machine that has linked but uploaded nothing shows as online with zero
 sessions. **Sessions** lists every machine's sessions, newest first, with the
-machine name on each row; the machine filter narrows it and search spans all
-machines. In mock mode, `?mock=1&machines=none` and `?mock=1&machines=linked`
+machine name on each row; machine, provider, project, and state filters narrow
+it, and search spans all machines. The **Usage** page also filters token totals,
+daily charts, and the project table by project within the selected date range.
+On either page, enter an exact project name or choose a suggestion from the
+loaded results; clear the Project field to show all projects. Project filters
+stay in the page URL for sharing and reloading.
+In mock mode, `?mock=1&machines=none` and `?mock=1&machines=linked`
 show those two empty states.
 
 ```sh

@@ -168,8 +168,8 @@ export const realAPI = {
 
   // usage returns token sums for [from, to] (YYYY-MM-DD, UTC) grouped by
   // the listed keys.
-  usage(from, to, groupBy) {
-    return getJSON("v1/usage", { from, to, group_by: groupBy.join(",") });
+  usage(from, to, groupBy, project) {
+    return getJSON("v1/usage", { from, to, group_by: groupBy.join(","), project });
   },
 
   // subscribe opens /v1/stream and calls onEvent(type, data). onStatus gets

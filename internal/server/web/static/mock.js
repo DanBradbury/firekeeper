@@ -332,8 +332,8 @@ export async function createMockAPI() {
       return delay({ machines: out });
     },
 
-    usage(from, to, groupBy) {
-      const res = aggregateUsage(usage, from, to, groupBy);
+    usage(from, to, groupBy, project) {
+      const res = aggregateUsage(project ? usage.filter((r) => r.project === project) : usage, from, to, groupBy);
       res.from = `${from}T00:00:00Z`;
       res.to = new Date(Date.parse(to) + 86400e3).toISOString();
       return delay(res);

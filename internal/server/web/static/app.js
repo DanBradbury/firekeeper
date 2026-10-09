@@ -219,6 +219,7 @@ function listView(params) {
   const filters = {
     machine: params.get("machine") || "",
     provider: params.get("provider") || "",
+    project: params.get("project") || "",
     state: params.get("state") || "",
     q: params.get("q") || "",
   };
@@ -229,6 +230,9 @@ function listView(params) {
   const stateSel = el("select", { name: "state" }, el("option", { value: "", text: "All states" }),
     ...STATES.map((s) => el("option", { value: s, text: s.replace("_", " ") })));
   const search = el("input", { type: "search", name: "q", placeholder: "Title or transcript text", value: filters.q });
+  const project = el("input", { type: "text", name: "project", placeholder: "All projects", value: filters.project, list: "session-projects" });
+  const projectOptions = el("datalist", { id: "session-projects" });
+  const knownProjects = new Set();
   providerSel.value = filters.provider;
   stateSel.value = filters.state;
 
@@ -241,6 +245,7 @@ function listView(params) {
     el("form", { class: "filters", role: "search", onsubmit: (e) => e.preventDefault() },
       el("label", {}, "Machine", machineSel),
       el("label", {}, "Provider", providerSel),
+      el("label", {}, "Project", project), projectOptions,
       el("label", {}, "State", stateSel),
       el("label", {}, "Search", search)),
     el("div", { class: "panel table-wrap" },
@@ -269,6 +274,7 @@ function listView(params) {
   function onFilter() {
     filters.machine = machineSel.value;
     filters.provider = providerSel.value;
+    filters.project = project.value.trim();
     filters.state = stateSel.value;
     filters.q = search.value.trim();
     syncHash();
@@ -277,6 +283,7 @@ function listView(params) {
   machineSel.addEventListener("change", onFilter);
   providerSel.addEventListener("change", onFilter);
   stateSel.addEventListener("change", onFilter);
+  project.addEventListener("change", onFilter);
   let searchTimer = null;
   search.addEventListener("input", () => {
     clearTimeout(searchTimer);
@@ -315,6 +322,8 @@ function listView(params) {
     try {
       const res = await api.listSessions(filters, reset ? undefined : cursor, limit);
       if (!alive || my !== token) return;
+      for (const s of res.sessions) if (s.project) knownProjects.add(s.project);
+      projectOptions.replaceChildren(...[...knownProjects].sort().map((p) => el("option", { value: p })));
       const rows = res.sessions.map(row);
       if (reset) tbody.replaceChildren(...rows);
       else tbody.append(...rows);
@@ -942,6 +951,7 @@ function usageView(params) {
   let from = params.get("from");
   let to = params.get("to");
   let metric = params.get("metric") || "total";
+  let project = params.get("project") || "";
   if (!(metric in METRICS)) metric = "total";
   if (range === "custom" && !(validDay(from) && validDay(to) && from <= to)) range = "30";
   if (range !== "custom" && !RANGES.includes(Number(range))) range = "30";
@@ -952,6 +962,9 @@ function usageView(params) {
   const fromIn = el("input", { type: "date", name: "from" });
   const toIn = el("input", { type: "date", name: "to" });
   const metricSel = el("select", { name: "metric" });
+  const projectIn = el("input", { type: "text", name: "project", placeholder: "All projects", value: project, list: "usage-projects" });
+  const projectOptions = el("datalist", { id: "usage-projects" });
+  const knownProjects = new Set();
   const fromLabel = el("label", {}, "From", fromIn);
   const toLabel = el("label", {}, "To", toIn);
 
@@ -974,7 +987,8 @@ function usageView(params) {
   app.append(
     el("h1", { text: "Usage" }),
     el("form", { class: "filters", onsubmit: (e) => e.preventDefault() },
-      el("label", {}, "Range", rangeSel), fromLabel, toLabel, el("label", {}, "Chart", metricSel)),
+      el("label", {}, "Range", rangeSel), fromLabel, toLabel,
+      el("label", {}, "Project", projectIn), projectOptions, el("label", {}, "Chart", metricSel)),
     rangeNote,
     status,
     content,
@@ -1005,6 +1019,7 @@ function usageView(params) {
       p.set("to", to);
     }
     if (metric !== "total") p.set("metric", metric);
+    if (project) p.set("project", project);
     const h = p.size ? `#/usage?${p}` : "#/usage";
     if (location.hash !== h) history.replaceState(null, "", h);
   }
@@ -1043,6 +1058,11 @@ function usageView(params) {
   };
   fromIn.addEventListener("change", onDate);
   toIn.addEventListener("change", onDate);
+  projectIn.addEventListener("change", () => {
+    project = projectIn.value.trim();
+    syncHash();
+    load();
+  });
   metricSel.addEventListener("change", () => {
     metric = metricSel.value;
     syncHash();
@@ -1055,15 +1075,17 @@ function usageView(params) {
     if (!quiet) status.replaceChildren(el("div", { class: "loading", text: "Loading usage…" }));
     try {
       const [daily, projects] = await Promise.all([
-        api.usage(f, t, ["day", "model"]),
-        api.usage(f, t, ["project"]),
+        api.usage(f, t, ["day", "model"], project),
+        api.usage(f, t, ["project"], project),
       ]);
       if (!alive || my !== token) return;
       data = { daily, projects, from: f, to: t, priced: !!daily.priced };
+      for (const r of projects.rows) if (r.group.project) knownProjects.add(r.group.project);
+      projectOptions.replaceChildren(...[...knownProjects].sort().map((p) => el("option", { value: p })));
       fillMetrics(data.priced);
       if (daily.rows.length === 0) {
         content.hidden = true;
-        status.replaceChildren(notice(`No token usage recorded between ${shortDay(f)} and ${shortDay(t)}.`));
+        status.replaceChildren(notice(`No token usage recorded${project ? ` for project "${project}"` : ""} between ${shortDay(f)} and ${shortDay(t)}.`));
         return;
       }
       status.replaceChildren();
