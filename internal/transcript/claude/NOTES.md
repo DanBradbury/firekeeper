@@ -104,6 +104,16 @@ tool name, model, and tokens, and `raw` keeps the record's own `isSidechain`
 (and `agentId`, when present) as the tag. The parser does not add fields to
 `raw`, since `raw` is the original record.
 
+## Historical enumeration
+
+`backfill` enumerates `projects/*/*.jsonl`, including ended sessions. Duplicate
+session IDs use the newest file. File modification time supplies last activity;
+at most the first 64 KiB supplies cwd, branch, model, and start time. Exclusion
+checks run after that bounded metadata read, before any full transcript read.
+Unknown working directories are excluded by the reporter. Encoded project
+names are never decoded into guessed paths. Separate subagent files remain
+unsupported.
+
 ## Reading
 
 - `Locate` returns `meta.RolloutPath` when discovery set it and its file name

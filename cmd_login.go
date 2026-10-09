@@ -84,7 +84,7 @@ func runLogin(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "An earlier stored token was replaced; revoke it on the Tokens page if it is no longer needed.")
 	}
 	if len(c.Providers) == 0 {
-		fmt.Fprintln(stdout, "No providers are enabled, so nothing is uploaded yet. Preview with `firekeeper report --provider NAME --dry-run`, then upload with `firekeeper report --provider NAME` or `firekeeper daemon install`.")
+		fmt.Fprintln(stdout, "No providers are enabled, so nothing is uploaded yet. Preview local history with `firekeeper backfill --all --dry-run`, then import with `firekeeper backfill --all`. Run `firekeeper daemon install` to keep new activity flowing.")
 	}
 	return 0
 }

@@ -12,15 +12,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/daemon"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
+	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
 
 // backfillRun, backfillInput, and backfillInteractive are replaced in tests
 // so backfill never reads real transcripts or waits on a terminal.
 var (
-	backfillRun                   = reporter.Backfill
-	backfillInput       io.Reader = os.Stdin
-	backfillInteractive           = stdinIsTerminal
+	backfillRun                       = reporter.Backfill
+	backfillInput           io.Reader = os.Stdin
+	backfillInteractive               = stdinIsTerminal
+	detectBackfillProviders           = func() ([]transcript.Provider, error) {
+		home, err := configHome()
+		if err != nil {
+			return nil, errors.New("find home directory")
+		}
+		return daemon.DetectProviders(home, nil, nil), nil
+	}
 )
 
 func stdinIsTerminal() bool {
@@ -36,6 +45,7 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 	token := tokenFlag(fs)
 	var providers providerList
 	fs.Var(&providers, "provider", "upload this provider's sessions (repeatable); with none, only the plan is shown")
+	all := fs.Bool("all", false, "import all supported providers found locally for this pass")
 	fs.DurationVar(&cfg.Since, "since", 0, "only import transcripts modified within this duration (for example 720h)")
 	after := fs.String("after", "", "only import transcripts modified after this date (YYYY-MM-DD, local time)")
 	fs.IntVar(&cfg.Limit, "limit", 0, "import at most this many sessions, newest first")
@@ -49,6 +59,10 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 	}
 	if fs.NArg() > 0 {
 		fmt.Fprintf(stderr, "firekeeper backfill: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+	if *all && len(providers) > 0 {
+		fmt.Fprintln(stderr, "firekeeper backfill: use --all or --provider, not both")
 		return 2
 	}
 	if cfg.Since < 0 {
@@ -77,6 +91,22 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	applyReporterConfig(&cfg.Config, c)
+	if *all {
+		cfg.Providers, err = detectBackfillProviders()
+		if err != nil {
+			fmt.Fprintf(stderr, "firekeeper backfill: detect providers: %v\n", err)
+			return 1
+		}
+		if len(cfg.Providers) == 0 {
+			fmt.Fprintln(stdout, "firekeeper backfill: no supported providers found locally; nothing uploaded")
+			return 0
+		}
+		names := make([]string, len(cfg.Providers))
+		for i, provider := range cfg.Providers {
+			names[i] = string(provider)
+		}
+		fmt.Fprintf(stdout, "Detected providers: %s\n", strings.Join(names, ", "))
+	}
 	if len(cfg.Providers) == 0 && !cfg.DryRun {
 		fmt.Fprintln(stderr, "firekeeper backfill: no --provider given; uploading nothing. Showing the plan.")
 	}

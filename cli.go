@@ -18,7 +18,7 @@ var subcommands = []subcommand{
 	{"snapshot", "print currently discovered sessions (--json)", runSnapshot},
 	{"export", "export local transcripts (not implemented)", runExport},
 	{"report", "upload session metadata and redacted transcripts once", runReport},
-	{"backfill", "upload sessions already on this machine once (--provider required)", runBackfill},
+	{"backfill", "upload sessions already on this machine once (--all or --provider)", runBackfill},
 	{"serve", "run the local dashboard server and web UI", runServe},
 	{"login", "link this machine to a dashboard server (--server URL)", runLogin},
 	{"logout", "revoke and remove this machine's stored token", runLogout},
