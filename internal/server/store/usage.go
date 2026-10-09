@@ -50,6 +50,7 @@ func (p Price) cost(t transcript.Tokens) float64 {
 type UsageFilter struct {
 	From, To time.Time
 	GroupBy  []string
+	Project  string // Empty selects all projects; otherwise an exact match.
 	// Prices, when non-empty, adds cost to every row. Models are matched
 	// exactly; tokens from models without a price count as unpriced.
 	Prices map[string]Price
@@ -117,9 +118,14 @@ func (s *Store) Usage(ctx context.Context, accountID string, f UsageFilter) (row
 	query := `SELECT ` + strings.Join(cols, ", ") + `,
     SUM(e.input_tokens), SUM(e.output_tokens), SUM(e.cache_tokens)
 FROM events e JOIN sessions s ON s.account_id = e.account_id AND s.machine_id = e.machine_id AND s.session_id = e.session_id
-WHERE e.account_id = ? AND e.ts >= ? AND e.ts < ? AND (e.input_tokens > 0 OR e.output_tokens > 0 OR e.cache_tokens > 0)
-GROUP BY ` + strings.Join(cols, ", ")
-	res, err := s.db.QueryContext(ctx, query, accountID, fmtTime(&f.From), fmtTime(&f.To))
+WHERE e.account_id = ? AND e.ts >= ? AND e.ts < ? AND (e.input_tokens > 0 OR e.output_tokens > 0 OR e.cache_tokens > 0)`
+	args := []any{accountID, fmtTime(&f.From), fmtTime(&f.To)}
+	if f.Project != "" {
+		query += ` AND s.project = ?`
+		args = append(args, f.Project)
+	}
+	query += ` GROUP BY ` + strings.Join(cols, ", ")
+	res, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, sum, err
 	}

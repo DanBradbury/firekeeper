@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -179,6 +180,65 @@ func TestUsageWithoutPricesHasNoCost(t *testing.T) {
 	}
 	if _, ok := raw["totals"].(map[string]any)["cost"]; ok {
 		t.Fatal("totals have cost without prices")
+	}
+}
+
+func TestUsageProjectFilter(t *testing.T) {
+	s := newStore(t)
+	usageFixture(t, s)
+	// Another account can use the same project and source ids without
+	// contributing any tokens to the default account's filtered totals.
+	ctx := context.Background()
+	other, err := s.CreateAccount(ctx, "other@example.com", "synthetic-hash", "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Ingest(ctx, other.ID, store.Machine{ID: "m1"}, []store.SessionBatch{{
+		Meta: store.SessionMeta{SessionID: "s1", Provider: "codex", Project: "alpha"},
+		Events: []transcript.Event{{
+			Seq: 0, Provider: transcript.ProviderCodex, Role: transcript.RoleAssistant,
+			TS: ts("2026-10-01T12:00:00Z"), Tokens: transcript.Tokens{Input: 99999}, Raw: json.RawMessage(`{}`),
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	h := Handler(s, WithPrices(fixturePrices))
+	for _, tc := range []struct {
+		project  string
+		tokens   transcript.Tokens
+		cost     float64
+		unpriced int64
+	}{
+		{"", transcript.Tokens{Input: 1600, Output: 160, Cache: 80}, 7400e-6, 1100},
+		{"alpha", transcript.Tokens{Input: 1300, Output: 130, Cache: 50}, 605e-6, 1100},
+		{"beta", transcript.Tokens{Input: 300, Output: 30, Cache: 30}, 6795e-6, 0},
+		{"missing", transcript.Tokens{}, 0, 0},
+		{"alpha' OR 1=1 --", transcript.Tokens{}, 0, 0},
+	} {
+		for _, group := range []string{"", "day,model", "project"} {
+			t.Run(tc.project+"/"+group, func(t *testing.T) {
+				var page usagePage
+				path := "/v1/usage?from=2026-10-01&to=2026-10-04&group_by=" + group + "&project=" + url.QueryEscape(tc.project)
+				if code := get(t, h, path, &page); code != http.StatusOK {
+					t.Fatalf("status %d", code)
+				}
+				if page.Totals.Tokens != tc.tokens || !near(page.Totals.Cost, tc.cost) || page.Totals.UnpricedTokens != tc.unpriced {
+					t.Fatalf("wrong filtered totals: %+v", page.Totals)
+				}
+				var sum transcript.Tokens
+				for _, r := range page.Rows {
+					if group == "project" && tc.project != "" && r.Group["project"] != tc.project {
+						t.Fatalf("unexpected project %q", r.Group["project"])
+					}
+					sum.Input += r.Tokens.Input
+					sum.Output += r.Tokens.Output
+					sum.Cache += r.Tokens.Cache
+				}
+				if sum != tc.tokens {
+					t.Fatalf("row tokens %+v, want %+v", sum, tc.tokens)
+				}
+			})
+		}
 	}
 }
 
