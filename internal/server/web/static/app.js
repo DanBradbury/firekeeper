@@ -1398,6 +1398,7 @@ function accountView() {
   })();
 
   return { dispose() { alive = false; }, onStream() {} };
+}
 
 // ---------- tokens ----------
 
