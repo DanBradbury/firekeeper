@@ -405,9 +405,10 @@ firekeeper report --provider codex       # in another terminal
 | `--banner TEXT` | Show this text at the top of every page, such as `Test bed: data may be wiped`. Plain text, at most 300 bytes. |
 
 The web UI has two views, picked in the top bar. **Sessions** lists sessions
-and opens transcripts. **Usage** charts daily token use by model for the last
-7, 30, or 90 days or a custom range, with totals by project and a daily
-table. Days are UTC, and only events with a timestamp are counted. Cost
+and opens transcripts. **Usage** charts daily token use for the last
+7, 30, or 90 days or a custom range. A switch above the chart flips it
+between tokens by model and tokens by provider. Below it are totals by
+project and by provider, plus a daily table. Days are UTC, and only events with a timestamp are counted. Cost
 appears only when a per-model price table is configured; Firekeeper never
 ships prices; set them under `[prices]` in the config file.
 
