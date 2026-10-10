@@ -97,9 +97,13 @@ function tokensTitle(t) {
   return `input ${f(t.input)}, output ${f(t.output)}, cache ${f(t.cache)}`;
 }
 
+// UNKNOWN is a state the provider could not determine; it carries no
+// information for a reader, so it is never shown.
+const SHOWN_STATES = STATES.filter((s) => s !== "UNKNOWN");
+
 function badge(state) {
-  const s = STATES.includes(state) ? state : "UNKNOWN";
-  return el("span", { class: `badge ${s}`, text: s.replace("_", " ") });
+  if (!SHOWN_STATES.includes(state)) return null;
+  return el("span", { class: `badge ${state}`, text: state.replace("_", " ") });
 }
 
 // ---------- routing ----------
@@ -228,7 +232,7 @@ function listView(params) {
   const providerSel = el("select", { name: "provider" }, el("option", { value: "", text: "All providers" }),
     ...PROVIDERS.map((p) => el("option", { value: p, text: p })));
   const stateSel = el("select", { name: "state" }, el("option", { value: "", text: "All states" }),
-    ...STATES.map((s) => el("option", { value: s, text: s.replace("_", " ") })));
+    ...SHOWN_STATES.map((s) => el("option", { value: s, text: s.replace("_", " ") })));
   const search = el("input", { type: "search", name: "q", placeholder: "Title or transcript text", value: filters.q });
   const project = el("input", { type: "text", name: "project", placeholder: "All projects", value: filters.project, list: "session-projects" });
   const projectOptions = el("datalist", { id: "session-projects" });
@@ -300,7 +304,7 @@ function listView(params) {
         sub && el("span", { class: "sub", text: sub })),
       el("td", { text: machineNames.get(s.machine_id) || s.machine_id }),
       el("td", {}, el("span", { class: "provider", text: s.provider })),
-      el("td", {}, badge(s.state)),
+      el("td", {}, badge(s.state) || ""),
       el("td", { class: "model hide-sm", text: s.model || "—" }),
       el("td", { class: "num hide-sm", title: tokensTitle(s.tokens), text: tokensText(s.tokens) }),
       el("td", { class: "when" }, timeEl(s.last_activity_at)));
@@ -380,7 +384,7 @@ const isOnline = (m, now = Date.now()) => {
 function machineCard(m, online) {
   const counts = m.state_counts || {};
   const total = Number(m.session_count) || 0;
-  const chips = STATES.filter((st) => counts[st] > 0).map((st) => {
+  const chips = SHOWN_STATES.filter((st) => counts[st] > 0).map((st) => {
     const qs = new URLSearchParams({ machine: m.id, state: st });
     return el("a", { class: `state-chip ${st}`, href: `#/sessions?${qs}`, title: `${st.replace("_", " ")} sessions on ${m.name || m.id}` },
       el("b", { text: String(counts[st]) }), ` ${st.replace("_", " ").toLowerCase()}`);
@@ -577,6 +581,16 @@ function rawToggle(ev, container, ui) {
   return { btn, set };
 }
 
+// Uninterpreted records (role "meta") and the echo of local slash commands
+// are bookkeeping, not conversation, so the transcript leaves them out.
+const COMMAND_MARKUP = /^\s*(<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat)>[\s\S]*?(<\/\2>)?\s*)+$/;
+
+function hiddenEvent(ev) {
+  const role = ev.role || "meta";
+  if (role === "meta") return true;
+  return role === "system" && COMMAND_MARKUP.test(ev.text || "");
+}
+
 function headBits(ev) {
   const role = ROLE_LABEL[ev.role] || ev.role || "meta";
   const bits = [el("span", { class: "role", text: role })];
@@ -693,6 +707,7 @@ function sessionView(uid) {
   let hasMore = true;
   let loading = false;
   let shown = 0;
+  let visible = 0;
   let headTimer = null;
 
   const head = el("div", {}, el("div", { class: "loading", text: "Loading session…" }));
@@ -795,12 +810,15 @@ function sessionView(uid) {
       if (!alive) return;
       for (const ev of res.events) {
         if (ev.seq <= lastSeq) continue;
-        appendEvent(ev);
+        if (!hiddenEvent(ev)) {
+          appendEvent(ev);
+          visible++;
+        }
         lastSeq = ev.seq;
         shown++;
       }
       hasMore = res.has_more;
-      status.replaceChildren(!hasMore && shown === 0 ? notice("No events stored for this session.") : "");
+      status.replaceChildren(!hasMore && visible === 0 ? notice("No events stored for this session.") : "");
     } catch (err) {
       if (!alive) return;
       // Keep what is loaded; the button retries.
@@ -874,6 +892,13 @@ const METRICS = {
 // modelSlots keeps each model's color for the whole page visit, so changing
 // the range or metric never repaints a model that is still shown.
 const modelSlots = new Map();
+const providerSlots = new Map();
+
+// DIMS are the ways the daily chart can break tokens down.
+const DIMS = {
+  model: { label: "model", tab: "By model", name: (m) => m || "(unknown model)", slots: modelSlots },
+  provider: { label: "provider", tab: "By provider", name: (p) => p || "(unknown provider)", slots: providerSlots },
+};
 
 function svg(tag, attrs, ...children) {
   const n = document.createElementNS(SVG_NS, tag);
@@ -909,18 +934,18 @@ function modelName(m) {
 }
 
 // assignSlots gives each of the top models a stable slot 1..SERIES_SLOTS.
-function assignSlots(models) {
+function assignSlots(slots, models) {
   const used = new Set();
   const want = [];
   for (const m of models) {
-    const s = modelSlots.get(m);
+    const s = slots.get(m);
     if (s && !used.has(s)) used.add(s);
     else want.push(m);
   }
   for (const m of want) {
     let s = 1;
     while (used.has(s)) s++;
-    modelSlots.set(m, s);
+    slots.set(m, s);
     used.add(s);
   }
 }
@@ -945,8 +970,10 @@ function usageView(params) {
   let alive = true;
   let token = 0;
   let refreshTimer = null;
-  let data = null; // { daily, projects, from, to, priced }
+  let data = null; // { daily: {model, provider}, projects, providers, from, to, priced }
 
+  let by = params.get("by") || "model";
+  if (!(by in DIMS)) by = "model";
   let range = params.get("range") || "30";
   let from = params.get("from");
   let to = params.get("to");
@@ -977,11 +1004,30 @@ function usageView(params) {
   const dailyTable = el("div", { class: "table-wrap" });
   const dailyDetails = el("details", { class: "daily" }, el("summary", { text: "Show daily table" }), dailyTable);
   const projectTable = el("div", { class: "panel table-wrap" });
+  const providerTable = el("div", { class: "panel table-wrap" });
+  const byButtons = Object.entries(DIMS).map(([k, d]) => el("button", {
+    type: "button", text: d.tab, "aria-pressed": String(k === by),
+    onclick: () => {
+      if (by === k) return;
+      by = k;
+      syncBy();
+      syncHash();
+      if (data) drawChart();
+    },
+  }));
+  const bySwitch = el("div", { class: "seg", role: "group", "aria-label": "Break tokens down by" }, ...byButtons);
+  function syncBy() {
+    Object.keys(DIMS).forEach((k, i) => byButtons[i].setAttribute("aria-pressed", String(k === by)));
+  }
   const content = el("div", { hidden: true },
     tiles,
-    el("section", { class: "panel chart-panel" }, chartTitle, legend, el("div", { class: "chart-wrap" }, chartBox, tip), dailyDetails),
+    el("section", { class: "panel chart-panel" },
+      el("div", { class: "chart-head" }, chartTitle, bySwitch),
+      legend, el("div", { class: "chart-wrap" }, chartBox, tip), dailyDetails),
     el("h2", { text: "Totals by project" }),
-    projectTable);
+    projectTable,
+    el("h2", { text: "Totals by provider" }),
+    providerTable);
   const rangeNote = el("p", { class: "range-note" });
 
   app.append(
@@ -1019,6 +1065,7 @@ function usageView(params) {
       p.set("to", to);
     }
     if (metric !== "total") p.set("metric", metric);
+    if (by !== "model") p.set("by", by);
     if (project) p.set("project", project);
     const h = p.size ? `#/usage?${p}` : "#/usage";
     if (location.hash !== h) history.replaceState(null, "", h);
@@ -1074,16 +1121,20 @@ function usageView(params) {
     const [f, t] = bounds();
     if (!quiet) status.replaceChildren(el("div", { class: "loading", text: "Loading usage…" }));
     try {
-      const [daily, projects] = await Promise.all([
+      // Both breakdowns load up front so switching the chart is instant.
+      const [dailyModel, dailyProvider, projects, providers] = await Promise.all([
         api.usage(f, t, ["day", "model"], project),
+        api.usage(f, t, ["day", "provider"], project),
         api.usage(f, t, ["project"], project),
+        api.usage(f, t, ["provider"], project),
       ]);
       if (!alive || my !== token) return;
-      data = { daily, projects, from: f, to: t, priced: !!daily.priced };
+      const daily = { model: dailyModel, provider: dailyProvider };
+      data = { daily, projects, providers, from: f, to: t, priced: !!dailyModel.priced };
       for (const r of projects.rows) if (r.group.project) knownProjects.add(r.group.project);
       projectOptions.replaceChildren(...[...knownProjects].sort().map((p) => el("option", { value: p })));
       fillMetrics(data.priced);
-      if (daily.rows.length === 0) {
+      if (dailyModel.rows.length === 0) {
         content.hidden = true;
         status.replaceChildren(notice(`No token usage recorded${project ? ` for project "${project}"` : ""} between ${shortDay(f)} and ${shortDay(t)}.`));
         return;
@@ -1092,7 +1143,8 @@ function usageView(params) {
       content.hidden = false;
       drawTiles();
       drawChart();
-      drawProjects();
+      drawTotals(projectTable, "Project", data.projects, (r) => r.group.project || "(no project)", "project");
+      drawTotals(providerTable, "Provider", data.providers, (r) => DIMS.provider.name(r.group.provider), "model");
     } catch (err) {
       if (!alive || my !== token) return;
       status.replaceChildren(notice(err.message, true));
@@ -1122,8 +1174,9 @@ function usageView(params) {
   // SERIES_SLOTS keep their own color and the rest become "Other".
   function series() {
     const m = METRICS[metric];
+    const dim = DIMS[by];
     const byModel = new Map();
-    for (const r of data.daily.rows) byModel.set(r.group.model, (byModel.get(r.group.model) || 0) + m.of(r));
+    for (const r of data.daily[by].rows) byModel.set(r.group[by], (byModel.get(r.group[by]) || 0) + m.of(r));
     const ranked = [...byModel.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
     let top = ranked.map(([k]) => k);
     let other = false;
@@ -1131,12 +1184,12 @@ function usageView(params) {
       top = top.slice(0, SERIES_SLOTS - 1);
       other = true;
     }
-    assignSlots(top);
-    const list = top.map((k) => ({ key: k, label: modelName(k), color: `var(--series-${modelSlots.get(k)})`, total: byModel.get(k) }));
+    assignSlots(dim.slots, top);
+    const list = top.map((k) => ({ key: k, label: dim.name(k), color: `var(--series-${dim.slots.get(k)})`, total: byModel.get(k) }));
     if (other) {
       const shown = new Set(top);
       const rest = ranked.filter(([k]) => !shown.has(k));
-      list.push({ key: null, label: `Other (${rest.length} models)`, color: "var(--series-other)", total: rest.reduce((a, [, v]) => a + v, 0) });
+      list.push({ key: null, label: `Other (${rest.length} ${dim.label}s)`, color: "var(--series-other)", total: rest.reduce((a, [, v]) => a + v, 0) });
     }
     return list;
   }
@@ -1145,8 +1198,8 @@ function usageView(params) {
     const m = METRICS[metric];
     const fmt = metric === "cost" ? money : compact;
     chartTitle.textContent = {
-      total: "Daily tokens by model", cost: "Daily cost by model",
-    }[metric] || `Daily ${m.label.toLowerCase()} tokens by model`;
+      total: `Daily tokens by ${DIMS[by].label}`, cost: `Daily cost by ${DIMS[by].label}`,
+    }[metric] || `Daily ${m.label.toLowerCase()} tokens by ${DIMS[by].label}`;
     const ser = series();
     const keyOf = new Map(ser.filter((x) => x.key !== null).map((x, i) => [x.key, i]));
     const otherIdx = ser.findIndex((x) => x.key === null);
@@ -1157,10 +1210,10 @@ function usageView(params) {
     const dayIdx = new Map(days.map((d, i) => [d, i]));
     const cols = days.map(() => ser.map(() => 0));
     const costPartial = days.map(() => 0);
-    for (const r of data.daily.rows) {
+    for (const r of data.daily[by].rows) {
       const i = dayIdx.get(r.group.day);
       if (i === undefined) continue;
-      const si = keyOf.has(r.group.model) ? keyOf.get(r.group.model) : otherIdx;
+      const si = keyOf.has(r.group[by]) ? keyOf.get(r.group[by]) : otherIdx;
       if (si >= 0) cols[i][si] += m.of(r);
       costPartial[i] += r.unpriced_tokens || 0;
     }
@@ -1245,16 +1298,16 @@ function usageView(params) {
 
   function drawDaily() {
     const priced = data.priced;
-    const rows = data.daily.rows.slice().reverse();
+    const rows = data.daily[by].rows.slice().reverse();
     const f = (n) => (Number(n) || 0).toLocaleString();
     dailyTable.replaceChildren(el("table", { class: "data" },
       el("thead", {}, el("tr", {},
-        el("th", { scope: "col", text: "Day" }), el("th", { scope: "col", text: "Model" }),
+        el("th", { scope: "col", text: "Day" }), el("th", { scope: "col", text: DIMS[by].label[0].toUpperCase() + DIMS[by].label.slice(1) }),
         el("th", { scope: "col", class: "num", text: "Input" }), el("th", { scope: "col", class: "num", text: "Output" }),
         el("th", { scope: "col", class: "num", text: "Cache" }), el("th", { scope: "col", class: "num", text: "Total" }),
         priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
       el("tbody", {}, ...rows.map((r) => el("tr", {},
-        el("td", { text: r.group.day }), el("td", { class: "model", text: modelName(r.group.model) }),
+        el("td", { text: r.group.day }), el("td", { class: "model", text: DIMS[by].name(r.group[by]) }),
         el("td", { class: "num", text: f(r.tokens.input) }), el("td", { class: "num", text: f(r.tokens.output) }),
         el("td", { class: "num", text: f(r.tokens.cache) }), el("td", { class: "num", text: f(tokTotal(r.tokens)) }),
         priced && costCell(r))))));
@@ -1269,14 +1322,15 @@ function usageView(params) {
       money(r.cost), partial ? el("span", { class: "partial", text: " *" }) : null);
   }
 
-  function drawProjects() {
+  // drawTotals fills a "Totals by …" table from a single-dimension usage response.
+  function drawTotals(box, heading, res, nameOf, cellClass) {
     const priced = data.priced;
-    const t = data.projects.totals;
+    const t = res.totals;
     const all = tokTotal(t.tokens) || 1;
     const f = (n) => (Number(n) || 0).toLocaleString();
-    const anyPartial = data.projects.rows.some((r) => r.unpriced_tokens > 0);
+    const anyPartial = res.rows.some((r) => r.unpriced_tokens > 0);
     const line = (name, r, cls) => el("tr", { class: cls },
-      el("td", { class: "project", text: name }),
+      el("td", { class: cellClass, text: name }),
       el("td", { class: "num", text: f(r.tokens.input) }),
       el("td", { class: "num", text: f(r.tokens.output) }),
       el("td", { class: "num hide-sm", text: f(r.tokens.cache) }),
@@ -1286,17 +1340,17 @@ function usageView(params) {
           el("span", { class: "share-bar", css: { width: `${((tokTotal(r.tokens) / all) * 100).toFixed(1)}%` } })),
         el("span", { class: "share-pct", text: `${((tokTotal(r.tokens) / all) * 100).toFixed(1)}%` })),
       priced && costCell(r));
-    projectTable.replaceChildren(...[
+    box.replaceChildren(...[
       el("table", { class: "data" },
         el("thead", {}, el("tr", {},
-          el("th", { scope: "col", text: "Project" }),
+          el("th", { scope: "col", text: heading }),
           el("th", { scope: "col", class: "num", text: "Input" }),
           el("th", { scope: "col", class: "num", text: "Output" }),
           el("th", { scope: "col", class: "num hide-sm", text: "Cache" }),
           el("th", { scope: "col", class: "num", text: "Total" }),
           el("th", { scope: "col", class: "hide-sm", text: "Share" }),
           priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
-        el("tbody", {}, ...data.projects.rows.map((r) => line(r.group.project || "(no project)", r))),
+        el("tbody", {}, ...res.rows.map((r) => line(nameOf(r), r))),
         el("tfoot", {}, line("Total", { ...t, group: {} }, "total"))),
       anyPartial && el("p", { class: "footnote", text: "* Cost covers priced models only; some tokens came from models with no price in the configured table." }),
     ].filter(Boolean));
