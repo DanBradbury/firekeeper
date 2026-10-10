@@ -148,11 +148,72 @@ warn unless you use `-k`. Machines should not upload to this: their
 
 ## Known limits
 
-- Per-IP rate limiting of failed logins uses the connection's address, not
-  `X-Forwarded-For`, so behind Caddy every client shares one budget.
+- Per-IP rate limiting of failed attempts keys on the client address. That is
+  the proxy's address unless `--trusted-proxy` names the proxy; the compose
+  files do this for you. See [Client addresses](#client-addresses-behind-a-proxy).
 - Authentication turns on when the server starts. If you create the first
   token or account while it runs, restart it. The steps above create the
   account first, so this does not arise.
+
+## Client addresses behind a proxy
+
+The server limits failed sign-ins, bearer-token guesses, signups and machine
+links per client IP. Behind a reverse proxy every connection comes from the
+proxy, so without help all visitors share one budget: ten wrong tokens from
+anyone return `429` to everyone, including valid daemon uploads and logged-in
+browsers, and per-IP protection against guessing means nothing.
+
+`firekeeper serve --trusted-proxy IP_OR_CIDR` (repeatable, or `trusted_proxies`
+in the config file) names the proxies to believe. When the connection comes
+from one of them, the client is the right-most `X-Forwarded-For` entry that is
+not itself a trusted proxy. Entries to its left are supplied by the client and
+are never used. A missing or malformed header, or one made only of trusted
+proxies, falls back to the connection's address. A connection from anywhere
+else is never believed, whatever it sends. With no `--trusted-proxy` (the
+default, and right for a direct or loopback deployment) the header is ignored.
+IPv6 clients are keyed by their /64, because one subscriber normally controls a
+whole /64 and could otherwise rotate addresses to avoid the limit. Do not list
+`0.0.0.0/0`; the server refuses it.
+
+Requests that carry no credentials at all (a browser that has not signed in, a
+scanner) get `401` and are not counted against the failed-attempt limit. Only
+presented-but-wrong credentials count.
+
+What the server sees as the peer differs by setup, and the compose files pin it:
+
+- **`deploy/compose.yml` (Caddy).** Caddy reaches the server over the stack's
+  private network, which is pinned to `172.29.77.0/24` (`FIREKEEPER_SUBNET`).
+  Only the server and Caddy are on it, so trusting the subnet trusts Caddy and
+  nothing a visitor controls. Caddy replaces any `X-Forwarded-For` a visitor
+  sends with the address it saw.
+- **`deploy/compose.nginx.yml` (host nginx).** nginx connects to
+  `127.0.0.1:7777`, which Docker forwards into the container; the container sees
+  the network's gateway address as the peer. The network is pinned to
+  `172.29.78.0/24` and that subnet is trusted. nginx appends the address it saw
+  to whatever the visitor sent (`$proxy_add_x_forwarded_for`), which is why the
+  server reads the list from the right. Any local process that connects to
+  `127.0.0.1:7777` also arrives from that subnet and could set its own
+  `X-Forwarded-For`; that is the same trust you already give local users.
+
+If the default subnet overlaps one you use, set `FIREKEEPER_SUBNET` in `.env`;
+the trusted range follows it. Do not replace it with a broad range such as
+`10.0.0.0/8` or `172.16.0.0/12`: that trusts every container on the host.
+
+**Verify it.** From one machine, send ten requests with a wrong token, then
+check that another client is unaffected:
+
+```sh
+for i in $(seq 11); do curl -s -o /dev/null -w '%{http_code} ' \
+  -H 'Authorization: Bearer fk_wrong' https://firekeeper.example/v1/account; done; echo
+```
+
+The first ten print `401` and the eleventh `429`. Now load the dashboard or run
+`firekeeper whoami` from a different network (a phone off Wi-Fi): it must still
+work. If the second client gets `429` too, the server is not reading the
+forwarded address: check that the proxy sends `X-Forwarded-For` and that its
+connecting address is inside a `--trusted-proxy` range. Wait a minute for the
+window to clear before retrying. The address the server saw is deliberately not
+logged.
 
 ## Hosting on a server that already runs nginx
 
@@ -222,4 +283,7 @@ backup too (see Rollback above).
 
 The vhost, the loopback compose file and SSE through nginx were tested locally
 against `nginx:alpine`; the workflow passes `actionlint`. A real SSH deploy, the
-GHCR pull and the certificate were not tested here.
+GHCR pull and the certificate were not tested here. The trusted-proxy subnet
+(see [Client addresses](#client-addresses-behind-a-proxy)) was validated with
+`docker compose config` only; confirm the peer address on the real host with the
+check above.

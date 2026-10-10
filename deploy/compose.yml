@@ -4,14 +4,23 @@
 #   FIREKEEPER_DOMAIN   site name Caddy gets a certificate for
 #   FIREKEEPER_IMAGE    image to run (default: build from the repository)
 #   HTTP_PORT/HTTPS_PORT  host ports; only change these for local testing
+#   FIREKEEPER_SUBNET  subnet of the stack's private network (default
+#                      172.29.77.0/24). It is pinned so the server can be told
+#                      which address Caddy connects from; change it only if it
+#                      overlaps a network you already use.
 services:
   firekeeper:
     image: ${FIREKEEPER_IMAGE:-firekeeper:local}
     build: ..
     restart: unless-stopped
+    # --trusted-proxy: the only things on the pinned network are this server and
+    # Caddy, so trusting the subnet trusts Caddy and nothing a visitor controls.
+    # Caddy replaces any X-Forwarded-For a visitor sends with the address it
+    # saw, which is what the rate limiters key on. Without it every visitor
+    # looks like Caddy and shares one failed-attempt budget.
     # No --insecure: the server refuses to start until the first account
     # exists, so it is never open. Create it first (docs/hosting.md).
-    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed"]
+    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed", "--trusted-proxy", "${FIREKEEPER_SUBNET:-172.29.77.0/24}"]
     # Reachable on the Compose network only; nothing is published.
     expose:
       - "7777"
@@ -35,6 +44,12 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${FIREKEEPER_SUBNET:-172.29.77.0/24}
 
 volumes:
   firekeeper-data:

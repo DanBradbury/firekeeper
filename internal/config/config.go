@@ -58,6 +58,9 @@ type Config struct {
 	Prices map[string]Price
 	// RepoURLTemplate links changed files to their repository host.
 	RepoURLTemplate string
+	// TrustedProxies are the reverse proxies `serve` believes
+	// X-Forwarded-For from: IP addresses or CIDR ranges. Empty means none.
+	TrustedProxies []string
 
 	// Path is the config file read, or "" when none was.
 	Path string
@@ -76,6 +79,7 @@ type file struct {
 	Exclude         []string                 `toml:"exclude"`
 	Prices          map[string]Price         `toml:"prices"`
 	RepoURLTemplate *string                  `toml:"repo_url_template"`
+	TrustedProxies  []string                 `toml:"trusted_proxies"`
 }
 
 // Options configures Load.
@@ -243,6 +247,11 @@ func (c *Config) readFile(path, home string) error {
 	}
 	if f.RepoURLTemplate != nil {
 		c.RepoURLTemplate = strings.TrimSpace(*f.RepoURLTemplate)
+	}
+	for _, p := range f.TrustedProxies {
+		if p = strings.TrimSpace(p); p != "" {
+			c.TrustedProxies = append(c.TrustedProxies, p)
+		}
 	}
 	return nil
 }

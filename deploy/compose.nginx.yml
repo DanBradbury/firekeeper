@@ -3,6 +3,10 @@
 #
 #   FIREKEEPER_IMAGE  required; the deploy workflow writes it to .env
 #   FIREKEEPER_PORT   host loopback port nginx proxies to (default 7777)
+#   FIREKEEPER_SUBNET subnet of the stack's private network (default
+#                     172.29.78.0/24). It is pinned so the server can be told
+#                     which address nginx's connections arrive from; change it
+#                     only if it overlaps a network you already use.
 name: firekeeper
 
 services:
@@ -11,12 +15,22 @@ services:
     restart: unless-stopped
     # No --insecure: the server refuses to start until the first account
     # exists, so it is never open. Create it first (docs/hosting.md).
-    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed"]
+    command: ["serve", "--listen", "0.0.0.0:7777", "--db", "/data/firekeeper.db", "--signup", "closed", "--trusted-proxy", "${FIREKEEPER_SUBNET:-172.29.78.0/24}"]
+    # nginx connects to 127.0.0.1:${FIREKEEPER_PORT}; Docker forwards that into
+    # the container, which sees the network's gateway address as the peer. That
+    # address is inside the pinned subnet, so --trusted-proxy makes the server
+    # read nginx's X-Forwarded-For. See "Client addresses" in docs/hosting.md.
     # Loopback only; nginx is the only way in.
     ports:
       - "127.0.0.1:${FIREKEEPER_PORT:-7777}:7777"
     volumes:
       - firekeeper-data:/data
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${FIREKEEPER_SUBNET:-172.29.78.0/24}
 
 volumes:
   firekeeper-data:
