@@ -35,7 +35,7 @@ Every error is a JSON object with a standard HTTP status:
 | 404 | `link_invalid` | A link code that is unknown, expired, or already used. |
 | 410 | `link_expired` | A device code polled after its 10 minutes. |
 | 415 | `unsupported_media_type` | Login or signup without a JSON `Content-Type`. |
-| 429 | `rate_limited` | Too many failed attempts from this IP or for this email, or too many ingest requests from this account. `Retry-After` says how many seconds to wait. |
+| 429 | `rate_limited` | Too many failed attempts from this client IP or for this email, or too many ingest requests from this account. `Retry-After` says how many seconds to wait. |
 | 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, or state, an invalid cursor, or an event whose `machine_id`/`session_id` does not match its batch. |
 | 404 | `not_found` | Unknown session. |
 | 413 | `payload_too_large` | Body over 5 MiB. |
@@ -55,6 +55,13 @@ by `uid` returns `404`, the same as a session that does not exist. Two
 accounts can use the same `machine_id` and `session_id`. Each sees and writes
 only its own copy, and ingest into the same ids from another account never
 touches yours.
+
+"Client IP" for the limits below is the connection's address. When the server
+runs behind a reverse proxy it was started with `--trusted-proxy`, the
+`X-Forwarded-For` header from that proxy is used instead (see
+[hosting](hosting.md#client-addresses-behind-a-proxy)). A request with no
+credentials gets `401` and does not count as a failed attempt; a wrong,
+malformed or revoked token does.
 
 Credentials, in order of precedence:
 

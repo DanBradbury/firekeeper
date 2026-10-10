@@ -120,6 +120,7 @@ func writeConfig(w io.Writer, c config.Config) {
 	fmt.Fprintf(w, "interval = %q%s\n", c.Interval.String(), src("interval"))
 	fmt.Fprintf(w, "exclude = %s\n", tomlList(c.Exclude))
 	fmt.Fprintf(w, "repo_url_template = %q\n", c.RepoURLTemplate)
+	fmt.Fprintf(w, "trusted_proxies = %s\n", tomlList(c.TrustedProxies))
 	fmt.Fprintf(w, "\n[redact]\npaths = %s\n", tomlList(c.RedactPaths))
 	models := make([]string, 0, len(c.Prices))
 	for m := range c.Prices {

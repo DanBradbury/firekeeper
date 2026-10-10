@@ -146,7 +146,7 @@ func (m *Middleware) Login() http.Handler {
 			return
 		}
 		now := m.now()
-		ipKey, eKey := "ip:"+clientIP(r), emailKey(req.Email)
+		ipKey, eKey := "ip:"+m.clientIP(r), emailKey(req.Email)
 		if m.loginFails.limited(ipKey, now) || m.loginFails.limited(eKey, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts")
@@ -196,7 +196,7 @@ func (m *Middleware) Signup() http.Handler {
 			return
 		}
 		now := m.now()
-		ipKey, eKey := "ip:"+clientIP(r), emailKey(req.Email)
+		ipKey, eKey := "ip:"+m.clientIP(r), emailKey(req.Email)
 		if m.signups.limited(ipKey, now) || m.signups.limited(eKey, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many signup attempts")

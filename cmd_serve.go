@@ -47,6 +47,8 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	fs.Int64Var(&limits.MaxSessions, "max-sessions", limits.MaxSessions, "most sessions one account may store; 0 for no limit")
 	fs.IntVar(&limits.IngestPerMinute, "max-ingest-per-minute", limits.IngestPerMinute, "most ingest requests one account may make per minute; 0 for no limit")
 	fs.StringVar(&cfg.Banner, "banner", "", "text shown at the top of every page, such as \"Test bed: data may be wiped\"")
+	var proxies stringList
+	fs.Var(&proxies, "trusted-proxy", "reverse proxy whose X-Forwarded-For is believed, as an IP address or CIDR range; repeatable (default trusted_proxies in the config file; none)")
 	signup := fs.String("signup", string(auth.SignupClosed), "who may create accounts: closed, invite, or open")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -88,6 +90,14 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	cfg.Signup = mode
+	specs := []string(proxies)
+	if len(specs) == 0 {
+		specs = c.TrustedProxies
+	}
+	if cfg.TrustedProxies, err = auth.ParseTrustedProxies(specs); err != nil {
+		fmt.Fprintf(stderr, "firekeeper serve: %v\n", err)
+		return 2
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -100,6 +110,13 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	return 0
 }
+
+// stringList is a repeatable string flag.
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, ",") }
+
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }
 
 // byteSize is a flag.Value for a size such as "500MB" or "2GiB".
 type byteSize struct{ p *int64 }
