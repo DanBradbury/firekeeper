@@ -97,9 +97,13 @@ function tokensTitle(t) {
   return `input ${f(t.input)}, output ${f(t.output)}, cache ${f(t.cache)}`;
 }
 
+// UNKNOWN is a state the provider could not determine; it carries no
+// information for a reader, so it is never shown.
+const SHOWN_STATES = STATES.filter((s) => s !== "UNKNOWN");
+
 function badge(state) {
-  const s = STATES.includes(state) ? state : "UNKNOWN";
-  return el("span", { class: `badge ${s}`, text: s.replace("_", " ") });
+  if (!SHOWN_STATES.includes(state)) return null;
+  return el("span", { class: `badge ${state}`, text: state.replace("_", " ") });
 }
 
 // ---------- routing ----------
@@ -228,7 +232,7 @@ function listView(params) {
   const providerSel = el("select", { name: "provider" }, el("option", { value: "", text: "All providers" }),
     ...PROVIDERS.map((p) => el("option", { value: p, text: p })));
   const stateSel = el("select", { name: "state" }, el("option", { value: "", text: "All states" }),
-    ...STATES.map((s) => el("option", { value: s, text: s.replace("_", " ") })));
+    ...SHOWN_STATES.map((s) => el("option", { value: s, text: s.replace("_", " ") })));
   const search = el("input", { type: "search", name: "q", placeholder: "Title or transcript text", value: filters.q });
   const project = el("input", { type: "text", name: "project", placeholder: "All projects", value: filters.project, list: "session-projects" });
   const projectOptions = el("datalist", { id: "session-projects" });
@@ -300,7 +304,7 @@ function listView(params) {
         sub && el("span", { class: "sub", text: sub })),
       el("td", { text: machineNames.get(s.machine_id) || s.machine_id }),
       el("td", {}, el("span", { class: "provider", text: s.provider })),
-      el("td", {}, badge(s.state)),
+      el("td", {}, badge(s.state) || ""),
       el("td", { class: "model hide-sm", text: s.model || "—" }),
       el("td", { class: "num hide-sm", title: tokensTitle(s.tokens), text: tokensText(s.tokens) }),
       el("td", { class: "when" }, timeEl(s.last_activity_at)));
@@ -380,7 +384,7 @@ const isOnline = (m, now = Date.now()) => {
 function machineCard(m, online) {
   const counts = m.state_counts || {};
   const total = Number(m.session_count) || 0;
-  const chips = STATES.filter((st) => counts[st] > 0).map((st) => {
+  const chips = SHOWN_STATES.filter((st) => counts[st] > 0).map((st) => {
     const qs = new URLSearchParams({ machine: m.id, state: st });
     return el("a", { class: `state-chip ${st}`, href: `#/sessions?${qs}`, title: `${st.replace("_", " ")} sessions on ${m.name || m.id}` },
       el("b", { text: String(counts[st]) }), ` ${st.replace("_", " ").toLowerCase()}`);
@@ -577,6 +581,16 @@ function rawToggle(ev, container, ui) {
   return { btn, set };
 }
 
+// Uninterpreted records (role "meta") and the echo of local slash commands
+// are bookkeeping, not conversation, so the transcript leaves them out.
+const COMMAND_MARKUP = /^\s*(<(command-name|command-message|command-args|local-command-stdout|local-command-stderr|local-command-caveat)>[\s\S]*?(<\/\2>)?\s*)+$/;
+
+function hiddenEvent(ev) {
+  const role = ev.role || "meta";
+  if (role === "meta") return true;
+  return role === "system" && COMMAND_MARKUP.test(ev.text || "");
+}
+
 function headBits(ev) {
   const role = ROLE_LABEL[ev.role] || ev.role || "meta";
   const bits = [el("span", { class: "role", text: role })];
@@ -693,6 +707,7 @@ function sessionView(uid) {
   let hasMore = true;
   let loading = false;
   let shown = 0;
+  let visible = 0;
   let headTimer = null;
 
   const head = el("div", {}, el("div", { class: "loading", text: "Loading session…" }));
@@ -795,12 +810,15 @@ function sessionView(uid) {
       if (!alive) return;
       for (const ev of res.events) {
         if (ev.seq <= lastSeq) continue;
-        appendEvent(ev);
+        if (!hiddenEvent(ev)) {
+          appendEvent(ev);
+          visible++;
+        }
         lastSeq = ev.seq;
         shown++;
       }
       hasMore = res.has_more;
-      status.replaceChildren(!hasMore && shown === 0 ? notice("No events stored for this session.") : "");
+      status.replaceChildren(!hasMore && visible === 0 ? notice("No events stored for this session.") : "");
     } catch (err) {
       if (!alive) return;
       // Keep what is loaded; the button retries.
