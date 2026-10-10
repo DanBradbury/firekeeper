@@ -398,6 +398,7 @@ firekeeper report --provider codex       # in another terminal
 | `--db PATH` | Dashboard database. Default `~/.firekeeper/dashboard.db`; a missing directory is created with mode `0700`. |
 | `--file-link TEMPLATE` | Link changed files to their repository host, for example `https://github.com/me/{project}/blob/{ref}/{path}`. Placeholders: `{project}`, `{ref}` (the commit, else the branch), `{commit}`, `{branch}`, and `{path}`. Must be an `http` or `https` URL containing `{path}`. Default `repo_url_template` from the config file. |
 | `--insecure` | Allow a `--listen` address other than loopback with no token or account. The API is then open. |
+| `--trusted-proxy IP\|CIDR` | A reverse proxy whose `X-Forwarded-For` header is believed. Repeatable. Default none (the header is ignored and the connection's address identifies the client); default `trusted_proxies` in the config file. Set it when `serve` runs behind Caddy or nginx, or every visitor shares one failed-attempt limit. `0.0.0.0/0` and `::/0` are refused. See [docs/hosting.md](docs/hosting.md#client-addresses-behind-a-proxy). |
 | `--signup MODE` | Who may create accounts: `closed` (default), `invite`, or `open`. See [Accounts](#accounts). |
 | `--max-bytes SIZE` | Most transcript data one account may store, such as `500MB` or `2GiB`. Default `1GiB`; `0` for no limit. See [Test-bed safeguards](#test-bed-safeguards). |
 | `--max-sessions N` | Most sessions one account may store. Default `5000`; `0` for no limit. |
@@ -734,6 +735,7 @@ exclude = [
   "gitlab.example.com/team/*-private",
 ]
 repo_url_template = "https://github.com/me/{project}/blob/{ref}/{path}"  # serve: file links
+trusted_proxies = ["172.29.77.0/24"]  # serve: proxies whose X-Forwarded-For is believed
 
 [redact]
 paths = ["~/clients"]            # also scrubbed to [REDACTED:path] in uploads

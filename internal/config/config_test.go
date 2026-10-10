@@ -110,6 +110,7 @@ func TestLoadFileSettings(t *testing.T) {
 	path := writeConfig(t, home, `
 exclude = ["~/clients/*", "/srv/secret", "github.com/acme", "  "]
 repo_url_template = "https://github.com/me/{project}/blob/{ref}/{path}"
+trusted_proxies = ["10.0.0.0/8", "  ", "172.29.77.2"]
 
 [redact]
 paths = ["~/clients", "/opt/private/"]
@@ -139,6 +140,9 @@ cache = 0.125
 	}
 	if c.RepoURLTemplate == "" {
 		t.Fatal("repo_url_template not read")
+	}
+	if want := []string{"10.0.0.0/8", "172.29.77.2"}; !reflect.DeepEqual(c.TrustedProxies, want) {
+		t.Fatalf("trusted_proxies = %q, want %q", c.TrustedProxies, want)
 	}
 }
 

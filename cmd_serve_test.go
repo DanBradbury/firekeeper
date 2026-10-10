@@ -90,3 +90,45 @@ func TestValidateBanner(t *testing.T) {
 		}
 	}
 }
+
+func TestServeTrustedProxyFlag(t *testing.T) {
+	var got server.Config
+	previous := serveRun
+	serveRun = func(_ context.Context, cfg server.Config) error { got = cfg; return nil }
+	t.Cleanup(func() { serveRun = previous })
+	withConfigFile(t, "")
+
+	run := func(args ...string) (int, string) {
+		var out, errb bytes.Buffer
+		return runServe(args, &out, &errb), errb.String()
+	}
+	if code, _ := run(); code != 0 || len(got.TrustedProxies) != 0 {
+		t.Fatalf("default must trust no proxy: %+v", got.TrustedProxies)
+	}
+	if code, stderr := run("--trusted-proxy", "10.0.0.5", "--trusted-proxy", "172.29.77.0/24"); code != 0 || len(got.TrustedProxies) != 2 {
+		t.Fatalf("flags: code %d stderr %q proxies %v", code, stderr, got.TrustedProxies)
+	}
+	for _, args := range [][]string{
+		{"--trusted-proxy", "caddy"},
+		{"--trusted-proxy", "0.0.0.0/0"},
+		{"--trusted-proxy", "::/0"},
+		{"--trusted-proxy", ""},
+	} {
+		if code, stderr := run(args...); code != 2 || !strings.Contains(stderr, "trusted proxy") {
+			t.Errorf("%v: code %d stderr %q, want 2", args, code, stderr)
+		}
+	}
+
+	// The config file supplies a default; the flag replaces it.
+	withConfigFile(t, `trusted_proxies = ["10.1.0.0/16", " "]`)
+	if code, stderr := run(); code != 0 || len(got.TrustedProxies) != 1 || got.TrustedProxies[0].String() != "10.1.0.0/16" {
+		t.Fatalf("config file: code %d stderr %q proxies %v", code, stderr, got.TrustedProxies)
+	}
+	if code, _ := run("--trusted-proxy", "10.2.0.1"); code != 0 || len(got.TrustedProxies) != 1 || got.TrustedProxies[0].String() != "10.2.0.1/32" {
+		t.Fatalf("flag over config: %v", got.TrustedProxies)
+	}
+	withConfigFile(t, `trusted_proxies = ["0.0.0.0/0"]`)
+	if code, _ := run(); code != 2 {
+		t.Fatalf("config file trusting everything: code %d", code)
+	}
+}
