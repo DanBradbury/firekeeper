@@ -94,7 +94,7 @@ func TestMigrationAssignsExistingRowsToDefaultAccount(t *testing.T) {
 	if _, _, err := s.Ingest(ctx, DefaultAccountID, Machine{ID: "m1"}, []SessionBatch{batch("s2", 0, 1)}); err != nil {
 		t.Fatalf("ingest after migration: %v", err)
 	}
-	if v, _ := s.SchemaVersion(ctx); v != 6 {
+	if v, _ := s.SchemaVersion(ctx); v != 7 {
 		t.Fatalf("schema version %d", v)
 	}
 	// The upgrade backfills storage accounting from the existing events:
