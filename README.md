@@ -37,6 +37,8 @@ already on your machine with `backfill`, or keep it current with the daemon.
 your own per-model prices and the same charts show spend. Firekeeper ships no
 price list, so the numbers are yours.
 
+![Firekeeper usage dashboard showing daily tokens by model and totals by project and provider](docs/images/usage-dashboard.png)
+
 **Bring machines together.** Link a laptop, a desktop, and a dev box to one
 account with a browser approval instead of a pasted token. A machines page
 shows which are online, and sessions from all of them sit in one list.
