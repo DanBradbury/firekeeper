@@ -43,12 +43,10 @@ func runSubcommand(args []string, stdout, stderr io.Writer) (int, bool) {
 
 func printUsage(fs *flag.FlagSet) {
 	out := fs.Output()
-	fmt.Fprintf(out, "Usage:\n  firekeeper [flags]\n  firekeeper <command> [args]\n\nCommands:\n")
+	fmt.Fprintf(out, "Usage:\n  firekeeper\n  firekeeper <command> [args]\n\nCommands:\n")
 	for _, cmd := range subcommands {
 		fmt.Fprintf(out, "  %-10s %s\n", cmd.name, cmd.summary)
 	}
-	fmt.Fprintf(out, "\nFlags:\n")
-	fs.PrintDefaults()
 }
 
 func notImplemented(name string, stderr io.Writer) int {

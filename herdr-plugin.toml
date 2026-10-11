@@ -2,7 +2,7 @@ id = "firekeeper.dashboard"
 name = "Firekeeper Dashboard"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
-description = "Open Firekeeper's pixel-art coding-agent dashboard inside Herdr"
+description = "Open Firekeeper's terminal coding-agent dashboard inside Herdr"
 platforms = ["macos"]
 
 [[build]]
@@ -18,4 +18,4 @@ command = ["herdr", "plugin", "pane", "open", "--plugin", "firekeeper.dashboard"
 id = "dashboard"
 title = "Firekeeper Dashboard"
 placement = "tab"
-command = ["./firekeeper", "--renderer", "blocks"]
+command = ["./firekeeper"]

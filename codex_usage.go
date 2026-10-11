@@ -1038,7 +1038,7 @@ func usageMetricBarLine(label string, value, maximum int64, width int, emphasize
 		labelColor = usageBrightColor
 		fillColor = usageBrightColor
 	}
-	prefix := "  " + padRPGMenuText(label, labelWidth) + " "
+	prefix := "  " + padText(label, labelWidth) + " "
 	suffix := " " + fmt.Sprintf("%*s", valueWidth, formatTokenCount(value)) + " "
 	return usagePaint(prefix, labelColor, emphasized, usagePanelColor) +
 		usagePaint(strings.Repeat("━", filled), fillColor, true, usagePanelColor) +
@@ -1057,7 +1057,7 @@ func usageModelBarLine(model modelUsage, maximum int64, width int) string {
 		filled = max(filled, 1)
 	}
 	filled = min(filled, barWidth)
-	prefix := "  ◆ " + padRPGMenuText(name, labelWidth) + " "
+	prefix := "  ◆ " + padText(name, labelWidth) + " "
 	suffix := " " + fmt.Sprintf("%*s", valueWidth, value) + "  "
 	return usagePaint(prefix, model.Color, true, usageHighlightColor) +
 		usagePaint(strings.Repeat("━", filled), model.Color, true, usageHighlightColor) +
@@ -1082,7 +1082,7 @@ func usageModelStackBarLine(label string, models []modelUsage, maximum int64, wi
 	if emphasized {
 		labelColor = usageBrightColor
 	}
-	prefix := "  " + padRPGMenuText(label, labelWidth) + " "
+	prefix := "  " + padText(label, labelWidth) + " "
 	suffix := " " + fmt.Sprintf("%*s", valueWidth, formatTokenCount(total)) + " "
 	var bar strings.Builder
 	remainingTokens := total

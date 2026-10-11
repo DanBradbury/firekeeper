@@ -55,7 +55,7 @@ func TestKimiUsageMissingHistoryReturnsActionableError(t *testing.T) {
 }
 
 func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
-	m := newModel(nil)
+	m := newModel()
 	m.width = 100
 	today := time.Now().Format("2006-01-02")
 	m.kimiUsage = kimiUsageSnapshot{Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100}, Daily: []kimiDailyUsage{{StartDate: today, Tokens: 1200}}}
@@ -68,7 +68,7 @@ func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 }
 
 func TestKimiUsageViewUsesUniqueModelColors(t *testing.T) {
-	m := newModel(nil)
+	m := newModel()
 	m.width = 100
 	modelNames := make([]string, 10)
 	for index := range modelNames {
@@ -96,7 +96,7 @@ func TestRecentKimiDailyUsageFillsMissingDays(t *testing.T) {
 }
 
 func TestKimiUsageEnterOpensAndEscClosesHistory(t *testing.T) {
-	m := newModel(nil)
+	m := newModel()
 	m.activeTab = usageTab
 	m.usageProvider = kimiProvider
 	m.kimiUsage.History = []kimiHistoricalSession{{ID: "session_1", Title: "history"}}

@@ -34,28 +34,22 @@ git diff --check
 
 Before handoff, run at least `go test ./...`, `go vet ./...`, and `git diff --check`. Use `go test -race ./...` for changes involving model updates, polling, commands, parsing, or provider adapters. Run `gofmt -w` on touched Go files.
 
-Useful manual checks:
+Useful manual check:
 
 ```sh
-go run . --renderer blocks
-go run . --renderer kitty
-go run . --demo forest
-go run ./cmd/kitty-demo
+go run .
 ```
 
-Kitty rendering depends on terminal support. Test block rendering when Kitty graphics cannot be verified. Live process and terminal-switch checks are macOS-specific and may need Automation permission.
+Live process and terminal-switch checks are macOS-specific and may need Automation permission.
 
 ## Code map
 
-- `main.go` — Bubble Tea model/update/view flow, tabs, RPG menu, process discovery/grouping, Codex metadata enrichment, macOS terminal switching, sprite composition, block/Kitty rendering, CLI entry point.
+- `main.go` — Bubble Tea model/update/view flow, Processes and Usage tabs, process discovery/grouping, Codex metadata enrichment, macOS terminal switching, CLI entry point.
 - `session_status.go` — best-effort Codex rollout event parsing into `ACTIVE`, `WAITING`, `NEEDS INPUT`, or `UNKNOWN`.
 - `codex_usage.go` — short-lived Codex `app-server` stdio requests plus Codex usage UI.
 - `copilot_sessions.go` — Copilot process-to-session mapping and read-only local metadata/event parsing.
 - `copilot_usage.go` — read-only Copilot `session-store.db` aggregation and shared Usage-tab provider UI.
-- `forest_demo.go` — layered tileset demo and static PNG export.
-- `cmd/kitty-demo/` — standalone Kitty graphics example.
-- `*_test.go` — parser, state, layout, renderer, navigation, and provider tests.
-- `ASSETS.md` — required artwork attribution.
+- `*_test.go` — parser, state, layout, navigation, and provider tests.
 
 Package is intentionally `main`; tests can exercise unexported helpers directly. The reporting and dashboard code is the one exception: it lives in `internal/` packages (see "Reporting and dashboard"), and `main` only dispatches to it.
 
@@ -67,7 +61,6 @@ Package is intentionally `main`; tests can exercise unexported helpers directly.
 - Preserve last known Codex/Copilot session metadata when a transient refresh returns no metadata. See `retainKnownSessionMetadata`.
 - Treat provider metadata and state as best effort. Partial data should remain useful and should not crash or blank unrelated UI.
 - Keep terminal output width-safe. Use existing truncation, padding, sanitization, and `fitLine` helpers.
-- Menus are overlays. Opening a menu must not shift or recompute scene placement beneath it.
 
 ## Process and provider integrations
 
@@ -186,25 +179,16 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 
 The reporter and daemon keep per-file read offsets in `~/.firekeeper/state.json`: `{"files": {"<abs path>": {"offset": 0, "size": 0, "mtime": "...", "last_seq": 0}}}`. A file smaller than its stored size means truncation or rotation: reset the offset to 0 and rely on server-side idempotency. The per-machine id lives in `~/.firekeeper/machine-id`.
 
-## Rendering invariants
+## Terminal layout
 
-- Preserve pixel-art sharpness. Use nearest-neighbor resizing; never introduce smoothing.
-- Ground tiles remain native 16×16 atlas sprites. `animationSourceScale` maps source pixels to terminal geometry without enlarging background tiles first.
-- Compose one native-resolution scene, then feed same scene to block and Kitty renderers so both modes show equivalent content.
-- Respect alpha: `a == 0` means transparent.
-- Draw back-to-front. Ground is base; scene sprites and indicators follow; RPG menu overlays rendered scene.
-- Keep character and fire layout collision-free. Fire scaling preserves aspect ratio.
 - `chromeRows` reserves tab bar plus footer rows. View content must fit remaining height and handle minimum terminal size.
-- Test layout with synthetic solid-color sprites instead of relying only on visual inspection.
-
-Embedded artwork is licensed CC BY 3.0. Preserve `ASSETS.md` attribution when moving, replacing, or redistributing assets. Generated `forest-demo.png` is ignored and should not be committed.
+- The TUI has only Processes and Usage views; it contains no artwork or graphics renderers.
 
 ## Testing style
 
 - Prefer deterministic table-driven or focused unit tests.
 - Test pure parsers with strings/readers and synthetic provider records.
 - Test model behavior by sending Bubble Tea messages and inspecting returned model/view.
-- Test renderer/layout behavior through sprite dimensions and exact pixels.
 - Test errors without exposing machine-specific absolute paths or terminal escape sequences.
 - If an optional executable such as `sqlite3` is unavailable, integration-style tests may skip; pure decoding tests should still run.
 

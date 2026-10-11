@@ -5,14 +5,6 @@ default:
 run:
     go run .
 
-# Run portable block renderer.
-run-blocks:
-    go run . --renderer blocks
-
-# Run Kitty graphics renderer.
-run-kitty:
-    go run . --renderer kitty
-
 # Build local binary.
 build:
     go build -o firekeeper .

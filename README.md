@@ -37,8 +37,6 @@ already on your machine with `backfill`, or keep it current with the daemon.
 your own per-model prices and the same charts show spend. Firekeeper ships no
 price list, so the numbers are yours.
 
-![Firekeeper usage dashboard showing daily tokens by model and totals by project and provider](docs/images/usage-dashboard.png)
-
 **Bring machines together.** Link a laptop, a desktop, and a dev box to one
 account with a browser approval instead of a pasted token. A machines page
 shows which are online, and sessions from all of them sit in one list.
@@ -88,7 +86,7 @@ Put the binary on your `PATH`, then run `firekeeper`. For development, use
 `go run .`. If [just](https://github.com/casey/just) is installed, `just run`,
 `just test`, `just check`, and `just --list` wrap the common commands.
 
-`firekeeper --help` lists the subcommands and the TUI flags. There is no
+`firekeeper --help` lists the subcommands. There is no
 `--version` flag.
 
 ### Server in a container
@@ -138,7 +136,7 @@ firekeeper
 ```
 
 Start an agent in another terminal and it appears within a couple of seconds.
-Tab switches views, `M` opens the menu, `q` quits. Controls are listed under
+Tab switches views, `q` quits. Controls are listed under
 [Terminal dashboard](#terminal-dashboard).
 
 ### Send sessions to a dashboard
@@ -248,25 +246,10 @@ nothing is uploaded for it. `OpenCode` has no adapter beyond the process list.
 
 ## Terminal dashboard
 
-Firekeeper opens on an animated camp scene. Press Tab to move between four
-views:
+Firekeeper opens on Processes. Press Tab to move between two text views:
 
-- **Animation** — home scene with provider characters, live-session party sidebar, and RPG-style command menu.
 - **Processes** — running agent harnesses and their session details.
 - **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
-- **Settings** — configure Codex, Copilot, and Kimi character sprites and the background.
-
-The Animation scene uses a pixel-art beach battle backdrop. Each character’s
-provider label identifies its harness. Each crest shows total discovered
-runtimes in gold and currently active runtimes in red. An MMORPG-style party
-sidebar stacks every discovered local session with its provider's configured
-headshot, working-directory name, and latest observable state. Runtimes without
-session metadata still appear with an unknown directory and state, except for
-Codex process groups, which are hidden until they can be matched to a session.
-Active provider runtimes periodically use their attack animation, with a random
-2–5 second idle pause between attacks. Characters only appear while their
-provider has a discovered local runtime. Newly discovered providers play a
-one-shot reveal effect before their character, crest, and label appear.
 
 Two lookups in the Usage tab leave the machine, and neither uploads session
 data. Codex usage starts a short-lived `codex app-server` and asks it for your
@@ -279,19 +262,6 @@ details (see [Usage](#usage)).
 | --- | --- |
 | Tab / Shift+Tab | Switch views |
 | `q` / Ctrl+C | Quit |
-
-### Home and menu
-
-| Key | Action |
-| --- | --- |
-| `M` | Open or close menu |
-| Arrow keys / `HJKL` | Navigate open menus |
-| Enter on **STATUS** | Show active Codex sessions |
-| Esc / Backspace | Return or close menu |
-| Up / Down or `J` / `K` | Select and scroll party sessions when menu is closed |
-| Enter | Switch to the selected party session when the menu is closed |
-| Space | Pause or resume animation |
-| `[` / `]` | Resize character sprite |
 
 ### Processes
 
@@ -360,39 +330,6 @@ Local daily token bars are split and color-coded by model. Plan data is best
 effort: it comes from an internal Copilot endpoint that is not a supported
 API and may change or disappear. The local history alone is not an
 account-wide quota.
-
-### Settings
-
-**Player Selection** configures Codex, Copilot, and Kimi sprites: Wizard,
-Warrior, or Mage. **Background Selection** switches the Animation scene between
-Beach and None, then selects Day or Night. Choices save to `settings.json` in
-a `firekeeper` folder under your user config directory and load automatically
-on next launch. Add future background variants as
-`assets/bg_<scene>_<time>.png`, such as `bg_forest_day.png` and
-`bg_forest_night.png`.
-
-| Key | Action |
-| --- | --- |
-| Up / Down or `J` / `K` | Select a setting |
-| Enter | Edit selected setting |
-| Left / Right or `H` / `L` | Change value while editing |
-| Enter / Esc | Save or cancel editing |
-
-### Rendering
-
-Firekeeper preserves source pixel dimensions and uses nearest-neighbor scaling
-for crisp terminal artwork.
-
-```sh
-firekeeper --renderer auto
-firekeeper --renderer kitty --sprite-cols 32 --sprite-rows 16
-firekeeper --renderer blocks --sprite-cols 32 --sprite-rows 16
-```
-
-`auto` selects Kitty graphics in compatible terminals and falls back to
-portable true-color half blocks elsewhere. Kitty, Ghostty, WezTerm, Konsole,
-Warp, iTerm2, and current Windows Terminal versions provide best results. Try
-running outside tmux first when testing Kitty rendering.
 
 ### How session discovery works
 
@@ -1008,7 +945,6 @@ Files Firekeeper reads and writes outside the provider data it only reads:
 | `~/.firekeeper/config.toml` | you; `login` and `logout` edit `server` and `token` | reporting configuration |
 | `~/.firekeeper/dashboard.db` | `serve` and its admin commands | the dashboard database, including transcripts |
 | `~/.firekeeper/daemon.log`, `daemon.lock` | `daemon` | log and single-instance lock |
-| `settings.json` under the user config directory | the terminal dashboard | sprite and background choices |
 
 ## Documentation
 
@@ -1020,7 +956,6 @@ Files Firekeeper reads and writes outside the provider data it only reads:
 - [docs/api.md](docs/api.md): the v1 HTTP API.
 - [docs/event.schema.json](docs/event.schema.json): the normalized transcript
   event.
-- [ASSETS.md](ASSETS.md): artwork credits.
 
 ## Status
 
@@ -1030,9 +965,3 @@ integrations, but provider internals can change between CLI releases. Expect
 adapters and metadata handling to evolve. Firekeeper cannot detect every
 session state without provider cooperation, and no licence file is included in
 the repository yet.
-
-## Artwork
-
-Pixel artwork comes from Calciumtrice under CC BY 3.0. See
-[ASSETS.md](ASSETS.md) for the asset credit notes. Artwork files live in
-`assets/`.

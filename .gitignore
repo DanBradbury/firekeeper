@@ -4,7 +4,6 @@
 *.out
 
 # Generated demos and profiling data
-/forest-demo.png
 *.prof
 *.pprof
 coverage.txt

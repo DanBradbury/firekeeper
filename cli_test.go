@@ -21,8 +21,8 @@ func TestRunSubcommandDispatch(t *testing.T) {
 		wantStderr string
 	}{
 		{args: nil, handled: false},
-		{args: []string{"--renderer", "blocks"}, handled: false},
-		{args: []string{"-sprite-cols", "32", "snapshot"}, handled: false},
+		{args: []string{"--unknown"}, handled: false},
+		{args: []string{"--unknown", "snapshot"}, handled: false},
 		{args: []string{"unknown"}, handled: false},
 		{args: []string{"export"}, handled: true, code: 2, wantStderr: "firekeeper export: not implemented"},
 		{args: []string{"report", "--bogus"}, handled: true, code: 2},
@@ -91,9 +91,8 @@ func TestUsageListsSubcommands(t *testing.T) {
 	fs := flag.NewFlagSet("firekeeper", flag.ContinueOnError)
 	var out bytes.Buffer
 	fs.SetOutput(&out)
-	fs.String("renderer", "auto", "sprite renderer")
 	printUsage(fs)
-	for _, want := range []string{"snapshot", "export", "report", "backfill", "serve", "daemon", "-renderer"} {
+	for _, want := range []string{"snapshot", "export", "report", "backfill", "serve", "daemon"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("usage missing %q:\n%s", want, out.String())
 		}

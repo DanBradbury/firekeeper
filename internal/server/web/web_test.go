@@ -53,7 +53,6 @@ func TestHandlerServesAssets(t *testing.T) {
 		{"/mock_auth.js", "javascript", "MOCK_PASSWORD"},
 		{"/mock.js", "javascript", "createMockAPI"},
 		{"/app.css", "text/css", ".event"},
-		{"/favicon.svg", "image/svg+xml", "<svg"},
 		{"/mock/sessions.json", "application/json", `"sessions"`},
 	} {
 		rr := serve(t, h, "GET", tc.path)
