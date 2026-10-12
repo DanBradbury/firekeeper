@@ -1,8 +1,9 @@
-# Image: pushing a v* tag builds the container image and pushes it to GHCR.
-# Deploy: a manual run ("Run workflow", with a tag) pulls that image on the
-# host over SSH. Nothing deploys on its own. To roll back, run it again with
-# an older tag. Host credentials live in the `prod` environment's secrets
-# (SERVER_IP, SSH_PRIVATE_KEY, optional SSH_KNOWN_HOSTS), never in the repo.
+# Pushing a v* tag builds the container image, pushes it to GHCR, and then
+# deploys that tag: the host pulls the image over SSH. A manual run ("Run
+# workflow", with a tag) deploys an already published tag without building;
+# use it to roll back to an older tag. Host credentials live in the `prod`
+# environment's secrets (SERVER_IP, SSH_PRIVATE_KEY, optional SSH_KNOWN_HOSTS),
+# never in the repo.
 name: Publish and deploy
 
 on:
@@ -44,19 +45,25 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   deploy:
-    if: github.event_name == 'workflow_dispatch'
+    needs: image
+    # On a tag push, deploy only after the image was built and pushed. On a
+    # manual run the image job is skipped, so always() keeps deploy running.
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && needs.image.result == 'success'))
     environment: prod
     runs-on: ubuntu-latest
     concurrency: deploy-prod
     env:
       SITE: firekeeper.danbradbury.net
       APP_DIR: /opt/firekeeper
+      # The pushed tag on a tag push, the chosen tag on a manual run.
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Check the tag
-        env:
-          TAG: ${{ inputs.tag }}
         run: |
           case "$TAG" in
             v[0-9]*) ;;
@@ -92,7 +99,6 @@ jobs:
       - name: Pull and restart
         env:
           SERVER_IP: ${{ secrets.SERVER_IP }}
-          TAG: ${{ inputs.tag }}
         run: |
           ssh -i ~/.ssh/deploy_key "deploy@$SERVER_IP" bash -s "$TAG" <<'REMOTE'
           set -euo pipefail

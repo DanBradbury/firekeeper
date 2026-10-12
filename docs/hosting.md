@@ -266,8 +266,10 @@ nginx nor Caddy sets it.
    docker compose -f compose.nginx.yml run --rm firekeeper \
      serve admin create-account --db /data/firekeeper.db --email you@example.com
    ```
-10. **Deploy.** GitHub, Actions, **Publish and deploy**, Run workflow, tag
-    `v0.1.0`. It copies the compose file and backup scripts, pulls the image,
+10. **Deploy.** Push a tag (`git tag v0.1.0 && git push origin v0.1.0`); the
+    **Publish and deploy** workflow builds the image and then deploys it. To
+    deploy an already published tag, use Actions, **Publish and deploy**, Run
+    workflow, tag `v0.1.0`. Either way it copies the compose file and backup scripts, pulls the image,
     restarts, and waits for `/healthz`.
 11. **Backups.** Scripts are in `/opt/firekeeper`. Use the systemd units or
     cron line above with `/opt/firekeeper/backup.sh`; it finds
@@ -276,8 +278,9 @@ nginx nor Caddy sets it.
 
 ### Upgrade and rollback
 
-Run `./backup.sh` on the host, push a new tag, wait for the image, then run the
-workflow with that tag. To roll back, run the workflow with the earlier tag.
+Run `./backup.sh` on the host, then push a new tag: the workflow builds the
+image and deploys it once the image is pushed. To roll back, run the workflow
+manually with the earlier tag; that skips the build and deploys the existing image.
 If the new version changed the database schema, restore the pre-upgrade
 backup too (see Rollback above).
 
