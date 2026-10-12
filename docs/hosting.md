@@ -164,7 +164,9 @@ to it. Deploys come from the **Publish and deploy** workflow over SSH.
 
 The nginx vhost (`deploy/nginx/firekeeper.danbradbury.net.conf`) sets
 `X-Forwarded-Proto`, turns off buffering and compression for `/v1/stream`, and
-allows 6 MB bodies (ingest requests are at most 5 MiB).
+allows 6 MB bodies (ingest requests are at most 5 MiB). The server adds
+`Strict-Transport-Security` itself once that header says `https`, so neither
+nginx nor Caddy sets it.
 
 ### One-time setup (Owner)
 

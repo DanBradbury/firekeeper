@@ -66,7 +66,9 @@ The server speaks plain HTTP. Terminate TLS in a reverse proxy on the same
 host and keep the container's port on loopback. Two things matter:
 
 - Send `X-Forwarded-Proto: https`. The server marks the session cookie
-  `Secure` only when it sees HTTPS or that header.
+  `Secure` and sends `Strict-Transport-Security: max-age=31536000` only when
+  it sees HTTPS or that header. Do not add HSTS in the proxy as well, or
+  browsers get the header twice.
 - Do not buffer `/v1/stream`. It is a server-sent events stream and must
   flush as events arrive.
 

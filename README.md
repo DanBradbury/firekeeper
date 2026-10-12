@@ -740,8 +740,8 @@ server. Without `--account`, `token create` and `invite create` act for the
 single-user default account, whose existing tokens keep working. Data uploaded
 before accounts existed stays with the default account and is not visible to
 new accounts. Put HTTPS in front of any server reachable beyond loopback; the
-session cookie is only marked `Secure` when it sees HTTPS (or
-`X-Forwarded-Proto: https`). Each of these commands opens the database file
+session cookie is only marked `Secure`, and `Strict-Transport-Security` is
+only sent, when it sees HTTPS (or `X-Forwarded-Proto: https`). Each of these commands opens the database file
 directly, so pass the same `--db PATH` as `serve` when you do not use the
 default.
 

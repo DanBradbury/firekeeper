@@ -58,7 +58,9 @@ type sessionResponse struct {
 	CSRFToken string      `json:"csrf_token"`
 }
 
-func secureRequest(r *http.Request) bool {
+// SecureRequest reports whether the client reached the server over HTTPS:
+// directly, or through a reverse proxy that sent X-Forwarded-Proto: https.
+func SecureRequest(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
@@ -66,7 +68,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, value string, expi
 	http.SetCookie(w, &http.Cookie{
 		Name: CookieName, Value: value, Path: "/", Expires: expires,
 		MaxAge:   int(expires.Sub(now).Seconds()),
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secureRequest(r),
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: SecureRequest(r),
 	})
 }
 
@@ -74,7 +76,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, value string, expi
 func ClearCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name: CookieName, Value: "", Path: "/", MaxAge: -1,
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secureRequest(r),
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: SecureRequest(r),
 	})
 }
 
