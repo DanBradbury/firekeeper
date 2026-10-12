@@ -199,7 +199,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// No WriteTimeout: it would cut /v1/stream off.
 	srv := &http.Server{
-		Handler:           mux,
+		Handler:           hsts(mux),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
@@ -240,6 +240,25 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	io.WriteString(w, "ok\n")
+}
+
+// HSTSHeader is the Strict-Transport-Security value sent on HTTPS responses:
+// one year, without includeSubDomains, so a server on an apex domain does not
+// force HTTPS onto unrelated subdomains.
+const HSTSHeader = "max-age=31536000"
+
+// hsts adds Strict-Transport-Security to responses for requests that arrived
+// over HTTPS, directly or through a proxy sending X-Forwarded-Proto: https.
+// Browsers ignore the header over plain HTTP, so a forged
+// X-Forwarded-Proto on a plain HTTP request has no effect, and loopback
+// single-user servers never send it.
+func hsts(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth.SecureRequest(r) {
+			w.Header().Set("Strict-Transport-Security", HSTSHeader)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // endWith cancels each request's context when stop is done.

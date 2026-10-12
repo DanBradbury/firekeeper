@@ -9,6 +9,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -333,5 +334,46 @@ func TestHealthzNeedsNoCredentials(t *testing.T) {
 	}
 	if resp, _ := get(t, base+"/v1/machines"); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("auth still on: %d", resp.StatusCode)
+	}
+}
+
+func TestHSTSOnlyOverHTTPS(t *testing.T) {
+	base, _ := start(t, Config{})
+	for _, path := range []string{"/", "/healthz", "/v1/sessions", "/login", "/nope"} {
+		for _, proto := range []string{"", "http", "https", "HTTPS"} {
+			req, err := http.NewRequest(http.MethodGet, base+path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if proto != "" {
+				req.Header.Set("X-Forwarded-Proto", proto)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			got := resp.Header.Get("Strict-Transport-Security")
+			want := ""
+			if strings.EqualFold(proto, "https") {
+				want = HSTSHeader
+			}
+			if got != want {
+				t.Errorf("%s with X-Forwarded-Proto %q: Strict-Transport-Security = %q, want %q", path, proto, got, want)
+			}
+		}
+	}
+}
+
+func TestHSTSOnDirectTLS(t *testing.T) {
+	h := hsts(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "https://example.test/", nil)
+	if req.TLS == nil {
+		t.Fatal("httptest did not mark an https URL as TLS")
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Strict-Transport-Security"); got != HSTSHeader {
+		t.Fatalf("Strict-Transport-Security = %q, want %q", got, HSTSHeader)
 	}
 }
