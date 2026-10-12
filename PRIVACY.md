@@ -120,7 +120,7 @@ and complying with the law where it requires me to keep or disclose data.
   section 2.2 and the [terms](EULA.md) allow.
 - **Other users** cannot see your data through the dashboard or the API.
 - **Service providers:** [VPS PROVIDER] hosts the server and its disk in
-  the United States; [BACKUP STORAGE PROVIDER, if backups leave the server]. They
+  [REGION]; [BACKUP STORAGE PROVIDER, if backups leave the server]. They
   process data only to provide hosting.
 - **Legal requests:** I will disclose data if the law requires it, and will
   tell you first unless I am legally prevented.
@@ -163,31 +163,9 @@ personal information as defined by California law.
 
 ### 2.7 International transfer
 
-I live in the United States, and the Hosted Instance, its backups, and my
-hosting provider are in the United States. If you use it from the EU, the UK,
-or anywhere else, your reporter and browser send your data directly to a
-server in the United States, and it is stored and processed there.
-
-The United States does not have the same data-protection law as the EU or the
-UK, and the European Commission has not found that US law protects personal
-data to the same standard in general. US authorities may be able to require
-hosting providers or me to hand over data under US law (for example the
-CLOUD Act or Section 702 of FISA). I am not certified under the EU-US Data
-Privacy Framework or its UK Extension.
-
-What I do about that:
-
-- I collect data only from you, at your request, and only to run the service
-  for you (section 2.2). I do not pass it to anyone else except my hosting
-  provider (section 2.3).
-- It is encrypted in transit (HTTPS), passwords and tokens are stored hashed,
-  and your data is kept apart from other accounts (section 2.5).
-- You decide what is uploaded, can preview it with `--dry-run`, and can
-  download or delete all of it at any time (section 2.6).
-
-If you are not comfortable with your data being stored in the United States,
-do not upload to the Hosted Instance. You can run your own Firekeeper server
-anywhere you like instead.
+The Hosted Instance is located in [COUNTRY/REGION]. If you upload from
+elsewhere, your data is transferred there. [If the server is outside the
+EU/UK and EU/UK users are invited: state the transfer safeguard here.]
 
 ### 2.8 Children
 
