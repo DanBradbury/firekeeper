@@ -323,8 +323,8 @@ func (s *Store) IngestLimited(ctx context.Context, accountID string, m Machine, 
 			state = "UNKNOWN"
 		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO sessions(account_id, machine_id, session_id, provider, cwd, project, branch, "commit", model, state, title, started_at, last_activity_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO sessions(account_id, machine_id, session_id, provider, cwd, project, branch, "commit", model, state, title, started_at, last_activity_at, last_seen_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(account_id, machine_id, session_id) DO UPDATE SET
     provider = excluded.provider,
     cwd = CASE WHEN excluded.cwd <> '' THEN excluded.cwd ELSE sessions.cwd END,
@@ -335,12 +335,13 @@ ON CONFLICT(account_id, machine_id, session_id) DO UPDATE SET
     state = CASE WHEN ? <> '' THEN excluded.state ELSE sessions.state END,
     title = CASE WHEN excluded.title <> '' THEN excluded.title ELSE sessions.title END,
     started_at = COALESCE(sessions.started_at, excluded.started_at),
+    last_seen_at = excluded.last_seen_at,
     last_activity_at = CASE
         WHEN sessions.last_activity_at IS NULL OR excluded.last_activity_at > sessions.last_activity_at
         THEN COALESCE(excluded.last_activity_at, sessions.last_activity_at)
         ELSE sessions.last_activity_at END`,
 			accountID, m.ID, sm.SessionID, sm.Provider, sm.CWD, sm.Project, sm.Branch, sm.Commit, sm.Model, state, sm.Title,
-			fmtTime(sm.StartedAt), fmtTime(sm.LastActivityAt), sm.State); err != nil {
+			fmtTime(sm.StartedAt), fmtTime(sm.LastActivityAt), time.Now().UTC().Format(timeLayout), sm.State); err != nil {
 			return 0, 0, err
 		}
 
@@ -448,14 +449,15 @@ func (s *Store) Heartbeat(ctx context.Context, accountID string, m Machine, hbs 
 		return err
 	}
 	changes := []Change{{Kind: MachineStatus, AccountID: accountID, MachineID: m.ID}}
+	seen := time.Now().UTC().Format(timeLayout)
 	for _, h := range hbs {
 		res, err := tx.ExecContext(ctx, `
-UPDATE sessions SET state = ?,
+UPDATE sessions SET state = ?, last_seen_at = ?,
     last_activity_at = CASE
         WHEN ? IS NOT NULL AND (last_activity_at IS NULL OR ? > last_activity_at) THEN ?
         ELSE last_activity_at END
 WHERE account_id = ? AND machine_id = ? AND session_id = ?`,
-			h.State, fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), accountID, m.ID, h.SessionID)
+			h.State, seen, fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), fmtTime(h.LastActivityAt), accountID, m.ID, h.SessionID)
 		if err != nil {
 			return err
 		}
@@ -468,6 +470,36 @@ WHERE account_id = ? AND machine_id = ? AND session_id = ?`,
 	}
 	s.notify(changes)
 	return nil
+}
+
+// EndStale marks ENDED every session whose reporter has not seen it (ingest
+// or heartbeat) for longer than quiet. Discovery only reports live sessions,
+// so a session that disappears stops being seen and would otherwise keep its
+// last state forever. A later ingest or heartbeat for it restores the state.
+// It returns how many sessions changed.
+func (s *Store) EndStale(ctx context.Context, quiet time.Duration) (int, error) {
+	cutoff := time.Now().Add(-quiet).UTC().Format(timeLayout)
+	rows, err := s.db.QueryContext(ctx, `
+UPDATE sessions SET state = 'ENDED'
+WHERE state <> 'ENDED' AND last_seen_at IS NOT NULL AND last_seen_at < ?
+RETURNING account_id, machine_id, session_id`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	var changes []Change
+	for rows.Next() {
+		c := Change{Kind: SessionUpdated}
+		if err := rows.Scan(&c.AccountID, &c.MachineID, &c.SessionID); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		changes = append(changes, c)
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return 0, err
+	}
+	s.notify(changes)
+	return len(changes), nil
 }
 
 // SessionStats holds recomputed totals for one session.
