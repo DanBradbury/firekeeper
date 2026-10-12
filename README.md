@@ -966,5 +966,12 @@ Firekeeper is an early-stage project. macOS is the main target; Linux is best
 effort and Windows has not been tried. Process discovery works without
 integrations, but provider internals can change between CLI releases. Expect
 adapters and metadata handling to evolve. Firekeeper cannot detect every
-session state without provider cooperation, and no licence file is included in
-the repository yet.
+session state without provider cooperation.
+
+## License
+
+Firekeeper is licensed under the [Apache License 2.0](LICENSE). See
+[NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for
+bundled third-party software, [EULA.md](EULA.md) for the terms that apply to
+official builds and the hosted instance, and [PRIVACY.md](PRIVACY.md) for what
+data Firekeeper handles and where it goes.
