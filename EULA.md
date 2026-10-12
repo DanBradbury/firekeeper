@@ -1,9 +1,6 @@
 # Firekeeper End User License Agreement and Hosted Instance Terms
 
-> **DRAFT. Not yet in effect, and not legal advice.** Have a lawyer review this
-> before relying on it. Fill in every `[BRACKETED]` placeholder first.
-
-Last updated: [DATE]
+Last updated: October 11, 2026
 
 These terms are between you and Dan Bradbury ("**I**", "**me**"), the author
 of Firekeeper. Part 1 covers the Firekeeper software. Part 2 covers the
@@ -84,12 +81,10 @@ care about.
 
 ### 2.2 Accounts
 
-- You may create an account only with an invite code from me, and only if you
-  are at least [16/18] years old.
 - Use an email address you control. Keep your password and access tokens
   secret; you are responsible for activity under your account and tokens.
   Revoke a token you think is exposed (`DELETE /v1/tokens/{id}` or the account
-  page) and tell me at [CONTACT EMAIL].
+  page) and tell me at dan.luckydaisy@gmail.com.
 - One person per account. Do not share accounts or sell access.
 
 ### 2.3 Your content
@@ -169,8 +164,8 @@ agree, delete your account.
 
 ### 3.4 Governing law
 
-These terms are governed by the laws of [STATE/COUNTRY], without regard to its
-conflict-of-laws rules. Disputes go to the courts of [COUNTY, STATE/COUNTRY],
+These terms are governed by the laws of California, without regard to its
+conflict-of-laws rules. Disputes go to the courts of the United States,
 unless the law of the place you live gives you the right to bring them
 elsewhere.
 
@@ -184,4 +179,4 @@ are the whole agreement between us about Firekeeper.
 
 ### 3.6 Contact
 
-[CONTACT EMAIL]
+dan.luckydaisy@gmail.com

@@ -1,10 +1,6 @@
 # Firekeeper Privacy Policy
 
-> **DRAFT. Not yet in effect, and not legal advice.** Have a lawyer review this
-> before relying on it, especially if anyone in the EU, UK, or California will
-> use the Hosted Instance. Fill in every `[BRACKETED]` placeholder first.
-
-Last updated: [DATE]
+Last updated: October 11, 2026
 
 Firekeeper is software by Dan Bradbury ("**I**", "**me**"). Who handles your
 data depends on how you use it:
@@ -119,9 +115,8 @@ and complying with the law where it requires me to keep or disclose data.
   transcripts, directly from the database and its backups. I do so only as
   section 2.2 and the [terms](EULA.md) allow.
 - **Other users** cannot see your data through the dashboard or the API.
-- **Service providers:** [VPS PROVIDER] hosts the server and its disk in
-  [REGION]; [BACKUP STORAGE PROVIDER, if backups leave the server]. They
-  process data only to provide hosting.
+- **Service providers:** DigitalOcean hosts the server and its disk in
+  us-west. They process data only to provide hosting.
 - **Legal requests:** I will disclose data if the law requires it, and will
   tell you first unless I am legally prevented.
 
@@ -131,8 +126,8 @@ and complying with the law where it requires me to keep or disclose data.
   is wiped.
 - Deleting your account removes your account, tokens, machines, sessions,
   events, and search entries from the live database at once.
-- Backups run daily and the most recent [14] are kept, so deleted data can
-  remain in backups for up to [14] days before it is gone for good. If a
+- Backups run daily and the most recent 14 are kept, so deleted data can
+  remain in backups for up to 14 days before it is gone for good. If a
   backup is restored, I will re-delete accounts that were deleted after it was
   taken.
 - Expired browser sessions and used invite and link codes are not needed after
@@ -163,21 +158,15 @@ personal information as defined by California law.
 
 ### 2.7 International transfer
 
-The Hosted Instance is located in [COUNTRY/REGION]. If you upload from
-elsewhere, your data is transferred there. [If the server is outside the
-EU/UK and EU/UK users are invited: state the transfer safeguard here.]
-
-### 2.8 Children
-
-The Hosted Instance is not for anyone under [16]. If I learn that a child has
-an account, I will delete it.
+The Hosted Instance is located in the United States. If you upload from
+elsewhere, your data is transferred there.
 
 ## 3. Changes
 
 I will change the "Last updated" date when I change this policy, and tell
-Hosted Instance users by email or a dashboard notice at least [14] days before
+Hosted Instance users by email or a dashboard notice at least 14 days before
 a material change takes effect.
 
 ## 4. Contact
 
-[CONTACT EMAIL]
+dan.luckydaisy@gmail.com
