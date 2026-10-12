@@ -24,6 +24,11 @@ import (
 // DefaultListen is the address the dashboard listens on by default.
 const DefaultListen = "127.0.0.1:7777"
 
+// DefaultSessionTimeout is how long a live session may go unseen before the
+// server marks it ENDED. The daemon heartbeats every 15 seconds, so this
+// tolerates many missed passes.
+const DefaultSessionTimeout = 10 * time.Minute
+
 // ShutdownGrace is how long in-flight requests get to finish once Run's
 // context is cancelled.
 const ShutdownGrace = 5 * time.Second
@@ -66,6 +71,10 @@ type Config struct {
 	// "Test bed: data may be wiped". Plain text, at most MaxBannerLen
 	// characters.
 	Banner string
+	// SessionTimeout is how long a session may go unseen (no ingest or
+	// heartbeat) before it is marked ENDED. Zero means DefaultSessionTimeout;
+	// negative disables the sweep.
+	SessionTimeout time.Duration
 	// OnListen, if set, is called with the base URL once the listener is
 	// bound and before requests are served.
 	OnListen func(url string)
@@ -211,6 +220,13 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.OnListen(url)
 	}
 
+	if timeout := cfg.SessionTimeout; timeout >= 0 {
+		if timeout == 0 {
+			timeout = DefaultSessionTimeout
+		}
+		go sweepEnded(stopping, s, timeout, errOut)
+	}
+
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 
@@ -232,6 +248,25 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("close database: %w", err)
 	}
 	return nil
+}
+
+// sweepEnded marks sessions ENDED once they have gone unseen for timeout,
+// until ctx ends.
+func sweepEnded(ctx context.Context, s *store.Store, timeout time.Duration, errOut io.Writer) {
+	every := min(timeout/4, time.Minute)
+	every = max(every, 10*time.Millisecond)
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		if _, err := s.EndStale(ctx, timeout); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(errOut, "warning: end stale sessions: %v\n", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // healthz answers liveness probes. It needs no credentials and returns no

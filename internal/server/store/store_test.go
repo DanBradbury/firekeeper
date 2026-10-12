@@ -54,7 +54,7 @@ func TestIngestIdempotentAndFTS(t *testing.T) {
 		t.Fatalf("fts %v %v", hits, err)
 	}
 	v, _ := s.SchemaVersion(ctx)
-	if v != 7 {
+	if v != 8 {
 		t.Fatalf("version %d", v)
 	}
 }
@@ -141,5 +141,37 @@ func TestCloseDuringIngest(t *testing.T) {
 	wg.Wait()
 	if err := s.Close(); err != nil {
 		t.Fatalf("second close: %v", err)
+	}
+}
+
+func TestEndStale(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	m := Machine{ID: "m"}
+	if _, _, err := s.Ingest(ctx, DefaultAccountID, m, []SessionBatch{batch("old", 0, 1), batch("fresh", 0, 1)}); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(timeLayout)
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ? WHERE session_id = 'old'`, past); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.EndStale(ctx, 10*time.Minute)
+	if err != nil || n != 1 {
+		t.Fatalf("EndStale = %d, %v; want 1", n, err)
+	}
+	for sid, want := range map[string]string{"old": "ENDED", "fresh": "ACTIVE"} {
+		if st, _ := s.Stats(ctx, DefaultAccountID, "m", sid); st.State != want {
+			t.Fatalf("%s state %s, want %s", sid, st.State, want)
+		}
+	}
+	// A heartbeat for a returning session restores a live state.
+	if err := s.Heartbeat(ctx, DefaultAccountID, m, []Heartbeat{{SessionID: "old", State: "WAITING"}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := s.EndStale(ctx, 10*time.Minute); n != 0 {
+		t.Fatalf("EndStale after heartbeat = %d, want 0", n)
+	}
+	if st, _ := s.Stats(ctx, DefaultAccountID, "m", "old"); st.State != "WAITING" {
+		t.Fatalf("state %s, want WAITING", st.State)
 	}
 }
