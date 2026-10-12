@@ -43,3 +43,7 @@ check: test vet fmt-check diff-check
 # Build the container image.
 docker-build:
     docker build -t firekeeper:local .
+
+# Regenerate THIRD_PARTY_NOTICES.md after changing dependencies.
+notices:
+    ./scripts/third-party-notices.sh
