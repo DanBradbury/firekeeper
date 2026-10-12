@@ -105,7 +105,8 @@ the host's loopback only, so create an account or token first thing. See
 [docs/self-hosting.md](docs/self-hosting.md). For HTTPS on a VPS, see
 [docs/hosting.md](docs/hosting.md), which is the owner's runbook for his own
 instance. The `Publish and deploy` workflow in `.github/workflows/deploy.yml` builds and
-pushes `ghcr.io/danbradbury/firekeeper:<tag>` when a `v*` tag is pushed.
+pushes `ghcr.io/danbradbury/firekeeper:<tag>` when a `v*` tag is pushed, then
+deploys that image.
 
 ### Herdr plugin
 
