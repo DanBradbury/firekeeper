@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,6 +45,10 @@ type Config struct {
 	Insecure bool
 	// Signup says who may create an account. Empty means closed.
 	Signup auth.SignupMode
+	// TrustedProxies are the reverse proxies whose X-Forwarded-For header
+	// identifies the client for rate limiting. Empty means the header is
+	// ignored. See auth.ParseTrustedProxies.
+	TrustedProxies []netip.Prefix
 	// Out receives the startup URL; Err receives warnings. Nil discards.
 	Out, Err io.Writer
 	// Prices is the per-model price table for usage cost, per million
@@ -179,7 +184,7 @@ func Run(ctx context.Context, cfg Config) error {
 	defer stopStreams()
 	// The middleware resolves every request to an account. It leaves the API
 	// open to the default account only while no token and no account exists.
-	am := auth.New(s, auth.WithSignup(signup))
+	am := auth.New(s, auth.WithSignup(signup), auth.WithTrustedProxies(cfg.TrustedProxies))
 	apiHandler := am.Wrap(api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)))
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/auth/login", am.Login())

@@ -45,7 +45,7 @@ func (m *Middleware) LinkStart() http.Handler {
 			return
 		}
 		now := m.now()
-		ip := "ip:" + clientIP(r)
+		ip := "ip:" + m.clientIP(r)
 		if m.linkStarts.limited(ip, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many link attempts")
@@ -103,7 +103,7 @@ func (m *Middleware) LinkPoll() http.Handler {
 			return
 		}
 		now := m.now()
-		ip := "ip:" + clientIP(r)
+		ip := "ip:" + m.clientIP(r)
 		if m.linkFails.limited(ip, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts")
@@ -154,7 +154,7 @@ func (m *Middleware) LinkApprove() http.Handler {
 			return
 		}
 		now := m.now()
-		keys := []string{"ip:" + clientIP(r), "account:" + p.AccountID}
+		keys := []string{"ip:" + m.clientIP(r), "account:" + p.AccountID}
 		for _, k := range keys {
 			if m.linkFails.limited(k, now) {
 				w.Header().Set("Retry-After", "60")

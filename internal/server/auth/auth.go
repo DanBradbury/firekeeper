@@ -6,8 +6,8 @@ package auth
 import (
 	"context"
 	"crypto/subtle"
-	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -16,7 +16,8 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
-// Failed-attempt limit per client IP.
+// Failed-attempt limit per client IP. Behind a reverse proxy the client IP
+// comes from X-Forwarded-For; see WithTrustedProxies.
 const (
 	MaxFailures = 10
 	Window      = time.Minute
@@ -60,6 +61,8 @@ type Middleware struct {
 	store  *store.Store
 	now    func() time.Time
 	signup SignupMode
+	// proxies are the reverse proxies whose X-Forwarded-For is believed.
+	proxies []netip.Prefix
 
 	// guarded is true when the server started with active tokens. Auth is
 	// then required for good, even if every token is later revoked.
@@ -125,7 +128,7 @@ func (m *Middleware) Required(ctx context.Context) (bool, error) {
 func (m *Middleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := m.now()
-		ip := clientIP(r)
+		ip := m.clientIP(r)
 		if m.bearerFails.limited(ip, now) {
 			w.Header().Set("Retry-After", "60")
 			writeErr(w, http.StatusTooManyRequests, "rate_limited", "too many failed attempts")
@@ -154,7 +157,8 @@ func (m *Middleware) Wrap(next http.Handler) http.Handler {
 				return
 			}
 		} else {
-			m.bearerFails.record(ip, now)
+			// No credentials at all is not a guessing attempt (a browser that
+			// has not signed in yet, a scanner), so it is not counted.
 			w.Header().Set("WWW-Authenticate", challenge)
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing or malformed bearer token")
 			return
@@ -284,14 +288,6 @@ func bearer(h string) (string, bool) {
 		return "", false
 	}
 	return rest, true
-}
-
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func writeErr(w http.ResponseWriter, status int, code, msg string) {
