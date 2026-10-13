@@ -1,0 +1,30 @@
+# Pushing a v* tag publishes a GitHub release with binaries and checksums.
+# Tags with a suffix, such as v0.1.0-rc1, publish as prereleases and do not
+# update the Homebrew tap. The container image and deploy are a separate
+# workflow, deploy.yml. Setup steps are in docs/releasing.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

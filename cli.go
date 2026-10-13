@@ -25,6 +25,7 @@ var subcommands = []subcommand{
 	{"whoami", "print the server, account and machine the stored token belongs to", runWhoami},
 	{"config", "print the merged reporting configuration (show)", runConfig},
 	{"daemon", "upload continuously (--provider required); install, uninstall, status, logs", runDaemon},
+	{"version", "print the version, commit and build date (also --version)", runVersion},
 }
 
 // runSubcommand dispatches on the first argument. It reports false when the
@@ -32,6 +33,9 @@ var subcommands = []subcommand{
 func runSubcommand(args []string, stdout, stderr io.Writer) (int, bool) {
 	if len(args) == 0 {
 		return 0, false
+	}
+	if args[0] == "--version" {
+		return runVersion(args[1:], stdout, stderr), true
 	}
 	for _, cmd := range subcommands {
 		if cmd.name == args[0] {

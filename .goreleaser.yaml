@@ -1,0 +1,65 @@
+# Release config. CI runs `goreleaser release --snapshot --clean` on pull
+# requests; .github/workflows/release.yml runs the real release on v* tags.
+# See docs/releasing.md.
+version: 2
+
+project_name: firekeeper
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: firekeeper
+    main: .
+    binary: firekeeper
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+archives:
+  - id: firekeeper
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - THIRD_PARTY_NOTICES.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+
+release:
+  # v0.1.0-rc1 and similar publish as prereleases.
+  prerelease: auto
+
+# A formula, not a cask, so macOS does not quarantine the binary. The tap
+# repo and token are owner setup; see docs/releasing.md.
+brews:
+  - name: firekeeper
+    repository:
+      owner: DanBradbury
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/DanBradbury/firekeeper
+    description: Keyboard-driven terminal dashboard for monitoring coding-agent harnesses
+    license: Apache-2.0
+    # Prereleases do not move the tap.
+    skip_upload: auto
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/firekeeper --version")

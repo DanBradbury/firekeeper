@@ -35,6 +35,7 @@ func applyReporterConfig(cfg *reporter.Config, c config.Config) {
 	cfg.Providers = c.Providers
 	cfg.Exclude = c.Exclude
 	cfg.RedactPaths = c.RedactPaths
+	cfg.Version = version
 }
 
 // tokenFlag registers --token.
