@@ -52,8 +52,9 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$INSTALL_DIR" ] && [ "$INSTALL_DIR" != "/.local/bin" ] ||
+if [ -z "$INSTALL_DIR" ] || [ "$INSTALL_DIR" = "/.local/bin" ]; then
 	die "cannot work out the install directory: HOME is not set; set FIREKEEPER_INSTALL_DIR"
+fi
 
 case "$(uname -s)" in
 Darwin) os=darwin ;;
