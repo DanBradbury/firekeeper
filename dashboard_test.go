@@ -103,3 +103,49 @@ func TestDashboardSelectionScrollsWithinSessionsPanel(t *testing.T) {
 		t.Fatalf("selected runtime not visible:\n%s", view)
 	}
 }
+
+func TestHelpOverlayTogglesAndListsHotkeys(t *testing.T) {
+	for _, active := range []tab{processesTab, usageTab} {
+		m := dashboardTestModel()
+		m.width, m.height = 100, 40
+		m.activeTab = active
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}})
+		m = updated.(model)
+		if !m.helpOpen {
+			t.Fatal("? did not open help")
+		}
+		view := ansi.Strip(m.View())
+		for _, expected := range []string{"Global", "Processes", "Usage", "Switch to the runtime's terminal", "Switch provider", "Quit"} {
+			if !strings.Contains(view, expected) {
+				t.Fatalf("help missing %q:\n%s", expected, view)
+			}
+		}
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(model)
+		if !m.helpOpen || m.processCursor != 0 {
+			t.Fatal("keys behind the help overlay must be ignored")
+		}
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		m = updated.(model)
+		if m.helpOpen || m.activeTab != active {
+			t.Fatal("esc did not close help")
+		}
+	}
+}
+
+func TestHelpOverlayFitsSmallTerminals(t *testing.T) {
+	for _, size := range [][2]int{{20, 6}, {40, 12}, {80, 24}} {
+		m := dashboardTestModel()
+		m.width, m.height = size[0], size[1]
+		m.helpOpen = true
+		lines := strings.Split(m.View(), "\n")
+		if len(lines) != m.height {
+			t.Fatalf("%v: rows = %d", size, len(lines))
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) != m.width {
+				t.Fatalf("%v: line width = %d", size, ansi.StringWidth(line))
+			}
+		}
+	}
+}

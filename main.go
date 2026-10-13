@@ -117,6 +117,7 @@ type model struct {
 	kimiUsageRefreshedAt    time.Time
 	kimiHistoryOpen         bool
 	kimiHistoryCursor       int
+	helpOpen                bool
 }
 
 func newModel() model {
@@ -134,12 +135,17 @@ func pollProcesses() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.helpOpen {
+			return m.updateHelp(msg)
+		}
 		if m.activeTab == processesTab && msg.String() != "s" {
 			m.terminalStatus = ""
 		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "?":
+			m.helpOpen = true
 		case "tab", "shift+tab":
 			m.activeTab = (m.activeTab + 1) % tabCount
 			if m.activeTab == processesTab {
@@ -392,6 +398,10 @@ func (m model) View() string {
 		return "Terminal too small (need 20x6)\n"
 	}
 	contentRows := m.height - chromeRows
+	if m.helpOpen {
+		help, status := m.helpFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help, status}, "\n")
+	}
 	if m.activeTab == processesTab {
 		help, status := m.processFooter()
 		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")

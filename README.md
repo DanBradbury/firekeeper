@@ -320,6 +320,7 @@ details (see [Usage](#usage)).
 | Key | Action |
 | --- | --- |
 | Tab / Shift+Tab | Switch views |
+| `?` | Show all hotkeys; `?`, Esc, or Enter closes it |
 | `q` / Ctrl+C | Quit |
 
 ### Processes
