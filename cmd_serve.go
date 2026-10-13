@@ -90,6 +90,7 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	cfg.Signup = mode
+	configureLocal(&cfg, c, stdout, stderr)
 	specs := []string(proxies)
 	if len(specs) == 0 {
 		specs = c.TrustedProxies

@@ -145,6 +145,27 @@ same fields as in [Tokens](#tokens) without a secret, which is how
 counts active ones); `limits` are the server's per-account limits, where `0`
 means no limit. See [Limits](#limits).
 
+On a server in local mode (no account and no token, listening on loopback),
+the single-user response also has a `local` object describing the machine the
+server runs on:
+
+```json
+"local": {
+  "machine_id": "e5f4...", "daemon": "running", "foreground": false,
+  "server": "http://127.0.0.1:7777", "reports_here": true,
+  "providers": ["codex"], "detected": ["codex", "claude"],
+  "command": ""
+}
+```
+
+`daemon` is `running`, `stopped` (installed, not running) or `not_installed`.
+`foreground` is true when the running daemon was started by hand rather than
+by the installed service. `server` is where the daemon reports, as
+`scheme://host[:port]`. `providers` are the providers it uploads, when known.
+`detected` are the providers found on this machine. `command` is what to run
+to make the daemon report here, and is empty when it already does. All of it
+is best effort and is never sent to signed-in accounts.
+
 ### `DELETE /v1/account`
 
 Permanently deletes the caller's account and everything it owns: its

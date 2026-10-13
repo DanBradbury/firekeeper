@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -30,4 +32,21 @@ func acquireLock(path string) (*os.File, error) {
 		fmt.Fprintf(f, "%d\n", os.Getpid())
 	}
 	return f, nil
+}
+
+// lockOwnerAlive reports whether the pid written into the lock at path
+// names a live process. It never takes the lock, so asking cannot make a
+// daemon that is starting up fail with ErrLocked. A pid reused by an
+// unrelated process reads as alive; callers treat the answer as a hint.
+func lockOwnerAlive(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return false
+	}
+	err = syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }

@@ -562,6 +562,12 @@ table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
 .state-chip.NEEDS_INPUT b { color: var(--needs); }
 .state-chip.ENDED b { color: var(--ended); }
 .state-chip.UNKNOWN b { color: var(--unknown); }
+.this-machine { margin-left: 8px; font: 11px var(--mono); color: var(--ember-2); text-transform: uppercase; letter-spacing: 0.06em; }
+.local-report { border-left: 4px solid var(--waiting); padding: 6px 10px; background: var(--panel-2); font-size: 13px; min-width: 0; }
+.local-report.ok { border-left-color: var(--active); }
+.local-report p { margin: 0; }
+.local-report pre.cmd { margin: 8px 0 4px; padding: 8px; background: var(--code-bg); border: 2px solid var(--line); overflow-x: auto; font: 12px var(--mono); }
+.local-report .footnote { margin: 4px 0 0; }
 .machine-empty { margin: 0; color: var(--muted); font-size: 13px; }
 .machine-link { margin-top: auto; font: 13px var(--mono); }
 .onboarding { padding: 16px; }

@@ -181,6 +181,23 @@ Start an agent in another terminal and it appears within a couple of seconds.
 Tab switches views, `q` quits. Controls are listed under
 [Terminal dashboard](#terminal-dashboard).
 
+### Local dashboard
+
+For a dashboard of this machine only, run `serve` in a terminal:
+
+```sh
+firekeeper serve
+```
+
+With no account or token it starts in local mode: no sign-in, and this
+machine is listed on the Machines page straight away. If this machine is not
+reporting to the dashboard yet, `serve` asks once whether to start. Answering
+`y` installs the daemon for the providers it detects, pointed at this
+dashboard. Anything else changes nothing. The machine's card shows whether the
+daemon is running and where it reports, with the command to run if it is not
+reporting here. Read [What is uploaded and what is not
+caught](#what-is-uploaded-and-what-is-not-caught) before saying yes.
+
 ### Send sessions to a dashboard
 
 This path uploads transcripts. Read [What is uploaded and what is not
@@ -592,6 +609,17 @@ described in [docs/api.md](docs/api.md).
 firekeeper serve                         # http://127.0.0.1:7777/
 firekeeper report --provider codex       # in another terminal
 ```
+
+A server that starts with no account and no token on a loopback address runs
+in **local mode**. It adds this machine (from `~/.firekeeper/machine-id`) to
+the dashboard at startup and shows on its card whether the daemon is
+installed, running, and reporting here. That status is best effort: it comes
+from the installed service, the service manager, the daemon's lock file, and
+the config file. When `serve` runs in a terminal and this machine does not
+report here yet, it asks once whether to install the daemon (or switch an
+installed one) to report to this dashboard. It installs nothing without a
+`y`. Run `serve` with input from a file or pipe to skip the question. Creating
+the first account or token ends local mode.
 
 | Flag | Meaning |
 | --- | --- |
