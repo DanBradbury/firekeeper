@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -20,6 +19,12 @@ import (
 const (
 	chromeRows          = 3
 	processPollInterval = 2 * time.Second
+	// sessionMetadataGraceRefreshes is how many consecutive refreshes may
+	// miss a runtime's session metadata before the last known copy is
+	// dropped. It rides out a transient lsof miss, while a session closed
+	// inside a long-lived runtime such as the Codex app-server daemon still
+	// disappears a few seconds later.
+	sessionMetadataGraceRefreshes = 2
 )
 
 type tab int
@@ -62,7 +67,10 @@ type sessionInfo struct {
 	rolloutPath string
 	updatedAt   time.Time
 	tokensUsed  int64
+	tokens      tokenBreakdown
 }
+
+type tokenBreakdown = session.TokenBreakdown
 
 type processGroup struct {
 	tool      string
@@ -118,6 +126,9 @@ type model struct {
 	kimiUsageRefreshedAt    time.Time
 	kimiHistoryOpen         bool
 	kimiHistoryCursor       int
+	helpOpen                bool
+	metadataMisses          map[int]int
+	chat                    chatState
 }
 
 func newModel() model {
@@ -135,12 +146,24 @@ func pollProcesses() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if m.helpOpen {
+			return m.updateHelp(msg)
+		}
+		if m.chat.open {
+			return m.updateChat(msg)
+		}
 		if m.activeTab == processesTab && msg.String() != "s" {
 			m.terminalStatus = ""
 		}
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
+		case "?":
+			m.helpOpen = true
+		case "c":
+			if m.activeTab == processesTab {
+				return m, m.openChat()
+			}
 		case "tab", "shift+tab":
 			m.activeTab = (m.activeTab + 1) % tabCount
 			if m.activeTab == processesTab {
@@ -264,9 +287,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ensureSelectedProcessVisible()
+		if m.chat.open {
+			m.clampChatScroll()
+		}
 
 	case processPollMsg:
-		return m, tea.Batch(refreshProcesses(), pollProcesses())
+		return m, tea.Batch(refreshProcesses(), pollProcesses(), m.refreshChat())
+
+	case chatResultMsg:
+		m.applyChatResult(msg)
 
 	case processResultMsg:
 		m.refreshedAt = msg.refreshed
@@ -274,9 +303,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.processErr = msg.err.Error()
 		} else {
 			selectedPID := m.selectedProcessRootPID()
-			m.processGroups = filterUnidentifiedCodexGroups(
-				retainKnownSessionMetadata(m.processGroups, msg.groups),
-			)
+			var groups []processGroup
+			groups, m.metadataMisses = retainKnownSessionMetadata(m.processGroups, msg.groups, m.metadataMisses)
+			m.processGroups = filterUnidentifiedCodexGroups(groups)
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
@@ -393,22 +422,20 @@ func (m model) View() string {
 		return "Terminal too small (need 20x6)\n"
 	}
 	contentRows := m.height - chromeRows
-	var content, help, status string
+	if m.helpOpen {
+		help, status := m.helpFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help, status}, "\n")
+	}
+	if m.chat.open {
+		help, status := m.chatFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewChat(contentRows), help, status}, "\n")
+	}
 	if m.activeTab == processesTab {
-		content = m.viewProcesses(contentRows)
-		help, status = m.processFooter()
-	} else {
-		content = m.viewUsage(contentRows)
-		help, status = m.usageFooter()
+		help, status := m.processFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")
 	}
-	return strings.Join([]string{fitLine(m.tabBar(), m.width), content, fitLine(help, m.width), fitLine(status, m.width)}, "\n")
-}
-
-func (m model) tabBar() string {
-	if m.activeTab == usageTab {
-		return "    Processes  [ Usage ]  •  Tab switch"
-	}
-	return "  [ Processes ]  Usage    •  Tab switch"
+	help, status := m.usageFooter()
+	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), fitLine(help, m.width), fitLine(status, m.width)}, "\n")
 }
 
 func padText(value string, width int) string {
@@ -417,170 +444,6 @@ func padText(value string, width int) string {
 		return string(runes[:width])
 	}
 	return value + strings.Repeat(" ", width-len(runes))
-}
-
-func (m model) viewProcesses(contentRows int) string {
-	lines := make([]string, 0, contentRows)
-	if contentRows < 1 {
-		return ""
-	}
-
-	lines = append(lines, fitLine("  RUNTIME       ROOT PID TTY       PROCS ELAPSED       SESSION", m.width))
-	if contentRows > 1 {
-		lines = append(lines, strings.Repeat("─", m.width))
-	}
-
-	capacity := m.processPageSize()
-	if len(m.processGroups) == 0 && contentRows > 2 {
-		message := "  No running Codex, Copilot, or OpenCode processes found."
-		if m.refreshedAt.IsZero() {
-			message = "  Scanning for Codex, Copilot, and OpenCode processes…"
-		}
-		lines = append(lines, fitLine(message, m.width))
-	} else if capacity > 0 {
-		body, _ := m.processBodyLines()
-		end := min(m.processScroll+capacity, len(body))
-		for _, line := range body[m.processScroll:end] {
-			lines = append(lines, fitLine(line, m.width))
-		}
-	}
-
-	for len(lines) < contentRows {
-		lines = append(lines, strings.Repeat(" ", m.width))
-	}
-	return strings.Join(lines[:contentRows], "\n")
-}
-
-func (m model) processFooter() (string, string) {
-	help := "  ↑/↓ select  •  Enter expand  •  s switch terminal  •  r refresh  •  q quit"
-	if m.processErr != "" {
-		return help, "  process scan failed: " + m.processErr
-	}
-	if m.terminalStatus != "" {
-		return help, "  " + m.terminalStatus
-	}
-	if m.refreshedAt.IsZero() {
-		return help, "  scanning processes…"
-	}
-
-	processCount := 0
-	for _, group := range m.processGroups {
-		processCount += len(group.processes)
-	}
-	if m.processMetadataWarning != "" {
-		return help, fmt.Sprintf(
-			"  %d runtimes / %d processes  •  session metadata unavailable: %s",
-			len(m.processGroups),
-			processCount,
-			m.processMetadataWarning,
-		)
-	}
-	status := fmt.Sprintf(
-		"  %d runtimes / %d processes  •  selected %d/%d  •  refreshed %s",
-		len(m.processGroups),
-		processCount,
-		min(m.processCursor+1, len(m.processGroups)),
-		len(m.processGroups),
-		m.refreshedAt.Format("15:04:05"),
-	)
-	return help, status
-}
-
-func (m model) processPageSize() int {
-	return max(m.height-chromeRows-2, 0)
-}
-
-func (m model) processBodyLines() ([]string, []int) {
-	var lines []string
-	offsets := make([]int, len(m.processGroups))
-	for index, group := range m.processGroups {
-		offsets[index] = len(lines)
-		selected := " "
-		if index == m.processCursor {
-			selected = ">"
-		}
-		disclosure := "▸"
-		if m.expandedGroups[group.root.pid] {
-			disclosure = "▾"
-		}
-
-		sessionName := "UNKNOWN • metadata unavailable"
-		if len(group.sessions) > 0 {
-			name := group.sessions[0].name
-			if name == "" {
-				name = filepath.Base(group.sessions[0].cwd)
-			}
-			sessionName = group.sessions[0].state.String() + " • " + name
-		}
-		lines = append(lines, fmt.Sprintf(
-			"%s %s %-10s %8d %-9s %5d %-13s %s",
-			selected,
-			disclosure,
-			group.tool,
-			group.root.pid,
-			displayTTY(group.root.tty),
-			len(group.processes),
-			group.root.elapsed,
-			sessionName,
-		))
-
-		if !m.expandedGroups[group.root.pid] {
-			continue
-		}
-		if len(group.sessions) == 0 {
-			message := "no session metadata adapter"
-			switch group.tool {
-			case "Codex":
-				message = "no Codex rollout metadata found"
-			case "Copilot":
-				message = "no Copilot session metadata found"
-			case "Kimi":
-				message = "no Kimi session metadata found"
-			}
-			lines = append(lines, "      session  "+message)
-		}
-		for _, session := range group.sessions {
-			originLabel := "source"
-			origin := session.source
-			if session.repository != "" {
-				originLabel = "repo"
-				origin = session.repository
-			}
-			lines = append(lines,
-				"      session  "+session.state.String()+" • "+session.name,
-				"      cwd      "+session.cwd,
-				fmt.Sprintf(
-					"      model    %s  •  %s %s  •  updated %s",
-					emptyFallback(session.model, "unknown"),
-					originLabel,
-					emptyFallback(origin, "unknown"),
-					formatSessionTime(session.updatedAt),
-				),
-				fmt.Sprintf(
-					"      id       %s  •  branch %s  •  tokens %d",
-					session.id,
-					emptyFallback(session.gitBranch, "none"),
-					session.tokensUsed,
-				),
-			)
-		}
-		for processIndex, process := range group.processes {
-			branch := "├─"
-			if processIndex == len(group.processes)-1 {
-				branch = "└─"
-			}
-			lines = append(lines, fmt.Sprintf(
-				"      %s PID %-7d PPID %-7d TTY %-9s %-13s %s",
-				branch,
-				process.pid,
-				process.ppid,
-				displayTTY(process.tty),
-				process.elapsed,
-				process.command,
-			))
-		}
-	}
-	return lines, offsets
 }
 
 func (m *model) clampProcessSelection() {
@@ -637,7 +500,12 @@ func (m *model) restoreProcessSelection(rootPID int) {
 	m.clampProcessSelection()
 }
 
-func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGroup {
+// retainKnownSessionMetadata copies a runtime's last known sessions forward
+// when a refresh finds none, for at most sessionMetadataGraceRefreshes
+// consecutive refreshes. misses counts those refreshes per root PID; the
+// updated counts are returned.
+func retainKnownSessionMetadata(previous, refreshed []processGroup, misses map[int]int) ([]processGroup, map[int]int) {
+	nextMisses := make(map[int]int)
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
 		if hasSessionMetadataAdapter(group.tool) && len(group.sessions) > 0 {
@@ -653,9 +521,14 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGro
 		if !ok || old.root.tty != group.root.tty || old.root.command != group.root.command {
 			continue
 		}
+		count := misses[group.root.pid] + 1
+		if count > sessionMetadataGraceRefreshes {
+			continue
+		}
+		nextMisses[group.root.pid] = count
 		group.sessions = append([]sessionInfo(nil), old.sessions...)
 	}
-	return refreshed
+	return refreshed, nextMisses
 }
 
 // hasSessionMetadataAdapter reports whether discovery enriches tool's runtimes

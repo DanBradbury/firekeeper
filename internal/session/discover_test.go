@@ -237,3 +237,24 @@ func TestMetaReportingContract(t *testing.T) {
 		t.Error("unavailable timestamp should be null")
 	}
 }
+
+func TestClassifyIgnoresFirekeeperProcesses(t *testing.T) {
+	d := &discoverer{}
+	tests := []struct {
+		command string
+		want    string
+	}{
+		{"/home/u/.local/bin/firekeeper daemon --quiet --server http://127.0.0.1:7777 --provider codex --provider copilot --provider claude", ""},
+		{"firekeeper report --provider copilot --dry-run", ""},
+		{"firekeeper", ""},
+		{"/tmp/go-build123/b001/exe/firekeeper serve", ""},
+		{"copilot --resume", "Copilot"},
+		{"node /opt/copilot/index.js --log-dir /home/u/firekeeper-logs", "Copilot"},
+		{"codex resume", "Codex"},
+	}
+	for _, tt := range tests {
+		if got := d.classifyProcess(tt.command); got != tt.want {
+			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		}
+	}
+}

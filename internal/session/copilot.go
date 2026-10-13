@@ -455,6 +455,7 @@ func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMet
 		StartedAt:   d.newestTime(workspace.CreatedAt, d.parseCopilotTime(stored.CreatedAt)),
 		UpdatedAt:   updatedAt,
 		TokensUsed:  tokens,
+		Tokens:      events.Tokens,
 	}, nil
 }
 
@@ -498,6 +499,18 @@ func (d *discoverer) scanCopilotEvents(reader io.Reader) (CopilotEventMetadata, 
 		outputTokens += event.Data.OutputTokens
 		if event.Data.ConversationTokens > conversationTokens {
 			conversationTokens = event.Data.ConversationTokens
+		}
+		if usage := event.Data.ResponseChunk.Usage; event.Type == "model.model_call_success" && usage != nil {
+			// prompt_tokens includes cached input, which is counted as cache.
+			var cached int64
+			if usage.Details != nil {
+				cached = max(usage.Details.Cached, 0)
+			}
+			metadata.Tokens = metadata.Tokens.add(TokenBreakdown{
+				Input:  max(usage.Prompt-cached, 0),
+				Output: max(usage.Completion, 0),
+				Cache:  cached,
+			})
 		}
 
 		switch event.Type {

@@ -296,9 +296,16 @@ type claudeRecord struct {
 	AITitle     string `json:"aiTitle"`
 	AgentName   string `json:"agentName"`
 	Message     *struct {
+		ID         string          `json:"id"`
 		Model      string          `json:"model"`
 		StopReason *string         `json:"stop_reason"`
 		Content    json.RawMessage `json:"content"`
+		Usage      *struct {
+			Input         int64 `json:"input_tokens"`
+			Output        int64 `json:"output_tokens"`
+			CacheRead     int64 `json:"cache_read_input_tokens"`
+			CacheCreation int64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
 	} `json:"message"`
 	ModelUsage map[string]struct {
 		Input         int64 `json:"inputTokens"`
@@ -332,6 +339,13 @@ type claudeTranscriptMetadata struct {
 	StartedAt  time.Time
 	UpdatedAt  time.Time
 	TokensUsed int64
+
+	// costTokens is the latest cost-state total; messageTokens holds the usage
+	// of each assistant message written after it, keyed by message id because
+	// Claude Code repeats a message's usage on every content block record.
+	costTokens    TokenBreakdown
+	messageTokens map[string]TokenBreakdown
+	Tokens        TokenBreakdown
 }
 
 func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, error) {
@@ -379,6 +393,7 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, err
 		StartedAt:   meta.StartedAt,
 		UpdatedAt:   updated,
 		TokensUsed:  meta.TokensUsed,
+		Tokens:      meta.Tokens,
 	}, nil
 }
 
@@ -446,16 +461,43 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 		if rec.Message != nil && rec.Message.Model != "" && rec.Message.Model != "<synthetic>" {
 			meta.Model = rec.Message.Model
 		}
-	case "cost-state":
-		// Cumulative totals Claude Code saves for the session; the latest wins.
-		var total int64
-		for _, usage := range rec.ModelUsage {
-			total += usage.Input + usage.Output + usage.CacheRead + usage.CacheCreation
+		if rec.Message != nil && rec.Message.Usage != nil {
+			usage := rec.Message.Usage
+			key := rec.Message.ID
+			if key == "" {
+				key = fmt.Sprintf("#%d", len(meta.messageTokens))
+			}
+			if meta.messageTokens == nil {
+				meta.messageTokens = make(map[string]TokenBreakdown)
+			}
+			meta.messageTokens[key] = TokenBreakdown{
+				Input:  max(usage.Input, 0),
+				Output: max(usage.Output, 0),
+				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+			}
 		}
-		if total > 0 {
-			meta.TokensUsed = total
+	case "cost-state":
+		// Cumulative totals Claude Code saves for the session; the latest wins
+		// and already covers every message before it. Claude Code writes these
+		// rarely, so usage from later assistant messages is added on top.
+		var total TokenBreakdown
+		for _, usage := range rec.ModelUsage {
+			total = total.add(TokenBreakdown{
+				Input:  max(usage.Input, 0),
+				Output: max(usage.Output, 0),
+				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+			})
+		}
+		if total.Total() > 0 {
+			meta.costTokens = total
+			meta.messageTokens = nil
 		}
 	}
+	meta.Tokens = meta.costTokens
+	for _, tokens := range meta.messageTokens {
+		meta.Tokens = meta.Tokens.add(tokens)
+	}
+	meta.TokensUsed = meta.Tokens.Total()
 }
 
 // nextClaudeState follows the main conversation. A user prompt or tool

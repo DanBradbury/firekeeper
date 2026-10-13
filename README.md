@@ -320,18 +320,47 @@ details (see [Usage](#usage)).
 | Key | Action |
 | --- | --- |
 | Tab / Shift+Tab | Switch views |
+| `?` | Show all hotkeys; any key closes the list without running its action (Ctrl+C still quits) |
 | `q` / Ctrl+C | Quit |
 
 ### Processes
+
+The Processes tab is laid out as a dashboard. Summary panels across the top
+count sessions by state, break the selected session's tokens into input,
+output, and cache, and show live tokens per provider and the projects and
+branches in use. Input counts uncached input only; cache counts cache reads
+and writes. The breakdown comes from Claude Code transcripts, Codex rollout
+`token_count` events, and Copilot `model.model_call_success` events, read from
+the tail of each file, so very long sessions can be undercounted. Other
+harnesses show the total only. Below them, the sessions table lists one runtime per row with
+its provider, PID, project, short session id, title, state, model, tokens, and
+uptime, and a second line with the branch and working directory. A detail
+panel at the bottom shows the selected runtime's session metadata and process
+tree. On smaller terminals the summary and detail panels are hidden and the
+narrowest table columns drop out first; Enter still expands details inline.
 
 | Key | Action |
 | --- | --- |
 | Up / Down or `J` / `K` | Select runtime |
 | Enter | Expand session metadata and process tree |
 | `s` | Switch to terminal containing selected runtime |
+| `c` | Open the selected session's chat history |
 | Page Up / Page Down | Move through runtime groups |
 | Home / End | Jump to first or last runtime |
 | `r` | Refresh immediately |
+
+#### Chat history
+
+Press `c` on a Claude Code, Codex, or Copilot session to read its
+conversation: your prompts and the assistant's replies, newest at the bottom.
+Tool calls, tool output, and context the harness injects (environment blocks,
+`AGENTS.md` instructions, slash-command wrappers) are left out. The transcript
+is read locally and read-only, nothing is uploaded, and new messages appear on
+the next two-second refresh while the view follows the latest message. Up/Down
+scroll, Page Up/Page Down move a page, `g`/`G` jump to the first or latest
+message, `r` reloads, and Esc, `c`, or `q` return to Processes. The view keeps
+the latest 1,000 messages. Kimi and OpenCode sessions have no transcript
+reader, so they show a message instead.
 
 Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
 Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
