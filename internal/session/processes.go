@@ -1,6 +1,7 @@
 package session
 
 import (
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,6 +112,10 @@ func (d *discoverer) normalizeTTY(value string) string {
 func (d *discoverer) classifyProcess(command string) string {
 	lower := strings.ToLower(command)
 	switch {
+	case isFirekeeperCommand(command):
+		// Firekeeper's own subcommands name harnesses in their flags, such
+		// as daemon --provider copilot, but are never agent runtimes.
+		return ""
 	case d.isClaudeCodeCommand(command):
 		// Checked first: Claude Code command lines can name other
 		// harnesses in resumed transcript paths.
@@ -135,4 +140,17 @@ func (d *discoverer) sanitizeProcessCommand(command string) string {
 		}
 		return r
 	}, command)
+}
+
+// isFirekeeperCommand reports whether command runs the firekeeper executable.
+func isFirekeeperCommand(command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	switch strings.ToLower(filepath.Base(fields[0])) {
+	case "firekeeper", "firekeeper.exe":
+		return true
+	}
+	return false
 }
