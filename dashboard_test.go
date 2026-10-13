@@ -21,6 +21,7 @@ func dashboardTestModel() model {
 				id: "019fb33c-c5f4-75f3-b987-228eb484c6ec", name: "Dashboard first pass",
 				state: sessionStateActive, cwd: "/workspace/firekeeper", model: "gpt-5.6",
 				gitBranch: "main", tokensUsed: 1_250_000,
+				tokens: tokenBreakdown{Input: 50_000, Output: 200_000, Cache: 1_000_000},
 			}},
 		},
 		{
@@ -65,7 +66,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	m.processCursor = 1
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"[ Processes ]", "¹overview", "²providers", "³projects", "sessions (3)",
+		"[ Processes ]", "¹overview", "³providers", "⁴projects", "sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Dashboard first pass", "▲ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "└─ main · /workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
@@ -81,7 +82,7 @@ func TestDashboardDropsColumnsAndPanelsWhenNarrow(t *testing.T) {
 	m := dashboardTestModel()
 	m.width, m.height = 60, 20
 	view := ansi.Strip(m.View())
-	if strings.Contains(view, "²providers") || strings.Contains(view, "Up ") {
+	if strings.Contains(view, "³providers") || strings.Contains(view, "Up ") {
 		t.Fatalf("narrow dashboard kept wide-only content:\n%s", view)
 	}
 	if !strings.Contains(view, "Dashboard first") {
@@ -171,5 +172,36 @@ func TestHelpOverlayFitsSmallTerminals(t *testing.T) {
 				t.Fatalf("%v: line width = %d", size, ansi.StringWidth(line))
 			}
 		}
+	}
+}
+
+func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{
+		"²tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K", "Cache", "1.0M",
+		"tokens 1.2M (in 50.0K · out 200.0K · cache 1.0M)",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("dashboard missing %q:\n%s", expected, view)
+		}
+	}
+
+	m.processCursor = 1
+	view = ansi.Strip(m.View())
+	for _, expected := range []string{"²tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("dashboard missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestSessionTokenTotalPrefersBreakdown(t *testing.T) {
+	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99}); got != 99 {
+		t.Fatalf("fallback total = %d", got)
+	}
+	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99, tokens: tokenBreakdown{Input: 1, Output: 2, Cache: 3}}); got != 6 {
+		t.Fatalf("breakdown total = %d", got)
 	}
 }

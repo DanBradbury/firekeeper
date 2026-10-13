@@ -41,6 +41,7 @@ type CopilotEventMetadata struct {
 	Model      string
 	UpdatedAt  time.Time
 	TokensUsed int64
+	Tokens     TokenBreakdown
 }
 
 type CopilotEvent struct {
@@ -53,6 +54,15 @@ type CopilotEvent struct {
 		CurrentModel       string `json:"currentModel"`
 		OutputTokens       int64  `json:"outputTokens"`
 		ConversationTokens int64  `json:"conversationTokens"`
+		ResponseChunk      struct {
+			Usage *struct {
+				Prompt     int64 `json:"prompt_tokens"`
+				Completion int64 `json:"completion_tokens"`
+				Details    *struct {
+					Cached int64 `json:"cached_tokens"`
+				} `json:"prompt_tokens_details"`
+			} `json:"usage"`
+		} `json:"responseChunk"`
 	} `json:"data"`
 }
 
@@ -91,6 +101,25 @@ type SessionInfo struct {
 	StartedAt   time.Time
 	UpdatedAt   time.Time
 	TokensUsed  int64
+	// Tokens breaks usage down where the provider records it. It follows the
+	// transcript event convention: Input excludes cached input, and Cache
+	// counts cache reads plus cache writes. It is zero when unknown.
+	Tokens TokenBreakdown
+}
+
+// TokenBreakdown splits a session's token usage into uncached input, output,
+// and cache tokens.
+type TokenBreakdown struct {
+	Input  int64
+	Output int64
+	Cache  int64
+}
+
+// Total is the sum of every counted token.
+func (t TokenBreakdown) Total() int64 { return t.Input + t.Output + t.Cache }
+
+func (t TokenBreakdown) add(other TokenBreakdown) TokenBreakdown {
+	return TokenBreakdown{Input: t.Input + other.Input, Output: t.Output + other.Output, Cache: t.Cache + other.Cache}
 }
 
 type ProcessGroup struct {
@@ -138,5 +167,12 @@ type RolloutStatusEvent struct {
 		Type   string `json:"type"`
 		Name   string `json:"name"`
 		CallID string `json:"call_id"`
+		Info   *struct {
+			Total *struct {
+				Input  int64 `json:"input_tokens"`
+				Cached int64 `json:"cached_input_tokens"`
+				Output int64 `json:"output_tokens"`
+			} `json:"total_token_usage"`
+		} `json:"info"`
 	} `json:"payload"`
 }

@@ -65,7 +65,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			if name == "" {
 				name = row.ID
 			}
-			state, _ := d.readRolloutSessionState(rolloutPath)
+			state, tokens, _ := d.readRolloutStatus(rolloutPath)
 			group.Sessions = append(group.Sessions, SessionInfo{
 				ID:          row.ID,
 				Name:        name,
@@ -77,6 +77,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				RolloutPath: rolloutPath,
 				UpdatedAt:   time.UnixMilli(row.UpdatedAtMS),
 				TokensUsed:  row.TokensUsed,
+				Tokens:      tokens,
 			})
 		}
 		sort.Slice(group.Sessions, func(i, j int) bool {

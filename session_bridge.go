@@ -188,10 +188,10 @@ func fromProcessInfo(v session.ProcessInfo) processInfo {
 	return processInfo{tool: v.Tool, pid: v.PID, ppid: v.PPID, tty: v.TTY, elapsed: v.Elapsed, command: v.Command}
 }
 func toSessionInfo(v sessionInfo) session.SessionInfo {
-	return session.SessionInfo{ID: v.id, Name: v.name, State: session.SessionState(v.state), CWD: v.cwd, Model: v.model, Source: v.source, Repository: v.repository, GitBranch: v.gitBranch, RolloutPath: v.rolloutPath, UpdatedAt: v.updatedAt, TokensUsed: v.tokensUsed}
+	return session.SessionInfo{ID: v.id, Name: v.name, State: session.SessionState(v.state), CWD: v.cwd, Model: v.model, Source: v.source, Repository: v.repository, GitBranch: v.gitBranch, RolloutPath: v.rolloutPath, UpdatedAt: v.updatedAt, TokensUsed: v.tokensUsed, Tokens: v.tokens}
 }
 func fromSessionInfo(v session.SessionInfo) sessionInfo {
-	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed}
+	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed, tokens: v.Tokens}
 }
 func toProcessGroup(v processGroup) session.ProcessGroup {
 	return session.ProcessGroup{Tool: v.tool, Root: toProcessInfo(v.root), Processes: toSliceprocessInfo(v.processes), Sessions: toSlicesessionInfo(v.sessions)}

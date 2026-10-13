@@ -326,8 +326,13 @@ details (see [Usage](#usage)).
 ### Processes
 
 The Processes tab is laid out as a dashboard. Summary panels across the top
-count sessions by state and show live tokens per provider and the projects and
-branches in use. Below them, the sessions table lists one runtime per row with
+count sessions by state, break the selected session's tokens into input,
+output, and cache, and show live tokens per provider and the projects and
+branches in use. Input counts uncached input only; cache counts cache reads
+and writes. The breakdown comes from Claude Code transcripts, Codex rollout
+`token_count` events, and Copilot `model.model_call_success` events, read from
+the tail of each file, so very long sessions can be undercounted. Other
+harnesses show the total only. Below them, the sessions table lists one runtime per row with
 its provider, PID, project, short session id, title, state, model, tokens, and
 uptime, and a second line with the branch and working directory. A detail
 panel at the bottom shows the selected runtime's session metadata and process

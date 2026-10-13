@@ -61,7 +61,10 @@ type sessionInfo struct {
 	rolloutPath string
 	updatedAt   time.Time
 	tokensUsed  int64
+	tokens      tokenBreakdown
 }
+
+type tokenBreakdown = session.TokenBreakdown
 
 type processGroup struct {
 	tool      string

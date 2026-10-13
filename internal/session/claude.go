@@ -343,8 +343,9 @@ type claudeTranscriptMetadata struct {
 	// costTokens is the latest cost-state total; messageTokens holds the usage
 	// of each assistant message written after it, keyed by message id because
 	// Claude Code repeats a message's usage on every content block record.
-	costTokens    int64
-	messageTokens map[string]int64
+	costTokens    TokenBreakdown
+	messageTokens map[string]TokenBreakdown
+	Tokens        TokenBreakdown
 }
 
 func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, error) {
@@ -392,6 +393,7 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, err
 		StartedAt:   meta.StartedAt,
 		UpdatedAt:   updated,
 		TokensUsed:  meta.TokensUsed,
+		Tokens:      meta.Tokens,
 	}, nil
 }
 
@@ -466,27 +468,36 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 				key = fmt.Sprintf("#%d", len(meta.messageTokens))
 			}
 			if meta.messageTokens == nil {
-				meta.messageTokens = make(map[string]int64)
+				meta.messageTokens = make(map[string]TokenBreakdown)
 			}
-			meta.messageTokens[key] = usage.Input + usage.Output + usage.CacheRead + usage.CacheCreation
+			meta.messageTokens[key] = TokenBreakdown{
+				Input:  max(usage.Input, 0),
+				Output: max(usage.Output, 0),
+				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+			}
 		}
 	case "cost-state":
 		// Cumulative totals Claude Code saves for the session; the latest wins
 		// and already covers every message before it. Claude Code writes these
 		// rarely, so usage from later assistant messages is added on top.
-		var total int64
+		var total TokenBreakdown
 		for _, usage := range rec.ModelUsage {
-			total += usage.Input + usage.Output + usage.CacheRead + usage.CacheCreation
+			total = total.add(TokenBreakdown{
+				Input:  max(usage.Input, 0),
+				Output: max(usage.Output, 0),
+				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+			})
 		}
-		if total > 0 {
+		if total.Total() > 0 {
 			meta.costTokens = total
 			meta.messageTokens = nil
 		}
 	}
-	meta.TokensUsed = meta.costTokens
+	meta.Tokens = meta.costTokens
 	for _, tokens := range meta.messageTokens {
-		meta.TokensUsed += tokens
+		meta.Tokens = meta.Tokens.add(tokens)
 	}
+	meta.TokensUsed = meta.Tokens.Total()
 }
 
 // nextClaudeState follows the main conversation. A user prompt or tool

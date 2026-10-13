@@ -279,8 +279,8 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 			value, color = emptyFallback(session.model, "—"), usageMutedColor
 		case "tokens":
 			value, color = "—", usageMutedColor
-			if session.tokensUsed > 0 {
-				value, color = formatTokenCount(session.tokensUsed), usageBrightColor
+			if total := sessionTokenTotal(session); total > 0 {
+				value, color = formatTokenCount(total), usageBrightColor
 			}
 		case "up":
 			value, color = group.root.elapsed, usageMutedColor
@@ -351,8 +351,10 @@ func dashGroupDetail(group processGroup) []string {
 				label("model", emptyFallback(session.model, "unknown")),
 			label(originLabel, emptyFallback(origin, "unknown"))+
 				label("branch", emptyFallback(session.gitBranch, "none")),
-			label("tokens", formatTokenCount(session.tokensUsed))+
-				label("updated", formatSessionTime(session.updatedAt))+
+			dashPaint("tokens ", usageMutedColor, false)+
+				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
+				dashTokenBreakdownText(session.tokens),
+			label("updated", formatSessionTime(session.updatedAt))+
 				label("tty", displayTTY(group.root.tty))+
 				label("up", emptyFallback(group.root.elapsed, "—")),
 		)
@@ -420,8 +422,8 @@ func (m model) dashSummarize() dashSummary {
 		for _, session := range group.sessions {
 			summary.sessions++
 			summary.states[session.state]++
-			summary.tokens += session.tokensUsed
-			tool.tokens += session.tokensUsed
+			summary.tokens += sessionTokenTotal(session)
+			tool.tokens += sessionTokenTotal(session)
 			name := dashProjectName(session)
 			project := projects[name]
 			if project == nil {
@@ -458,11 +460,14 @@ func (m model) dashSummaryPanels(height int) []string {
 		body   func(width int) []string
 	}{
 		{"¹overview", dashBlue, summary.overviewLines},
-		{"²providers", dashPurple, summary.providerLines},
-		{"³projects", dashGreen, summary.projectLines},
+		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
+		{"³providers", dashPurple, summary.providerLines},
+		{"⁴projects", dashGreen, summary.projectLines},
 	}
 	count := 1
 	switch {
+	case m.width >= 128:
+		count = 4
 	case m.width >= 96:
 		count = 3
 	case m.width >= 64:
@@ -496,7 +501,7 @@ func (s dashSummary) overviewLines(width int) []string {
 		state(sessionStateActive, "active") + state(sessionStateWaiting, "waiting"),
 		state(sessionStateNeedsInput, "input") + state(sessionStateUnknown, "unknown"),
 		dashPaint("Tokens ", usageMutedColor, false) + dashPaint(formatTokenCount(s.tokens), dashYellow, true) +
-			dashPaint(" across live sessions", usageMutedColor, false),
+			dashPaint(" live", usageMutedColor, false),
 	}
 }
 
@@ -759,4 +764,82 @@ func containsString(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// sessionTokenTotal prefers the provider's token breakdown and falls back to
+// the aggregate the provider reports when no breakdown is available.
+func sessionTokenTotal(session sessionInfo) int64 {
+	if total := session.tokens.Total(); total > 0 {
+		return total
+	}
+	return session.tokensUsed
+}
+
+func dashTokenBreakdownText(tokens tokenBreakdown) string {
+	if tokens.Total() == 0 {
+		return ""
+	}
+	return dashPaint("(", usageMutedColor, false) +
+		dashPaint("in ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Input), dashBlue, false) +
+		dashPaint(" · out ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Output), dashOrange, false) +
+		dashPaint(" · cache ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Cache), dashPurple, false) +
+		dashPaint(")   ", usageMutedColor, false)
+}
+
+func (m model) selectedSession() (processGroup, sessionInfo, bool) {
+	if len(m.processGroups) == 0 || m.processCursor >= len(m.processGroups) {
+		return processGroup{}, sessionInfo{}, false
+	}
+	group := m.processGroups[m.processCursor]
+	session, ok := firstSession(group)
+	return group, session, ok
+}
+
+func (m model) dashTokensTitle() string {
+	_, session, ok := m.selectedSession()
+	if !ok {
+		return "²tokens"
+	}
+	return "²tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
+}
+
+// dashTokenLines breaks down the selected session's tokens into input,
+// output, and cache bars, each scaled to the session total.
+func (m model) dashTokenLines(width int) []string {
+	_, session, ok := m.selectedSession()
+	if !ok {
+		return []string{dashPaint("Select a session to see its tokens.", usageMutedColor, false)}
+	}
+	total := sessionTokenTotal(session)
+	lines := []string{
+		dashPaint("Total  ", usageMutedColor, false) + dashPaint(formatTokenCount(total), usageBrightColor, true),
+	}
+	tokens := session.tokens
+	if tokens.Total() == 0 {
+		return append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
+			dashPaint("for this session.", usageMutedColor, false))
+	}
+	barWidth := max(width-7-8, 1)
+	for _, row := range []struct {
+		label string
+		value int64
+		color string
+	}{
+		{"Input", tokens.Input, dashBlue},
+		{"Output", tokens.Output, dashOrange},
+		{"Cache", tokens.Cache, dashPurple},
+	} {
+		filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
+		if row.value > 0 {
+			filled = max(filled, 1)
+		}
+		filled = min(filled, barWidth)
+		lines = append(lines,
+			dashPaint(dashCell(row.label, 7, false), usageMutedColor, false)+
+				dashPaint(strings.Repeat("━", filled), row.color, true)+
+				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
+				dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),
+		)
+	}
+	return lines
 }
