@@ -282,3 +282,41 @@ func TestReadClaudeTranscriptMetadataLargeFile(t *testing.T) {
 		t.Fatalf("metadata %+v", info)
 	}
 }
+
+func TestScanClaudeTranscriptTokens(t *testing.T) {
+	usage := func(id string, input, output, cacheRead, cacheCreation int) string {
+		return claudeLine(t, map[string]any{"type": "assistant", "message": map[string]any{
+			"id": id, "model": "claude-test", "role": "assistant", "content": []any{},
+			"usage": map[string]any{"input_tokens": input, "output_tokens": output,
+				"cache_read_input_tokens": cacheRead, "cache_creation_input_tokens": cacheCreation}}})
+	}
+	cost := func(total int) string {
+		return claudeLine(t, map[string]any{"type": "cost-state", "modelUsage": map[string]any{
+			"claude-test": map[string]any{"inputTokens": total}}})
+	}
+	tests := []struct {
+		name  string
+		lines []string
+		want  int64
+	}{
+		{"no usage", []string{claudePrompt(t, "hi")}, 0},
+		{"message usage without cost-state", []string{usage("msg_1", 1, 2, 3, 4), usage("msg_2", 10, 0, 0, 0)}, 20},
+		{"content blocks repeat a message's usage", []string{usage("msg_1", 1, 2, 3, 4), usage("msg_1", 1, 2, 3, 4), usage("msg_1", 1, 5, 3, 4)}, 13},
+		{"cost-state covers earlier messages", []string{usage("msg_1", 100, 0, 0, 0), cost(500)}, 500},
+		{"messages after cost-state add on", []string{usage("msg_1", 100, 0, 0, 0), cost(500), usage("msg_2", 7, 0, 0, 0)}, 507},
+		{"latest cost-state wins", []string{cost(500), usage("msg_2", 7, 0, 0, 0), cost(900)}, 900},
+		{"usage without message id still counts", []string{usage("", 3, 0, 0, 0), usage("", 4, 0, 0, 0)}, 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := &discoverer{}
+			meta, err := d.scanClaudeTranscript(strings.NewReader(strings.Join(tt.lines, "")), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta.TokensUsed != tt.want {
+				t.Fatalf("tokens = %d, want %d", meta.TokensUsed, tt.want)
+			}
+		})
+	}
+}

@@ -296,9 +296,16 @@ type claudeRecord struct {
 	AITitle     string `json:"aiTitle"`
 	AgentName   string `json:"agentName"`
 	Message     *struct {
+		ID         string          `json:"id"`
 		Model      string          `json:"model"`
 		StopReason *string         `json:"stop_reason"`
 		Content    json.RawMessage `json:"content"`
+		Usage      *struct {
+			Input         int64 `json:"input_tokens"`
+			Output        int64 `json:"output_tokens"`
+			CacheRead     int64 `json:"cache_read_input_tokens"`
+			CacheCreation int64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
 	} `json:"message"`
 	ModelUsage map[string]struct {
 		Input         int64 `json:"inputTokens"`
@@ -332,6 +339,12 @@ type claudeTranscriptMetadata struct {
 	StartedAt  time.Time
 	UpdatedAt  time.Time
 	TokensUsed int64
+
+	// costTokens is the latest cost-state total; messageTokens holds the usage
+	// of each assistant message written after it, keyed by message id because
+	// Claude Code repeats a message's usage on every content block record.
+	costTokens    int64
+	messageTokens map[string]int64
 }
 
 func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, error) {
@@ -446,15 +459,33 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 		if rec.Message != nil && rec.Message.Model != "" && rec.Message.Model != "<synthetic>" {
 			meta.Model = rec.Message.Model
 		}
+		if rec.Message != nil && rec.Message.Usage != nil {
+			usage := rec.Message.Usage
+			key := rec.Message.ID
+			if key == "" {
+				key = fmt.Sprintf("#%d", len(meta.messageTokens))
+			}
+			if meta.messageTokens == nil {
+				meta.messageTokens = make(map[string]int64)
+			}
+			meta.messageTokens[key] = usage.Input + usage.Output + usage.CacheRead + usage.CacheCreation
+		}
 	case "cost-state":
-		// Cumulative totals Claude Code saves for the session; the latest wins.
+		// Cumulative totals Claude Code saves for the session; the latest wins
+		// and already covers every message before it. Claude Code writes these
+		// rarely, so usage from later assistant messages is added on top.
 		var total int64
 		for _, usage := range rec.ModelUsage {
 			total += usage.Input + usage.Output + usage.CacheRead + usage.CacheCreation
 		}
 		if total > 0 {
-			meta.TokensUsed = total
+			meta.costTokens = total
+			meta.messageTokens = nil
 		}
+	}
+	meta.TokensUsed = meta.costTokens
+	for _, tokens := range meta.messageTokens {
+		meta.TokensUsed += tokens
 	}
 }
 
