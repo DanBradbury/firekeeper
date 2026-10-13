@@ -27,4 +27,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Build the tag that triggered this run. Without it GoReleaser
+          # picks the closest tag, which is wrong when two tags (such as
+          # v0.1.0-rc1 and v0.1.0) point at the same commit.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
