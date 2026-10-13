@@ -8,7 +8,8 @@ import (
 )
 
 // help.go renders the ? overlay listing every hotkey. While it is open it
-// takes over the content area and swallows keys other than close and quit.
+// takes over the content area, and any key closes it without running that
+// key's action. Ctrl+C still quits so the app is never stuck.
 
 type helpKey struct{ key, action string }
 
@@ -41,12 +42,10 @@ var helpSections = []helpSection{
 }
 
 func (m model) updateHelp(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c", "q":
+	if msg.String() == "ctrl+c" {
 		return m, tea.Quit
-	case "?", "esc", "backspace", "enter":
-		m.helpOpen = false
 	}
+	m.helpOpen = false
 	return m, nil
 }
 
@@ -98,7 +97,6 @@ func (m model) viewHelp(contentRows int) string {
 
 func (m model) helpFooter() (string, string) {
 	help := dashPaint(" ", usageTextColor, false) +
-		dashPaint("? / esc ", dashBlue, true) + dashPaint("close  ", usageTextColor, false) +
-		dashPaint("q ", dashBlue, true) + dashPaint("quit", usageTextColor, false)
+		dashPaint("any key ", dashBlue, true) + dashPaint("close", usageTextColor, false)
 	return dashFit(help, m.width, usagePanelColor), dashFit(dashPaint("  keyboard shortcuts", usageMutedColor, false), m.width, usagePanelColor)
 }

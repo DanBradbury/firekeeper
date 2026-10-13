@@ -122,14 +122,38 @@ func TestHelpOverlayTogglesAndListsHotkeys(t *testing.T) {
 		}
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = updated.(model)
-		if !m.helpOpen || m.processCursor != 0 {
-			t.Fatal("keys behind the help overlay must be ignored")
+		if m.helpOpen || m.processCursor != 0 {
+			t.Fatal("a key must close help without running its action")
 		}
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	}
+}
+
+func TestHelpOverlayClosesOnAnyKeyWithoutActing(t *testing.T) {
+	keys := []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune{'q'}},
+		{Type: tea.KeyRunes, Runes: []rune{'?'}},
+		{Type: tea.KeyRunes, Runes: []rune{'r'}},
+		{Type: tea.KeyRunes, Runes: []rune{'s'}},
+		{Type: tea.KeyTab},
+		{Type: tea.KeyEnter},
+		{Type: tea.KeyEsc},
+	}
+	for _, key := range keys {
+		m := dashboardTestModel()
+		m.helpOpen = true
+		updated, cmd := m.Update(key)
 		m = updated.(model)
-		if m.helpOpen || m.activeTab != active {
-			t.Fatal("esc did not close help")
+		if m.helpOpen {
+			t.Fatalf("%q did not close help", key.String())
 		}
+		if cmd != nil || m.activeTab != processesTab || m.expandedGroups[100] || m.terminalStatus != "" {
+			t.Fatalf("%q ran its action behind the help overlay", key.String())
+		}
+	}
+	m := dashboardTestModel()
+	m.helpOpen = true
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); cmd == nil {
+		t.Fatal("ctrl+c must still quit from help")
 	}
 }
 
