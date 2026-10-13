@@ -25,7 +25,28 @@ jobs:
             exit 1
           fi
       - run: go vet ./...
+      - name: go vet (darwin)
+        run: GOOS=darwin go vet ./...
       - run: go test ./...
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: install terminal apps for AppleScript checks
+        run: |
+          brew install --cask iterm2 ghostty
+          lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+          "$lsregister" -f /Applications/iTerm.app /Applications/Ghostty.app
+      - name: go test
+        env:
+          FIREKEEPER_MACOS_INTEGRATION: "1"
+        run: go test ./...
 
   installer:
     runs-on: ubuntu-latest
