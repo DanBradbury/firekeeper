@@ -243,6 +243,31 @@ ON CONFLICT(account_id, id) DO UPDATE SET
 	return err
 }
 
+// RegisterMachine records a machine for an account without marking it
+// online: the heartbeat time is left as it was. A local-mode server uses it
+// to list its own machine before the daemon has reported.
+func (s *Store) RegisterMachine(ctx context.Context, accountID string, m Machine) error {
+	if err := requireAccount(accountID); err != nil {
+		return err
+	}
+	if m.ID == "" {
+		return fmt.Errorf("%w: machine.id is required", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := upsertMachine(ctx, tx, accountID, m, time.Now(), false); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.notify([]Change{{Kind: MachineStatus, AccountID: accountID, MachineID: m.ID}})
+	return nil
+}
+
 // requireAccount rejects an empty account id so a missing tenant can never
 // turn into an unscoped write.
 func requireAccount(accountID string) error {

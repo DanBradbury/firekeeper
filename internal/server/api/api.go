@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,6 +26,7 @@ type options struct {
 	prices   map[string]store.Price
 	fileLink string
 	limits   Limits
+	local    func(context.Context) *LocalStatus
 }
 
 // WithLimits sets the per-account limits ingest enforces. Without it there
@@ -67,7 +69,7 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
 	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))
-	mux.HandleFunc("GET /v1/account", account(s, o.limits))
+	mux.HandleFunc("GET /v1/account", account(s, o.limits, o.local))
 	mux.HandleFunc("DELETE /v1/account", deleteAccount(s))
 	mux.HandleFunc("GET /v1/account/export", exportAccount(s))
 	mux.HandleFunc("POST /v1/auth/logout", logout(s))

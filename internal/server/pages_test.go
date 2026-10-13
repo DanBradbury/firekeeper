@@ -58,7 +58,7 @@ func TestRunPrintsMode(t *testing.T) {
 		seed func(*store.Store)
 		want string
 	}{
-		{"single-user", nil, "mode: single-user: no accounts or tokens"},
+		{"local", nil, "mode: local: no account needed"},
 		{"token-only", func(s *store.Store) {
 			if _, _, err := s.CreateToken(context.Background(), store.DefaultAccountID, "r", store.ScopeRead, ""); err != nil {
 				t.Fatal(err)

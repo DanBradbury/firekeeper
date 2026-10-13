@@ -381,7 +381,9 @@ const isOnline = (m, now = Date.now()) => {
   return !Number.isNaN(t) && now - t < OFFLINE_AFTER_MS;
 };
 
-function machineCard(m, online) {
+// machineCard draws one machine. local, set only for the machine a
+// local-mode server runs on, adds how its daemon reports.
+function machineCard(m, online, local) {
   const counts = m.state_counts || {};
   const total = Number(m.session_count) || 0;
   const chips = SHOWN_STATES.filter((st) => counts[st] > 0).map((st) => {
@@ -393,16 +395,60 @@ function machineCard(m, online) {
   const sessionsHref = `#/sessions?${new URLSearchParams({ machine: m.id })}`;
   return el("li", { class: `machine ${online ? "online" : "offline"}`, "data-machine": m.id },
     el("div", { class: "machine-head" },
-      el("h2", { text: m.name || m.hostname || m.id }),
+      el("h2", { text: m.name || m.hostname || m.id }, local ? el("span", { class: "this-machine", text: "this machine" }) : null),
       el("span", { class: `presence ${online ? "online" : "offline"}` }, online ? "● Online" : "○ Offline")),
     el("p", { class: "machine-meta", text: hostOS || m.id }),
     el("dl", { class: "machine-facts" },
       el("div", {}, el("dt", { text: "Heartbeat" }), el("dd", {}, timeEl(m.last_heartbeat_at))),
       el("div", {}, el("dt", { text: "Last activity" }), el("dd", {}, timeEl(m.last_activity_at)))),
+    local ? localReporting(local) : null,
     total === 0
-      ? el("p", { class: "machine-empty", text: "Linked, no sessions uploaded yet." })
+      ? el("p", { class: "machine-empty", text: local ? "No sessions uploaded yet." : "Linked, no sessions uploaded yet." })
       : el("div", { class: "state-chips" }, ...chips),
     el("a", { class: "machine-link", href: sessionsHref, text: total === 0 ? "Filter sessions" : `View ${total} session${total === 1 ? "" : "s"} →` }));
+}
+
+const PROVIDER_NAMES = { codex: "Codex", copilot: "Copilot CLI", claude: "Claude Code", kimi: "Kimi" };
+
+// providerList names providers for a sentence: "Codex and Claude Code".
+function providerList(names) {
+  const pretty = (names || []).map((n) => PROVIDER_NAMES[n] || n);
+  if (pretty.length < 2) return pretty[0] || "";
+  return `${pretty.slice(0, -1).join(", ")} and ${pretty[pretty.length - 1]}`;
+}
+
+// localReporting says how this machine's daemon reports, from the local
+// status a local-mode server adds to GET /v1/account, and gives the one
+// command that makes it report here.
+function localReporting(local) {
+  const providers = providerList(local.providers);
+  const detected = providerList(local.detected);
+  const server = local.server || "another server";
+  let ok = false;
+  let text;
+  if (local.daemon === "running" && local.reports_here) {
+    ok = true;
+    text = providers ? `Daemon running, reporting ${providers} here.` : "Daemon running, reporting here.";
+  } else if (local.daemon === "running" && local.foreground) {
+    text = `A daemon started in a terminal reports to ${server}, not this dashboard. Stop it, then run:`;
+  } else if (local.daemon === "running") {
+    text = `The daemon is running but reports to ${server}, not this dashboard. To report here, run:`;
+  } else if (local.daemon === "stopped" && local.reports_here) {
+    text = "The daemon is installed but not running. Start it with:";
+  } else if (local.daemon === "stopped") {
+    text = `The daemon is installed but stopped, and set to report to ${server}. To report here, run:`;
+  } else if (detected) {
+    text = `Not reporting yet. To send ${detected} sessions here, run:`;
+  } else {
+    text = "Not reporting yet. No Codex, Copilot CLI or Claude Code data was found on this machine.";
+  }
+  const box = el("div", { class: `local-report ${ok ? "ok" : "todo"}` }, el("p", { text }));
+  if (local.command && (local.daemon !== "not_installed" || detected)) {
+    box.append(
+      el("pre", { class: "cmd", text: local.command }),
+      el("p", { class: "footnote", text: "Nothing is uploaded until you run it. Restarting firekeeper serve in a terminal also offers to set this up." }));
+  }
+  return box;
 }
 
 function linkInstructions() {
@@ -416,6 +462,7 @@ function linkInstructions() {
 function machinesView() {
   let alive = true;
   let machines = null;
+  let local = null;
   let refreshTimer = null;
   const body = el("div", {}, el("div", { class: "loading", text: "Loading machines…" }));
   const summary = el("p", { class: "summary" });
@@ -431,7 +478,9 @@ function machinesView() {
     const now = Date.now();
     if (machines.length === 0) {
       summary.textContent = "";
-      body.replaceChildren(linkInstructions());
+      body.replaceChildren(local
+        ? el("div", { class: "panel onboarding" }, el("h2", { text: "No machines yet" }), localReporting(local))
+        : linkInstructions());
       return;
     }
     const rows = machines.map((m) => ({ m, online: isOnline(m, now) }));
@@ -441,14 +490,18 @@ function machinesView() {
     const up = rows.filter((r) => r.online).length;
     const sessions = machines.reduce((n, m) => n + (Number(m.session_count) || 0), 0);
     summary.textContent = `${up} of ${machines.length} online · ${sessions} session${sessions === 1 ? "" : "s"}`;
-    body.replaceChildren(el("ul", { class: "machines" }, ...rows.map((r) => machineCard(r.m, r.online))));
+    body.replaceChildren(el("ul", { class: "machines" },
+      ...rows.map((r) => machineCard(r.m, r.online, local && r.m.id === local.machine_id ? local : null))));
   }
 
   async function load() {
     try {
-      const res = await api.listMachines();
+      // A local-mode server describes its own machine on the account; any
+      // other server, or a failed look, just leaves the cards plain.
+      const [res, acct] = await Promise.all([api.listMachines(), api.account ? api.account().catch(() => null) : null]);
       if (!alive) return;
       machines = res.machines || [];
+      local = acct?.local || null;
       paint();
     } catch (err) {
       if (alive && !machines) body.replaceChildren(notice(err.message, true));

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,10 +28,13 @@ type accountResponse struct {
 	// Zero limits mean none. The default account is never limited.
 	Usage  store.AccountStats `json:"usage"`
 	Limits Limits             `json:"limits"`
+	// Local describes this machine and its daemon on a local-mode server:
+	// single-user and listening on loopback.
+	Local *LocalStatus `json:"local,omitempty"`
 }
 
 // account serves GET /v1/account: who the caller is.
-func account(s *store.Store, lim Limits) http.HandlerFunc {
+func account(s *store.Store, lim Limits, local func(context.Context) *LocalStatus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		a, err := s.GetAccount(r.Context(), accountID(r))
 		if errors.Is(err, store.ErrNotFound) {
@@ -48,6 +52,8 @@ func account(s *store.Store, lim Limits) http.HandlerFunc {
 		}
 		if !resp.SingleUser {
 			resp.Limits = lim
+		} else if local != nil {
+			resp.Local = local(r.Context())
 		}
 		if p, ok := auth.From(r.Context()); ok {
 			resp.CSRFToken = p.CSRF

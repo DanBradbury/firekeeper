@@ -78,6 +78,20 @@ type Config struct {
 	// OnListen, if set, is called with the base URL once the listener is
 	// bound and before requests are served.
 	OnListen func(url string)
+
+	// The rest applies only in local mode: a server that starts with no
+	// token and no account and listens on loopback, so it serves only the
+	// machine it runs on.
+
+	// LocalMachine, if set, is this machine. A local-mode server registers
+	// it at startup so the dashboard lists it before its daemon reports.
+	LocalMachine *store.Machine
+	// Local, if set, describes this machine and its daemon. It is called
+	// with the server's base URL for each GET /v1/account by the built-in
+	// default account.
+	Local func(ctx context.Context, dashboardURL string) *api.LocalStatus
+	// OnLocal, if set, is called with the base URL after OnListen.
+	OnLocal func(url string)
 }
 
 // MaxBannerLen is the longest Config.Banner, in bytes.
@@ -182,9 +196,21 @@ func Run(ctx context.Context, cfg Config) error {
 		fmt.Fprintf(errOut, "warning: listening on %s with no authentication; anyone who can reach this address can read and upload transcripts\n", listen)
 	}
 
+	local := loopback && len(tokens) == 0 && !accounts
+	if local && cfg.LocalMachine != nil {
+		if err := s.RegisterMachine(ctx, store.DefaultAccountID, *cfg.LocalMachine); err != nil {
+			return fmt.Errorf("register this machine: %w", err)
+		}
+	}
+
 	ln, err := net.Listen("tcp", listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
+	}
+	url := "http://" + ln.Addr().String() + "/"
+	apiOpts := []api.Option{api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)}
+	if local && cfg.Local != nil {
+		apiOpts = append(apiOpts, api.WithLocal(func(ctx context.Context) *api.LocalStatus { return cfg.Local(ctx, url) }))
 	}
 
 	// Streams never finish on their own, so they would hold Shutdown for
@@ -194,7 +220,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// The middleware resolves every request to an account. It leaves the API
 	// open to the default account only while no token and no account exists.
 	am := auth.New(s, auth.WithSignup(signup), auth.WithTrustedProxies(cfg.TrustedProxies))
-	apiHandler := am.Wrap(api.Handler(s, api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)))
+	apiHandler := am.Wrap(api.Handler(s, apiOpts...))
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/auth/login", am.Login())
 	mux.Handle("POST /v1/auth/signup", am.Signup())
@@ -213,11 +239,17 @@ func Run(ctx context.Context, cfg Config) error {
 		IdleTimeout:       2 * time.Minute,
 	}
 
-	url := "http://" + ln.Addr().String() + "/"
 	fmt.Fprintf(out, "firekeeper dashboard at %s\n", url)
-	fmt.Fprintf(out, "mode: %s\n", am.Mode(ctx))
+	if local {
+		fmt.Fprintln(out, "mode: local: no account needed; only this machine can reach the dashboard")
+	} else {
+		fmt.Fprintf(out, "mode: %s\n", am.Mode(ctx))
+	}
 	if cfg.OnListen != nil {
 		cfg.OnListen(url)
+	}
+	if local && cfg.OnLocal != nil {
+		cfg.OnLocal(url)
 	}
 
 	if timeout := cfg.SessionTimeout; timeout >= 0 {

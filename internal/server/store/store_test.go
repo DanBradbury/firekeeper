@@ -175,3 +175,37 @@ func TestEndStale(t *testing.T) {
 		t.Fatalf("state %s, want WAITING", st.State)
 	}
 }
+
+func TestRegisterMachineKeepsHeartbeat(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	m := Machine{ID: "m1", Name: "laptop", Hostname: "laptop", OS: "darwin", Version: "1.0.0"}
+	if err := s.RegisterMachine(ctx, DefaultAccountID, m); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := s.ListMachines(ctx, DefaultAccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || ms[0].ID != "m1" || ms[0].Name != "laptop" || ms[0].LastHeartbeatAt != nil {
+		t.Fatalf("registered machine = %+v", ms)
+	}
+
+	if err := s.Heartbeat(ctx, DefaultAccountID, m, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterMachine(ctx, DefaultAccountID, Machine{ID: "m1", Version: "1.1.0"}); err != nil {
+		t.Fatal(err)
+	}
+	ms, _ = s.ListMachines(ctx, DefaultAccountID)
+	if len(ms) != 1 || ms[0].LastHeartbeatAt == nil || ms[0].Name != "laptop" || ms[0].Version != "1.1.0" {
+		t.Fatalf("re-registered machine = %+v", ms)
+	}
+
+	if err := s.RegisterMachine(ctx, DefaultAccountID, Machine{}); err == nil {
+		t.Fatal("RegisterMachine without an id succeeded")
+	}
+	if err := s.RegisterMachine(ctx, "", m); err == nil {
+		t.Fatal("RegisterMachine without an account succeeded")
+	}
+}
