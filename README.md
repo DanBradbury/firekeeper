@@ -30,6 +30,13 @@ macOS is the main target; Linux is best effort. Release tags with a suffix,
 such as `v0.1.0-rc1`, are prereleases: the install script can fetch them with
 `--version`, and Homebrew does not.
 
+When you start `firekeeper` in a terminal it checks GitHub for a newer
+release (at most once a day, one unauthenticated request) and asks whether to
+update. Homebrew installs use `brew upgrade`; others re-run the install script
+for that exact version. Choose "Skip this version" to stop asking about it, or
+set `FIREKEEPER_NO_UPDATE_CHECK=1` to turn the check off. Builds from source
+never check.
+
 `firekeeper --help` lists the subcommands. `firekeeper --version` (or
 `firekeeper version`) prints the version, commit, and build date.
 
