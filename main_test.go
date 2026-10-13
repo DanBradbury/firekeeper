@@ -483,7 +483,7 @@ func TestExpandedProcessGroupShowsSessionAndChildren(t *testing.T) {
 	}}
 	m.expandedGroups[100] = true
 	lines, _ := m.processBodyLines()
-	joined := strings.Join(lines, "\n")
+	joined := ansi.Strip(strings.Join(lines, "\n"))
 	for _, expected := range []string{"Firekeeper", "/workspace/firekeeper", "gpt-5.6", "PID 101", "ttys001"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expanded group missing %q:\n%s", expected, joined)

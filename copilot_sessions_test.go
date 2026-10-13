@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
@@ -214,7 +216,7 @@ func TestCopilotProcessDetailsShowProviderMetadata(t *testing.T) {
 	}}
 	m.expandedGroups[300] = true
 	lines, _ := m.processBodyLines()
-	view := strings.Join(lines, "\n")
+	view := ansi.Strip(strings.Join(lines, "\n"))
 	for _, expected := range []string{
 		"NEEDS INPUT", "Copilot metadata support", "/workspace/firekeeper",
 		"claude-sonnet-4.6", "DanBradbury/firekeeper", "feature/copilot", "tokens 321",

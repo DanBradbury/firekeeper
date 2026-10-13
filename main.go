@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -393,22 +392,12 @@ func (m model) View() string {
 		return "Terminal too small (need 20x6)\n"
 	}
 	contentRows := m.height - chromeRows
-	var content, help, status string
 	if m.activeTab == processesTab {
-		content = m.viewProcesses(contentRows)
-		help, status = m.processFooter()
-	} else {
-		content = m.viewUsage(contentRows)
-		help, status = m.usageFooter()
+		help, status := m.processFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")
 	}
-	return strings.Join([]string{fitLine(m.tabBar(), m.width), content, fitLine(help, m.width), fitLine(status, m.width)}, "\n")
-}
-
-func (m model) tabBar() string {
-	if m.activeTab == usageTab {
-		return "    Processes  [ Usage ]  •  Tab switch"
-	}
-	return "  [ Processes ]  Usage    •  Tab switch"
+	help, status := m.usageFooter()
+	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), fitLine(help, m.width), fitLine(status, m.width)}, "\n")
 }
 
 func padText(value string, width int) string {
@@ -417,170 +406,6 @@ func padText(value string, width int) string {
 		return string(runes[:width])
 	}
 	return value + strings.Repeat(" ", width-len(runes))
-}
-
-func (m model) viewProcesses(contentRows int) string {
-	lines := make([]string, 0, contentRows)
-	if contentRows < 1 {
-		return ""
-	}
-
-	lines = append(lines, fitLine("  RUNTIME       ROOT PID TTY       PROCS ELAPSED       SESSION", m.width))
-	if contentRows > 1 {
-		lines = append(lines, strings.Repeat("─", m.width))
-	}
-
-	capacity := m.processPageSize()
-	if len(m.processGroups) == 0 && contentRows > 2 {
-		message := "  No running Codex, Copilot, or OpenCode processes found."
-		if m.refreshedAt.IsZero() {
-			message = "  Scanning for Codex, Copilot, and OpenCode processes…"
-		}
-		lines = append(lines, fitLine(message, m.width))
-	} else if capacity > 0 {
-		body, _ := m.processBodyLines()
-		end := min(m.processScroll+capacity, len(body))
-		for _, line := range body[m.processScroll:end] {
-			lines = append(lines, fitLine(line, m.width))
-		}
-	}
-
-	for len(lines) < contentRows {
-		lines = append(lines, strings.Repeat(" ", m.width))
-	}
-	return strings.Join(lines[:contentRows], "\n")
-}
-
-func (m model) processFooter() (string, string) {
-	help := "  ↑/↓ select  •  Enter expand  •  s switch terminal  •  r refresh  •  q quit"
-	if m.processErr != "" {
-		return help, "  process scan failed: " + m.processErr
-	}
-	if m.terminalStatus != "" {
-		return help, "  " + m.terminalStatus
-	}
-	if m.refreshedAt.IsZero() {
-		return help, "  scanning processes…"
-	}
-
-	processCount := 0
-	for _, group := range m.processGroups {
-		processCount += len(group.processes)
-	}
-	if m.processMetadataWarning != "" {
-		return help, fmt.Sprintf(
-			"  %d runtimes / %d processes  •  session metadata unavailable: %s",
-			len(m.processGroups),
-			processCount,
-			m.processMetadataWarning,
-		)
-	}
-	status := fmt.Sprintf(
-		"  %d runtimes / %d processes  •  selected %d/%d  •  refreshed %s",
-		len(m.processGroups),
-		processCount,
-		min(m.processCursor+1, len(m.processGroups)),
-		len(m.processGroups),
-		m.refreshedAt.Format("15:04:05"),
-	)
-	return help, status
-}
-
-func (m model) processPageSize() int {
-	return max(m.height-chromeRows-2, 0)
-}
-
-func (m model) processBodyLines() ([]string, []int) {
-	var lines []string
-	offsets := make([]int, len(m.processGroups))
-	for index, group := range m.processGroups {
-		offsets[index] = len(lines)
-		selected := " "
-		if index == m.processCursor {
-			selected = ">"
-		}
-		disclosure := "▸"
-		if m.expandedGroups[group.root.pid] {
-			disclosure = "▾"
-		}
-
-		sessionName := "UNKNOWN • metadata unavailable"
-		if len(group.sessions) > 0 {
-			name := group.sessions[0].name
-			if name == "" {
-				name = filepath.Base(group.sessions[0].cwd)
-			}
-			sessionName = group.sessions[0].state.String() + " • " + name
-		}
-		lines = append(lines, fmt.Sprintf(
-			"%s %s %-10s %8d %-9s %5d %-13s %s",
-			selected,
-			disclosure,
-			group.tool,
-			group.root.pid,
-			displayTTY(group.root.tty),
-			len(group.processes),
-			group.root.elapsed,
-			sessionName,
-		))
-
-		if !m.expandedGroups[group.root.pid] {
-			continue
-		}
-		if len(group.sessions) == 0 {
-			message := "no session metadata adapter"
-			switch group.tool {
-			case "Codex":
-				message = "no Codex rollout metadata found"
-			case "Copilot":
-				message = "no Copilot session metadata found"
-			case "Kimi":
-				message = "no Kimi session metadata found"
-			}
-			lines = append(lines, "      session  "+message)
-		}
-		for _, session := range group.sessions {
-			originLabel := "source"
-			origin := session.source
-			if session.repository != "" {
-				originLabel = "repo"
-				origin = session.repository
-			}
-			lines = append(lines,
-				"      session  "+session.state.String()+" • "+session.name,
-				"      cwd      "+session.cwd,
-				fmt.Sprintf(
-					"      model    %s  •  %s %s  •  updated %s",
-					emptyFallback(session.model, "unknown"),
-					originLabel,
-					emptyFallback(origin, "unknown"),
-					formatSessionTime(session.updatedAt),
-				),
-				fmt.Sprintf(
-					"      id       %s  •  branch %s  •  tokens %d",
-					session.id,
-					emptyFallback(session.gitBranch, "none"),
-					session.tokensUsed,
-				),
-			)
-		}
-		for processIndex, process := range group.processes {
-			branch := "├─"
-			if processIndex == len(group.processes)-1 {
-				branch = "└─"
-			}
-			lines = append(lines, fmt.Sprintf(
-				"      %s PID %-7d PPID %-7d TTY %-9s %-13s %s",
-				branch,
-				process.pid,
-				process.ppid,
-				displayTTY(process.tty),
-				process.elapsed,
-				process.command,
-			))
-		}
-	}
-	return lines, offsets
 }
 
 func (m *model) clampProcessSelection() {

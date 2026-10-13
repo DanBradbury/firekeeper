@@ -324,6 +324,15 @@ details (see [Usage](#usage)).
 
 ### Processes
 
+The Processes tab is laid out as a dashboard. Summary panels across the top
+count sessions by state and show live tokens per provider and the projects and
+branches in use. Below them, the sessions table lists one runtime per row with
+its provider, PID, project, short session id, title, state, model, tokens, and
+uptime, and a second line with the branch and working directory. A detail
+panel at the bottom shows the selected runtime's session metadata and process
+tree. On smaller terminals the summary and detail panels are hidden and the
+narrowest table columns drop out first; Enter still expands details inline.
+
 | Key | Action |
 | --- | --- |
 | Up / Down or `J` / `K` | Select runtime |
