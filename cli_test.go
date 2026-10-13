@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
+	"github.com/DanBradbury/firekeeper/internal/reporter"
 	"github.com/DanBradbury/firekeeper/internal/session"
 )
 
@@ -104,4 +106,32 @@ func stubDiscover(t *testing.T, metas []session.Meta, err error) {
 	previous := discoverSessions
 	discoverSessions = func(context.Context, session.Options) ([]session.Meta, error) { return metas, err }
 	t.Cleanup(func() { discoverSessions = previous })
+}
+
+func TestVersionCommand(t *testing.T) {
+	for _, arg := range []string{"version", "--version"} {
+		var out, errb bytes.Buffer
+		code, ok := runSubcommand([]string{arg}, &out, &errb)
+		if !ok || code != 0 {
+			t.Fatalf("%s: ok=%v code=%d stderr=%q", arg, ok, code, errb.String())
+		}
+		if got := out.String(); !strings.HasPrefix(got, "firekeeper dev (commit dev, built dev") {
+			t.Errorf("%s: output %q", arg, got)
+		}
+	}
+	var out, errb bytes.Buffer
+	if code, _ := runSubcommand([]string{"version", "x"}, &out, &errb); code != 2 {
+		t.Errorf("extra arg code = %d, want 2", code)
+	}
+}
+
+func TestApplyReporterConfigSendsVersion(t *testing.T) {
+	old := version
+	version = "v1.2.3"
+	defer func() { version = old }()
+	var cfg reporter.Config
+	applyReporterConfig(&cfg, config.Config{})
+	if cfg.Version != "v1.2.3" {
+		t.Errorf("Version = %q", cfg.Version)
+	}
 }

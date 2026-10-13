@@ -34,3 +34,4 @@ Thumbs.db
 /deploy/.env
 /deploy/backups/
 firekeeper-*.db
+/dist/
