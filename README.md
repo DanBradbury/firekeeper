@@ -8,64 +8,6 @@ changed. Firekeeper works across Codex, GitHub Copilot CLI, and Claude Code,
 on one machine or several, and it runs on your hardware. Nothing starts and
 nothing uploads unless you ask.
 
-## Why it exists
-
-I use more than one coding agent, and each keeps its own history in its own
-format in its own folder. When I wanted to answer simple questions, I couldn't.
-What did last week's sessions use? Which project burns the most tokens? What
-was that agent doing when it stopped and waited for me? What did it change?
-
-Firekeeper started as a terminal dashboard for seeing what is running. It
-grew into the place to inspect all of it: a live view of every session, a
-searchable archive of past ones, and usage across projects and machines. Use
-the parts you want.
-
-## What you get
-
-**See what is running.** A keyboard-driven terminal UI finds your agent
-processes, groups each one with its child processes, and shows state, model,
-working directory, Git branch, and tokens. It jumps you to the terminal that
-holds a session on macOS. Plain `firekeeper` changes nothing about how you
-launch your agents.
-
-**Read what happened.** Send transcripts to a dashboard you run and get a web
-UI with every session, full transcripts, and search across all of them. Each
-session shows the files it changed and its Git context. Import the history
-already on your machine with `backfill`, or keep it current with the daemon.
-
-**Understand usage.** Token use charted by model and filtered by project. Add
-your own per-model prices and the same charts show spend. Firekeeper ships no
-price list, so the numbers are yours.
-
-**Bring machines together.** Link a laptop, a desktop, and a dev box to one
-account with a browser approval instead of a pasted token. A machines page
-shows which are online, and sessions from all of them sit in one list.
-
-**Stay in control.** Upload is opt-in per provider. Every event is redacted
-before it leaves the machine, and a repository with a `.firekeeper-ignore`
-file is never read. You run the server: on `127.0.0.1`, or on a host you
-control. Redaction is best effort and the operator of a server can read what is
-uploaded, so see [What is uploaded and what is not caught](#what-is-uploaded-and-what-is-not-caught).
-
-## Use it how you need it
-
-| Mode | What you run | What leaves the machine |
-| --- | --- | --- |
-| **Terminal dashboard only** | `firekeeper` | Firekeeper uploads no session data and starts no daemon. See [Terminal dashboard](#terminal-dashboard) for the two Usage-tab lookups that do contact other services. |
-| **Local dashboard** | `firekeeper serve`, plus `firekeeper report` or `firekeeper daemon` | Transcripts go to a server on `127.0.0.1` and stay in a SQLite file on this machine. |
-| **Self-hosted server, several machines** | `firekeeper serve` on a host you control, behind HTTPS; `firekeeper login` on each machine | Redacted transcripts go to that host. Whoever operates it can read them. |
-
-Don't want a daemon? Run `firekeeper backfill --all --dry-run` to preview
-importing the sessions already on your machine, then `firekeeper backfill
---all` to import them in one pass and stop there. Everything beyond plain
-`firekeeper` is a separate subcommand that you run on purpose, and an
-unconfigured `report` or `daemon` sends nothing.
-
-Supported harnesses are Codex, GitHub Copilot CLI, Claude Code, Kimi Code, and
-OpenCode. Codex, Copilot CLI, and Claude Code can upload transcripts. Kimi gets
-local token history and OpenCode is process discovery only. The
-[provider table](#supported-providers) shows what each one gets.
-
 ## Install
 
 ```sh
@@ -127,6 +69,66 @@ want this machine's token revoked on the server. To delete all of it:
 ```sh
 rm -rf ~/.firekeeper
 ```
+
+## Why it exists
+
+I use more than one coding agent, and each keeps its own history in its own
+format in its own folder. When I wanted to answer simple questions, I couldn't.
+What did last week's sessions use? Which project burns the most tokens? What
+was that agent doing when it stopped and waited for me? What did it change?
+
+Firekeeper started as a terminal dashboard for seeing what is running. It
+grew into the place to inspect all of it: a live view of every session, a
+searchable archive of past ones, and usage across projects and machines. Use
+the parts you want.
+
+## What you get
+
+**See what is running.** A keyboard-driven terminal UI finds your agent
+processes, groups each one with its child processes, and shows state, model,
+working directory, Git branch, and tokens. It jumps you to the terminal that
+holds a session on macOS. Plain `firekeeper` changes nothing about how you
+launch your agents.
+
+**Read what happened.** Send transcripts to a dashboard you run and get a web
+UI with every session, full transcripts, and search across all of them. Each
+session shows the files it changed and its Git context. Import the history
+already on your machine with `backfill`, or keep it current with the daemon.
+
+**Understand usage.** Token use charted by model and filtered by project. Add
+your own per-model prices and the same charts show spend. Firekeeper ships no
+price list, so the numbers are yours.
+
+**Bring machines together.** Link a laptop, a desktop, and a dev box to one
+account with a browser approval instead of a pasted token. A machines page
+shows which are online, and sessions from all of them sit in one list.
+
+**Stay in control.** Upload is opt-in per provider. Every event is redacted
+before it leaves the machine, and a repository with a `.firekeeper-ignore`
+file is never read. You run the server: on `127.0.0.1`, or on a host you
+control. Redaction is best effort and the operator of a server can read what is
+uploaded, so see [What is uploaded and what is not caught](#what-is-uploaded-and-what-is-not-caught).
+
+## Use it how you need it
+
+| Mode | What you run | What leaves the machine |
+| --- | --- | --- |
+| **Terminal dashboard only** | `firekeeper` | Firekeeper uploads no session data and starts no daemon. See [Terminal dashboard](#terminal-dashboard) for the two Usage-tab lookups that do contact other services. |
+| **Local dashboard** | `firekeeper serve`, plus `firekeeper report` or `firekeeper daemon` | Transcripts go to a server on `127.0.0.1` and stay in a SQLite file on this machine. |
+| **Self-hosted server, several machines** | `firekeeper serve` on a host you control, behind HTTPS; `firekeeper login` on each machine | Redacted transcripts go to that host. Whoever operates it can read them. |
+
+Don't want a daemon? Run `firekeeper backfill --all --dry-run` to preview
+importing the sessions already on your machine, then `firekeeper backfill
+--all` to import them in one pass and stop there. Everything beyond plain
+`firekeeper` is a separate subcommand that you run on purpose, and an
+unconfigured `report` or `daemon` sends nothing.
+
+Supported harnesses are Codex, GitHub Copilot CLI, Claude Code, Kimi Code, and
+OpenCode. Codex, Copilot CLI, and Claude Code can upload transcripts. Kimi gets
+local token history and OpenCode is process discovery only. The
+[provider table](#supported-providers) shows what each one gets.
+
+## Other ways to run
 
 ### Server in a container
 
