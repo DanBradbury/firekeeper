@@ -128,6 +128,7 @@ type model struct {
 	kimiHistoryCursor       int
 	helpOpen                bool
 	metadataMisses          map[int]int
+	chat                    chatState
 }
 
 func newModel() model {
@@ -148,6 +149,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.helpOpen {
 			return m.updateHelp(msg)
 		}
+		if m.chat.open {
+			return m.updateChat(msg)
+		}
 		if m.activeTab == processesTab && msg.String() != "s" {
 			m.terminalStatus = ""
 		}
@@ -156,6 +160,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.helpOpen = true
+		case "c":
+			if m.activeTab == processesTab {
+				return m, m.openChat()
+			}
 		case "tab", "shift+tab":
 			m.activeTab = (m.activeTab + 1) % tabCount
 			if m.activeTab == processesTab {
@@ -279,9 +287,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.ensureSelectedProcessVisible()
+		if m.chat.open {
+			m.clampChatScroll()
+		}
 
 	case processPollMsg:
-		return m, tea.Batch(refreshProcesses(), pollProcesses())
+		return m, tea.Batch(refreshProcesses(), pollProcesses(), m.refreshChat())
+
+	case chatResultMsg:
+		m.applyChatResult(msg)
 
 	case processResultMsg:
 		m.refreshedAt = msg.refreshed
@@ -411,6 +425,10 @@ func (m model) View() string {
 	if m.helpOpen {
 		help, status := m.helpFooter()
 		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help, status}, "\n")
+	}
+	if m.chat.open {
+		help, status := m.chatFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewChat(contentRows), help, status}, "\n")
 	}
 	if m.activeTab == processesTab {
 		help, status := m.processFooter()

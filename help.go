@@ -30,7 +30,15 @@ var helpSections = []helpSection{
 		{"Home / End", "Jump to first or last runtime"},
 		{"Enter", "Expand session details and process tree"},
 		{"s", "Switch to the runtime's terminal"},
+		{"c", "Open the session's chat history"},
 		{"r", "Refresh now"},
+	}},
+	{"Chat", []helpKey{
+		{"↑ ↓ / j k", "Scroll a line"},
+		{"PgUp / PgDn", "Scroll a page"},
+		{"g / G", "Jump to the first or latest message"},
+		{"r", "Reload the transcript"},
+		{"Esc / c / q", "Back to Processes"},
 	}},
 	{"Usage", []helpKey{
 		{"← → / h l", "Switch provider"},

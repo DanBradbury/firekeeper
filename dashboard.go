@@ -592,7 +592,7 @@ func (m model) dashHeaderLine() string {
 
 func (m model) processFooter() (string, string) {
 	keys := []struct{ key, action string }{
-		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
+		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
 	}
 	help := dashPaint(" ", usageTextColor, false)
 	for _, key := range keys {
