@@ -544,3 +544,71 @@ func TestTextViewsFitTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestRetainKnownSessionMetadataExpiresAfterGrace(t *testing.T) {
+	root := processInfo{pid: 100, command: "codex app-server"}
+	withSession := []processGroup{{tool: "Codex", root: root, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}}}
+	empty := func() []processGroup { return []processGroup{{tool: "Codex", root: root}} }
+
+	groups, misses := withSession, map[int]int(nil)
+	for refresh := 1; refresh <= sessionMetadataGraceRefreshes; refresh++ {
+		groups, misses = retainKnownSessionMetadata(groups, empty(), misses)
+		if len(groups[0].sessions) != 1 {
+			t.Fatalf("refresh %d dropped metadata inside the grace period", refresh)
+		}
+	}
+	groups, misses = retainKnownSessionMetadata(groups, empty(), misses)
+	if len(groups[0].sessions) != 0 || len(filterUnidentifiedCodexGroups(groups)) != 0 {
+		t.Fatal("closed Codex session must disappear after the grace period")
+	}
+	if len(misses) != 0 {
+		t.Fatalf("misses = %v, want none once metadata is dropped", misses)
+	}
+}
+
+func TestRetainKnownSessionMetadataResetsWhenMetadataReturns(t *testing.T) {
+	root := processInfo{pid: 100, command: "codex"}
+	withSession := func() []processGroup {
+		return []processGroup{{tool: "Codex", root: root, sessions: []sessionInfo{{id: "thread-1"}}}}
+	}
+	empty := []processGroup{{tool: "Codex", root: root}}
+
+	groups, misses := retainKnownSessionMetadata(withSession(), empty, nil)
+	groups, misses = retainKnownSessionMetadata(groups, withSession(), misses)
+	if len(misses) != 0 {
+		t.Fatalf("misses = %v, want reset after metadata returned", misses)
+	}
+	for refresh := 1; refresh <= sessionMetadataGraceRefreshes; refresh++ {
+		groups, misses = retainKnownSessionMetadata(groups, []processGroup{{tool: "Codex", root: root}}, misses)
+		if len(groups[0].sessions) != 1 {
+			t.Fatalf("refresh %d: grace period did not restart", refresh)
+		}
+	}
+}
+
+func TestRetainKnownSessionMetadataSkipsChangedRuntime(t *testing.T) {
+	previous := []processGroup{{tool: "Codex", root: processInfo{pid: 100, command: "codex"}, sessions: []sessionInfo{{id: "a"}}}}
+	refreshed := []processGroup{{tool: "Codex", root: processInfo{pid: 100, command: "codex resume"}}}
+	groups, _ := retainKnownSessionMetadata(previous, refreshed, nil)
+	if len(groups[0].sessions) != 0 {
+		t.Fatal("metadata must not carry over to a different command")
+	}
+}
+
+func TestProcessRefreshDropsClosedCodexSession(t *testing.T) {
+	m := testModel()
+	root := processInfo{pid: 100, command: "codex app-server"}
+	updated, _ := m.Update(processResultMsg{refreshed: time.Now(), groups: []processGroup{
+		{tool: "Codex", root: root, processes: []processInfo{root}, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}},
+	}})
+	m = updated.(model)
+	for refresh := 0; refresh <= sessionMetadataGraceRefreshes; refresh++ {
+		updated, _ = m.Update(processResultMsg{refreshed: time.Now(), groups: []processGroup{
+			{tool: "Codex", root: root, processes: []processInfo{root}},
+		}})
+		m = updated.(model)
+	}
+	if len(m.processGroups) != 0 {
+		t.Fatalf("closed Codex session still listed: %d runtimes", len(m.processGroups))
+	}
+}

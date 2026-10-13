@@ -19,6 +19,12 @@ import (
 const (
 	chromeRows          = 3
 	processPollInterval = 2 * time.Second
+	// sessionMetadataGraceRefreshes is how many consecutive refreshes may
+	// miss a runtime's session metadata before the last known copy is
+	// dropped. It rides out a transient lsof miss, while a session closed
+	// inside a long-lived runtime such as the Codex app-server daemon still
+	// disappears a few seconds later.
+	sessionMetadataGraceRefreshes = 2
 )
 
 type tab int
@@ -121,6 +127,7 @@ type model struct {
 	kimiHistoryOpen         bool
 	kimiHistoryCursor       int
 	helpOpen                bool
+	metadataMisses          map[int]int
 }
 
 func newModel() model {
@@ -282,9 +289,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.processErr = msg.err.Error()
 		} else {
 			selectedPID := m.selectedProcessRootPID()
-			m.processGroups = filterUnidentifiedCodexGroups(
-				retainKnownSessionMetadata(m.processGroups, msg.groups),
-			)
+			var groups []processGroup
+			groups, m.metadataMisses = retainKnownSessionMetadata(m.processGroups, msg.groups, m.metadataMisses)
+			m.processGroups = filterUnidentifiedCodexGroups(groups)
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
@@ -475,7 +482,12 @@ func (m *model) restoreProcessSelection(rootPID int) {
 	m.clampProcessSelection()
 }
 
-func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGroup {
+// retainKnownSessionMetadata copies a runtime's last known sessions forward
+// when a refresh finds none, for at most sessionMetadataGraceRefreshes
+// consecutive refreshes. misses counts those refreshes per root PID; the
+// updated counts are returned.
+func retainKnownSessionMetadata(previous, refreshed []processGroup, misses map[int]int) ([]processGroup, map[int]int) {
+	nextMisses := make(map[int]int)
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
 		if hasSessionMetadataAdapter(group.tool) && len(group.sessions) > 0 {
@@ -491,9 +503,14 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup) []processGro
 		if !ok || old.root.tty != group.root.tty || old.root.command != group.root.command {
 			continue
 		}
+		count := misses[group.root.pid] + 1
+		if count > sessionMetadataGraceRefreshes {
+			continue
+		}
+		nextMisses[group.root.pid] = count
 		group.sessions = append([]sessionInfo(nil), old.sessions...)
 	}
-	return refreshed
+	return refreshed, nextMisses
 }
 
 // hasSessionMetadataAdapter reports whether discovery enriches tool's runtimes

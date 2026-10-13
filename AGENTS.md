@@ -58,7 +58,7 @@ Package is intentionally `main`; tests can exercise unexported helpers directly.
 - Keep `Update` fast and non-blocking. Filesystem reads, subprocess calls, and provider refreshes belong in `tea.Cmd` functions returning typed messages.
 - Process polling runs every two seconds through `pollProcesses` and `refreshProcesses`.
 - Preserve selection by root PID across refreshes.
-- Preserve last known Codex/Copilot session metadata when a transient refresh returns no metadata. See `retainKnownSessionMetadata`.
+- Preserve last known Codex/Copilot session metadata when a transient refresh returns no metadata, for at most `sessionMetadataGraceRefreshes` consecutive refreshes, so a session closed inside a long-lived runtime (such as the Codex app-server daemon) still disappears. See `retainKnownSessionMetadata`.
 - Treat provider metadata and state as best effort. Partial data should remain useful and should not crash or blank unrelated UI.
 - Keep terminal output width-safe. Use existing truncation, padding, sanitization, and `fitLine` helpers.
 
