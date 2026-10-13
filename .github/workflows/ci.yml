@@ -47,6 +47,20 @@ jobs:
         env:
           FIREKEEPER_MACOS_INTEGRATION: "1"
         run: go test ./...
+      - name: macOS-specific tests must run, not skip
+        shell: bash
+        env:
+          FIREKEEPER_MACOS_INTEGRATION: "1"
+        run: |
+          tests="TestMacTerminalAdapterScriptsCompile TestFocusTerminalSessionRunsOsascript TestDiscoverProcessesPreservesLongCopilotCommand"
+          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" . | tee macos-tests.log
+          if grep -q -- '--- SKIP' macos-tests.log; then
+            echo "a macOS-specific test was skipped" >&2
+            exit 1
+          fi
+          for name in $tests; do
+            grep -q -- "--- PASS: $name " macos-tests.log || { echo "$name did not run and pass" >&2; exit 1; }
+          done
 
   installer:
     runs-on: ubuntu-latest
