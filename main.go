@@ -853,6 +853,9 @@ func main() {
 	}
 	flag.Usage = func() { printUsage(flag.CommandLine) }
 	flag.Parse()
+	if offerUpdate() {
+		return
+	}
 	p := tea.NewProgram(newModel(), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "firekeeper TUI failed: %v\n", err)

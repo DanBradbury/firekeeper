@@ -1,13 +1,13 @@
 # Firekeeper Privacy Policy
 
-Last updated: October 11, 2026
+Last updated: October 13, 2026
 
 Firekeeper is software by Dan Bradbury ("**I**", "**me**"). Who handles your
 data depends on how you use it:
 
 | How you use Firekeeper | Who receives your data |
 | --- | --- |
-| The terminal dashboard (`firekeeper`) | Nobody. It stays on your machine, apart from the two provider lookups in section 1.3. |
+| The terminal dashboard (`firekeeper`) | Nobody. It stays on your machine, apart from the update check and two provider lookups in section 1.3. |
 | A server you run yourself (`firekeeper serve`) | You, as that server's operator. I receive nothing. |
 | A server someone else runs | That server's operator, under their own privacy notice (its `/privacy` page). I receive nothing. |
 | The Hosted Instance at `firekeeper.danbradbury.net` | Me, as described in section 2. |
@@ -16,8 +16,9 @@ data depends on how you use it:
 
 ### 1.1 No telemetry
 
-The Software contains no analytics, crash reporting, usage tracking, or
-update checks. It never sends anything to me.
+The Software contains no analytics, crash reporting, or usage tracking. It
+never sends anything to me. Its one automatic request is the update check in
+section 1.3.
 
 ### 1.2 What it reads and writes on your machine
 
@@ -38,9 +39,16 @@ update checks. It never sends anything to me.
 
 ### 1.3 Network requests the terminal dashboard makes
 
-The Usage tab makes two requests that leave your machine. Neither sends
-session data, and neither goes to me:
+The terminal dashboard makes three kinds of request that leave your machine.
+None sends session data, and none goes to me:
 
+- **Update check**: when you start `firekeeper` in a terminal, it asks
+  GitHub's API for the latest release at most once a day and offers to
+  update if there is a newer one. The request is an unauthenticated `GET`
+  that carries no identifier. Nothing installs unless you answer yes. The
+  result is cached in `~/.firekeeper/update.json`. Set
+  `FIREKEEPER_NO_UPDATE_CHECK=1` to turn it off. Development builds never
+  check.
 - **Codex usage** starts your own `codex app-server` for a moment and asks it
   for your rate limits. Codex contacts OpenAI under your account, governed by
   OpenAI's privacy policy.

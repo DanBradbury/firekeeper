@@ -1,9 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"runtime"
+
+	"golang.org/x/term"
+
+	"github.com/DanBradbury/firekeeper/internal/update"
 )
 
 // Set at build time with -ldflags "-X main.version=... -X main.commit=...
@@ -26,4 +33,24 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprintln(stdout, versionString())
 	return 0
+}
+
+// offerUpdate runs the launch-time update check and prompt. It returns true
+// when the user updated, so the caller exits instead of starting the TUI.
+// Nothing runs unless both stdin and stdout are terminals.
+func offerUpdate() bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	c := &update.Checker{Current: version, Dir: filepath.Join(home, ".firekeeper")}
+	ctx := context.Background()
+	latest, ok := c.Available(ctx)
+	if !ok {
+		return false
+	}
+	return c.Prompt(ctx, latest, os.Stdin, os.Stdout, os.Stderr)
 }
