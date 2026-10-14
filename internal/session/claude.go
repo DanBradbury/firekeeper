@@ -51,7 +51,12 @@ func (d *discoverer) claudeCodeArgs(command string) []string {
 	if len(fields) == 0 {
 		return nil
 	}
-	switch base := strings.ToLower(filepath.Base(fields[0])); base {
+	// The desktop app and its helpers live inside a .app bundle and are
+	// named "Claude"; the CLI binary is lowercase.
+	if strings.Contains(filepath.ToSlash(fields[0]), ".app/Contents/") {
+		return nil
+	}
+	switch base := filepath.Base(fields[0]); base {
 	case "claude", "claude.exe":
 		return append([]string{}, fields[1:]...)
 	case "node", "node.exe", "bun", "bun.exe":
