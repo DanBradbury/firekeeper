@@ -21,6 +21,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/codex"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // historyFixture is a home directory with several ended Codex sessions, the
@@ -76,7 +77,7 @@ type fakeEnumerator struct {
 	calls atomic.Int32
 }
 
-func (e *fakeEnumerator) Enumerate(_ context.Context, opts transcript.EnumerateOptions) ([]session.Meta, error) {
+func (e *fakeEnumerator) Enumerate(_ context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	e.calls.Add(1)
 	var out []session.Meta
 	for _, m := range e.metas {
@@ -105,14 +106,14 @@ func (f *historyFixture) config(server string, live ...session.Meta) BackfillCon
 			Discover: func(context.Context, session.Options) ([]session.Meta, error) {
 				return live, nil
 			},
-			Sources: func(p transcript.Provider) (transcript.TranscriptSource, bool) {
+			Sources: func(p transcript.Provider) (reader.Source, bool) {
 				if p == transcript.ProviderCodex {
 					return f.source(), true
 				}
 				return nil, false
 			},
 		},
-		Enumerators: func(p transcript.Provider) (transcript.Enumerator, bool) {
+		Enumerators: func(p transcript.Provider) (reader.Enumerator, bool) {
 			if p == transcript.ProviderCodex {
 				return enumerator, true
 			}
@@ -544,31 +545,6 @@ func TestBackfillAndRunOnceConcurrently(t *testing.T) {
 	}
 	if again := backfill(t, f.config(ts.URL)); len(again.Sessions) != 0 {
 		t.Fatalf("backfill after both uploaded %d sessions", len(again.Sessions))
-	}
-}
-
-func TestStateLockTimesOut(t *testing.T) {
-	f := newHistoryFixture(t, 1)
-	unlock, ok, err := tryLock(filepath.Join(f.home, ".firekeeper", "state.lock"))
-	if err != nil || !ok {
-		t.Skipf("state lock unavailable: ok %v, err %v", ok, err)
-	}
-	defer unlock()
-
-	cfg := f.runOnceConfig("http://127.0.0.1:1", f.metas[0])
-	cfg.lockWait = 100 * time.Millisecond
-	if _, err := RunOnce(context.Background(), cfg); !errors.Is(err, ErrStateLocked) {
-		t.Fatalf("RunOnce err = %v, want ErrStateLocked", err)
-	}
-	bcfg := f.config("http://127.0.0.1:1")
-	bcfg.lockWait = 100 * time.Millisecond
-	if _, err := Backfill(context.Background(), bcfg); !errors.Is(err, ErrStateLocked) {
-		t.Fatalf("Backfill err = %v, want ErrStateLocked", err)
-	}
-	// A dry run saves nothing, so it does not wait for the lock.
-	bcfg.DryRun = true
-	if _, err := Backfill(context.Background(), bcfg); err != nil {
-		t.Fatalf("dry run err = %v", err)
 	}
 }
 

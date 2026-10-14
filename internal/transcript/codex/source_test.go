@@ -9,6 +9,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	"github.com/DanBradbury/firekeeper/internal/transcript/transcripttest"
 )
 
@@ -292,7 +293,7 @@ func TestLocateHonorsCodexHome(t *testing.T) {
 }
 
 func TestRegistered(t *testing.T) {
-	if _, ok := transcript.For(transcript.ProviderCodex); !ok {
+	if _, ok := reader.For(transcript.ProviderCodex); !ok {
 		t.Fatal("codex source not registered")
 	}
 }

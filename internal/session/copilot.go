@@ -93,7 +93,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 			missing++
 			continue
 		}
-		groups[groupIndex].Sessions = []SessionInfo{session}
+		groups[groupIndex].Sessions = []Info{session}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)
@@ -411,16 +411,16 @@ func (d *discoverer) readCopilotStoredMetadata(home string, ids map[string]bool)
 	return result, nil
 }
 
-func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMetadata) (SessionInfo, error) {
+func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMetadata) (Info, error) {
 	if !d.validUUID(id) {
-		return SessionInfo{}, fmt.Errorf("invalid Copilot session ID")
+		return Info{}, fmt.Errorf("invalid Copilot session ID")
 	}
 	directory := filepath.Join(home, "session-state", id)
 	workspace, workspaceErr := d.readCopilotWorkspace(filepath.Join(directory, "workspace.yaml"))
 	eventsPath := filepath.Join(directory, "events.jsonl")
 	events, eventsErr := d.readCopilotEventMetadata(eventsPath)
 	if workspaceErr != nil && stored.ID == "" {
-		return SessionInfo{}, fmt.Errorf("read Copilot workspace metadata: %w", workspaceErr)
+		return Info{}, fmt.Errorf("read Copilot workspace metadata: %w", workspaceErr)
 	}
 
 	cwd := d.firstNonEmpty(workspace.CWD, stored.CWD, workspace.GitRoot)
@@ -442,7 +442,7 @@ func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMet
 	if tokens == 0 {
 		tokens = events.TokensUsed
 	}
-	return SessionInfo{
+	return Info{
 		ID:          id,
 		Name:        d.sanitizeProcessCommand(name),
 		State:       state,
@@ -571,3 +571,25 @@ func (d *discoverer) newestTime(values ...time.Time) time.Time {
 	}
 	return newest
 }
+
+// CopilotHome returns Copilot's data directory, honoring COPILOT_HOME
+// (default ~/.copilot).
+func CopilotHome() (string, error) { return standalone().copilotHome() }
+
+// CopilotSessionIDFromStatePath returns the session id in a path under
+// Copilot's session-state directory.
+func CopilotSessionIDFromStatePath(path string) (string, bool) {
+	return standalone().copilotSessionIDFromStatePath(path)
+}
+
+// ReadCopilotWorkspace reads a session's workspace.yaml.
+func ReadCopilotWorkspace(path string) (CopilotWorkspaceMetadata, error) {
+	return standalone().readCopilotWorkspace(path)
+}
+
+// ParseCopilotTime parses a Copilot timestamp, returning the zero time when
+// value is not one.
+func ParseCopilotTime(value string) time.Time { return standalone().parseCopilotTime(value) }
+
+// FirstNonEmpty returns the first value that is not blank.
+func FirstNonEmpty(values ...string) string { return standalone().firstNonEmpty(values...) }

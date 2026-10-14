@@ -207,13 +207,6 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-// SchemaVersion returns the applied schema version.
-func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
-	var v int
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&v)
-	return v, err
-}
-
 // timeLayout is fixed-width UTC so stored timestamps order correctly as
 // strings. RFC3339Nano trims trailing zeros, which breaks lexical order.
 const timeLayout = "2006-01-02T15:04:05.000000000Z"
@@ -279,6 +272,8 @@ func requireAccount(accountID string) error {
 
 // Ingest stores one request for an account in a single transaction. It
 // returns how many events were newly stored and how many already existed.
+// It applies no limits; the API uses IngestLimited, and tests across the
+// server packages use Ingest to seed data.
 func (s *Store) Ingest(ctx context.Context, accountID string, m Machine, batches []SessionBatch) (accepted, duplicates int, err error) {
 	return s.IngestLimited(ctx, accountID, m, batches, Limits{})
 }
@@ -534,7 +529,7 @@ type SessionStats struct {
 	State                string
 }
 
-// Stats returns stored totals for a session (used by tests and handlers).
+// Stats returns stored totals for a session. Only tests call it today.
 func (s *Store) Stats(ctx context.Context, accountID, machineID, sessionID string) (SessionStats, error) {
 	var st SessionStats
 	err := s.db.QueryRowContext(ctx, `SELECT event_count, input_tokens, output_tokens, cache_tokens, state
@@ -544,7 +539,8 @@ FROM sessions WHERE account_id = ? AND machine_id = ? AND session_id = ?`, accou
 }
 
 // SearchText returns "machine:session:seq" keys of events whose text matches
-// the FTS5 query.
+// the FTS5 query. Only tests call it today, to inspect what was indexed; the
+// API's search goes through the session list and event queries in read.go.
 func (s *Store) SearchText(ctx context.Context, accountID, query string, limit int) ([]string, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT e.machine_id, e.session_id, e.seq FROM events_fts f

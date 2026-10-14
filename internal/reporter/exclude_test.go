@@ -12,6 +12,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // trapSource fails any attempt to find or read a transcript. Its transcript
@@ -80,7 +81,7 @@ func TestExcludedSessionNeverOpened(t *testing.T) {
 				for _, e := range tt.exclude {
 					cfg.Exclude = append(cfg.Exclude, strings.ReplaceAll(e, "<home>", f.home))
 				}
-				cfg.Sources = func(transcript.Provider) (transcript.TranscriptSource, bool) { return trap, true }
+				cfg.Sources = func(transcript.Provider) (reader.Source, bool) { return trap, true }
 
 				summary, err := RunOnce(context.Background(), cfg)
 				if err != nil {
@@ -128,9 +129,9 @@ func TestBackfillDryRunListsSkipped(t *testing.T) {
 	cfg.Out = &out
 	cfg.Exclude = []string{filepath.Join(f.home, "clients")}
 	real := cfg.Sources
-	cfg.Sources = func(p transcript.Provider) (transcript.TranscriptSource, bool) {
+	cfg.Sources = func(p transcript.Provider) (reader.Source, bool) {
 		src, ok := real(p)
-		return guardSource{TranscriptSource: src, t: t, forbidden: excluded.RolloutPath}, ok
+		return guardSource{Source: src, t: t, forbidden: excluded.RolloutPath}, ok
 	}
 	res, err := Backfill(context.Background(), cfg)
 	if err != nil {
@@ -150,7 +151,7 @@ func TestBackfillDryRunListsSkipped(t *testing.T) {
 
 // guardSource fails the test if the forbidden transcript is located or read.
 type guardSource struct {
-	transcript.TranscriptSource
+	reader.Source
 	t         *testing.T
 	forbidden string
 }
@@ -159,14 +160,14 @@ func (g guardSource) Locate(meta session.Meta) ([]string, error) {
 	if meta.RolloutPath == g.forbidden {
 		g.t.Errorf("excluded session located")
 	}
-	return g.TranscriptSource.Locate(meta)
+	return g.Source.Locate(meta)
 }
 
 func (g guardSource) Read(path string, off int64) ([]transcript.Event, int64, error) {
 	if path == g.forbidden {
 		g.t.Errorf("excluded transcript read")
 	}
-	return g.TranscriptSource.Read(path, off)
+	return g.Source.Read(path, off)
 }
 
 func TestRedactPathsApplied(t *testing.T) {

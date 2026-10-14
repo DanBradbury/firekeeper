@@ -191,7 +191,7 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 			missing++
 			continue
 		}
-		groups[index].Sessions = []SessionInfo{info}
+		groups[index].Sessions = []Info{info}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)
@@ -340,7 +340,7 @@ type claudeTranscriptMetadata struct {
 	GitBranch  string
 	Model      string
 	Entrypoint string
-	State      SessionState
+	State      State
 	StartedAt  time.Time
 	UpdatedAt  time.Time
 	TokensUsed int64
@@ -353,15 +353,15 @@ type claudeTranscriptMetadata struct {
 	Tokens        TokenBreakdown
 }
 
-func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, error) {
+func (d *discoverer) readClaudeTranscriptMetadata(path string) (Info, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return SessionInfo{}, errors.New("open Claude Code transcript")
+		return Info{}, errors.New("open Claude Code transcript")
 	}
 	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
-		return SessionInfo{}, errors.New("stat Claude Code transcript")
+		return Info{}, errors.New("stat Claude Code transcript")
 	}
 
 	var startedAt time.Time
@@ -370,12 +370,12 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, err
 		head, _ := d.scanClaudeTranscript(io.LimitReader(file, ClaudeTranscriptHeadBytes), false)
 		startedAt = head.StartedAt
 		if _, err := file.Seek(start, io.SeekStart); err != nil {
-			return SessionInfo{}, errors.New("seek Claude Code transcript")
+			return Info{}, errors.New("seek Claude Code transcript")
 		}
 	}
 	meta, err := d.scanClaudeTranscript(file, start > 0)
 	if err != nil {
-		return SessionInfo{}, errors.New("read Claude Code transcript")
+		return Info{}, errors.New("read Claude Code transcript")
 	}
 	if !startedAt.IsZero() {
 		meta.StartedAt = startedAt
@@ -386,7 +386,7 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (SessionInfo, err
 		id = meta.ID
 	}
 	updated := d.newestTime(meta.UpdatedAt, info.ModTime())
-	return SessionInfo{
+	return Info{
 		ID:          id,
 		Name:        d.emptyFallback(d.sanitizeProcessCommand(meta.Title), "Claude Code"),
 		State:       meta.State,
@@ -510,7 +510,7 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 // running, or the user is being asked a question; the end of a turn means
 // Claude Code is waiting for the next prompt. Permission prompts are not
 // written to the transcript, so a tool waiting on approval reads as ACTIVE.
-func (d *discoverer) nextClaudeState(state SessionState, rec claudeRecord, pending map[string]string) SessionState {
+func (d *discoverer) nextClaudeState(state State, rec claudeRecord, pending map[string]string) State {
 	if rec.IsSidechain {
 		return state
 	}
@@ -574,7 +574,7 @@ func (d *discoverer) nextClaudeState(state SessionState, rec claudeRecord, pendi
 	return state
 }
 
-func claudePendingState(pending map[string]string) SessionState {
+func claudePendingState(pending map[string]string) State {
 	for _, name := range pending {
 		if claudeInputTools[name] {
 			return SessionStateNeedsInput

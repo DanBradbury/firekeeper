@@ -66,7 +66,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				name = row.ID
 			}
 			state, tokens, _ := d.readRolloutStatus(rolloutPath)
-			group.Sessions = append(group.Sessions, SessionInfo{
+			group.Sessions = append(group.Sessions, Info{
 				ID:          row.ID,
 				Name:        name,
 				State:       state,
@@ -244,4 +244,17 @@ func (d *discoverer) codexStatePath() (string, error) {
 		return "", fmt.Errorf("find Codex state database: %w", err)
 	}
 	return path, nil
+}
+
+// CodexStatePath returns the path of Codex's state database under CODEX_HOME
+// (default ~/.codex), or an error when the database does not exist.
+func CodexStatePath() (string, error) { return standalone().codexStatePath() }
+
+// ValidUUID reports whether value has the 8-4-4-4-12 hexadecimal UUID layout.
+func ValidUUID(value string) bool { return standalone().validUUID(value) }
+
+// ThreadIDFromRolloutPath returns the thread id embedded in a Codex rollout
+// file name.
+func ThreadIDFromRolloutPath(path string) (string, bool) {
+	return standalone().threadIDFromRolloutPath(path)
 }

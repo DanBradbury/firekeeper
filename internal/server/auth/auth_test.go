@@ -14,9 +14,9 @@ import (
 )
 
 type env struct {
-	h                       http.Handler
-	s                       *store.Store
-	ingest, read, otherMach string
+	h            http.Handler
+	s            *store.Store
+	ingest, read string
 }
 
 func setup(t *testing.T) env {

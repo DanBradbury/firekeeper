@@ -14,12 +14,13 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // Enumerate lists historical top-level session transcripts. Project directory
 // names are lossy encodings, so cwd is read from a bounded transcript head,
 // never guessed from the directory name. Separate subagent files are omitted.
-func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions) ([]session.Meta, error) {
+func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -76,14 +77,14 @@ func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions
 		meta.RolloutPath = c.path
 		meta.LastActivityAt = &c.mtime
 		meta.UpdatedAt = c.mtime
-		meta.Project = transcript.ProjectName(meta.CWD)
+		meta.Project = reader.ProjectName(meta.CWD)
 		meta.GitBranch = meta.Branch
 		if opts.Skip != nil && opts.Skip(meta) {
 			continue
 		}
 		metas = append(metas, meta)
 	}
-	transcript.SortNewestFirst(metas, nil)
+	reader.SortNewestFirst(metas, nil)
 	if bad > 0 {
 		return metas, &session.Warning{Message: fmt.Sprintf("claude: skipped %d empty, unreadable, or corrupt transcript(s)", bad)}
 	}
@@ -97,8 +98,8 @@ func readSessionHead(ctx context.Context, path string) (session.Meta, error) {
 		return session.Meta{}, err
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(io.LimitReader(f, transcript.HeadBytes))
-	scanner.Buffer(make([]byte, 4096), transcript.HeadBytes)
+	scanner := bufio.NewScanner(io.LimitReader(f, reader.HeadBytes))
+	scanner.Buffer(make([]byte, 4096), reader.HeadBytes)
 	var meta session.Meta
 	decoded := false
 	clean := func(value string) string { return strings.TrimSpace(session.SanitizeProcessCommand(value)) }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // storeTimeout bounds the state database queries.
@@ -38,9 +39,9 @@ type threadRow struct {
 // Metadata comes from the threads table of state_5.sqlite, read with
 // sqlite3 -readonly. Only when a row is missing the working directory,
 // branch, model, or start time is the rollout opened, and then only its first
-// transcript.HeadBytes are read. A thread with rollouts in both places is
+// reader.HeadBytes are read. A thread with rollouts in both places is
 // listed once, from the most recently modified file.
-func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions) ([]session.Meta, error) {
+func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	home, err := s.codexHome()
 	if err != nil {
 		return nil, err
@@ -144,7 +145,7 @@ func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions
 		mtimes[c.path] = c.mtime
 		metas = append(metas, meta)
 	}
-	transcript.SortNewestFirst(metas, mtimes)
+	reader.SortNewestFirst(metas, mtimes)
 	if bad > 0 {
 		warnings = append(warnings, fmt.Sprintf("codex: skipped %d empty, unreadable, or corrupt rollout(s)", bad))
 	}
@@ -156,7 +157,7 @@ func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions
 
 // finish fills the fields derived from the others, matching Discover.
 func finish(meta session.Meta) session.Meta {
-	meta.Project = transcript.ProjectName(meta.CWD)
+	meta.Project = reader.ProjectName(meta.CWD)
 	meta.Name = meta.Title
 	meta.GitBranch = meta.Branch
 	if meta.LastActivityAt != nil {
@@ -263,7 +264,7 @@ type head struct {
 	started            time.Time
 }
 
-// readHead decodes the first transcript.HeadBytes of a rollout. It is
+// readHead decodes the first reader.HeadBytes of a rollout. It is
 // corrupt when no complete line there is a JSON object.
 func (s *Source) readHead(path string) (head, error) {
 	open := s.open
@@ -275,8 +276,8 @@ func (s *Source) readHead(path string) (head, error) {
 		return head{}, err
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(io.LimitReader(file, transcript.HeadBytes))
-	scanner.Buffer(make([]byte, 0, 64<<10), transcript.HeadBytes)
+	scanner := bufio.NewScanner(io.LimitReader(file, reader.HeadBytes))
+	scanner.Buffer(make([]byte, 0, 64<<10), reader.HeadBytes)
 	var h head
 	decoded := false
 	for scanner.Scan() {

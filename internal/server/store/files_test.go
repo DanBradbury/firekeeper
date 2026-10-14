@@ -12,6 +12,7 @@ import (
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // fixtureHome is the home directory the files fixtures are written under;
@@ -23,7 +24,7 @@ const fixtureHome = "/home/fixture"
 // the result in one batch.
 func ingestFixture(t *testing.T, s *Store, provider transcript.Provider, path string) SessionBatch {
 	t.Helper()
-	src, ok := transcript.For(provider)
+	src, ok := reader.For(provider)
 	if !ok {
 		t.Fatalf("no source for %s", provider)
 	}

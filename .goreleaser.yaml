@@ -21,9 +21,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X main.version={{ .Version }}
-      - -X main.commit={{ .Commit }}
-      - -X main.date={{ .Date }}
+      # The linker ignores -X for a variable that does not exist, so a wrong
+      # path fails silently; CI's snapshot job checks the built version.
+      - -X github.com/DanBradbury/firekeeper/internal/version.Version={{ .Version }}
+      - -X github.com/DanBradbury/firekeeper/internal/version.Commit={{ .Commit }}
+      - -X github.com/DanBradbury/firekeeper/internal/version.Date={{ .Date }}
 
 archives:
   - id: firekeeper

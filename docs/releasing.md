@@ -74,8 +74,11 @@ Snapshot builds do not publish or push anything. `dist/` is git-ignored.
 - GoReleaser reports that `brews` is deprecated in favor of `homebrew_casks`.
   It is used on purpose: a formula avoids the macOS Gatekeeper quarantine
   prompt that an unsigned cask binary triggers. It still works in GoReleaser 2.
-- Version, commit, and build date are set with `-ldflags -X main.version=...`.
-  `go build` and `go install` leave them at `dev`.
+- Version, commit, and build date are set with
+  `-ldflags -X github.com/DanBradbury/firekeeper/internal/version.Version=...`
+  (and `Commit`, `Date`). `go build` and `go install` leave them at `dev`. The
+  linker silently ignores an `-X` path that names no variable, so CI's snapshot
+  job fails if the built binary still reports `dev`.
 - `scripts/test-install.sh` tests `install.sh` against a fake local release
   directory, with no network. Run it and `shellcheck install.sh
   scripts/test-install.sh` after changing the installer.

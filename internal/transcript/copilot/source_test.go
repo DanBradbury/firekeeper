@@ -9,6 +9,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	"github.com/DanBradbury/firekeeper/internal/transcript/transcripttest"
 )
 
@@ -326,7 +327,7 @@ func TestLocateHonorsCopilotHome(t *testing.T) {
 }
 
 func TestRegistered(t *testing.T) {
-	if _, ok := transcript.For(transcript.ProviderCopilot); !ok {
+	if _, ok := reader.For(transcript.ProviderCopilot); !ok {
 		t.Fatal("copilot source not registered")
 	}
 }

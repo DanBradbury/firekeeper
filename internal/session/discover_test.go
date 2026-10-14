@@ -84,7 +84,7 @@ func TestDiscoverFixtureTree(t *testing.T) {
 	}
 	expected := map[string]struct {
 		id    string
-		state SessionState
+		state State
 	}{"codex": {codexID, SessionStateWaiting}, "copilot": {copilotID, SessionStateActive}, "kimi": {"kimi-id", SessionStateActive}, "opencode": {"", SessionStateUnknown}}
 	for _, m := range metas {
 		want := expected[m.Provider]
@@ -220,12 +220,12 @@ func TestMetaReportingContract(t *testing.T) {
 	if !reflect.DeepEqual(meta, decoded) {
 		t.Error("metadata does not round-trip")
 	}
-	for _, state := range []SessionState{SessionStateActive, SessionStateWaiting, SessionStateNeedsInput, SessionStateEnded, SessionStateUnknown} {
+	for _, state := range []State{SessionStateActive, SessionStateWaiting, SessionStateNeedsInput, SessionStateEnded, SessionStateUnknown} {
 		b, err := json.Marshal(state)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var again SessionState
+		var again State
 		if err := json.Unmarshal(b, &again); err != nil || again != state {
 			t.Error("state does not round-trip")
 		}

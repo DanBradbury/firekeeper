@@ -21,16 +21,17 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // maxToolText is the longest tool output kept in Event.Text.
 const maxToolText = 64 << 10
 
 func init() {
-	transcript.Register(transcript.ProviderCodex, &Source{})
+	reader.Register(transcript.ProviderCodex, &Source{})
 }
 
-// Source implements transcript.TranscriptSource for Codex rollouts. The zero
+// Source implements reader.Source for Codex rollouts. The zero
 // value reads CODEX_HOME, falling back to ~/.codex.
 type Source struct {
 	// CodexHome overrides CODEX_HOME when set.

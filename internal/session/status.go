@@ -36,15 +36,10 @@ func (d *discoverer) readRolloutParentThreadID(path string) string {
 	return record.Payload.ParentThreadID
 }
 
-func (d *discoverer) readRolloutSessionState(path string) (SessionState, error) {
-	state, _, err := d.readRolloutStatus(path)
-	return state, err
-}
-
 // readRolloutStatus reads the latest state and cumulative token usage from
 // the tail of a rollout, falling back to the whole file when the tail shows
 // no state.
-func (d *discoverer) readRolloutStatus(path string) (SessionState, TokenBreakdown, error) {
+func (d *discoverer) readRolloutStatus(path string) (State, TokenBreakdown, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return SessionStateUnknown, TokenBreakdown{}, err
@@ -77,12 +72,7 @@ func (d *discoverer) readRolloutStatus(path string) (SessionState, TokenBreakdow
 	return d.scanRolloutStatus(bufio.NewReader(file))
 }
 
-func (d *discoverer) scanRolloutSessionState(reader *bufio.Reader) (SessionState, error) {
-	state, _, err := d.scanRolloutStatus(reader)
-	return state, err
-}
-
-func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (SessionState, TokenBreakdown, error) {
+func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakdown, error) {
 	state := SessionStateUnknown
 	var tokens TokenBreakdown
 	pendingInput := make(map[string]bool)
@@ -129,7 +119,7 @@ func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (SessionState, Toke
 	}
 }
 
-func (s SessionState) String() string {
+func (s State) String() string {
 	switch s {
 	case SessionStateActive:
 		return "ACTIVE"
@@ -145,11 +135,13 @@ func (s SessionState) String() string {
 }
 
 // MarshalJSON uses the reporting contract while String preserves TUI labels.
-func (s SessionState) MarshalJSON() ([]byte, error) {
+func (s State) MarshalJSON() ([]byte, error) {
 	return json.Marshal(strings.ReplaceAll(s.String(), " ", "_"))
 }
 
-func (s *SessionState) UnmarshalJSON(data []byte) error {
+// UnmarshalJSON reads the form MarshalJSON writes, so session metadata JSON
+// round-trips.
+func (s *State) UnmarshalJSON(data []byte) error {
 	var name string
 	if err := json.Unmarshal(data, &name); err != nil {
 		return err

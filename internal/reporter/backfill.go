@@ -15,6 +15,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // maxConsecutiveFailures stops a backfill after this many failed requests in
@@ -48,9 +49,9 @@ type BackfillConfig struct {
 	// Progress receives one line per uploaded session. Nil discards them.
 	Progress io.Writer
 
-	// Enumerators and Sleep replace transcript.EnumeratorFor and a
+	// Enumerators and Sleep replace reader.EnumeratorFor and a
 	// context-aware sleep in tests.
-	Enumerators func(transcript.Provider) (transcript.Enumerator, bool)
+	Enumerators func(transcript.Provider) (reader.Enumerator, bool)
 	Sleep       func(context.Context, time.Duration) error
 }
 
@@ -210,7 +211,7 @@ var ErrTooManyFailures = fmt.Errorf("stopped after %d consecutive failed request
 
 // Backfill uploads the sessions already on this machine, including ended
 // ones, in one pass. It enumerates transcripts with each provider's
-// transcript.Enumerator, drops excluded sessions and transcripts already
+// reader.Enumerator, drops excluded sessions and transcripts already
 // fully uploaded, and builds a Plan. Without upload (DryRun, or no provider
 // allowlisted) it stops there and opens no network connection. Otherwise,
 // once Confirm agrees, it uploads newest sessions first through the same
@@ -323,11 +324,11 @@ func joinWarnings(warnings []string) error {
 func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) (Plan, error) {
 	enumerators := cfg.Enumerators
 	if enumerators == nil {
-		enumerators = transcript.EnumeratorFor
+		enumerators = reader.EnumeratorFor
 	}
 	providers := cfg.Providers
 	if len(providers) == 0 {
-		providers = transcript.Registered()
+		providers = reader.Registered()
 	}
 	cutoff := cfg.After
 	if cfg.Since > 0 {
@@ -354,7 +355,7 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 		pp := &ProviderPlan{Provider: provider}
 		byProvider[provider] = pp
 		order = append(order, provider)
-		metas, err := enumerator.Enumerate(ctx, transcript.EnumerateOptions{
+		metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{
 			ModifiedAfter: cutoff,
 			Skip: func(meta session.Meta) bool {
 				reason := r.skipReason(meta)
@@ -425,7 +426,7 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 // planSession sizes the transcript data of meta not yet uploaded. A file
 // whose size and modification time match its saved position has been read
 // to the end and is left out.
-func (r *run) planSession(ctx context.Context, source transcript.TranscriptSource, meta session.Meta) (plannedSession, error) {
+func (r *run) planSession(ctx context.Context, source reader.Source, meta session.Meta) (plannedSession, error) {
 	ps := plannedSession{meta: meta}
 	if meta.LastActivityAt != nil {
 		ps.activity = *meta.LastActivityAt
@@ -512,7 +513,7 @@ func sortNewestFirst(sessions []plannedSession) {
 		fallback[ps.meta.RolloutPath] = ps.activity
 		byKey[ps.meta.Provider+"\x00"+ps.meta.ID] = ps
 	}
-	transcript.SortNewestFirst(metas, fallback)
+	reader.SortNewestFirst(metas, fallback)
 	for i, meta := range metas {
 		sessions[i] = byKey[meta.Provider+"\x00"+meta.ID]
 	}

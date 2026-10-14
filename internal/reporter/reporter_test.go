@@ -22,6 +22,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/codex"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 const (
@@ -101,7 +102,7 @@ func (f *fixture) config(server string) Config {
 		Discover: func(context.Context, session.Options) ([]session.Meta, error) {
 			return []session.Meta{f.meta}, nil
 		},
-		Sources: func(p transcript.Provider) (transcript.TranscriptSource, bool) {
+		Sources: func(p transcript.Provider) (reader.Source, bool) {
 			if p == transcript.ProviderCodex {
 				return &codex.Source{CodexHome: filepath.Join(f.home, ".codex")}, true
 			}

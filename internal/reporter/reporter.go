@@ -25,6 +25,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/redact"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 
 	// Register the transcript sources the reporter can read.
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
@@ -76,10 +77,10 @@ type Config struct {
 	Stop <-chan struct{}
 
 	// Discover, Sources, Client, and Now replace the real implementations
-	// in tests. Nil means session.Discover, transcript.For,
+	// in tests. Nil means session.Discover, reader.For,
 	// a client with a 30 second timeout, and time.Now.
 	Discover func(context.Context, session.Options) ([]session.Meta, error)
-	Sources  func(transcript.Provider) (transcript.TranscriptSource, bool)
+	Sources  func(transcript.Provider) (reader.Source, bool)
 	Client   *http.Client
 	Now      func() time.Time
 
@@ -200,7 +201,7 @@ type run struct {
 	client    *http.Client
 	token     string
 	discover  func(context.Context, session.Options) ([]session.Meta, error)
-	sources   func(transcript.Provider) (transcript.TranscriptSource, bool)
+	sources   func(transcript.Provider) (reader.Source, bool)
 	now       func() time.Time
 	machine   machine
 	lockWait  time.Duration
@@ -248,7 +249,7 @@ func newRun(ctx context.Context, cfg Config) (*run, error) {
 		r.discover = session.Discover
 	}
 	if r.sources == nil {
-		r.sources = transcript.For
+		r.sources = reader.For
 	}
 	if r.now == nil {
 		r.now = time.Now
@@ -333,7 +334,7 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 
 // file reads one transcript file from its stored offset and uploads what is
 // new.
-func (r *run) file(ctx context.Context, source transcript.TranscriptSource, meta session.Meta, sessionMeta ingestMeta, path string, result *SessionResult) error {
+func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta, sessionMeta ingestMeta, path string, result *SessionResult) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return errors.New("resolve transcript path")
@@ -535,7 +536,7 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 }
 
 // stateName is the wire name of a session state, such as NEEDS_INPUT.
-func stateName(state session.SessionState) string {
+func stateName(state session.State) string {
 	name, _ := json.Marshal(state)
 	return strings.Trim(string(name), `"`)
 }

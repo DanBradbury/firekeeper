@@ -45,7 +45,8 @@ const (
 	KindHomeDir Kind = "home_dir"
 )
 
-// Kinds lists every kind in the order redaction applies them.
+// Kinds lists every kind in the order redaction applies them. The package
+// tests use it to check each kind's marker and count.
 func Kinds() []Kind {
 	return []Kind{
 		KindPrivateKey, KindJWT, KindGitHubToken, KindAWSAccessKey,
@@ -63,13 +64,6 @@ const markerPrefix = "[REDACTED:"
 // Counts records how many replacements were made per kind. A secret that
 // appears in both Text and Raw is counted once per occurrence.
 type Counts map[Kind]int
-
-// Add merges other into c.
-func (c Counts) Add(other Counts) {
-	for kind, n := range other {
-		c[kind] += n
-	}
-}
 
 // Total returns the number of replacements across all kinds.
 func (c Counts) Total() int {
@@ -115,7 +109,8 @@ func String(s string, opts Options) (string, Counts) {
 
 // JSON redacts every string in a JSON document, leaving the rest of the
 // bytes as they were. The input is never modified. Invalid JSON is redacted
-// as plain text.
+// as plain text. Event redacts Raw with the same code; JSON is the public
+// form of it, used by the package tests.
 func JSON(raw []byte, opts Options) ([]byte, Counts) {
 	counts := Counts{}
 	return redactJSON(raw, opts, counts), counts
