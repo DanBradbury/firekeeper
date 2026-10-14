@@ -21,6 +21,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // maxToolText is the longest tool output kept in Event.Text.
@@ -29,10 +30,10 @@ const maxToolText = 64 << 10
 const eventsFile = "events.jsonl"
 
 func init() {
-	transcript.Register(transcript.ProviderCopilot, &Source{})
+	reader.Register(transcript.ProviderCopilot, &Source{})
 }
 
-// Source implements transcript.TranscriptSource for Copilot CLI sessions. The
+// Source implements reader.Source for Copilot CLI sessions. The
 // zero value reads COPILOT_HOME, falling back to ~/.copilot.
 type Source struct {
 	// CopilotHome overrides COPILOT_HOME when set.

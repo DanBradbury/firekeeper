@@ -154,3 +154,16 @@ func isFirekeeperCommand(command string) bool {
 	}
 	return false
 }
+
+// EmptyFallback returns fallback when value is the empty string.
+func EmptyFallback(value, fallback string) string { return standalone().emptyFallback(value, fallback) }
+
+// NormalizeTTY returns the terminal name ps reported without a /dev/ prefix,
+// or "" when the process has no terminal.
+func NormalizeTTY(value string) string { return standalone().normalizeTTY(value) }
+
+// SanitizeProcessCommand replaces control characters in a command line with
+// spaces so it is safe to show in a terminal.
+func SanitizeProcessCommand(command string) string {
+	return standalone().sanitizeProcessCommand(command)
+}

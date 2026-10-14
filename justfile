@@ -38,7 +38,7 @@ diff-check:
     git diff --check
 
 # Run standard pre-commit checks.
-check: test vet fmt-check diff-check
+check: fmt-check vet test diff-check
 
 # Build the container image.
 docker-build:

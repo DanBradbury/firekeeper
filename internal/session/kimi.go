@@ -49,7 +49,7 @@ func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 		if !ok {
 			continue
 		}
-		groups[index].Sessions = []SessionInfo{{
+		groups[index].Sessions = []Info{{
 			ID: filepath.Base(filepath.Dir(state.Path)), Name: d.emptyFallback(d.sanitizeProcessCommand(state.Title), "Kimi Code"), State: SessionStateActive,
 			CWD: d.sanitizeProcessCommand(state.WorkDir), Model: d.sanitizeProcessCommand(state.Model), Source: "Kimi Code", StartedAt: state.CreatedAt, UpdatedAt: state.UpdatedAt,
 		}}
@@ -107,3 +107,7 @@ func (d *discoverer) kimiHome() (string, error) {
 	}
 	return filepath.Join(home, ".kimi-code"), nil
 }
+
+// KimiHome returns Kimi Code's data directory, honoring KIMI_CODE_HOME and then
+// KIMI_SHARE_DIR (default ~/.kimi-code).
+func KimiHome() (string, error) { return standalone().kimiHome() }

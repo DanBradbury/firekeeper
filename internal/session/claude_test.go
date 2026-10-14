@@ -119,7 +119,7 @@ func TestScanClaudeTranscriptState(t *testing.T) {
 	tests := []struct {
 		name  string
 		lines []string
-		want  SessionState
+		want  State
 	}{
 		{"empty", nil, SessionStateUnknown},
 		{"prompt sent", []string{claudePrompt(t, "go")}, SessionStateActive},
@@ -225,7 +225,7 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		pid   int
 		id    string
 		title string
-		state SessionState
+		state State
 		cwd   string
 	}{
 		{50, claudeIDA, "Explicit", SessionStateWaiting, otherCwd},

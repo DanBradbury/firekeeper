@@ -22,6 +22,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // maxToolText is the longest tool output kept in Event.Text.
@@ -32,10 +33,10 @@ const maxToolText = 64 << 10
 const syntheticModel = "<synthetic>"
 
 func init() {
-	transcript.Register(transcript.ProviderClaude, &Source{})
+	reader.Register(transcript.ProviderClaude, &Source{})
 }
 
-// Source implements transcript.TranscriptSource for Claude Code transcripts.
+// Source implements reader.Source for Claude Code transcripts.
 // The zero value reads CLAUDE_CONFIG_DIR, falling back to ~/.claude.
 type Source struct {
 	// ConfigDir overrides CLAUDE_CONFIG_DIR when set.

@@ -39,7 +39,7 @@ type Meta struct {
 	Project        string       `json:"project"`
 	Provider       string       `json:"provider"`
 	Name           string       `json:"-"`
-	State          SessionState `json:"state"`
+	State          State        `json:"state"`
 	CWD            string       `json:"cwd"`
 	Model          string       `json:"model"`
 	Source         string       `json:"source"`
@@ -69,6 +69,10 @@ type discoverer struct {
 	ctx  context.Context
 	opts Options
 }
+
+// standalone returns a discoverer with default options for the exported
+// helpers that callers use outside a Discover call.
+func standalone() *discoverer { return &discoverer{ctx: context.Background()} }
 
 // command supports the existing Output call sites while keeping execution scoped
 // to this discovery's context and runner.
@@ -120,7 +124,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	for _, g := range groups {
 		sessions := g.Sessions
 		if len(sessions) == 0 {
-			sessions = []SessionInfo{{}}
+			sessions = []Info{{}}
 		}
 		for _, s := range sessions {
 			cwd := s.CWD

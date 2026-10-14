@@ -15,6 +15,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 const (
@@ -75,7 +76,7 @@ func fixture(t *testing.T) (home string, paths map[string]string) {
 	large.WriteString(sessionMeta("/work/large", "big"))
 	large.WriteString(turnContext("head-model"))
 	filler := `{"timestamp":"2026-01-04T00:00:00.000Z","type":"event_msg","payload":{"type":"filler","text":"` + strings.Repeat("x", 1000) + `"}}` + "\n"
-	for large.Len() < 4*transcript.HeadBytes {
+	for large.Len() < 4*reader.HeadBytes {
 		large.WriteString(filler)
 	}
 	large.WriteString(turnContext("tail-model"))
@@ -164,7 +165,7 @@ func TestEnumerate(t *testing.T) {
 		return strings.HasPrefix(m.CWD, "/excluded")
 	}
 
-	metas, err := source.Enumerate(context.Background(), transcript.EnumerateOptions{Skip: skip})
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{Skip: skip})
 	var warning *session.Warning
 	if !errors.As(err, &warning) || !strings.Contains(warning.Message, "skipped 2 ") {
 		t.Fatalf("err = %v, want warning counting the empty and corrupt rollouts", err)
@@ -196,8 +197,8 @@ func TestEnumerate(t *testing.T) {
 	if o.opened(paths[idEmpty]) {
 		t.Error("empty rollout was opened")
 	}
-	if n := o.bytes[paths[idLarge]]; n == 0 || n > transcript.HeadBytes {
-		t.Errorf("read %d bytes of the large rollout, want 1..%d", n, transcript.HeadBytes)
+	if n := o.bytes[paths[idLarge]]; n == 0 || n > reader.HeadBytes {
+		t.Errorf("read %d bytes of the large rollout, want 1..%d", n, reader.HeadBytes)
 	}
 
 	byID := map[string]session.Meta{}
@@ -246,7 +247,7 @@ func TestEnumerate(t *testing.T) {
 func TestEnumerateModifiedAfter(t *testing.T) {
 	home, _ := fixture(t)
 	source := &Source{CodexHome: home, run: fakeSQLite(t, home, false)}
-	metas, err := source.Enumerate(context.Background(), transcript.EnumerateOptions{ModifiedAfter: day(5)})
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{ModifiedAfter: day(5)})
 	if err != nil {
 		// Only rollouts modified after day 5 remain: the head-only one, the
 		// excluded one (no Skip here), and the empty and corrupt ones.
@@ -275,7 +276,7 @@ func TestEnumerateWithoutStore(t *testing.T) {
 		t.Fatal("sqlite3 run without a state database")
 		return nil, nil
 	}}
-	metas, _ := source.Enumerate(context.Background(), transcript.EnumerateOptions{
+	metas, _ := source.Enumerate(context.Background(), reader.EnumerateOptions{
 		Skip: func(m session.Meta) bool { return strings.HasPrefix(m.CWD, "/excluded") },
 	})
 	if len(metas) != 4 {
@@ -283,7 +284,7 @@ func TestEnumerateWithoutStore(t *testing.T) {
 	}
 	// With no store, the directory comes from the head, so the excluded
 	// rollout is opened to decide, but its head only.
-	if n := o.bytes[paths[idExcluded]]; n == 0 || n > transcript.HeadBytes {
+	if n := o.bytes[paths[idExcluded]]; n == 0 || n > reader.HeadBytes {
 		t.Errorf("read %d bytes of the excluded rollout", n)
 	}
 	for _, m := range metas {
@@ -296,7 +297,7 @@ func TestEnumerateWithoutStore(t *testing.T) {
 func TestEnumerateStoreFailure(t *testing.T) {
 	home, _ := fixture(t)
 	source := &Source{CodexHome: home, run: fakeSQLite(t, home, true)}
-	metas, err := source.Enumerate(context.Background(), transcript.EnumerateOptions{})
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{})
 	var warning *session.Warning
 	if !errors.As(err, &warning) || !strings.Contains(warning.Message, "state database") || strings.Contains(warning.Message, home) {
 		t.Fatalf("err = %v, want a sanitized store warning", err)
@@ -307,7 +308,7 @@ func TestEnumerateStoreFailure(t *testing.T) {
 }
 
 func TestEnumerateEmptyHome(t *testing.T) {
-	metas, err := (&Source{CodexHome: t.TempDir()}).Enumerate(context.Background(), transcript.EnumerateOptions{})
+	metas, err := (&Source{CodexHome: t.TempDir()}).Enumerate(context.Background(), reader.EnumerateOptions{})
 	if err != nil || len(metas) != 0 {
 		t.Fatalf("Enumerate = %v, %v", metas, err)
 	}
@@ -318,13 +319,13 @@ func TestEnumerateCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	source := &Source{CodexHome: home, run: fakeSQLite(t, home, false)}
-	if _, err := source.Enumerate(ctx, transcript.EnumerateOptions{}); !errors.Is(err, context.Canceled) {
+	if _, err := source.Enumerate(ctx, reader.EnumerateOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
 
 func TestEnumeratorRegistered(t *testing.T) {
-	if _, ok := transcript.EnumeratorFor(transcript.ProviderCodex); !ok {
+	if _, ok := reader.EnumeratorFor(transcript.ProviderCodex); !ok {
 		t.Fatal("codex source does not enumerate")
 	}
 }

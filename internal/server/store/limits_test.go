@@ -12,6 +12,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/redact"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // newAccount creates an account with a throwaway hash.
@@ -40,7 +41,7 @@ func sized(sid string, from, n, size int) SessionBatch {
 // ingesting it fills session_files.
 func codexBatch(t *testing.T) SessionBatch {
 	t.Helper()
-	src, ok := transcript.For(transcript.ProviderCodex)
+	src, ok := reader.For(transcript.ProviderCodex)
 	if !ok {
 		t.Fatal("no codex source")
 	}

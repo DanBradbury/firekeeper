@@ -209,3 +209,10 @@ func TestRegisterMachineKeepsHeartbeat(t *testing.T) {
 		t.Fatal("RegisterMachine without an account succeeded")
 	}
 }
+
+// SchemaVersion returns the applied schema version. Only tests need it.
+func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
+	var v int
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_version`).Scan(&v)
+	return v, err
+}

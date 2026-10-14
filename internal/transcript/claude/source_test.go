@@ -9,6 +9,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	"github.com/DanBradbury/firekeeper/internal/transcript/transcripttest"
 )
 
@@ -309,7 +310,7 @@ func TestLocateHonorsClaudeConfigDir(t *testing.T) {
 }
 
 func TestRegistered(t *testing.T) {
-	if _, ok := transcript.For(transcript.ProviderClaude); !ok {
+	if _, ok := reader.For(transcript.ProviderClaude); !ok {
 		t.Fatal("claude source not registered")
 	}
 }

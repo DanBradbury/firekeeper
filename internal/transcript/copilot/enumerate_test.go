@@ -14,6 +14,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 const (
@@ -70,7 +71,7 @@ func fixture(t *testing.T) (home string, paths map[string]string) {
 	large.WriteString(start("/work/large"))
 	large.WriteString(modelChange("head-model"))
 	filler := `{"type":"assistant.message_delta","data":{"deltaContent":"` + strings.Repeat("x", 1000) + `"}}` + "\n"
-	for large.Len() < 4*transcript.HeadBytes {
+	for large.Len() < 4*reader.HeadBytes {
 		large.WriteString(filler)
 	}
 	large.WriteString(modelChange("tail-model"))
@@ -126,7 +127,7 @@ func TestEnumerate(t *testing.T) {
 	var o opens
 	source := &Source{CopilotHome: home, open: o.open}
 	skipCalls := map[string]int{}
-	metas, err := source.Enumerate(context.Background(), transcript.EnumerateOptions{Skip: func(m session.Meta) bool {
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{Skip: func(m session.Meta) bool {
 		skipCalls[m.ID]++
 		return strings.HasPrefix(m.CWD, "/excluded")
 	}})
@@ -155,8 +156,8 @@ func TestEnumerate(t *testing.T) {
 	if o.opened(paths[idEmpty]) {
 		t.Error("empty events file was opened")
 	}
-	if n := o.bytes[paths[idLarge]]; n == 0 || n > transcript.HeadBytes {
-		t.Errorf("read %d bytes of the large events file, want 1..%d", n, transcript.HeadBytes)
+	if n := o.bytes[paths[idLarge]]; n == 0 || n > reader.HeadBytes {
+		t.Errorf("read %d bytes of the large events file, want 1..%d", n, reader.HeadBytes)
 	}
 
 	byID := map[string]session.Meta{}
@@ -193,7 +194,7 @@ func TestEnumerate(t *testing.T) {
 func TestEnumerateModifiedAfterAndEnv(t *testing.T) {
 	home, _ := fixture(t)
 	t.Setenv("COPILOT_HOME", home)
-	metas, err := (&Source{}).Enumerate(context.Background(), transcript.EnumerateOptions{ModifiedAfter: day(6)})
+	metas, err := (&Source{}).Enumerate(context.Background(), reader.EnumerateOptions{ModifiedAfter: day(6)})
 	var warning *session.Warning
 	if err != nil && !errors.As(err, &warning) {
 		t.Fatal(err)
@@ -207,16 +208,16 @@ func TestEnumerateCanceled(t *testing.T) {
 	home, _ := fixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := (&Source{CopilotHome: home}).Enumerate(ctx, transcript.EnumerateOptions{}); !errors.Is(err, context.Canceled) {
+	if _, err := (&Source{CopilotHome: home}).Enumerate(ctx, reader.EnumerateOptions{}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
 
 func TestEnumeratorRegistered(t *testing.T) {
-	if _, ok := transcript.EnumeratorFor(transcript.ProviderCopilot); !ok {
+	if _, ok := reader.EnumeratorFor(transcript.ProviderCopilot); !ok {
 		t.Fatal("copilot source does not enumerate")
 	}
-	if _, ok := transcript.EnumeratorFor(transcript.ProviderKimi); ok {
+	if _, ok := reader.EnumeratorFor(transcript.ProviderKimi); ok {
 		t.Fatal("kimi has no transcript source and cannot enumerate")
 	}
 }

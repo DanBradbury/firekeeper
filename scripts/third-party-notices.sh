@@ -14,6 +14,9 @@ done | sort -u)
 {
 	echo '# Third-party notices'
 	echo
+	# The single-quoted backticks below are Markdown code spans, not command
+	# substitutions, so SC2016 does not apply.
+	# shellcheck disable=SC2016
 	echo 'Firekeeper is licensed under the Apache License 2.0 (see `LICENSE`). Binaries'
 	echo 'and container images built from this repository also contain the software'
 	echo 'below, each under its own license. The full license texts follow.'
@@ -25,8 +28,11 @@ done | sort -u)
 	echo "| Go standard library and runtime | $(go env GOVERSION) |"
 	echo "$mods" | while read -r path version dir; do echo "| $path | $version |"; done
 	echo
+	# shellcheck disable=SC2016
 	echo 'The container image (`Dockerfile`) is based on Alpine Linux and adds the'
+	# shellcheck disable=SC2016
 	echo '`ca-certificates` and `sqlite` packages. Those are distributed under their own'
+	# shellcheck disable=SC2016
 	echo 'licenses, recorded in the image'"'"'s package database (`apk info -L`), and are'
 	echo 'not reproduced here.'
 	echo
@@ -46,7 +52,8 @@ done | sort -u)
 		# LICENSE-3RD-PARTY.md in modernc.org/sqlite covers its test suite and
 		# optional packages; everything it lists that is linked here appears
 		# under its own module or under modernc.org/libc.
-		files=$(cd "$dir" && ls | grep -E -i '^(licen[cs]e|copying|notice|patents)' |
+		files=$(cd "$dir" && for f in *; do printf '%s\n' "$f"; done |
+			grep -E -i '^(licen[cs]e|copying|notice|patents)' |
 			grep -v -x -e LICENSE-LOGO -e LICENSE-SQLITE_VEC || true)
 		if [ "$path" = modernc.org/sqlite ]; then
 			files=$(echo "$files" | grep -v -x LICENSE-3RD-PARTY.md)

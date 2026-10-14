@@ -27,7 +27,16 @@ jobs:
       - run: go vet ./...
       - name: go vet (darwin)
         run: GOOS=darwin go vet ./...
-      - run: go test -race ./...
+      - name: server does not depend on process discovery
+        run: |
+          if go list -deps ./internal/server/... | grep -q 'firekeeper/internal/session$'; then
+            echo "internal/server must not depend on internal/session (process discovery)" >&2
+            exit 1
+          fi
+      - name: install sqlite3 if missing
+        run: command -v sqlite3 || { sudo apt-get update && sudo apt-get install -y sqlite3; }
+      - name: go test -race, failing on skipped tests
+        run: scripts/ci-go-test.sh
 
   macos:
     runs-on: macos-latest
@@ -53,7 +62,7 @@ jobs:
           FIREKEEPER_MACOS_INTEGRATION: "1"
         run: |
           tests="TestMacTerminalAdapterScriptsCompile TestFocusTerminalSessionRunsOsascript TestDiscoverProcessesPreservesLongCopilotCommand"
-          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" . | tee macos-tests.log
+          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" ./internal/tui ./internal/session | tee macos-tests.log
           if grep -q -- '--- SKIP' macos-tests.log; then
             echo "a macOS-specific test was skipped" >&2
             exit 1
@@ -67,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck install.sh scripts/test-install.sh
+        run: shellcheck $(git ls-files '*.sh')
       - name: installer test
         run: sh scripts/test-install.sh
 
@@ -84,3 +93,11 @@ jobs:
         with:
           version: "~> v2"
           args: release --snapshot --clean
+      - name: snapshot binary reports the injected version
+        run: |
+          out=$(dist/firekeeper_linux_amd64_v1/firekeeper version)
+          echo "$out"
+          if echo "$out" | grep -qE '^firekeeper dev |commit dev,|built dev,'; then
+            echo "version, commit, or date was not injected; check the -X paths in .goreleaser.yaml" >&2
+            exit 1
+          fi

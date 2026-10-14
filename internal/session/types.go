@@ -37,7 +37,7 @@ type CopilotStoredMetadata struct {
 }
 
 type CopilotEventMetadata struct {
-	State      SessionState
+	State      State
 	Model      string
 	UpdatedAt  time.Time
 	TokensUsed int64
@@ -88,10 +88,10 @@ type ProcessInfo struct {
 	Command string
 }
 
-type SessionInfo struct {
+type Info struct {
 	ID          string
 	Name        string
-	State       SessionState
+	State       State
 	CWD         string
 	Model       string
 	Source      string
@@ -126,7 +126,7 @@ type ProcessGroup struct {
 	Tool      string
 	Root      ProcessInfo
 	Processes []ProcessInfo
-	Sessions  []SessionInfo
+	Sessions  []Info
 }
 
 type ThreadMetadataRow struct {
@@ -144,10 +144,10 @@ const RolloutStatusTailBytes int64 = 4 << 20
 
 const RolloutMetaHeadBytes int64 = 8 << 20
 
-type SessionState int
+type State int
 
 const (
-	SessionStateUnknown SessionState = iota
+	SessionStateUnknown State = iota
 	SessionStateActive
 	SessionStateWaiting
 	SessionStateNeedsInput

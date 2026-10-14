@@ -1,5 +1,5 @@
 // Package transcripttest holds conformance helpers that every
-// transcript.TranscriptSource runs against its own fixtures.
+// reader.Source runs against its own fixtures.
 package transcripttest
 
 import (
@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // SeqCase is one fixture for RunSeqStability.
@@ -33,7 +34,7 @@ type SeqCase struct {
 // are deterministic, seqs strictly increase, and reading at the end is a no-op.
 //
 // Failure messages name seqs and offsets only, never transcript text.
-func RunSeqStability(t *testing.T, source transcript.TranscriptSource, cases []SeqCase) {
+func RunSeqStability(t *testing.T, source reader.Source, cases []SeqCase) {
 	t.Helper()
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
@@ -70,7 +71,7 @@ func seqs(events []transcript.Event) []int64 {
 	return out
 }
 
-func checkSeqStability(source transcript.TranscriptSource, c SeqCase, tempDir string) error {
+func checkSeqStability(source reader.Source, c SeqCase, tempDir string) error {
 	whole, end, err := source.Read(c.Path, 0)
 	if err != nil {
 		return fmt.Errorf("whole read: %w", err)

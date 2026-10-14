@@ -15,14 +15,15 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 // Enumerate lists every session-state/<uuid>/events.jsonl. Metadata comes
 // from the workspace.yaml beside it. Only when that lacks the working
 // directory, branch, or start time, or (always, since workspace.yaml has no
 // model) the model, is events.jsonl opened, and then only its first
-// transcript.HeadBytes are read. session-store.db is not read.
-func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions) ([]session.Meta, error) {
+// reader.HeadBytes are read. session-store.db is not read.
+func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	home, err := s.copilotHome()
 	if err != nil {
 		return nil, err
@@ -94,7 +95,7 @@ func (s *Source) Enumerate(ctx context.Context, opts transcript.EnumerateOptions
 		mtimes[path] = info.ModTime()
 		metas = append(metas, meta)
 	}
-	transcript.SortNewestFirst(metas, mtimes)
+	reader.SortNewestFirst(metas, mtimes)
 	if bad > 0 {
 		return metas, &session.Warning{Message: fmt.Sprintf("copilot: skipped %d empty, unreadable, or corrupt event log(s)", bad)}
 	}
@@ -106,7 +107,7 @@ func finish(meta session.Meta, gitRoot string) session.Meta {
 	if gitRoot != "" {
 		meta.Project = filepath.Base(filepath.Clean(gitRoot))
 	} else {
-		meta.Project = transcript.ProjectName(meta.CWD)
+		meta.Project = reader.ProjectName(meta.CWD)
 	}
 	meta.Name = meta.Title
 	meta.GitBranch = meta.Branch
@@ -133,7 +134,7 @@ type head struct {
 	started                     time.Time
 }
 
-// readHead decodes the first transcript.HeadBytes of an events file. It is
+// readHead decodes the first reader.HeadBytes of an events file. It is
 // corrupt when no complete line there is a JSON object. The model is the
 // last one named in the head.
 func (s *Source) readHead(path string) (head, error) {
@@ -146,8 +147,8 @@ func (s *Source) readHead(path string) (head, error) {
 		return head{}, err
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(io.LimitReader(file, transcript.HeadBytes))
-	scanner.Buffer(make([]byte, 0, 64<<10), transcript.HeadBytes)
+	scanner := bufio.NewScanner(io.LimitReader(file, reader.HeadBytes))
+	scanner.Buffer(make([]byte, 0, 64<<10), reader.HeadBytes)
 	var h head
 	decoded := false
 	for scanner.Scan() {

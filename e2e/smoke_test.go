@@ -23,6 +23,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
 const (
@@ -266,7 +267,7 @@ func runOnce(t *testing.T, cfg reporter.Config) map[string]reporter.SessionResul
 // expectedEvents counts the events the provider's reader finds in path.
 func expectedEvents(t *testing.T, provider transcript.Provider, path string) int {
 	t.Helper()
-	source, ok := transcript.For(provider)
+	source, ok := reader.For(provider)
 	if !ok {
 		t.Fatalf("%s: no transcript reader registered", provider)
 	}
