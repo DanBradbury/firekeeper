@@ -63,8 +63,8 @@ firekeeper/
 │   │   └── cmd_*.go: one file per subcommand (report, serve, daemon, version, ...)
 │   ├── tui/
 │   │   ├── model.go: Bubble Tea model/update/view, Processes and Usage tabs,
-│   │   │   process polling and grouping, Codex metadata enrichment, macOS
-│   │   │   terminal switching
+│   │   │   process polling through session.Discover, retention of known
+│   │   │   session metadata, macOS terminal switching
 │   │   ├── dashboard.go: dashboard layout for the Processes tab
 │   │   ├── chat.go: the c view, the selected session's chat history
 │   │   ├── help.go: the ? overlay listing every keyboard shortcut
@@ -76,8 +76,9 @@ firekeeper/
 │   │   └── session_bridge.go, session_status.go, kimi_sessions.go: the
 │   │       dashboard's private types and helpers onto internal/session
 │   ├── session/
-│   │   └── Process discovery, session metadata, and best-effort state parsing
-│   │       into ACTIVE, WAITING, NEEDS INPUT, or UNKNOWN
+│   │   └── Process discovery and grouping, per-provider metadata enrichment,
+│   │       and best-effort state parsing into ACTIVE, WAITING, NEEDS INPUT,
+│   │       or UNKNOWN
 │   ├── transcript/
 │   │   ├── Event contract: events, providers, roles, tokens (no session import)
 │   │   ├── claude/, codex/, copilot/: per-provider transcript parsers
