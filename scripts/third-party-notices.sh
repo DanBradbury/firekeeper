@@ -53,8 +53,8 @@ done | sort -u)
 		# optional packages; everything it lists that is linked here appears
 		# under its own module or under modernc.org/libc.
 		files=$(cd "$dir" && for f in *; do printf '%s\n' "$f"; done |
-			grep -E -i '^(licen[cs]e|copying|notice|patents)' |
-			grep -v -x -e LICENSE-LOGO -e LICENSE-SQLITE_VEC || true)
+			awk 'tolower($0) ~ /^(licen[cs]e|copying|notice|patents)/ &&
+				$0 != "LICENSE-LOGO" && $0 != "LICENSE-SQLITE_VEC"')
 		if [ "$path" = modernc.org/sqlite ]; then
 			files=$(echo "$files" | grep -v -x LICENSE-3RD-PARTY.md)
 		fi
