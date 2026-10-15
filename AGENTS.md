@@ -16,7 +16,7 @@ Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper`
 1. Read `README.md` for current user-facing behavior and controls.
 2. Check `git status --short` and preserve unrelated or pre-existing changes.
 3. Locate tests next to the relevant implementation before editing.
-4. Treat files under `~/.codex` and `~/.copilot` as private user data. Never print prompts, secrets, raw event payloads, or full command lines unnecessarily.
+4. Treat provider data (`~/.codex`, `~/.copilot`, `~/.claude`, `~/.kimi-code`, OpenCode's database, `~/.gemini`) as private user data. Never print prompts, secrets, raw event payloads, or full command lines unnecessarily.
 
 Do not commit, push, create issues, or modify remote state unless the user asks.
 
@@ -81,7 +81,8 @@ firekeeper/
 │   │       or UNKNOWN
 │   ├── transcript/
 │   │   ├── Event contract: events, providers, roles, tokens (no session import)
-│   │   ├── claude/, codex/, copilot/: per-provider transcript parsers
+│   │   ├── claude/, codex/, copilot/, kimi/, opencode/, gemini/: per-provider
+│   │   │   transcript parsers
 │   │   ├── reader/: reader registry, provider lookup, and enumeration. reader
 │   │   │   and the provider packages import internal/session; the transcript
 │   │   │   package itself must not
@@ -126,7 +127,7 @@ Process discovery uses `ps`; open-file mapping uses `lsof`; local database queri
 Provider rules:
 
 - Read local provider data only. Never mutate provider databases, rollout files, logs, or workspace metadata.
-- Honor `CODEX_HOME` and `COPILOT_HOME` overrides.
+- Honor `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, `OPENCODE_DB`, `XDG_DATA_HOME`, and `GEMINI_CLI_HOME` overrides.
 - Use bounded operations and actionable, sanitized errors.
 - Add parser tests for malformed, missing, partial, and evolving provider data.
 - Use temporary directories and fixtures in tests. Do not depend on developer account data or write into real home directories.
@@ -175,6 +176,7 @@ const (
     ProviderCodex    Provider = "codex"
     ProviderCopilot  Provider = "copilot"
     ProviderOpenCode Provider = "opencode"
+    ProviderGemini   Provider = "gemini"
 )
 ```
 

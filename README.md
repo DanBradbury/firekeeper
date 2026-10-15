@@ -4,8 +4,8 @@
 
 See what your AI coding agents are doing right now, and keep a searchable
 record of what they did, how many tokens they used, and which files they
-changed. Firekeeper works across Codex, GitHub Copilot CLI, and Claude Code,
-on one machine or several, and it runs on your hardware. Nothing starts and
+changed. Firekeeper works across Codex, GitHub Copilot CLI, Claude Code, Kimi
+Code, OpenCode, and Gemini CLI, on one machine or several, and it runs on your hardware. Nothing starts and
 nothing uploads unless you ask.
 
 ## Install
@@ -264,8 +264,8 @@ up a dashboard on this machine and then link a second one.
    `firekeeper backfill --all --dry-run`, then `firekeeper backfill --all`.
 
 6. **Keep it flowing.** Install the daemon as a per-user service. It detects
-   Codex, Copilot CLI, and Claude Code from their data directories or
-   executables, prints what it found, and starts uploading those providers.
+   Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, and Gemini CLI from
+   their data directories or executables, prints what it found, and starts uploading those providers.
    Preview first with `--dry-run`:
 
    ```sh
@@ -1011,7 +1011,8 @@ each time the daemon starts, so after editing the file, restart the service
 reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
 `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`,
-`XDG_CONFIG_HOME`, and `FIREKEEPER_CONFIG` from your shell into the definition
+`XDG_DATA_HOME`, `OPENCODE_DB`, `GEMINI_CLI_HOME`, `XDG_CONFIG_HOME`, and
+`FIREKEEPER_CONFIG` from your shell into the definition
 when they are set. It refuses to install a temporary `go run` build. Nothing
 here needs or uses `sudo`.
 
