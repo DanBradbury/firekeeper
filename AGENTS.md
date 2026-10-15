@@ -38,7 +38,7 @@ Use `-race` for changes involving model updates, polling, commands, parsing, pro
 
 When creating or modifying shell scripts (`*.sh`), run `shellcheck` on each touched script and fix its findings. CI also runs `shellcheck` on every tracked script.
 
-GitHub CI runs more than the local checks: Linux tests through `scripts/ci-go-test.sh` (which fails on any skipped test outside a short allowlist), a check that `internal/server` does not depend on `internal/session`, macOS AppleScript tests (set `FIREKEEPER_MACOS_INTEGRATION=1` to run them locally), the installer test, and a GoReleaser snapshot build that must report the injected version. CI uses the Go version declared in `go.mod`, so do not use APIs newer than that version. A green local run usually means CI passes, but does not guarantee it.
+GitHub CI runs more than the local checks: Linux tests through `scripts/ci-go-test.sh` (which fails on any skipped test outside a short allowlist), a check that `internal/server` does not depend on `internal/session`, macOS AppleScript tests (set `FIREKEEPER_MACOS_INTEGRATION=1` to run them locally), the installer test, a GoReleaser snapshot build that must report the injected version, and (in `security.yml`, also weekly) `govulncheck` plus a `gitleaks` scan of the full history. A test fixture or doc example that trips gitleaks gets a narrow allowlist entry in `.gitleaks.toml`. CI uses the Go version declared in `go.mod`, so do not use APIs newer than that version. A green local run usually means CI passes, but does not guarantee it.
 
 Release builds set version information with `-ldflags "-X github.com/DanBradbury/firekeeper/internal/version.Version=..."` (also `Commit` and `Date`). A wrong `-X` path fails silently and the binary reports `dev`.
 
