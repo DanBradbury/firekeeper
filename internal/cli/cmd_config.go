@@ -27,6 +27,7 @@ type configFlags struct {
 	token     *string
 	providers *providerList
 	interval  *time.Duration
+	liveOnly  *bool
 }
 
 // applyReporterConfig copies the merged reporting settings into cfg.
@@ -36,6 +37,8 @@ func applyReporterConfig(cfg *reporter.Config, c config.Config) {
 	cfg.Providers = c.Providers
 	cfg.Exclude = c.Exclude
 	cfg.RedactPaths = c.RedactPaths
+	cfg.ScanEnded = c.ScanEnded
+	cfg.ScanLookback = c.ScanLookback
 	cfg.Version = version.Version
 }
 
@@ -52,8 +55,13 @@ func loadConfig(f configFlags) (config.Config, error) {
 		return config.Config{}, fmt.Errorf("find home directory: %w", err)
 	}
 	c, err := config.Load(config.Options{
-		Home:     home,
-		Defaults: config.Config{Server: reporter.DefaultServer, Interval: daemon.DefaultInterval},
+		Home: home,
+		Defaults: config.Config{
+			Server:       reporter.DefaultServer,
+			Interval:     daemon.DefaultInterval,
+			ScanEnded:    true,
+			ScanLookback: reporter.DefaultScanLookback,
+		},
 	})
 	if err != nil {
 		return c, err
@@ -70,6 +78,9 @@ func loadConfig(f configFlags) (config.Config, error) {
 				o.Providers = *f.providers
 			case "interval":
 				o.Interval = f.interval
+			case "live-only":
+				scan := !*f.liveOnly
+				o.ScanEnded = &scan
 			}
 		})
 	}
@@ -111,7 +122,12 @@ func writeConfig(w io.Writer, c config.Config) {
 	} else {
 		fmt.Fprintln(w, "# file: none (using defaults and environment)")
 	}
-	src := func(key string) string { return "  # " + c.Sources[key] }
+	src := func(key string) string {
+		if source := c.Sources[key]; source != "" {
+			return "  # " + source
+		}
+		return "  # default"
+	}
 	fmt.Fprintf(w, "server = %q%s\n", c.Server, src("server"))
 	fmt.Fprintf(w, "token = %q%s\n", config.MaskToken(c.Token), src("token"))
 	names := make([]string, len(c.Providers))
@@ -120,6 +136,8 @@ func writeConfig(w io.Writer, c config.Config) {
 	}
 	fmt.Fprintf(w, "providers = %s%s\n", tomlList(names), src("providers"))
 	fmt.Fprintf(w, "interval = %q%s\n", c.Interval.String(), src("interval"))
+	fmt.Fprintf(w, "scan_ended = %t%s\n", c.ScanEnded, src("scan_ended"))
+	fmt.Fprintf(w, "scan_lookback = %q%s\n", c.ScanLookback.String(), src("scan_lookback"))
 	fmt.Fprintf(w, "exclude = %s\n", tomlList(c.Exclude))
 	fmt.Fprintf(w, "repo_url_template = %q\n", c.RepoURLTemplate)
 	fmt.Fprintf(w, "trusted_proxies = %s\n", tomlList(c.TrustedProxies))

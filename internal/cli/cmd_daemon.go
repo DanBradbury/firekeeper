@@ -41,6 +41,7 @@ type daemonFlags struct {
 	server    string
 	providers providerList
 	interval  time.Duration
+	liveOnly  *bool
 	cfg       config.Config
 }
 
@@ -49,6 +50,7 @@ func registerDaemonFlags(fs *flag.FlagSet) *daemonFlags {
 	fs.StringVar(&f.server, "server", reporter.DefaultServer, "dashboard server URL")
 	fs.Var(&f.providers, "provider", "upload this provider's sessions (repeatable); required for foreground daemon; install detects local providers by default")
 	fs.DurationVar(&f.interval, "interval", daemon.DefaultInterval, fmt.Sprintf("time between passes (at least %s)", daemon.MinInterval))
+	f.liveOnly = liveOnlyFlag(fs)
 	return f
 }
 
@@ -59,7 +61,7 @@ func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []stri
 	if code, ok := parseNoArgs(name, fs, args, stderr); !ok {
 		return code, false
 	}
-	c, err := loadConfig(configFlags{fs: fs, server: &f.server, providers: &f.providers, interval: &f.interval})
+	c, err := loadConfig(configFlags{fs: fs, server: &f.server, providers: &f.providers, interval: &f.interval, liveOnly: f.liveOnly})
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", name, err)
 		return 2, false
@@ -194,6 +196,9 @@ func runDaemonInstall(args []string, stdout, stderr io.Writer) int {
 	}
 	if set["interval"] {
 		daemonArgs = append(daemonArgs, "--interval", flags.interval.String())
+	}
+	if set["live-only"] {
+		daemonArgs = append(daemonArgs, fmt.Sprintf("--live-only=%t", *flags.liveOnly))
 	}
 
 	svc, err := newService(daemonArgs, stdout)

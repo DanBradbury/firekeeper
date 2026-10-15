@@ -303,3 +303,127 @@ func TestLogAppendsAcrossRestarts(t *testing.T) {
 		t.Fatalf("daemon.log.1 = %v, %v; want the two earlier lines", info, err)
 	}
 }
+
+func TestScanWindow(t *testing.T) {
+	const interval = 10 * time.Second
+	start := time.Date(2026, 10, 1, 9, 0, 0, 0, time.UTC)
+	failed := reporter.SessionResult{Provider: "codex", SessionID: "s", Err: errors.New("upload: connection refused")}
+	tests := []struct {
+		name      string
+		scan      bool
+		lookback  time.Duration
+		summaries []reporter.Summary
+		// want is each pass's ScanAfter as an offset from start; nil
+		// entries mean the zero time.
+		want []*time.Duration
+	}{
+		{
+			name: "live only",
+			summaries: []reporter.Summary{
+				{}, {},
+			},
+			want: []*time.Duration{nil, nil},
+		},
+		{
+			name:     "complete passes move the window",
+			scan:     true,
+			lookback: 6 * time.Hour,
+			summaries: []reporter.Summary{
+				{Scan: reporter.ScanSummary{Ran: true, Complete: true}},
+				{Scan: reporter.ScanSummary{Ran: true, Complete: true}},
+				{Scan: reporter.ScanSummary{Ran: true, Complete: true}},
+			},
+			want: []*time.Duration{ptr(-6 * time.Hour), ptr(-2 * interval), ptr(interval - 2*interval)},
+		},
+		{
+			name: "incomplete or failed passes hold the window",
+			scan: true,
+			summaries: []reporter.Summary{
+				{Scan: reporter.ScanSummary{Ran: true, Found: 80, Read: 50, Deferred: 30}},
+				{Scan: reporter.ScanSummary{Ran: true, Found: 30, Read: 30, Complete: true}, Sessions: []reporter.SessionResult{failed}},
+				{Scan: reporter.ScanSummary{Ran: true, Complete: true}},
+				{Scan: reporter.ScanSummary{Ran: true, Complete: true}},
+			},
+			want: []*time.Duration{ptr(-reporter.DefaultScanLookback), ptr(-reporter.DefaultScanLookback), ptr(-reporter.DefaultScanLookback), ptr(2*interval - 2*interval)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			rc := uploading()
+			rc.ScanEnded = tt.scan
+			rc.ScanLookback = tt.lookback
+			// Each pass starts one interval after the last.
+			reads := 0
+			rc.Now = func() time.Time {
+				now := start.Add(time.Duration(reads) * interval)
+				reads++
+				return now
+			}
+			var got []time.Time
+			err := Run(ctx, Config{
+				Reporter: rc,
+				Interval: interval,
+				Dir:      t.TempDir(),
+				Clock:    &fakeClock{limit: len(tt.summaries), cancel: cancel},
+				Rand:     func() float64 { return 0 },
+				RunOnce: func(_ context.Context, cfg reporter.Config) (reporter.Summary, error) {
+					got = append(got, cfg.ScanAfter)
+					if cfg.ScanEnded != tt.scan {
+						t.Errorf("pass ScanEnded = %t, want %t", cfg.ScanEnded, tt.scan)
+					}
+					return tt.summaries[len(got)-1], nil
+				},
+				Heartbeat: func(context.Context, reporter.Config, reporter.Summary) error { return nil },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("passes = %d, want %d", len(got), len(tt.want))
+			}
+			for i, w := range tt.want {
+				want := time.Time{}
+				if w != nil {
+					want = start.Add(*w)
+				}
+				if !got[i].Equal(want) {
+					t.Errorf("pass %d ScanAfter = %v, want %v", i+1, got[i], want)
+				}
+			}
+		})
+	}
+}
+
+func ptr(d time.Duration) *time.Duration { return &d }
+
+func TestScanCountsAreLoggedWithoutPaths(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	dir := t.TempDir()
+	rc := uploading()
+	rc.ScanEnded = true
+	err := Run(ctx, Config{
+		Reporter: rc,
+		Dir:      dir,
+		Clock:    &fakeClock{limit: 1, cancel: cancel},
+		RunOnce: func(context.Context, reporter.Config) (reporter.Summary, error) {
+			return reporter.Summary{Scan: reporter.ScanSummary{Ran: true, Found: 70, Read: 50, Deferred: 20, Excluded: 2}}, nil
+		},
+		Heartbeat: func(context.Context, reporter.Config, reporter.Summary) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "daemon.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(data)
+	for _, want := range []string{"transcript scan lookback 24h0m0s", "transcript scan: 70 changed sessions not running, 50 read, 20 left for the next pass, 2 excluded"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("log does not contain %q:\n%s", want, log)
+		}
+	}
+}

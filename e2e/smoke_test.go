@@ -615,3 +615,110 @@ func appendFile(t *testing.T, path, contents string) {
 		t.Fatal(err)
 	}
 }
+
+// TestSmokeScanEnded runs passes with no agent process running, so every
+// session is found only in the transcript folders by the real enumerators.
+func TestSmokeScanEnded(t *testing.T) {
+	ctx := context.Background()
+	h := newHome(t)
+	// The Codex enumerator reads the state database with the real sqlite3,
+	// so give it the threads table Codex keeps there.
+	stateDB := filepath.Join(h.dir, ".codex", "state_5.sqlite")
+	if out, err := exec.Command("sqlite3", stateDB, "CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT, cwd TEXT, model TEXT, git_branch TEXT, created_at_ms INTEGER, updated_at_ms INTEGER); "+
+		"INSERT INTO threads VALUES ('"+codexID+"', 'Codex smoke', "+sqlString(h.repo)+", 'gpt-e2e', 'main', 1791892800000, 1791892804000);").CombinedOutput(); err != nil {
+		t.Fatalf("codex state database: %v: %s", err, out)
+	}
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "firekeeper.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Handler(st))
+	t.Cleanup(func() {
+		srv.Close()
+		st.Close()
+	})
+	cfg := h.config(t, srv.URL)
+	cfg.ScanEnded = true
+	// The fixture's transcripts are dated October 2026; look back far
+	// enough to cover their modification times whatever the clock says.
+	cfg.ScanAfter = time.Unix(1, 0)
+	noProcesses := cfg
+	noProcesses.Discover = func(context.Context, session.Options) ([]session.Meta, error) { return nil, nil }
+
+	scanPass := func(cfg reporter.Config) (reporter.Summary, map[string]reporter.SessionResult) {
+		t.Helper()
+		summary, err := reporter.RunOnce(ctx, cfg)
+		if err != nil {
+			t.Fatalf("RunOnce: %v", err)
+		}
+		if summary.Warning != nil {
+			t.Fatalf("warning: %v", summary.Warning)
+		}
+		results := map[string]reporter.SessionResult{}
+		for _, r := range summary.Sessions {
+			if r.Err != nil {
+				t.Fatalf("%s: %v", r.Provider, r.Err)
+			}
+			if _, dup := results[r.Provider]; dup {
+				t.Fatalf("%s: more than one session reported", r.Provider)
+			}
+			results[r.Provider] = r
+		}
+		return summary, results
+	}
+
+	summary, first := scanPass(noProcesses)
+	machineID := readMachineID(t, h.dir)
+	openCodePath := session.OpenCodeTranscriptPath(h.openCode, openCodeID)
+	want := map[string]int{
+		"codex":    expectedEvents(t, transcript.ProviderCodex, h.rollout),
+		"copilot":  expectedEvents(t, transcript.ProviderCopilot, h.events),
+		"kimi":     expectedEvents(t, transcript.ProviderKimi, h.kimiWire),
+		"opencode": expectedEvents(t, transcript.ProviderOpenCode, openCodePath),
+		"gemini":   expectedEvents(t, transcript.ProviderGemini, h.gemini),
+		"cursor":   expectedEvents(t, transcript.ProviderCursor, h.cursor),
+	}
+	if summary.Scan.Found != len(want) || summary.Scan.Read != len(want) || !summary.Scan.Complete {
+		t.Fatalf("scan = %+v, want all %d sessions read", summary.Scan, len(want))
+	}
+	for provider, n := range want {
+		r, ok := first[provider]
+		if !ok {
+			t.Errorf("%s: session not found in the transcript folders", provider)
+			continue
+		}
+		if r.Events != n || r.State != "ENDED" {
+			t.Errorf("%s: scan read %d events with state %q, want %d and ENDED", provider, r.Events, r.State, n)
+		}
+	}
+	for _, s := range listSessions(t, srv.URL) {
+		if s.MachineID != machineID || s.State != "ENDED" || s.Project != "smoke" {
+			t.Errorf("%s session: machine ok %v, state %q, project %q", s.Provider, s.MachineID == machineID, s.State, s.Project)
+		}
+	}
+
+	// A second pass finds nothing changed and opens no transcript.
+	if again, results := scanPass(noProcesses); again.Scan.Found != 0 || len(results) != 0 {
+		t.Fatalf("second pass: scan = %+v, %d sessions", again.Scan, len(results))
+	}
+
+	// New lines are uploaded on the next pass, and only they.
+	appendFile(t, h.rollout, jsonl(codexMessage("user", "input_text", "Scanned later.")))
+	_, third := scanPass(noProcesses)
+	if r := third["codex"]; len(third) != 1 || r.Events != 1 || r.Duplicates != 0 {
+		t.Fatalf("third pass = %+v, want one new codex event", third)
+	}
+	assertSeqs(t, "codex", listEvents(t, srv.URL, machineID, codexID), want["codex"]+1)
+
+	// With the processes running again, each session is read once, as a
+	// live session, and the scan does not read it a second time.
+	appendFile(t, h.rollout, jsonl(codexMessage("assistant", "output_text", "Live again.")))
+	liveSummary, live := scanPass(cfg)
+	if liveSummary.Scan.Found != 0 || len(live) != len(want) {
+		t.Fatalf("live pass: scan = %+v, %d sessions", liveSummary.Scan, len(live))
+	}
+	if r := live["codex"]; r.Events != 1 || r.Duplicates != 0 || r.State == "ENDED" {
+		t.Fatalf("live codex = %+v, want one new event from a running session", r)
+	}
+	assertSeqs(t, "codex", listEvents(t, srv.URL, machineID, codexID), want["codex"]+2)
+}

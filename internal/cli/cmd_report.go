@@ -37,6 +37,11 @@ func (p *providerList) Set(value string) error {
 	return nil
 }
 
+// liveOnlyFlag registers --live-only, shared by report and daemon.
+func liveOnlyFlag(fs *flag.FlagSet) *bool {
+	return fs.Bool("live-only", false, "read only sessions whose process is running, not ended ones found in the transcript folders (default scan_ended in the config file)")
+}
+
 func runReport(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper report", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -47,6 +52,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&providers, "provider", "upload this provider's sessions (repeatable); with none, nothing is uploaded")
 	fs.BoolVar(&cfg.DryRun, "dry-run", false, "print what would be uploaded without uploading")
 	fs.DurationVar(&cfg.Since, "since", 0, "only read transcripts modified within this duration (for example 24h)")
+	liveOnly := liveOnlyFlag(fs)
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -61,7 +67,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "firekeeper report: --since must not be negative")
 		return 2
 	}
-	c, err := loadConfig(configFlags{fs: fs, server: &cfg.Server, token: token, providers: &providers})
+	c, err := loadConfig(configFlags{fs: fs, server: &cfg.Server, token: token, providers: &providers, liveOnly: liveOnly})
 	if err != nil {
 		fmt.Fprintf(stderr, "firekeeper report: %v\n", err)
 		return 2
