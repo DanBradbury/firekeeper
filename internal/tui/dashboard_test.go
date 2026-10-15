@@ -21,7 +21,7 @@ func dashboardTestModel() model {
 				id: "019fb33c-c5f4-75f3-b987-228eb484c6ec", name: "Dashboard first pass",
 				state: sessionStateActive, cwd: "/workspace/firekeeper", model: "gpt-5.6",
 				gitBranch: "main", tokensUsed: 1_250_000,
-				tokens: tokenBreakdown{Input: 50_000, Output: 200_000, Cache: 1_000_000},
+				tokens: tokenBreakdown{Input: 50_000, Output: 200_000, CacheRead: 900_000, CacheWrite: 100_000},
 			}},
 		},
 		{
@@ -180,8 +180,9 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 	m.width, m.height = 140, 40
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"²tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K", "Cache", "1.0M",
-		"tokens 1.2M (in 50.0K · out 200.0K · cache 1.0M)",
+		"²tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
+		"Cache read", "900.0K", "Cache write", "100.0K",
+		"tokens 1.2M (in 50.0K · out 200.0K · cache read 900.0K · cache write 100.0K)",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
@@ -201,7 +202,7 @@ func TestSessionTokenTotalPrefersBreakdown(t *testing.T) {
 	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99}); got != 99 {
 		t.Fatalf("fallback total = %d", got)
 	}
-	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99, tokens: tokenBreakdown{Input: 1, Output: 2, Cache: 3}}); got != 6 {
+	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99, tokens: tokenBreakdown{Input: 1, Output: 2, CacheRead: 3, CacheWrite: 4}}); got != 10 {
 		t.Fatalf("breakdown total = %d", got)
 	}
 }

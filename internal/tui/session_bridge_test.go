@@ -21,7 +21,7 @@ func TestFromProcessGroupCopiesEveryField(t *testing.T) {
 			ID: "id-1", Name: "name", State: session.SessionStateNeedsInput, CWD: "/work",
 			Model: "gpt", Source: "cli", Repository: "me/repo", GitBranch: "main",
 			RolloutPath: "/rollout.jsonl", StartedAt: updated.Add(-time.Hour), UpdatedAt: updated,
-			TokensUsed: 42, Tokens: session.TokenBreakdown{Input: 1, Output: 2, Cache: 3},
+			TokensUsed: 42, Tokens: session.TokenBreakdown{Input: 1, Output: 2, CacheRead: 3, CacheWrite: 4},
 		}},
 	}
 	want := processGroup{
@@ -36,7 +36,7 @@ func TestFromProcessGroupCopiesEveryField(t *testing.T) {
 			id: "id-1", name: "name", state: sessionStateNeedsInput, cwd: "/work",
 			model: "gpt", source: "cli", repository: "me/repo", gitBranch: "main",
 			rolloutPath: "/rollout.jsonl", updatedAt: updated,
-			tokensUsed: 42, tokens: tokenBreakdown{Input: 1, Output: 2, Cache: 3},
+			tokensUsed: 42, tokens: tokenBreakdown{Input: 1, Output: 2, CacheRead: 3, CacheWrite: 4},
 		}},
 	}
 	if got := fromProcessGroup(in); !reflect.DeepEqual(got, want) {

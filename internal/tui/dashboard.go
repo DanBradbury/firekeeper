@@ -29,7 +29,7 @@ const (
 	// dashSummaryMinRows is the content height needed before the summary
 	// panels appear; dashDetailMinRows is what must remain below them before
 	// the detail panel appears.
-	dashSummaryRows    = 6
+	dashSummaryRows    = 7
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
 	dashDetailMaxRows  = 10
@@ -792,7 +792,8 @@ func dashTokenBreakdownText(tokens tokenBreakdown) string {
 	return dashPaint("(", usageMutedColor, false) +
 		dashPaint("in ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Input), dashBlue, false) +
 		dashPaint(" · out ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Output), dashOrange, false) +
-		dashPaint(" · cache ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.Cache), dashPurple, false) +
+		dashPaint(" · cache read ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.CacheRead), dashPurple, false) +
+		dashPaint(" · cache write ", usageMutedColor, false) + dashPaint(formatTokenCount(tokens.CacheWrite), dashTeal, false) +
 		dashPaint(")   ", usageMutedColor, false)
 }
 
@@ -814,7 +815,7 @@ func (m model) dashTokensTitle() string {
 }
 
 // dashTokenLines breaks down the selected session's tokens into input,
-// output, and cache bars, each scaled to the session total.
+// output, cache read, and cache write bars, each scaled to the session total.
 func (m model) dashTokenLines(width int) []string {
 	_, session, ok := m.selectedSession()
 	if !ok {
@@ -829,7 +830,8 @@ func (m model) dashTokenLines(width int) []string {
 		return append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
 			dashPaint("for this session.", usageMutedColor, false))
 	}
-	barWidth := max(width-7-8, 1)
+	const labelWidth = 12
+	barWidth := max(width-labelWidth-8, 1)
 	for _, row := range []struct {
 		label string
 		value int64
@@ -837,7 +839,8 @@ func (m model) dashTokenLines(width int) []string {
 	}{
 		{"Input", tokens.Input, dashBlue},
 		{"Output", tokens.Output, dashOrange},
-		{"Cache", tokens.Cache, dashPurple},
+		{"Cache read", tokens.CacheRead, dashPurple},
+		{"Cache write", tokens.CacheWrite, dashTeal},
 	} {
 		filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
 		if row.value > 0 {
@@ -845,7 +848,7 @@ func (m model) dashTokenLines(width int) []string {
 		}
 		filled = min(filled, barWidth)
 		lines = append(lines,
-			dashPaint(dashCell(row.label, 7, false), usageMutedColor, false)+
+			dashPaint(dashCell(row.label, labelWidth, false), usageMutedColor, false)+
 				dashPaint(strings.Repeat("━", filled), row.color, true)+
 				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
 				dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),

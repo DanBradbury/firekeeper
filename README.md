@@ -343,9 +343,10 @@ details (see [Usage](#usage)).
 
 The Processes tab is laid out as a dashboard. Summary panels across the top
 count sessions by state, break the selected session's tokens into input,
-output, and cache, and show live tokens per provider and the projects and
-branches in use. Input counts uncached input only; cache counts cache reads
-and writes. The breakdown comes from Claude Code transcripts, Codex rollout
+output, cache read, and cache write, and show live tokens per provider and
+the projects and branches in use. Input counts uncached input only. Codex and
+Copilot report only cached input, which shows as cache read, so their cache
+write stays 0. The breakdown comes from Claude Code transcripts, Codex rollout
 `token_count` events, and Copilot `model.model_call_success` events, read from
 the tail of each file, so very long sessions can be undercounted. Other
 harnesses show the total only. Below them, the sessions table lists one runtime per row with

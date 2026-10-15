@@ -357,9 +357,10 @@ func OpenCodeModel(ref []byte) string {
 func (row openCodeSessionRow) info(db string) Info {
 	clean := func(value string) string { return strings.TrimSpace(SanitizeProcessCommand(value)) }
 	tokens := TokenBreakdown{
-		Input:  max(row.Input, 0),
-		Output: max(row.Output, 0) + max(row.Reasoning, 0),
-		Cache:  max(row.CacheRead, 0) + max(row.CacheWrite, 0),
+		Input:      max(row.Input, 0),
+		Output:     max(row.Output, 0) + max(row.Reasoning, 0),
+		CacheRead:  max(row.CacheRead, 0),
+		CacheWrite: max(row.CacheWrite, 0),
 	}
 	return Info{
 		ID:          row.ID,

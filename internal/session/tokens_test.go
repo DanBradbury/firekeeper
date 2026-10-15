@@ -23,7 +23,7 @@ func TestScanRolloutStatusTokens(t *testing.T) {
 	if state != SessionStateWaiting {
 		t.Fatalf("state = %s", state)
 	}
-	if want := (TokenBreakdown{Input: 300, Output: 65, Cache: 1200}); tokens != want {
+	if want := (TokenBreakdown{Input: 300, Output: 65, CacheRead: 1200}); tokens != want {
 		t.Fatalf("tokens = %+v, want %+v", tokens, want)
 	}
 	if tokens.Total() != 1565 {
@@ -43,7 +43,7 @@ func TestScanCopilotEventsTokens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (TokenBreakdown{Input: 400, Output: 55, Cache: 800}); meta.Tokens != want {
+	if want := (TokenBreakdown{Input: 400, Output: 55, CacheRead: 800}); meta.Tokens != want {
 		t.Fatalf("tokens = %+v, want %+v", meta.Tokens, want)
 	}
 }
@@ -59,10 +59,21 @@ func TestScanClaudeTranscriptTokenBreakdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (TokenBreakdown{Input: 101, Output: 202, Cache: 707}); meta.Tokens != want {
+	if want := (TokenBreakdown{Input: 101, Output: 202, CacheRead: 303, CacheWrite: 404}); meta.Tokens != want {
 		t.Fatalf("tokens = %+v, want %+v", meta.Tokens, want)
 	}
 	if meta.TokensUsed != meta.Tokens.Total() {
 		t.Fatalf("TokensUsed = %d, want %d", meta.TokensUsed, meta.Tokens.Total())
+	}
+}
+
+func TestOpenCodeSessionTokenBreakdown(t *testing.T) {
+	row := openCodeSessionRow{ID: "ses_1", Input: 10, Output: 4, Reasoning: 1, CacheRead: 100, CacheWrite: 5}
+	info := row.info("")
+	if want := (TokenBreakdown{Input: 10, Output: 5, CacheRead: 100, CacheWrite: 5}); info.Tokens != want {
+		t.Fatalf("tokens = %+v, want %+v", info.Tokens, want)
+	}
+	if info.TokensUsed != 120 {
+		t.Fatalf("TokensUsed = %d, want 120", info.TokensUsed)
 	}
 }
