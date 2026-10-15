@@ -70,6 +70,7 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/sessions", listSessions(s))
 	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s, o.fileLink))
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
+	mux.HandleFunc("GET /v1/sessions/{uid}/export", exportSession(s, o.fileLink))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
 	mux.HandleFunc("GET /v1/usage", usage(s, o.prices, o.asOf))
 	mux.HandleFunc("GET /v1/account", account(s, o.limits, o.local))

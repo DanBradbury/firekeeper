@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -303,5 +304,118 @@ func TestSearchSnippetsAndRanking(t *testing.T) {
 	get(t, h, "/v1/sessions?q=needle&limit=1&cursor="+url.QueryEscape(p1.NextCursor), &p2)
 	if len(p2.Sessions) != 1 || p2.Sessions[0].UID == p1.Sessions[0].UID || p2.NextCursor != "" {
 		t.Fatalf("page2 %v", uids(p2.Sessions))
+	}
+}
+
+// exportedEvents returns the events in a shared page's data block.
+func exportedEvents(t *testing.T, page string) []transcript.Event {
+	t.Helper()
+	m := regexp.MustCompile(`(?s)<script type="application/x-ndjson" id="fk-events">(.*?)</script>`).FindStringSubmatch(page)
+	if m == nil {
+		t.Fatal("page has no events block")
+	}
+	var out []transcript.Event
+	for _, line := range strings.Split(m[1], "\n") {
+		if line == "" {
+			continue
+		}
+		var ev transcript.Event
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("event line: %v", err)
+		}
+		out = append(out, ev)
+	}
+	return out
+}
+
+func TestExportSession(t *testing.T) {
+	s := newStore(t)
+	// More events than one page of ListEvents, so the export pages through.
+	n := MaxEventLimit + 234
+	ingestSeed(t, s, seed{machine: "m1", session: "s1", provider: "codex", title: "Mine", text: "my text", events: n})
+	h := Handler(s)
+
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/sessions/m1:s1/export", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rr.Code, rr.Body.String())
+	}
+	hdr := rr.Header()
+	if ct := hdr.Get("Content-Type"); ct != "text/html; charset=utf-8" {
+		t.Fatalf("content type %q", ct)
+	}
+	if cd := hdr.Get("Content-Disposition"); cd != `attachment; filename="firekeeper-codex-s1.html"` {
+		t.Fatalf("content disposition %q", cd)
+	}
+	if csp := hdr.Get("Content-Security-Policy"); !strings.HasPrefix(csp, "sandbox allow-scripts;") {
+		t.Fatalf("content security policy %q", csp)
+	}
+	page := rr.Body.String()
+	if !strings.Contains(page, `id="fk-end"`) {
+		t.Fatal("export is not marked complete")
+	}
+	evs := exportedEvents(t, page)
+	if len(evs) != n {
+		t.Fatalf("exported %d events, want %d", len(evs), n)
+	}
+	for i, ev := range evs {
+		if ev.Seq != int64(i) {
+			t.Fatalf("event %d has seq %d", i, ev.Seq)
+		}
+		if string(ev.Raw) != "null" {
+			t.Fatalf("raw exported without raw=1: %s", ev.Raw)
+		}
+	}
+
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/sessions/m1:s1/export?raw=1", nil))
+	if evs := exportedEvents(t, rr.Body.String()); len(evs) != n || string(evs[0].Raw) != "{}" {
+		t.Fatalf("raw=1 did not keep raw records")
+	}
+
+	for path, want := range map[string]int{
+		"/v1/sessions/m1:s1/export?raw=maybe": http.StatusBadRequest,
+		"/v1/sessions/m1:nope/export":         http.StatusNotFound,
+		"/v1/sessions/bad/export":             http.StatusBadRequest,
+	} {
+		if code := get(t, h, path, nil); code != want {
+			t.Errorf("%s: status %d, want %d", path, code, want)
+		}
+	}
+}
+
+// An export only ever reads the caller's account: a uid held only by another
+// account is 404, and the same uid in another account adds nothing.
+func TestExportSessionTenancy(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	ingestSeed(t, s, seed{machine: "m1", session: "s1", provider: "codex", text: "mine", events: 2})
+	other, err := s.CreateAccount(ctx, "other@example.com", "synthetic-hash", "", time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sid := range []string{"s1", "theirs"} {
+		if _, _, err := s.Ingest(ctx, other.ID, store.Machine{ID: "m1"}, []store.SessionBatch{{
+			Meta: store.SessionMeta{SessionID: sid, Provider: "codex", Title: "other account"},
+			Events: []transcript.Event{
+				{Seq: 0, Provider: transcript.ProviderCodex, Role: transcript.RoleUser, Text: "other text", Raw: json.RawMessage(`{}`)},
+				{Seq: 5, Provider: transcript.ProviderCodex, Role: transcript.RoleUser, Text: "other text", Raw: json.RawMessage(`{}`)},
+			},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := Handler(s)
+	if code := get(t, h, "/v1/sessions/m1:theirs/export", nil); code != http.StatusNotFound {
+		t.Fatalf("another account's session: status %d", code)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest("GET", "/v1/sessions/m1:s1/export", nil))
+	page := rr.Body.String()
+	if rr.Code != http.StatusOK || strings.Contains(page, "other text") || strings.Contains(page, "other account") {
+		t.Fatalf("export leaked another account's data (status %d)", rr.Code)
+	}
+	if evs := exportedEvents(t, page); len(evs) != 2 {
+		t.Fatalf("exported %d events, want 2", len(evs))
 	}
 }

@@ -317,6 +317,8 @@ table.sessions {
   font-size: 13px;
 }
 .toolbar .count { margin-left: auto; font-family: var(--mono); }
+.toolbar .export { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.toolbar .export label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 
 .events, .chunk { display: grid; gap: 10px; }
 

@@ -767,6 +767,15 @@ On the Sessions and Usage pages, enter an exact project name or choose a
 suggestion from the loaded results; clear the Project field to show all
 projects. Filters stay in the page URL for sharing and reloading.
 
+**Export HTML** on a session's page saves the whole session as one HTML
+file you can hand to someone without access to your server. It opens offline
+in any browser, loads nothing from the network, and lets the reader search the
+transcript, filter by role and tool, expand tool calls, and link to single
+events (`#e<seq>`). Each event's original provider record is left out unless
+you tick **include raw records**. The text is redacted again on export, but
+redaction is best effort, so read the page before you share it. The page is
+served by `GET /v1/sessions/{uid}/export` (see [docs/api.md](docs/api.md)).
+
 A session's page shows the commit it started on and a **Files changed**
 panel. Paths are relative to the session's working directory, or absolute
 when outside it, and are redacted before upload, so a home directory shows

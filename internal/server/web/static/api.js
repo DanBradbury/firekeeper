@@ -162,6 +162,30 @@ export const realAPI = {
     return getJSON(`${sessionPath(uid)}/events`, { after_seq: afterSeq, limit });
   },
 
+  // exportSession fetches the session as a standalone HTML page to share,
+  // returning { blob, name }. It is fetched rather than linked so a bearer
+  // token works too. raw keeps each event's original record.
+  async exportSession(uid, raw) {
+    let res;
+    try {
+      res = await fetch(`${sessionPath(uid)}/export${raw ? "?raw=1" : ""}`, { headers: authHeaders({ Accept: "text/html" }) });
+    } catch {
+      throw new APIError(0, "network", "Could not reach the Firekeeper server.");
+    }
+    if (res.status === 401) auth.onUnauthorized();
+    if (!res.ok) {
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        // Fall through with an empty body.
+      }
+      throw new APIError(res.status, body?.code || "http_error", body?.error || `Request failed (${res.status}).`);
+    }
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "firekeeper-session.html";
+    return { blob: await res.blob(), name };
+  },
+
   listMachines() {
     return getJSON("v1/machines");
   },

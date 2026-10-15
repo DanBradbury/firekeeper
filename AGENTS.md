@@ -345,6 +345,7 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 | `GET /v1/sessions` | List with filters `machine`, `provider`, `project`, `state`, `q`, `limit`, `cursor`. Newest activity first. |
 | `GET /v1/sessions/{uid}` | One session's metadata. `uid` is `<machine_id>:<session_id>`, URL-escaped. |
 | `GET /v1/sessions/{uid}/events` | Events with `after_seq` and `limit` (default 200, max 1000). |
+| `GET /v1/sessions/{uid}/export` | The session, its changed files, and every event as one standalone HTML page to share (`text/html`, attachment). `raw=true` keeps raw records; otherwise they are null. Events are redacted again. The page loads nothing from the network. |
 | `GET /v1/machines` | Each machine with `last_heartbeat_at` and session count. |
 | `GET /v1/stream` | Server-sent events: `session.updated`, `event.appended`, `machine.status`. |
 | `POST /v1/auth/signup` | Create an account and sign in. Body `{email, password, invite_code?}`. Controlled by `serve --signup closed\|invite\|open` (default `closed`; `invite` needs a valid invite code). Returns `201 {account, csrf_token}` and sets the session cookie. |
