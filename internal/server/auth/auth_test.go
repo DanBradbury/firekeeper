@@ -67,6 +67,8 @@ func TestTokenChecks(t *testing.T) {
 		{"read ok", "GET", "/v1/machines", bearer(e.read), "", 200},
 		{"ingest cannot read", "GET", "/v1/machines", bearer(e.ingest), "", 403},
 		{"ingest cannot stream", "GET", "/v1/stream", bearer(e.ingest), "", 403},
+		{"ingest cannot export", "GET", "/v1/sessions/m1:s1/export", bearer(e.ingest), "", 403},
+		{"export needs a token", "GET", "/v1/sessions/m1:s1/export", "", "", 401},
 		{"read cannot ingest", "POST", "/v1/ingest", bearer(e.read), ingestBody, 403},
 		{"read cannot heartbeat", "POST", "/v1/heartbeat", bearer(e.read), ingestBody, 403},
 		{"ingest ok", "POST", "/v1/ingest", bearer(e.ingest), ingestBody, 200},

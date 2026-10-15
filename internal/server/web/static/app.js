@@ -835,10 +835,35 @@ function sessionView(uid) {
     if (c.mounted) c.node.append(eventEl(ev, ui));
   }
 
+  // Export saves the whole session as one HTML file that opens offline, to
+  // hand to someone without access to this server. The mock UI has no
+  // server to render it.
+  const rawBox = el("input", { type: "checkbox" });
+  const exportBtn = el("button", { type: "button", text: "Export HTML", title: "Save this session as a standalone page to share. It opens offline and can be filtered." });
+  exportBtn.addEventListener("click", async () => {
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const { blob, name } = await api.exportSession(uid, rawBox.checked);
+      const href = URL.createObjectURL(blob);
+      el("a", { href, download: name }).click();
+      setTimeout(() => URL.revokeObjectURL(href), 60e3);
+      status.replaceChildren("");
+    } catch (err) {
+      if (alive) status.replaceChildren(notice(`Export failed: ${err.message}`, true));
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = "Export HTML";
+    }
+  });
+  const exportControls = api.mock ? null : el("span", { class: "export" },
+    exportBtn,
+    el("label", { title: "Include each event's original provider record. Larger, and may hold details the text leaves out." }, rawBox, "include raw records"));
+
   app.append(
     el("a", { class: "back", href: lastListHash, text: "← Sessions" }),
     head,
-    el("div", { class: "toolbar" }, expandBtn, count),
+    el("div", { class: "toolbar" }, expandBtn, exportControls, count),
     list,
     sentinel,
     status,

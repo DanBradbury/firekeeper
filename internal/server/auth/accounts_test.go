@@ -197,7 +197,7 @@ func TestTenantIsolation(t *testing.T) {
 	}
 
 	// Read by guessing a uid that exists only in the other account.
-	for _, path := range []string{"/v1/sessions/m1:b-only", "/v1/sessions/m1:b-only/events"} {
+	for _, path := range []string{"/v1/sessions/m1:b-only", "/v1/sessions/m1:b-only/events", "/v1/sessions/m1:b-only/export"} {
 		code(t, st.do(req{method: "GET", path: path, cookie: a.cookie}), 404)
 		code(t, st.do(req{method: "GET", path: path, bear: st.readToken(a.id)}), 404)
 	}
@@ -208,6 +208,11 @@ func TestTenantIsolation(t *testing.T) {
 	code(t, ev, 200)
 	if !strings.Contains(ev.Body.String(), "alice-shared") || strings.Contains(ev.Body.String(), "bob-shared") {
 		t.Fatalf("alice reads wrong copy of shared: %s", ev.Body)
+	}
+	exp := st.do(req{method: "GET", path: "/v1/sessions/m1:shared/export", cookie: a.cookie})
+	code(t, exp, 200)
+	if !strings.Contains(exp.Body.String(), "alice-shared") || strings.Contains(exp.Body.String(), "bob-shared") {
+		t.Fatal("alice exports wrong copy of shared")
 	}
 
 	// Search, machines and usage are scoped too.

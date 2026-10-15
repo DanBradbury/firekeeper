@@ -552,6 +552,27 @@ Response `200`:
 To page through, pass the last returned `seq` as `after_seq`. Unknown sessions
 get 404.
 
+### `GET /v1/sessions/{uid}/export`
+
+Returns the session as one standalone HTML page to share with someone who
+cannot reach this server. The page holds the session's metadata, its changed
+files, and every event, plus a viewer to search them and filter by role and
+tool. It opens from disk with no server: its stylesheet and script are inline,
+and its `Content-Security-Policy` meta tag allows only those two (by hash) and
+blocks every network request.
+
+| Parameter | Meaning |
+| --- | --- |
+| `raw` | `true` (or `1`) keeps each event's original record. By default `raw` is `null` in every event. Other values are rejected with 400. |
+
+Response `200` is `text/html` with `Content-Disposition: attachment;
+filename="firekeeper-<provider>-<session id>.html"`. Every event's `text` and
+`raw` pass through redaction again on the way out. **Redaction is best effort**:
+read the page before you send it. The body is streamed. If the export stops
+partway, the page still opens and says that it is incomplete. Unknown sessions,
+including ones that exist only in another account, get 404. Read tokens and
+browser sessions may call it, but ingest tokens may not.
+
 ### `GET /v1/machines`
 
 Lists the account's machines ordered by `id`:
