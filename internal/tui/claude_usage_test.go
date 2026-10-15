@@ -1,0 +1,171 @@
+package tui
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+func writeClaudeTranscript(t *testing.T, root, project, id string, modified time.Time, lines ...string) {
+	t.Helper()
+	path := filepath.Join(root, "projects", project, id+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, modified, modified); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	usage := `"usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}`
+	writeClaudeTranscript(t, root, "-work-repo", "11111111-1111-1111-1111-111111111111", time.Date(2026, 10, 1, 11, 0, 0, 0, time.UTC),
+		`{"type":"user","timestamp":"2026-10-01T10:00:00Z","cwd":"/work/repo","gitBranch":"main","message":{"role":"user","content":"secret prompt"}}`,
+		// One response written as two content block lines with the same usage.
+		`{"type":"assistant","timestamp":"2026-10-01T10:00:01Z","message":{"id":"msg_a","model":"claude-opus-5-5",`+usage+`,"content":[{"type":"thinking"}]}}`,
+		`{"type":"assistant","timestamp":"2026-10-01T10:00:01Z","message":{"id":"msg_a","model":"claude-opus-5-5",`+usage+`,"content":[{"type":"text"}]}}`,
+		`{"type":"assistant","timestamp":"2026-10-01T10:00:02Z","message":{"id":"msg_b","model":"claude-sonnet-5-5","usage":{"input_tokens":1,"output_tokens":2},"content":[]}}`,
+		`{"type":"assistant","timestamp":"2026-10-01T10:00:03Z","message":{"id":"msg_s","model":"<synthetic>","usage":{"input_tokens":999},"content":[]}}`,
+		`{"type":"ai-title","aiTitle":"Fix the build"}`,
+		"malformed",
+		`{"type":"assistant","message":{"id":"msg_c","model":"claude-opus-5-5","usage":{"input_tokens":-4,"output_tokens":3}}}`,
+	)
+	// A later resumed session repeats msg_a; it must not count twice, and
+	// stays credited to the session that produced it even though this file
+	// sorts first by name.
+	writeClaudeTranscript(t, root, "-work-other", "22222222-2222-2222-2222-222222222222", time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC),
+		`{"type":"assistant","timestamp":"2026-10-02T09:00:00Z","cwd":"/work/other","message":{"id":"msg_a","model":"claude-opus-5-5",`+usage+`}}`,
+	)
+
+	snapshot, err := fetchClaudeUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := snapshot.Summary
+	if s.Sessions != 2 || s.Messages != 3 {
+		t.Fatalf("sessions/messages = %d/%d, want 2/3", s.Sessions, s.Messages)
+	}
+	if s.InputTokens != 11 || s.OutputTokens != 10 || s.CacheRead != 100 || s.CacheCreation != 20 || s.LifetimeTokens != 141 {
+		t.Fatalf("summary = %#v", s)
+	}
+	if len(snapshot.Models) != 2 || snapshot.Models[0].Model != "claude-opus-5-5" || snapshot.Models[0].Tokens != 138 || snapshot.Models[1].Tokens != 3 {
+		t.Fatalf("models = %#v", snapshot.Models)
+	}
+	var first claudeHistoricalSession
+	for _, session := range snapshot.History {
+		if session.ID == "11111111-1111-1111-1111-111111111111" {
+			first = session
+		}
+	}
+	if first.Title != "Fix the build" || first.WorkDir != "/work/repo" || first.GitBranch != "main" || first.Model != "claude-opus-5-5" || first.LifetimeTokens != 141 {
+		t.Fatalf("session = %#v", first)
+	}
+	day := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC).Local().Format("2006-01-02")
+	var dayTokens int64
+	for _, bucket := range snapshot.Daily {
+		if bucket.StartDate == day {
+			dayTokens = bucket.Tokens
+		}
+	}
+	if dayTokens != 138 {
+		t.Fatalf("daily = %#v, want 138 tokens on %s", snapshot.Daily, day)
+	}
+}
+
+func TestFetchClaudeUsageNeverExposesTranscriptText(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	writeClaudeTranscript(t, root, "-p", "33333333-3333-3333-3333-333333333333", time.Now(),
+		`{"type":"user","cwd":"/p","message":{"role":"user","content":"do not show this prompt"}}`,
+	)
+	snapshot, err := fetchClaudeUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel()
+	m.width = 120
+	m.claudeUsage = snapshot
+	m.claudeHistoryOpen = true
+	if view := m.viewClaudeUsage(20); strings.Contains(view, "do not show") || !strings.Contains(view, "Claude Code session") {
+		t.Fatalf("history view:\n%s", view)
+	}
+}
+
+func TestClaudeUsageMissingHistoryReturnsActionableError(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	_, err := fetchClaudeUsage()
+	if err == nil || !strings.Contains(err.Error(), "find Claude Code session history") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
+	m := NewModel()
+	m.width = 110
+	today := time.Now().Format("2006-01-02")
+	m.claudeUsage = claudeUsageSnapshot{
+		Summary: claudeUsageSummary{Sessions: 2, Messages: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100},
+		Daily:   []claudeDailyUsage{{StartDate: today, Tokens: 1200}},
+		Models:  []claudeUsageModel{{Model: "claude-opus-5-5", Tokens: 1200}},
+	}
+	view := m.viewClaudeUsage(24)
+	for _, expected := range []string{"Claude Code", "2 sessions", "1.2K tokens", "Plan limits and reset", "TOKENS BY DAY", "Today", "CLAUDE OPUS"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("Claude usage view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
+	m := NewModel()
+	m.activeTab = usageTab
+	m.usageProvider = kimiProvider
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m = updated.(model)
+	if m.usageProvider != claudeProvider || !m.claudeUsageLoading || cmd == nil {
+		t.Fatalf("provider = %v loading = %v cmd nil = %v", m.usageProvider, m.claudeUsageLoading, cmd == nil)
+	}
+	if !strings.Contains(m.usageProviderSelectorLine(), "[ CLAUDE ]") {
+		t.Fatalf("selector = %q", m.usageProviderSelectorLine())
+	}
+	updated, _ = m.Update(claudeUsageResultMsg{refreshed: time.Now(), snapshot: claudeUsageSnapshot{Summary: claudeUsageSummary{Sessions: 1}}})
+	m = updated.(model)
+	if m.claudeUsageLoading || m.claudeUsage.Summary.Sessions != 1 {
+		t.Fatalf("result not applied: %#v", m.claudeUsage)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if updated.(model).usageProvider != codexProvider {
+		t.Fatal("Right from Claude did not wrap to Codex")
+	}
+}
+
+func TestClaudeUsageEnterOpensAndEscClosesHistory(t *testing.T) {
+	m := NewModel()
+	m.activeTab = usageTab
+	m.usageProvider = claudeProvider
+	m.claudeUsage.History = []claudeHistoricalSession{{ID: "a", Title: "one"}, {ID: "b", Title: "two"}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.claudeHistoryOpen {
+		t.Fatal("Enter did not open Claude history")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.claudeHistoryCursor != 1 {
+		t.Fatalf("cursor = %d, want 1", m.claudeHistoryCursor)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.claudeHistoryOpen {
+		t.Fatal("Esc did not close Claude history")
+	}
+}

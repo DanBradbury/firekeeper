@@ -455,6 +455,8 @@ func (m model) viewUsage(contentRows int) string {
 		body = m.viewCopilotUsage(bodyRows)
 	} else if m.usageProvider == kimiProvider {
 		body = m.viewKimiUsage(bodyRows)
+	} else if m.usageProvider == claudeProvider {
+		body = m.viewClaudeUsage(bodyRows)
 	}
 	return selector + "\n" + body
 }
@@ -463,14 +465,18 @@ func (m model) usageProviderSelectorLine() string {
 	codex := "  [ CODEX ]"
 	copilot := "    COPILOT  "
 	kimi := "    KIMI  "
+	claude := "    CLAUDE  "
 	if m.usageProvider == copilotProvider {
 		codex = "    CODEX  "
 		copilot = "  [ COPILOT ]"
 	} else if m.usageProvider == kimiProvider {
 		codex = "    CODEX  "
 		kimi = "  [ KIMI ]"
+	} else if m.usageProvider == claudeProvider {
+		codex = "    CODEX  "
+		claude = "  [ CLAUDE ]"
 	}
-	return usagePaintLine(codex+copilot+kimi+"    ←/→ provider", m.width, usageBrightColor, true, usageHighlightColor)
+	return usagePaintLine(codex+copilot+kimi+claude+"    ←/→ provider", m.width, usageBrightColor, true, usageHighlightColor)
 }
 
 func (m model) viewCopilotUsage(contentRows int) string {
@@ -746,6 +752,24 @@ func (m model) usageFooter() (string, string) {
 			return help, "  Kimi usage not loaded"
 		}
 		return help, "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
+	}
+	if m.usageProvider == claudeProvider {
+		if m.claudeHistoryOpen {
+			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Claude Code historical sessions"
+		}
+		if len(m.claudeUsage.History) > 0 {
+			help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+		}
+		if m.claudeUsageLoading {
+			return help, "  reading local Claude Code usage…"
+		}
+		if m.claudeUsageErr != "" {
+			return help, "  Claude usage refresh failed: " + m.claudeUsageErr
+		}
+		if m.claudeUsageRefreshedAt.IsZero() {
+			return help, "  Claude usage not loaded"
+		}
+		return help, "  Claude refreshed " + m.claudeUsageRefreshedAt.Format("15:04:05")
 	}
 	if m.codexHistoryOpen {
 		return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Codex historical sessions"
