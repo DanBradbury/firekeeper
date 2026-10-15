@@ -277,16 +277,7 @@ func (m model) viewClaudeUsage(contentRows int) string {
 		usageSidesLine(fmt.Sprintf("  %d sessions  •  %d responses", s.Sessions, s.Messages), formatTokenCount(s.LifetimeTokens)+" tokens  ", m.width, usageTextColor, usageBrightColor),
 		usagePaintLine(fmt.Sprintf("  Input %s  •  cache read %s  •  cache write %s  •  output %s", formatTokenCount(s.InputTokens), formatTokenCount(s.CacheRead), formatTokenCount(s.CacheCreation), formatTokenCount(s.OutputTokens)), m.width, usageMutedColor, false, usagePanelColor),
 		usagePaintLine("  Plan limits and reset: Claude Code /usage; not stored locally", m.width, usageMutedColor, false, usagePanelColor),
-		usageDividerLine(m.width), usageSectionLine("TOKENS BY DAY", m.width))
-	days := recentClaudeDailyUsage(m.claudeUsage.Daily, time.Now(), 7)
-	peak := int64(0)
-	for _, day := range days {
-		peak = max(peak, day.Tokens)
-	}
-	for index, day := range days {
-		lines = append(lines, usageMetricBarLine(dayLabel(day.StartDate, index == len(days)-1), day.Tokens, peak, m.width, index == len(days)-1))
-	}
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
+		usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
 	if len(m.claudeUsage.Models) == 0 {
 		lines = append(lines, usagePaintLine("  No local Claude Code token records", m.width, usageMutedColor, false, usageHighlightColor))
 	} else {
@@ -297,6 +288,16 @@ func (m model) viewClaudeUsage(contentRows int) string {
 		for _, model := range colorModelUsage(models) {
 			lines = append(lines, usageModelLine(model, m.width))
 		}
+	}
+	dayCount := min(7, max(contentRows-len(lines)-2, 1))
+	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY DAY", m.width))
+	days := recentClaudeDailyUsage(m.claudeUsage.Daily, time.Now(), dayCount)
+	peak := int64(0)
+	for _, day := range days {
+		peak = max(peak, day.Tokens)
+	}
+	for index, day := range days {
+		lines = append(lines, usageMetricBarLine(dayLabel(day.StartDate, index == len(days)-1), day.Tokens, peak, m.width, index == len(days)-1))
 	}
 	return fillUsageLines(lines, contentRows, m.width)
 }

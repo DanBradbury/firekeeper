@@ -58,13 +58,18 @@ func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 	m := NewModel()
 	m.width = 100
 	today := time.Now().Format("2006-01-02")
-	m.kimiUsage = kimiUsageSnapshot{Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100}, Daily: []kimiDailyUsage{{StartDate: today, Tokens: 1200}}}
+	m.kimiUsage = kimiUsageSnapshot{
+		Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100},
+		Daily:   []kimiDailyUsage{{StartDate: today, Tokens: 1200}},
+		Models:  []kimiUsageModel{{Model: "kimi-k3", Tokens: 1200}},
+	}
 	view := m.viewKimiUsage(20)
-	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset", "TOKENS BY DAY", "Today"} {
+	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset", "TOKENS BY DAY", "Today", "KIMI K3"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Kimi usage view missing %q:\n%s", expected, view)
 		}
 	}
+	assertModelBreakdownAboveDays(t, view)
 }
 
 func TestKimiUsageViewUsesUniqueModelColors(t *testing.T) {
