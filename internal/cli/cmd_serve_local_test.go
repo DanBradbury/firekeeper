@@ -92,6 +92,7 @@ func TestHumanList(t *testing.T) {
 		{[]string{"codex"}, "Codex"},
 		{[]string{"codex", "claude"}, "Codex and Claude Code"},
 		{[]string{"codex", "copilot", "kimi"}, "Codex, Copilot CLI and Kimi Code"},
+		{[]string{"opencode", "gemini"}, "OpenCode and Gemini CLI"},
 		{[]string{"codex", "someday"}, "Codex and someday"},
 	} {
 		if got := humanList(tc.in); got != tc.want {

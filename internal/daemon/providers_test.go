@@ -11,7 +11,7 @@ import (
 )
 
 func TestDetectProviders(t *testing.T) {
-	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderClaude, transcript.ProviderOpenCode}
+	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderClaude, transcript.ProviderOpenCode, transcript.ProviderGemini}
 	for _, scenario := range []string{"none", "directories", "executables", "override", "missing override", "file"} {
 		t.Run(scenario, func(t *testing.T) {
 			home := t.TempDir()
@@ -26,12 +26,12 @@ func TestDetectProviders(t *testing.T) {
 			}
 			switch scenario {
 			case "directories":
-				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", filepath.Join(".local", "share", "opencode")} {
+				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", filepath.Join(".local", "share", "opencode"), ".gemini"} {
 					mkdir(filepath.Join(home, name))
 				}
 				want = all
 			case "executables":
-				commands = map[string]bool{"codex": true, "copilot": true, "claude": true, "kimi": true, "opencode": true}
+				commands = map[string]bool{"codex": true, "copilot": true, "claude": true, "kimi": true, "opencode": true, "gemini": true}
 				mkdir(filepath.Join(home, ".codex"))
 				want = all
 			case "override":
@@ -41,6 +41,10 @@ func TestDetectProviders(t *testing.T) {
 				}
 				env["XDG_DATA_HOME"] = filepath.Join(home, "data")
 				mkdir(filepath.Join(env["XDG_DATA_HOME"], "opencode"))
+				// GEMINI_CLI_HOME replaces the home directory, so the data
+				// is in its .gemini.
+				env["GEMINI_CLI_HOME"] = filepath.Join(home, "gemini-home")
+				mkdir(filepath.Join(env["GEMINI_CLI_HOME"], ".gemini"))
 				want = all
 			case "missing override":
 				mkdir(filepath.Join(home, ".codex"))
@@ -49,6 +53,8 @@ func TestDetectProviders(t *testing.T) {
 				env["XDG_DATA_HOME"] = filepath.Join(home, "missing")
 				mkdir(filepath.Join(home, ".kimi-code"))
 				env["KIMI_CODE_HOME"] = filepath.Join(home, "missing")
+				mkdir(filepath.Join(home, ".gemini"))
+				env["GEMINI_CLI_HOME"] = filepath.Join(home, "missing")
 			case "file":
 				if err := os.WriteFile(filepath.Join(home, ".codex"), nil, 0600); err != nil {
 					t.Fatal(err)

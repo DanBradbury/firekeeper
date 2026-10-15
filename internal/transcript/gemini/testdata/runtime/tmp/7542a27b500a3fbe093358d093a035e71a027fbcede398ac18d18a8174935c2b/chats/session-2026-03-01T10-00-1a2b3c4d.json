@@ -1,0 +1,62 @@
+{
+  "sessionId": "1a2b3c4d-0000-4000-8000-000000000001",
+  "projectHash": "7542a27b500a3fbe093358d093a035e71a027fbcede398ac18d18a8174935c2b",
+  "startTime": "2026-03-01T10:00:00.000Z",
+  "lastUpdated": "2026-03-01T10:02:00.000Z",
+  "messages": [
+    {
+      "id": "a",
+      "timestamp": "2026-03-01T10:00:01.000Z",
+      "type": "user",
+      "content": "Write hello.txt"
+    },
+    {
+      "id": "b",
+      "timestamp": "2026-03-01T10:00:02.000Z",
+      "type": "gemini",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "w1",
+          "name": "write_file",
+          "args": {
+            "file_path": "hello.txt",
+            "content": "hi"
+          },
+          "result": [
+            {
+              "functionResponse": {
+                "id": "w1",
+                "name": "write_file",
+                "response": {
+                  "output": "Created hello.txt"
+                }
+              }
+            }
+          ],
+          "status": "success",
+          "timestamp": "2026-03-01T10:00:03.000Z"
+        }
+      ],
+      "thoughts": [],
+      "tokens": {
+        "input": 50,
+        "output": 5,
+        "cached": 0,
+        "thoughts": 0,
+        "tool": 0,
+        "total": 55
+      },
+      "model": "gemini-2.5-pro"
+    },
+    {
+      "id": "c",
+      "timestamp": "2026-03-01T10:00:04.000Z",
+      "type": "gemini",
+      "content": "Created hello.txt.",
+      "thoughts": [],
+      "model": "gemini-2.5-pro"
+    }
+  ],
+  "summary": "Create hello file"
+}

@@ -1,0 +1,21 @@
+{"sessionId":"0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d","projectHash":"111b1182b4b056ca80f7335964bf62c7940d4990fccce4f5b91db3170297fb04","startTime":"2026-10-08T00:00:00.000Z","lastUpdated":"2026-10-08T00:00:00.000Z","kind":"main"}
+{"id":"u1","timestamp":"2026-10-08T00:00:01.000Z","type":"user","content":[{"text":"List the files."}]}
+{"$set":{"lastUpdated":"2026-10-08T00:00:01.000Z"}}
+{"id":"g1","timestamp":"2026-10-08T00:00:02.000Z","type":"gemini","content":"","thoughts":[{"subject":"Planning","description":"Look at the tree.","timestamp":"2026-10-08T00:00:02.000Z"}],"tokens":{"input":120,"output":10,"cached":100,"thoughts":5,"tool":0,"total":135},"model":"gemini-3-pro-test"}
+{"$set":{"lastUpdated":"2026-10-08T00:00:02.000Z"}}
+{"id":"g1","timestamp":"2026-10-08T00:00:02.000Z","type":"gemini","content":"","thoughts":[{"subject":"Planning","description":"Look at the tree.","timestamp":"2026-10-08T00:00:02.000Z"}],"tokens":{"input":120,"output":10,"cached":100,"thoughts":5,"tool":0,"total":135},"model":"gemini-3-pro-test","toolCalls":[{"id":"call-1","name":"list_directory","args":{"dir_path":"."},"result":[{"functionResponse":{"id":"call-1","name":"list_directory","response":{"output":"README.md"}}}],"status":"success","timestamp":"2026-10-08T00:00:03.000Z","displayName":"ReadFolder","resultDisplay":"Listed 1 item."}]}
+{"id":"u2","timestamp":"2026-10-08T00:00:04.000Z","type":"user","content":[{"functionResponse":{"id":"call-1","name":"list_directory","response":{"output":"README.md"}}}]}
+{"id":"g2","timestamp":"2026-10-08T00:00:05.000Z","type":"gemini","content":"I'll fix the typo.","thoughts":[],"tokens":null,"model":"gemini-3-pro-test"}
+{"id":"g2","timestamp":"2026-10-08T00:00:05.000Z","type":"gemini","content":"I'll fix the typo.","thoughts":[],"tokens":{"input":200,"output":20,"cached":150,"thoughts":0,"tool":4,"total":224},"model":"gemini-3-pro-test"}
+{"id":"g2","timestamp":"2026-10-08T00:00:05.000Z","type":"gemini","content":"I'll fix the typo.","thoughts":[],"tokens":{"input":200,"output":20,"cached":150,"thoughts":0,"tool":4,"total":224},"model":"gemini-3-pro-test","toolCalls":[{"id":"call-2","name":"replace","args":{"file_path":"README.md","old_string":"teh","new_string":"the"},"result":[{"functionResponse":{"id":"call-2","name":"replace","response":{"error":"File not found."}}}],"status":"error","timestamp":"2026-10-08T00:00:06.000Z"}]}
+{"id":"u3","timestamp":"2026-10-08T00:00:07.000Z","type":"user","content":[{"functionResponse":{"id":"call-2","name":"replace","response":{"error":"File not found."}}}]}
+{"id":"g3","timestamp":"2026-10-08T00:00:08.000Z","type":"gemini","content":[{"text":"Thinking it over.","thought":true},{"text":"Done editing."}],"model":"gemini-3-pro-test"}
+{"id":"i1","timestamp":"2026-10-08T00:00:09.000Z","type":"info","content":"Request cancelled."}
+{"id":"u4","timestamp":"2026-10-08T00:00:10.000Z","type":"user","content":[{"text":"/review @README.md\n--- README.md ---\nthe readme"}],"displayContent":[{"text":"/review @README.md"}]}
+{"id":"u5","timestamp":"2026-10-08T00:00:11.000Z","type":"user","content":"<session_context>\nWorkspace: /work/demo\n</session_context>"}
+{"$patch":{"updates":[{"id":"g1","toolCalls":[{"id":"call-1","result":[{"text":"masked"}]}]}]}}
+{"$rewindTo":"u5"}
+{"$set":{"summary":"Fix README typo","lastUpdated":"2026-10-08T00:05:00.000Z"}}
+{"id":"u6","timestamp":"2026-10-08T00:00:12.000Z","type":"user","content":[{"functionResponse":{"id":"call-1","name":"list_directory","response":{"output":"again"}}}]}
+{"id": broken
+{"id":"e1","timestamp":"2026-10-08T00:00:13.000Z","type":"error","content":"Quota exceeded."}

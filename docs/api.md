@@ -350,7 +350,7 @@ One normalized transcript record. The JSON shape is pinned by
 {
   "machine_id": "string",
   "session_id": "string",
-  "provider": "codex | copilot | kimi | claude | opencode",
+  "provider": "codex | copilot | kimi | claude | opencode | gemini",
   "seq": 0,
   "ts": "RFC3339 or null",
   "role": "user | assistant | tool_call | tool_result | system | meta",
@@ -511,8 +511,8 @@ by path. A malformed uid gets 400, and an unknown session gets 404.
 - `url` is present only when the server has a file link template
   (`serve --file-link`), the path is relative and unredacted, and every
   placeholder the template uses has a value.
-- Detection reads Claude Code, Codex, Copilot, OpenCode, and Kimi Code tool
-  calls. It is best effort: files changed by arbitrary shell commands are not
+- Detection reads Claude Code, Codex, Copilot, OpenCode, Kimi Code, and Gemini
+  CLI tool calls. It is best effort: files changed by arbitrary shell commands are not
   listed.
 - `files` is always an array, and is not included by `GET /v1/sessions`.
 

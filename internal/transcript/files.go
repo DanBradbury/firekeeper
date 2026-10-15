@@ -31,6 +31,9 @@ import (
 //     tools in assistant context messages migrated from older releases
 //     (toolCalls[].arguments), and apply_patch envelopes in any other tool's
 //     arguments.
+//   - gemini: toolCalls of model messages named replace or write_file
+//     (args.file_path). Gemini CLI writes a message again as it gains tool
+//     calls, so later copies repeat paths an earlier event already listed.
 func TouchedFiles(e Event) []string {
 	if len(e.Raw) == 0 {
 		return nil
@@ -47,6 +50,8 @@ func TouchedFiles(e Event) []string {
 		paths = openCodeFiles(e.Raw)
 	case ProviderKimi:
 		paths = kimiFiles(e.Raw)
+	case ProviderGemini:
+		paths = geminiFiles(e.Raw)
 	}
 	return dedupe(paths)
 }
@@ -332,6 +337,34 @@ func dedupe(paths []string) []string {
 	for _, p := range paths {
 		if !seen[p] {
 			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+var geminiEditTools = map[string]bool{"replace": true, "write_file": true}
+
+func geminiFiles(raw json.RawMessage) []string {
+	if !bytes.Contains(raw, []byte(`"toolCalls"`)) {
+		return nil
+	}
+	var rec struct {
+		Type      string `json:"type"`
+		ToolCalls []struct {
+			Name string                     `json:"name"`
+			Args map[string]json.RawMessage `json:"args"`
+		} `json:"toolCalls"`
+	}
+	if json.Unmarshal(raw, &rec) != nil || rec.Type != "gemini" {
+		return nil
+	}
+	var out []string
+	for _, call := range rec.ToolCalls {
+		if !geminiEditTools[call.Name] {
+			continue
+		}
+		if p := jsonString(call.Args["file_path"]); p != "" {
 			out = append(out, p)
 		}
 	}

@@ -34,7 +34,7 @@ const (
 // tools as the shell that installed it.
 // The token is deliberately absent: it belongs in the config file, not in
 // a service definition.
-var serviceEnv = []string{"PATH", "CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR", "XDG_DATA_HOME", "OPENCODE_DB", "XDG_CONFIG_HOME", "FIREKEEPER_CONFIG"}
+var serviceEnv = []string{"PATH", "CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR", "XDG_DATA_HOME", "OPENCODE_DB", "GEMINI_CLI_HOME", "XDG_CONFIG_HOME", "FIREKEEPER_CONFIG"}
 
 // goos is replaced in tests.
 var goos = runtime.GOOS

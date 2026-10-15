@@ -332,6 +332,8 @@ func dashGroupDetail(group processGroup) []string {
 			message = "no Copilot session metadata found"
 		case "Kimi":
 			message = "no Kimi session metadata found"
+		case "Gemini":
+			message = "no Gemini CLI session log found"
 		}
 		lines = append(lines,
 			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(group.tool, dashToolColor(group.tool), true)+
@@ -753,6 +755,8 @@ func dashToolColor(tool string) string {
 		return dashBlue
 	case "Kimi":
 		return dashYellow
+	case "Gemini":
+		return dashGreen
 	default:
 		return usageTextColor
 	}

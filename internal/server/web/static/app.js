@@ -7,7 +7,7 @@ import { realAPI, auth } from "./api.js";
 // A machine with no heartbeat for this long counts as offline.
 const OFFLINE_AFTER_MS = 90e3;
 
-const PROVIDERS = ["codex", "copilot", "kimi", "claude", "opencode"];
+const PROVIDERS = ["codex", "copilot", "kimi", "claude", "opencode", "gemini"];
 const STATES = ["ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"];
 const SESSION_PAGE = 50;
 const EVENT_PAGE = 200;
@@ -408,7 +408,7 @@ function machineCard(m, online, local) {
     el("a", { class: "machine-link", href: sessionsHref, text: total === 0 ? "Filter sessions" : `View ${total} session${total === 1 ? "" : "s"} →` }));
 }
 
-const PROVIDER_NAMES = { codex: "Codex", copilot: "Copilot CLI", claude: "Claude Code", kimi: "Kimi", opencode: "OpenCode" };
+const PROVIDER_NAMES = { codex: "Codex", copilot: "Copilot CLI", claude: "Claude Code", kimi: "Kimi", opencode: "OpenCode", gemini: "Gemini CLI" };
 
 // providerList names providers for a sentence: "Codex and Claude Code".
 function providerList(names) {
@@ -440,7 +440,7 @@ function localReporting(local) {
   } else if (detected) {
     text = `Not reporting yet. To send ${detected} sessions here, run:`;
   } else {
-    text = "Not reporting yet. No Codex, Copilot CLI, Claude Code or OpenCode data was found on this machine.";
+    text = "Not reporting yet. No Codex, Copilot CLI, Kimi, Claude Code, OpenCode or Gemini CLI data was found on this machine.";
   }
   const box = el("div", { class: `local-report ${ok ? "ok" : "todo"}` }, el("p", { text }));
   if (local.command && (local.daemon !== "not_installed" || detected)) {
