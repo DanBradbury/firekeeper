@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firekeeper</title>
+<meta name="description" content="Firekeeper: a local terminal dashboard and self-hosted transcript archive for Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI.">
+<style>
+:root {
+  --bg: #fbf8f4;
+  --surface: #ffffff;
+  --surface-2: #f3eee7;
+  --text: #1d1a17;
+  --muted: #6b625a;
+  --border: #e4dcd2;
+  --ember: #c2410c;
+  --ember-soft: #fde7d9;
+  --ember-text: #9a3412;
+  --code-bg: #1b1815;
+  --code-text: #f3ece4;
+  --code-muted: #a39a90;
+  --ok: #15803d;
+  --warn: #b45309;
+  --info: #2563eb;
+  --radius: 10px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14110f;
+    --surface: #1c1916;
+    --surface-2: #24201c;
+    --text: #f1ebe4;
+    --muted: #a79d93;
+    --border: #332d27;
+    --ember: #f97316;
+    --ember-soft: #3a2116;
+    --ember-text: #fdba74;
+    --code-bg: #0e0c0a;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --info: #60a5fa;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14110f;
+  --surface: #1c1916;
+  --surface-2: #24201c;
+  --text: #f1ebe4;
+  --muted: #a79d93;
+  --border: #332d27;
+  --ember: #f97316;
+  --ember-soft: #3a2116;
+  --ember-text: #fdba74;
+  --code-bg: #0e0c0a;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --info: #60a5fa;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--ember-text); }
+code { font-family: var(--mono); font-size: 0.9em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+/* Nav */
+nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+nav .wrap { display: flex; align-items: center; gap: 24px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); text-decoration: none; }
+.brand svg { width: 22px; height: 22px; }
+nav ul { list-style: none; display: flex; gap: 20px; margin: 0 0 0 auto; padding: 0; }
+nav ul a { color: var(--muted); text-decoration: none; font-size: 14px; }
+nav ul a:hover { color: var(--text); }
+@media (max-width: 720px) { nav ul li.opt { display: none; } }
+
+/* Hero */
+.hero { padding: 72px 0 48px; }
+.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.hero-grid > *, .mode, .card, ol.steps li > div { min-width: 0; }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; gap: 32px; } }
+.eyebrow { display: inline-block; font-size: 13px; font-weight: 600; color: var(--ember-text); background: var(--ember-soft); padding: 4px 10px; border-radius: 999px; margin-bottom: 16px; }
+h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 16px; }
+h1 em { font-style: normal; color: var(--ember); }
+.lede { font-size: 18px; color: var(--muted); margin: 0 0 28px; max-width: 34em; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 11px 18px; border-radius: 8px; font-weight: 600; font-size: 15px; text-decoration: none; border: 1px solid transparent; }
+.btn-primary { background: var(--ember); color: #fff; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { border-color: var(--border); color: var(--text); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--muted); }
+
+/* Terminal mockup */
+.term { background: var(--code-bg); color: var(--code-text); border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); font: 12.5px/1.55 var(--mono); overflow: hidden; }
+.term-bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #2c2722; }
+.term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a332d; }
+.term-body { padding: 14px 16px; overflow-x: auto; white-space: pre; }
+.t-tab { color: #fdba74; font-weight: 700; }
+.t-dim { color: var(--code-muted); }
+.t-ok { color: #4ade80; }
+.t-wait { color: #fbbf24; }
+.t-need { color: #f87171; }
+.t-sel { background: #2e2620; display: inline-block; min-width: 100%; }
+
+/* Sections */
+section { padding: 64px 0; border-top: 1px solid var(--border); }
+.section-head { max-width: 640px; margin-bottom: 32px; }
+h2 { font-size: clamp(26px, 3.4vw, 34px); letter-spacing: -0.015em; line-height: 1.15; margin: 0 0 10px; }
+.section-head p { color: var(--muted); margin: 0; font-size: 17px; }
+h3 { font-size: 17px; margin: 0 0 6px; }
+
+/* Features */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.card .icon { width: 36px; height: 36px; border-radius: 8px; background: var(--ember-soft); color: var(--ember-text); display: grid; place-items: center; margin-bottom: 14px; }
+.card .icon svg { width: 20px; height: 20px; }
+.card ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+
+/* Install */
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 0; }
+.tabs button { font: inherit; font-size: 14px; font-weight: 600; background: none; border: none; color: var(--muted); padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--ember); }
+.panel { display: none; padding-top: 18px; }
+.panel.active { display: block; }
+.panel > p { color: var(--muted); font-size: 15px; margin: 14px 0 0; }
+.code { position: relative; background: var(--code-bg); color: var(--code-text); border-radius: 8px; font: 13.5px/1.6 var(--mono); }
+.code pre { margin: 0; padding: 16px 56px 16px 16px; overflow-x: auto; }
+.code .c { color: var(--code-muted); }
+.copy { position: absolute; top: 8px; right: 8px; font: 600 12px var(--sans); color: var(--code-text); background: #2c2722; border: 1px solid #3d362f; border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+.copy:hover { background: #3a322b; }
+.install-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
+.install-meta div { font-size: 14px; color: var(--muted); padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.install-meta strong { display: block; color: var(--text); font-size: 14px; }
+
+/* Modes */
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.mode { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; display: flex; flex-direction: column; gap: 10px; }
+.mode .step { font: 600 12px var(--mono); color: var(--ember-text); text-transform: uppercase; letter-spacing: .06em; }
+.mode p { margin: 0; font-size: 15px; color: var(--muted); }
+.mode .leaves { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 14px; }
+.mode .leaves b { color: var(--text); }
+
+/* Table */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: none; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+.yes { color: var(--ok); font-weight: 600; }
+.part { color: var(--warn); font-weight: 600; }
+.no { color: var(--muted); }
+.note { font-size: 14px; color: var(--muted); margin-top: 14px; }
+
+/* Steps */
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; gap: 18px; }
+ol.steps li { counter-increment: s; display: grid; grid-template-columns: 36px 1fr; gap: 14px; }
+ol.steps li::before { content: counter(s); width: 32px; height: 32px; border-radius: 50%; background: var(--ember-soft); color: var(--ember-text); font-weight: 700; display: grid; place-items: center; }
+ol.steps h3 { margin-top: 4px; }
+ol.steps p { margin: 0 0 10px; color: var(--muted); font-size: 15px; }
+
+/* Privacy */
+.privacy { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.privacy div { padding: 18px; border-left: 3px solid var(--ember); background: var(--surface); border-radius: 0 8px 8px 0; }
+.privacy p { margin: 0; font-size: 14px; color: var(--muted); }
+.callout { margin-top: 20px; padding: 14px 16px; border-radius: 8px; background: var(--ember-soft); color: var(--text); font-size: 14px; }
+
+/* CLI */
+.cli-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.cli { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.cli code { background: none; padding: 0; font-weight: 600; color: var(--text); }
+.cli span { font-size: 14px; color: var(--muted); }
+
+/* Keys */
+.keys { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 18px; font-size: 14px; color: var(--muted); }
+kbd { font: 600 12px var(--mono); background: var(--surface); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 6px; color: var(--text); }
+
+footer { border-top: 1px solid var(--border); padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; }
+footer ul { list-style: none; display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 0; }
+footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2c1.5 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.2 1-3.6 2.2-4.8.3 1.6 1.1 2.6 2.3 3C11 7.4 11.2 4.6 12 2Z" fill="#f97316"/><path d="M12 13c.8 1.2 2 2 2 3.6a2 2 0 0 1-4 0c0-1.2.9-2 2-3.6Z" fill="#fde68a"/><path d="M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      Firekeeper
+    </a>
+    <ul>
+      <li class="opt"><a href="#features">Features</a></li>
+      <li class="opt"><a href="#providers">Providers</a></li>
+      <li class="opt"><a href="#privacy">Privacy</a></li>
+      <li><a href="#install">Install</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Open source · Apache 2.0 · Runs on your hardware</span>
+      <h1>Tend every coding agent from <em>one bonfire</em>.</h1>
+      <p class="lede">See what your AI coding agents are doing right now, and keep a searchable record of what they did, how many tokens they used, and which files they changed. One tool for seven agent CLIs, on one machine or several. Nothing starts and nothing uploads unless you ask.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#install">Install Firekeeper</a>
+        <a class="btn btn-ghost" href="#quickstart">Quick start →</a>
+      </div>
+    </div>
+    <div class="term" role="img" aria-label="Illustration of the Firekeeper terminal dashboard listing agent sessions">
+      <div class="term-bar"><i></i><i></i><i></i></div>
+<div class="term-body"><span class="t-tab">[ Processes ]</span>  <span class="t-dim">Usage                          ? help</span>
+
+<span class="t-ok">ACTIVE 2</span>   <span class="t-wait">WAITING 1</span>   <span class="t-need">NEEDS INPUT 1</span>   <span class="t-dim">UNKNOWN 0</span>
+
+<span class="t-dim">PROVIDER  PROJECT     STATE         MODEL     TOKENS  UP</span>
+<span class="t-sel">claude    api-server  <span class="t-ok">ACTIVE</span>        opus      412k    48m</span>
+<span class="t-dim">          ⎇ feat/auth  ~/src/api-server</span>
+codex     web-app     <span class="t-need">NEEDS INPUT</span>   gpt       188k    22m
+<span class="t-dim">          ⎇ main       ~/src/web-app</span>
+copilot   infra       <span class="t-wait">WAITING</span>       sonnet     61k    1h03
+gemini    docs-site   <span class="t-ok">ACTIVE</span>        gemini     34k    7m
+
+<span class="t-dim">↑↓ select  ⏎ details  s switch terminal  c chat  q quit</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Everything your agents did, in one place</h2>
+      <p>Each agent keeps its own history, in its own format, in its own folder. Firekeeper reads them all and gives you one view. Use the parts you want.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg></div>
+        <h3>See what is running</h3>
+        <p>A keyboard-driven terminal UI finds your agent processes, groups each with its children, and shows state, model, working directory, Git branch, and tokens.</p>
+        <ul><li>Live state: ACTIVE, WAITING, NEEDS INPUT</li><li>Per-session token breakdown</li><li>Refreshes every two seconds</li></ul>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+        <h3>Jump to the session</h3>
+        <p>Press <kbd>s</kbd> to focus the terminal holding a session. Supports Ghostty, Terminal.app, and iTerm2 on macOS, plus Herdr panes.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg></div>
+        <h3>Read the conversation</h3>
+        <p>Press <kbd>c</kbd> on any session to read its prompts and replies right in the terminal. Read locally and read-only, following new messages live.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+        <h3>Understand usage</h3>
+        <p>Codex limits, and token history by model for Codex, Copilot CLI, Kimi, and Claude Code in the terminal. The web dashboard charts daily use by model and project with an estimated cost from published list prices.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></div>
+        <h3>Search every transcript</h3>
+        <p>Run a dashboard server you own. Browse every session, read full transcripts, and run full-text search across all of them and all your machines.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 14l2 2 4-4"/></svg></div>
+        <h3>Know what changed</h3>
+        <p>Each session shows the commit it started on and a <strong>Files changed</strong> panel built from Git, or from the agent's edit tool calls outside a repository.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="9" height="7" rx="1"/><rect x="13" y="4" width="9" height="7" rx="1"/><rect x="7" y="15" width="10" height="6" rx="1"/><path d="M6.5 11v2h11v-2M12 13v2"/></svg></div>
+        <h3>Bring machines together</h3>
+        <p>Link a laptop, desktop, and dev box to one account with a browser approval, not a pasted token. A Machines page shows which are online.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg></div>
+        <h3>Share a session offline</h3>
+        <p><strong>Export HTML</strong> saves a session as one standalone page that loads nothing from the network, with search, role filters, and links to single events.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></div>
+        <h3>Import your history</h3>
+        <p><code>backfill</code> imports the sessions already on your machine in one pass. The daemon keeps the dashboard current from then on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Install in one line</h2>
+      <p>Prebuilt binaries for macOS (Apple Silicon and Intel) and Linux (amd64 and arm64). No Go toolchain needed.</p>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" aria-controls="p-brew" id="t-brew">Homebrew</button>
+      <button role="tab" aria-selected="false" aria-controls="p-curl" id="t-curl">Install script</button>
+      <button role="tab" aria-selected="false" aria-controls="p-go" id="t-go">From source</button>
+      <button role="tab" aria-selected="false" aria-controls="p-docker" id="t-docker">Docker (server)</button>
+      <button role="tab" aria-selected="false" aria-controls="p-herdr" id="t-herdr">Herdr plugin</button>
+    </div>
+
+    <div class="panel active" id="p-brew" role="tabpanel" aria-labelledby="t-brew">
+      <div class="code"><button class="copy">Copy</button><pre>brew install DanBradbury/tap/firekeeper
+firekeeper</pre></div>
+      <p>Upgrade later with <code>brew upgrade</code>. Firekeeper also offers to update itself when a new release is out.</p>
+    </div>
+
+    <div class="panel" id="p-curl" role="tabpanel" aria-labelledby="t-curl">
+      <div class="code"><button class="copy">Copy</button><pre>curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
+firekeeper</pre></div>
+      <p>Installs to <code>~/.local/bin</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), never uses <code>sudo</code>, and verifies the download against the release's SHA-256 checksums. Pin a release with <code>sh -s -- --version vX.Y.Z</code>.</p>
+    </div>
+
+    <div class="panel" id="p-go" role="tabpanel" aria-labelledby="t-go">
+      <div class="code"><button class="copy">Copy</button><pre>go install github.com/DanBradbury/firekeeper@latest
+firekeeper</pre></div>
+      <p>Requires Go 1.26 or newer. Builds from source report their version as <code>dev</code> and never check for updates.</p>
+    </div>
+
+    <div class="panel" id="p-docker" role="tabpanel" aria-labelledby="t-docker">
+      <div class="code"><button class="copy">Copy</button><pre><span class="c"># from a checkout of the repository</span>
+docker compose up -d
+<span class="c"># dashboard at http://127.0.0.1:7777/</span></pre></div>
+      <p>Runs the dashboard server only, with data in a named volume. Create an account or token first thing. See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/self-hosting.md">self-hosting</a> for TLS and backups.</p>
+    </div>
+
+    <div class="panel" id="p-herdr" role="tabpanel" aria-labelledby="t-herdr">
+      <div class="code"><button class="copy">Copy</button><pre>herdr plugin install DanBradbury/firekeeper
+herdr plugin action invoke firekeeper.dashboard.open-dashboard</pre></div>
+      <p>Runs Firekeeper as a dashboard tab inside Herdr 0.8.0 or newer. The plugin builds locally, so it needs Go 1.26 or newer.</p>
+    </div>
+
+    <div class="install-meta">
+      <div><strong>Verify</strong><code>firekeeper --version</code></div>
+      <div><strong>See every command</strong><code>firekeeper --help</code></div>
+      <div><strong>Uninstall</strong><code>firekeeper daemon uninstall</code>, then remove the binary</div>
+    </div>
+  </div>
+</section>
+
+<section id="modes">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Use it how you need it</h2>
+      <p>Start with the terminal dashboard. Add a dashboard server when you want history. Every step up is a separate command you run on purpose.</p>
+    </div>
+    <div class="modes">
+      <div class="mode">
+        <span class="step">Mode 1</span>
+        <h3>Terminal dashboard</h3>
+        <div class="code"><pre>firekeeper</pre></div>
+        <p>Watch running sessions, read their chat, check usage, and jump to their terminal.</p>
+        <div class="leaves"><b>Leaves the machine:</b> no session data. No daemon starts.</div>
+      </div>
+      <div class="mode">
+        <span class="step">Mode 2</span>
+        <h3>Local web dashboard</h3>
+        <div class="code"><pre>firekeeper serve</pre></div>
+        <p>A web UI on <code>127.0.0.1</code> with sessions, transcripts, search, and usage charts. Fill it with <code>report</code>, <code>backfill</code>, or the daemon.</p>
+        <div class="leaves"><b>Leaves the machine:</b> nothing. Data stays in a SQLite file here.</div>
+      </div>
+      <div class="mode">
+        <span class="step">Mode 3</span>
+        <h3>Self-hosted, many machines</h3>
+        <div class="code"><pre>firekeeper login --server https://…</pre></div>
+        <p>Run <code>serve</code> on a host you control behind HTTPS, then link each machine with a browser approval.</p>
+        <div class="leaves"><b>Leaves the machine:</b> redacted transcripts, to your host only.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="providers">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Seven agent CLIs, one view</h2>
+      <p>Process discovery works without any integration. Each provider also has an adapter that reads its local session data, read-only.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Provider</th><th>Process discovery</th><th>State &amp; metadata</th><th>Usage tab</th><th>Transcript upload</th></tr></thead>
+        <tbody>
+          <tr><td>Codex</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Limits and history</td><td class="yes">Yes</td></tr>
+          <tr><td>GitHub Copilot CLI</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Local history and plan details</td><td class="yes">Yes</td></tr>
+          <tr><td>Claude Code</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Token history</td><td class="yes">Yes</td></tr>
+          <tr><td>Kimi Code</td><td class="yes">Yes</td><td class="part">Metadata</td><td>Token history</td><td class="yes">Yes</td></tr>
+          <tr><td>OpenCode</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><td>Gemini CLI</td><td class="yes">Yes</td><td class="part">Yes, no NEEDS INPUT</td><td class="no">No</td><td class="yes">Yes</td></tr>
+          <tr><td>Cursor CLI</td><td class="yes">Yes</td><td class="part">Yes, no NEEDS INPUT</td><td class="no">No</td><td class="yes">Yes, no timestamps or tokens</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">States describe the latest event Firekeeper can see, not ground truth. Provider data formats can change between CLI releases, and adapters evolve with them. macOS is the main target; Linux is best effort.</p>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Quick start</h2>
+      <p>From the terminal dashboard to a searchable archive in five steps. Stop at any step.</p>
+    </div>
+    <ol class="steps">
+      <li><div>
+        <h3>Open the terminal dashboard</h3>
+        <p>Start an agent in another terminal and it appears within a couple of seconds.</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper</pre></div>
+        <div class="keys">
+          <span><kbd>Tab</kbd> switch views</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
+          <span><kbd>⏎</kbd> details</span>
+          <span><kbd>s</kbd> switch terminal</span>
+          <span><kbd>c</kbd> chat history</span>
+          <span><kbd>?</kbd> all keys</span>
+          <span><kbd>q</kbd> quit</span>
+        </div>
+      </div></li>
+      <li><div>
+        <h3>Start a local dashboard</h3>
+        <p>With no account it runs in local mode, with no sign-in, and offers once to start reporting this machine. Anything but <kbd>y</kbd> changes nothing.</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper serve</pre></div>
+      </div></li>
+      <li><div>
+        <h3>Preview, then upload</h3>
+        <p>The dry run reads and redacts transcripts and prints counts without opening a connection. Then name the providers you allow.</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper report --dry-run
+firekeeper report --provider codex --provider claude</pre></div>
+      </div></li>
+      <li><div>
+        <h3>Import past sessions</h3>
+        <p>Bring in the history already on your machine, in one pass.</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper backfill --all --dry-run
+firekeeper backfill --all</pre></div>
+      </div></li>
+      <li><div>
+        <h3>Keep it flowing</h3>
+        <p>Install the daemon as a per-user service. It detects your agent CLIs and reports them in the background.</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper daemon install --dry-run
+firekeeper daemon install</pre></div>
+      </div></li>
+    </ol>
+  </div>
+</section>
+
+<section id="privacy">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Your transcripts, your rules</h2>
+      <p>Firekeeper is built to run on hardware you control and to do nothing you did not ask for.</p>
+    </div>
+    <div class="privacy">
+      <div><h3>Opt-in per provider</h3><p>An unconfigured <code>report</code> or <code>daemon</code> sends nothing. You name each provider you allow.</p></div>
+      <div><h3>Redacted first</h3><p>Every event passes through redaction before it leaves the machine, and again on HTML export.</p></div>
+      <div><h3>Ignore whole repos</h3><p>A repository containing <code>.firekeeper-ignore</code>, or an excluded directory, is never read.</p></div>
+      <div><h3>Read-only on provider data</h3><p>Firekeeper never changes your agents' databases, logs, or launch commands.</p></div>
+      <div><h3>You run the server</h3><p>On <code>127.0.0.1</code> or on a host you control. Accounts, scoped tokens, and per-account isolation are built in.</p></div>
+    </div>
+    <div class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. Read <a href="https://github.com/DanBradbury/firekeeper#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> before you turn uploads on.</div>
+  </div>
+</section>
+
+<section id="cli">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>The command line</h2>
+      <p>Plain <code>firekeeper</code> opens the dashboard. Everything else is an explicit subcommand.</p>
+    </div>
+    <div class="cli-grid">
+      <div class="cli"><code>firekeeper</code><span>Terminal dashboard: Processes and Usage</span></div>
+      <div class="cli"><code>firekeeper serve</code><span>Web dashboard at http://127.0.0.1:7777/</span></div>
+      <div class="cli"><code>firekeeper report</code><span>Upload the sessions running right now</span></div>
+      <div class="cli"><code>firekeeper backfill --all</code><span>Import past sessions from local history</span></div>
+      <div class="cli"><code>firekeeper daemon install</code><span>Report in the background from login</span></div>
+      <div class="cli"><code>firekeeper login --server URL</code><span>Link this machine with a browser approval</span></div>
+      <div class="cli"><code>firekeeper whoami</code><span>Server, account, and machine this one reports as</span></div>
+      <div class="cli"><code>firekeeper logout</code><span>Revoke and remove this machine's token</span></div>
+      <div class="cli"><code>firekeeper snapshot --json</code><span>Print discovered sessions as JSON</span></div>
+      <div class="cli"><code>firekeeper config show</code><span>Merged configuration, token masked</span></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Firekeeper is an early-stage open source project, licensed under Apache 2.0.</div>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/releases">Releases</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/self-hosting.md">Self-hosting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/api.md">API</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('.tabs [role="tab"]');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function () {
+      tabs.forEach(function (t) {
+        t.setAttribute('aria-selected', String(t === tab));
+        document.getElementById(t.getAttribute('aria-controls')).classList.toggle('active', t === tab);
+      });
+    });
+  });
+
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.parentElement.querySelector('pre').innerText
+        .split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n').trim();
+      var done = function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(done, function () { btn.textContent = 'Select & copy'; });
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

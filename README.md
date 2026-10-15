@@ -1195,6 +1195,9 @@ Files Firekeeper reads and writes outside the provider data it only reads:
 - [docs/api.md](docs/api.md): the v1 HTTP API.
 - [docs/event.schema.json](docs/event.schema.json): the normalized transcript
   event.
+- [docs/landing/index.html](docs/landing/index.html): an example landing
+  page covering install, features, and supported providers. It is one
+  self-contained HTML file that loads nothing from the network.
 
 ## Status
 
