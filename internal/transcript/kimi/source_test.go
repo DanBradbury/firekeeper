@@ -310,16 +310,16 @@ func TestUserTyped(t *testing.T) {
 }
 
 func TestSessionIDFromPath(t *testing.T) {
-	for path, want := range map[string]string{
-		fixturePath: fixtureID,
-		filepath.Join(fixtureDir, "agents", "agent-0", "wire.jsonl"): "",
-		filepath.Join(fixtureDir, "agents", "main", "context.jsonl"): "",
-		"wire.jsonl":              "",
-		"/agents/main/wire.jsonl": "",
-		"sessions/w/bad id/agents/main/wire.jsonl": "",
+	for _, tc := range []struct{ path, want string }{
+		{fixturePath, fixtureID},
+		{filepath.Join(fixtureDir, "agents", "agent-0", "wire.jsonl"), ""},
+		{filepath.Join(fixtureDir, "agents", "main", "context.jsonl"), ""},
+		{"wire.jsonl", ""},
+		{"/agents/main/wire.jsonl", ""},
+		{"sessions/w/bad id/agents/main/wire.jsonl", ""},
 	} {
-		if got := sessionIDFromPath(path); got != want {
-			t.Errorf("sessionIDFromPath(%q) = %q, want %q", path, got, want)
+		if got := sessionIDFromPath(tc.path); got != tc.want {
+			t.Errorf("sessionIDFromPath(%q) = %q, want %q", tc.path, got, tc.want)
 		}
 	}
 }
