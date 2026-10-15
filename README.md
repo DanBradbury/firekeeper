@@ -5,7 +5,8 @@
 See what your AI coding agents are doing right now, and keep a searchable
 record of what they did, how many tokens they used, and which files they
 changed. Firekeeper works across Codex, GitHub Copilot CLI, Claude Code, Kimi
-Code, OpenCode, and Gemini CLI, on one machine or several, and it runs on your hardware. Nothing starts and
+Code, OpenCode, Gemini CLI, and Cursor CLI, on one machine or several, and it
+runs on your hardware. Nothing starts and
 nothing uploads unless you ask.
 
 ## Install
@@ -131,7 +132,7 @@ importing the sessions already on your machine, then `firekeeper backfill
 unconfigured `report` or `daemon` sends nothing.
 
 Supported harnesses are Codex, GitHub Copilot CLI, Claude Code, Kimi Code,
-OpenCode, and Gemini CLI, and all six can upload transcripts. The
+OpenCode, Gemini CLI, and Cursor CLI, and all seven can upload transcripts. The
 [provider table](#supported-providers) shows what each one gets.
 
 ## Other ways to run
@@ -264,8 +265,8 @@ up a dashboard on this machine and then link a second one.
    `firekeeper backfill --all --dry-run`, then `firekeeper backfill --all`.
 
 6. **Keep it flowing.** Install the daemon as a per-user service. It detects
-   Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, and Gemini CLI from
-   their data directories or executables, prints what it found, and starts uploading those providers.
+   Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and
+   Cursor CLI from their data directories or executables, prints what it found, and starts uploading those providers.
    Preview first with `--dry-run`:
 
    ```sh
@@ -304,6 +305,7 @@ from `firekeeper serve token create`; see [Tokens](#tokens).
 | Kimi Code | Yes | Metadata from session `state.json`; the state is shown as `ACTIVE` whenever a session matches | Token history | Yes, from the main agent's `wire.jsonl` |
 | OpenCode | Yes | Yes, from `session_v2` and `session_message` in `opencode.db` | No | Yes |
 | Gemini CLI | Yes | Yes, from session logs under `~/.gemini/tmp`; `NEEDS INPUT` is never shown | No | Yes, from the main session log |
+| Cursor CLI | Yes | Yes, from agent transcripts under `~/.cursor/projects` and chat titles in `~/.cursor/chats`; `NEEDS INPUT` is never shown | No | Yes, from the main agent transcript, without timestamps or token counts |
 
 States describe the latest event Firekeeper can see, not ground truth.
 Kimi Code support reads the session layout under `~/.kimi-code` (wire protocol
@@ -312,6 +314,10 @@ is not read. OpenCode support reads the database layout
 OpenCode has used since August 2026; older releases need an OpenCode update
 first. Gemini CLI support reads the JSONL session logs Gemini CLI has written
 since April 2026, and the whole-file `.json` sessions of earlier releases.
+Cursor CLI support reads the agent transcripts `cursor-agent` writes; Cursor
+does not document that format, so it may change without notice. Cursor's
+transcripts record no timestamps or token counts, so Cursor sessions show
+neither.
 
 ## Terminal dashboard
 
@@ -361,8 +367,8 @@ narrowest table columns drop out first; Enter still expands details inline.
 
 #### Chat history
 
-Press `c` on a Claude Code, Codex, Copilot, Kimi Code, OpenCode, or Gemini CLI
-session to
+Press `c` on a Claude Code, Codex, Copilot, Kimi Code, OpenCode, Gemini CLI,
+or Cursor CLI session to
 read its conversation: your prompts and the assistant's replies, newest at the
 bottom. Tool calls, tool output, and context the harness injects (environment blocks,
 `AGENTS.md` instructions, slash-command wrappers) are left out. The transcript
@@ -481,11 +487,24 @@ dashboard only through [`backfill`](#backfill).
   directory may be matched to the wrong log. Logs are read, never modified.
   Gemini CLI records tool calls only after they finish, so a tool call
   waiting for approval shows as `ACTIVE`, and `NEEDS INPUT` is never reported.
+- **Cursor CLI:** recognizes `cursor-agent` and the bundled node process it
+  runs (under `~/.local/share/cursor-agent/versions`) as one runtime, and
+  lists `login`, `status`, `update`, `mcp`, and the other helper subcommands
+  without a session. It uses a `--resume` chat id when the command line has
+  one, and otherwise maps the runtime's working directory to its project
+  folder under `~/.cursor/projects` and its chat folder under
+  `~/.cursor/chats`, and picks the most recently written chat there. Several
+  Cursor CLI runtimes in one directory may be matched to the wrong chat.
+  Chat titles and models are read from each chat's `store.db` with
+  `sqlite3 -readonly`; without `sqlite3` the session still appears, untitled.
+  Nothing is modified. Approval prompts are not recorded, so a tool call
+  waiting for approval shows as `ACTIVE`, and `NEEDS INPUT` is never reported.
 
 `CODEX_HOME`, `KIMI_CODE_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`,
 `OPENCODE_DB`, `XDG_DATA_HOME` (for OpenCode's
-`~/.local/share/opencode/opencode.db`), and `GEMINI_CLI_HOME` (for Gemini
-CLI's `~/.gemini`) overrides are honored. Provider events
+`~/.local/share/opencode/opencode.db`), `GEMINI_CLI_HOME` (for Gemini
+CLI's `~/.gemini`), and `CURSOR_CONFIG_DIR` (for Cursor CLI's `~/.cursor`)
+overrides are honored. Provider events
 supply best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. Codex
 Desktop helper processes that cannot be matched to rollout metadata are not
 shown as sessions.
@@ -567,7 +586,11 @@ Other limits to know about:
   are running at the time of a pass. A session that starts and ends between
   daemon passes may be missed until a `backfill`.
 - Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
-  sessions, and Gemini CLI subagent logs are not imported.
+  sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
+  not imported.
+- A Cursor CLI session whose workspace directory no longer exists is not
+  uploaded: Cursor's transcripts do not record the directory, so Firekeeper
+  finds it on disk, and without it the exclusion rules cannot be checked.
 - Provider file formats are read as found and change between CLI releases.
   Parsers keep records they cannot interpret as `meta` events, but the text
   shown for those events may be thin.
@@ -632,13 +655,15 @@ without a terminal to ask on, `backfill` refuses unless `--yes` is given. With
 no provider opt-in, or with `--dry-run`, it prints the plan and stops without
 opening a network connection.
 
-`--all` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode, and Gemini CLI from their
-local data directories or executables on `PATH`, honoring provider home
+`--all` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode, Gemini CLI,
+and Cursor CLI from their local data directories or executables on `PATH`, honoring provider home
 overrides. It allows those providers for this pass, replacing any configured allowlist
 without changing the config file. Use either `--all` or `--provider`, not
 both. After `login`, the saved server and token are used automatically.
 Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
-sessions, and Gemini CLI subagent logs are not imported.
+sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
+not imported. Cursor's editor writes its Agents window sessions to the same
+transcript folders, so `backfill` imports those too.
 
 Sessions upload newest first, so the dashboard is useful early, with one
 progress line per session on stderr. Uploads go through the same redaction,
@@ -1007,10 +1032,11 @@ firekeeper daemon uninstall
 ```
 
 With no provider flags, `$FIREKEEPER_PROVIDERS`, or configured allowlist,
-`daemon install` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode, and
-Gemini CLI from their existing local data directories or CLI executables on
-`PATH`, honoring `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`,
-`CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, and `GEMINI_CLI_HOME`.
+`daemon install` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode,
+Gemini CLI, and Cursor CLI from their existing local data directories or CLI
+executables on `PATH`, honoring `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`,
+`CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `GEMINI_CLI_HOME`, and
+`CURSOR_CONFIG_DIR`.
 Installing opts into transcript uploads for those detected providers; it prints
 and saves the allowlist in the service definition. Use `--dry-run` to preview
 it, or `--provider` to select providers explicitly. Environment and config-file
@@ -1027,8 +1053,8 @@ each time the daemon starts, so after editing the file, restart the service
 reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
 `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`,
-`XDG_DATA_HOME`, `OPENCODE_DB`, `GEMINI_CLI_HOME`, `XDG_CONFIG_HOME`, and
-`FIREKEEPER_CONFIG` from your shell into the definition
+`XDG_DATA_HOME`, `OPENCODE_DB`, `GEMINI_CLI_HOME`, `CURSOR_CONFIG_DIR`,
+`XDG_CONFIG_HOME`, and `FIREKEEPER_CONFIG` from your shell into the definition
 when they are set. It refuses to install a temporary `go run` build. Nothing
 here needs or uses `sudo`.
 

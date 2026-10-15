@@ -1,0 +1,11 @@
+not json {
+{}
+[1,2,3]
+{"role":"assistant"}
+{"role":"assistant","message":{"content":"plain string"}}
+{"role":"user","message":{"content":{"weird":true}}}
+{"role":"user","message":{"content":[{"type":"tool_result","tool_use_id":"unknown","content":[{"type":"image","source":{}}]}]}}
+{"role":"brand-new-role","message":{"content":"x"}}
+{"type":"turn_ended","status":"error"}
+{"role":"system","message":{"content":"System note."}}
+{"role":"user","message":{"content":"no tags here"}}

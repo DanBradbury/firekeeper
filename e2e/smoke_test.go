@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +37,7 @@ const (
 	// durable event sequence leaves them.
 	openCodeID = "ses_e2eSmokeOpenCode0001"
 	geminiID   = "0199e2e0-0000-7000-8000-00000000a001"
+	cursorID   = "0199e2e0-0000-7000-8000-0000000c0501"
 )
 
 // fakeSecret looks like an API key to internal/redact. It is assembled at
@@ -54,6 +56,8 @@ type home struct {
 	kimiWire string // Kimi Code main agent wire log
 	openCode string // OpenCode database
 	gemini   string // Gemini CLI session log
+	cursor   string // Cursor CLI agent transcript
+	chat     string // Cursor CLI chat database
 }
 
 func newHome(t *testing.T) *home {
@@ -147,6 +151,23 @@ func newHome(t *testing.T) *home {
 		geminiReply("Called."),
 		map[string]any{"$set": map[string]any{"summary": "Gemini smoke", "lastUpdated": "2026-10-07T12:00:03.000Z"}},
 	))
+
+	// Cursor CLI names each project's directory after its workspace path,
+	// and keeps the chat's title in a database under the path's md5.
+	cursorDir := filepath.Join(h.dir, ".cursor")
+	project := strings.TrimLeft(strings.ReplaceAll(filepath.ToSlash(h.repo), "/", "-"), "-")
+	h.cursor = filepath.Join(cursorDir, "projects", project, "agent-transcripts", cursorID, cursorID+".jsonl")
+	write(t, h.cursor, jsonl(
+		map[string]any{"role": "user", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": "<user_query>Call it with " + fakeSecret + " now.</user_query>"}}}},
+		map[string]any{"role": "assistant", "message": map[string]any{"content": []map[string]string{{"type": "text", "text": "Called."}}}},
+	))
+	h.chat = filepath.Join(session.CursorChatsDir(cursorDir, h.repo), cursorID, "store.db")
+	mkdir(t, filepath.Dir(h.chat))
+	testenv.NeedTool(t, "sqlite3")
+	meta := hex.EncodeToString([]byte(`{"agentId":"` + cursorID + `","name":"Cursor smoke","createdAt":1791892800000,"lastUsedModel":"cursor-e2e"}`))
+	if out, err := exec.Command("sqlite3", h.chat, "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('0', '"+meta+"');").CombinedOutput(); err != nil {
+		t.Fatalf("cursor chat database: %v: %s", err, out)
+	}
 	return h
 }
 
@@ -202,13 +223,14 @@ func codexMessage(role, kind, text string) map[string]any {
 }
 
 // run answers discovery's ps, lsof, sqlite3, and git calls as if one Codex,
-// one Copilot, one Kimi, one OpenCode, and one Gemini CLI process were
-// running in h.repo.
-// OpenCode queries run against the real database with sqlite3.
+// one Copilot, one Kimi, one OpenCode, one Gemini CLI, and one Cursor CLI
+// process were running in h.repo.
+// OpenCode and Cursor chat queries run against the real databases with
+// sqlite3.
 func (h *home) run(_ context.Context, name string, args ...string) ([]byte, error) {
 	switch name {
 	case "ps":
-		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n400 1 ttys004 00:10 opencode\n500 1 ttys005 00:10 gemini\n"), nil
+		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n400 1 ttys004 00:10 opencode\n500 1 ttys005 00:10 gemini\n600 1 ttys006 00:10 cursor-agent\n"), nil
 	case "lsof":
 		switch {
 		case slices.Equal(args, []string{"-Fn", "-p", "100"}):
@@ -219,6 +241,8 @@ func (h *home) run(_ context.Context, name string, args ...string) ([]byte, erro
 			return []byte("p400\nn" + h.repo + "\n"), nil
 		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "500"}):
 			return []byte("p500\nn" + h.repo + "\n"), nil
+		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "600"}):
+			return []byte("p600\nn" + h.repo + "\n"), nil
 		}
 	case "sqlite3":
 		if len(args) == 4 && args[0] == "-readonly" && args[1] == "-json" && filepath.Base(args[2]) == "state_5.sqlite" {
@@ -227,7 +251,7 @@ func (h *home) run(_ context.Context, name string, args ...string) ([]byte, erro
 				UpdatedAtMS: time.Date(2026, 10, 7, 12, 0, 4, 0, time.UTC).UnixMilli(),
 			}})
 		}
-		if len(args) == 4 && args[2] == h.openCode {
+		if len(args) == 4 && (args[2] == h.openCode || args[2] == h.chat) {
 			return exec.Command(name, args...).Output()
 		}
 	case "git":
@@ -249,9 +273,10 @@ func (h *home) config(t *testing.T, server string) reporter.Config {
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("OPENCODE_DB", "")
 	t.Setenv("GEMINI_CLI_HOME", h.dir)
+	t.Setenv("CURSOR_CONFIG_DIR", filepath.Join(h.dir, ".cursor"))
 	return reporter.Config{
 		Server:    server,
-		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderOpenCode, transcript.ProviderGemini},
+		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderOpenCode, transcript.ProviderGemini, transcript.ProviderCursor},
 		Home:      h.dir,
 		Version:   "e2e",
 		Discover: func(ctx context.Context, opts session.Options) ([]session.Meta, error) {
@@ -260,6 +285,7 @@ func (h *home) config(t *testing.T, server string) reporter.Config {
 			opts.KimiHome = filepath.Join(h.dir, ".kimi-code")
 			opts.OpenCodeDB = h.openCode
 			opts.GeminiDir = filepath.Join(h.dir, ".gemini")
+			opts.CursorDir = filepath.Join(h.dir, ".cursor")
 			opts.Run = h.run
 			return session.Discover(ctx, opts)
 		},
@@ -290,8 +316,9 @@ func TestSmoke(t *testing.T) {
 		"kimi":     expectedEvents(t, transcript.ProviderKimi, h.kimiWire),
 		"opencode": expectedEvents(t, transcript.ProviderOpenCode, openCodePath),
 		"gemini":   expectedEvents(t, transcript.ProviderGemini, h.gemini),
+		"cursor":   expectedEvents(t, transcript.ProviderCursor, h.cursor),
 	}
-	ids := map[string]string{"codex": codexID, "copilot": copilotID, "kimi": kimiID, "opencode": openCodeID, "gemini": geminiID}
+	ids := map[string]string{"codex": codexID, "copilot": copilotID, "kimi": kimiID, "opencode": openCodeID, "gemini": geminiID, "cursor": cursorID}
 	for provider, n := range want {
 		if first[provider].Events != n {
 			t.Errorf("%s: first pass read %d events, want %d", provider, first[provider].Events, n)
@@ -336,7 +363,8 @@ func TestSmoke(t *testing.T) {
 	}
 
 	// Appending to the Codex rollout, the Kimi wire log, the OpenCode
-	// session, and the Gemini CLI log sends only the new events.
+	// session, the Gemini CLI log, and the Cursor CLI transcript sends only
+	// the new events.
 	appendFile(t, h.rollout, jsonl(
 		codexMessage("user", "input_text", "One more thing."),
 		codexMessage("assistant", "output_text", "Appended reply."),
@@ -348,7 +376,18 @@ func TestSmoke(t *testing.T) {
 	appendFile(t, h.gemini, jsonl(geminiReply("Called.", map[string]any{"toolCalls": []map[string]any{{
 		"id": "c1", "name": "write_file", "args": map[string]string{"file_path": "notes.md", "content": "x"}, "status": "success",
 	}}})))
+	appendFile(t, h.cursor, jsonl(map[string]any{"role": "assistant", "message": map[string]any{"content": []map[string]any{
+		{"type": "tool_use", "id": "t1", "name": "Write", "input": map[string]string{"path": "notes.md"}},
+	}}}))
 	third := runOnce(t, cfg)
+	if r := third["cursor"]; r.Events != 1 || r.Duplicates != 0 {
+		t.Errorf("cursor: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
+	}
+	cursorEvents := listEvents(t, srv.URL, machineID, cursorID)
+	assertSeqs(t, "cursor", cursorEvents, want["cursor"]+1)
+	if last := cursorEvents[len(cursorEvents)-1]; last.Role != transcript.RoleToolCall || last.ToolName == nil || *last.ToolName != "Write" {
+		t.Errorf("cursor: appended event (seq %d) is not the new tool call", last.Seq)
+	}
 	if r := third["gemini"]; r.Events != 1 || r.Duplicates != 0 {
 		t.Errorf("gemini: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
 	}
@@ -408,7 +447,7 @@ func runOnce(t *testing.T, cfg reporter.Config) map[string]reporter.SessionResul
 		}
 		results[r.Provider] = r
 	}
-	for _, p := range []string{"codex", "copilot", "kimi", "opencode", "gemini"} {
+	for _, p := range []string{"codex", "copilot", "kimi", "opencode", "gemini", "cursor"} {
 		if _, ok := results[p]; !ok {
 			t.Fatalf("%s: session not discovered", p)
 		}

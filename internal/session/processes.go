@@ -124,6 +124,10 @@ func (d *discoverer) classifyProcess(command string) string {
 		// Matched on the executable, so a Gemini model named in another
 		// harness's flags stays with that harness.
 		return "Gemini"
+	case d.isCursorCommand(command):
+		// Matched on the executable before the substring checks below, so
+		// a model such as gpt-5-codex in Cursor CLI's flags stays here.
+		return "Cursor"
 	case strings.Contains(lower, "opencode"):
 		return "OpenCode"
 	case strings.Contains(lower, "copilot"):

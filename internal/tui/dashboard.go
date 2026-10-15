@@ -334,6 +334,8 @@ func dashGroupDetail(group processGroup) []string {
 			message = "no Kimi session metadata found"
 		case "Gemini":
 			message = "no Gemini CLI session log found"
+		case "Cursor":
+			message = "no Cursor CLI transcript found"
 		}
 		lines = append(lines,
 			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(group.tool, dashToolColor(group.tool), true)+
@@ -757,6 +759,9 @@ func dashToolColor(tool string) string {
 		return dashYellow
 	case "Gemini":
 		return dashGreen
+	case "Cursor":
+		// Cursor's mark is monochrome; red stays the NEEDS INPUT color.
+		return usageBrightColor
 	default:
 		return usageTextColor
 	}
