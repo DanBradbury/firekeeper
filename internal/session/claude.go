@@ -286,6 +286,10 @@ func (d *discoverer) claudeConfigDir() (string, error) {
 	return filepath.Join(home, ".claude"), nil
 }
 
+// ClaudeConfigDir returns Claude Code's configuration directory, honoring
+// CLAUDE_CONFIG_DIR (default ~/.claude).
+func ClaudeConfigDir() (string, error) { return standalone().claudeConfigDir() }
+
 // claudeRecord holds the transcript fields discovery reads. Message text is
 // only inspected for the interrupt marker and is never kept.
 type claudeRecord struct {

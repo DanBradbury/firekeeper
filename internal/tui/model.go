@@ -42,6 +42,7 @@ const (
 	codexProvider usageProvider = iota
 	copilotProvider
 	kimiProvider
+	claudeProvider
 	usageProviderCount
 )
 
@@ -127,6 +128,12 @@ type model struct {
 	kimiUsageRefreshedAt    time.Time
 	kimiHistoryOpen         bool
 	kimiHistoryCursor       int
+	claudeUsage             claudeUsageSnapshot
+	claudeUsageErr          string
+	claudeUsageLoading      bool
+	claudeUsageRefreshedAt  time.Time
+	claudeHistoryOpen       bool
+	claudeHistoryCursor     int
 	helpOpen                bool
 	metadataMisses          map[int]int
 	chat                    chatState
@@ -197,6 +204,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.copilotHistoryCursor = max(m.copilotHistoryCursor-1, 0)
 				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
 					m.kimiHistoryCursor = max(m.kimiHistoryCursor-1, 0)
+				} else if m.usageProvider == claudeProvider && m.claudeHistoryOpen {
+					m.claudeHistoryCursor = max(m.claudeHistoryCursor-1, 0)
 				}
 			}
 		case "down", "j":
@@ -210,6 +219,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.copilotHistoryCursor = min(m.copilotHistoryCursor+1, max(len(m.copilotUsage.History)-1, 0))
 				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
 					m.kimiHistoryCursor = min(m.kimiHistoryCursor+1, max(len(m.kimiUsage.History)-1, 0))
+				} else if m.usageProvider == claudeProvider && m.claudeHistoryOpen {
+					m.claudeHistoryCursor = min(m.claudeHistoryCursor+1, max(len(m.claudeUsage.History)-1, 0))
 				}
 			}
 		case "pgup":
@@ -259,6 +270,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.kimiHistoryOpen = true
 						m.kimiHistoryCursor = 0
 					}
+				} else if m.usageProvider == claudeProvider {
+					if m.claudeHistoryOpen {
+						m.claudeHistoryOpen = false
+					} else if len(m.claudeUsage.History) > 0 {
+						m.claudeHistoryOpen = true
+						m.claudeHistoryCursor = 0
+					}
 				}
 			}
 		case "esc", "backspace":
@@ -268,6 +286,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.copilotHistoryOpen = false
 			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
 				m.kimiHistoryOpen = false
+			} else if m.activeTab == usageTab && m.usageProvider == claudeProvider && m.claudeHistoryOpen {
+				m.claudeHistoryOpen = false
 			}
 		case "r":
 			if m.activeTab == processesTab {
@@ -378,6 +398,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.kimiUsageErr = ""
 		}
 
+	case claudeUsageResultMsg:
+		m.claudeUsageLoading = false
+		m.claudeUsageRefreshedAt = msg.refreshed
+		if msg.err != nil {
+			m.claudeUsageErr = sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.claudeUsage = msg.snapshot
+			m.claudeUsageErr = ""
+			m.claudeHistoryCursor = min(m.claudeHistoryCursor, max(len(m.claudeUsage.History)-1, 0))
+			if len(m.claudeUsage.History) == 0 {
+				m.claudeHistoryOpen = false
+			}
+		}
+
 	}
 
 	return m, nil
@@ -387,6 +421,7 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 	m.codexHistoryOpen = false
 	m.copilotHistoryOpen = false
 	m.kimiHistoryOpen = false
+	m.claudeHistoryOpen = false
 	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
 		return nil
@@ -397,13 +432,17 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 	if m.usageProvider == kimiProvider && !m.kimiUsageRefreshedAt.IsZero() && m.kimiUsageErr == "" {
 		return nil
 	}
+	if m.usageProvider == claudeProvider && !m.claudeUsageRefreshedAt.IsZero() && m.claudeUsageErr == "" {
+		return nil
+	}
 	return m.beginUsageRefresh()
 }
 
 func (m model) usageHistoryOpen() bool {
 	return (m.usageProvider == codexProvider && m.codexHistoryOpen) ||
 		(m.usageProvider == copilotProvider && m.copilotHistoryOpen) ||
-		(m.usageProvider == kimiProvider && m.kimiHistoryOpen)
+		(m.usageProvider == kimiProvider && m.kimiHistoryOpen) ||
+		(m.usageProvider == claudeProvider && m.claudeHistoryOpen)
 }
 
 func (m *model) beginUsageRefresh() tea.Cmd {
@@ -414,6 +453,10 @@ func (m *model) beginUsageRefresh() tea.Cmd {
 	if m.usageProvider == kimiProvider {
 		m.kimiUsageLoading = true
 		return refreshKimiUsage()
+	}
+	if m.usageProvider == claudeProvider {
+		m.claudeUsageLoading = true
+		return refreshClaudeUsage()
 	}
 	m.codexUsageLoading = true
 	return refreshCodexUsage()

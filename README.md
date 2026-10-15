@@ -301,7 +301,7 @@ from `firekeeper serve token create`; see [Tokens](#tokens).
 | --- | --- | --- | --- | --- |
 | Codex | Yes | Yes, from rollout events and `state_5.sqlite` | Limits and history | Yes |
 | GitHub Copilot CLI | Yes | Yes, from `events.jsonl`, `workspace.yaml`, and `session-store.db` | Local history and plan details | Yes |
-| Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | No | Yes |
+| Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | Token history | Yes |
 | Kimi Code | Yes | Metadata from session `state.json`; the state is shown as `ACTIVE` whenever a session matches | Token history | No |
 | OpenCode | Yes | No | No | No |
 
@@ -315,7 +315,7 @@ nothing is uploaded for it. `OpenCode` has no adapter beyond the process list.
 Firekeeper opens on Processes. Press Tab to move between two text views:
 
 - **Processes** — running agent harnesses and their session details.
-- **Usage** — Codex quotas plus Codex, Kimi, and Copilot CLI token history and model usage.
+- **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage.
 
 Two lookups in the Usage tab leave the machine, and neither uploads session
 data. Codex usage starts a short-lived `codex app-server` and asks it for your
@@ -394,13 +394,14 @@ unambiguous pane is found, Firekeeper falls back to normal terminal switching.
 
 | Key | Action |
 | --- | --- |
-| Left / Right or `H` / `L` | Switch between Codex, Copilot, and Kimi |
+| Left / Right or `H` / `L` | Switch between Codex, Copilot, Kimi, and Claude |
 | `r` | Refresh selected provider |
 
 Press `Enter` on any supported provider to browse historical sessions. Use
 Up/Down to select a session; press `Enter` or `Esc` to return. Codex history is
 read from local `state_5.sqlite`; Copilot history is read from local
-`session-store.db`. Each browser is limited to the 500 most recent sessions.
+`session-store.db`; Claude Code history is read from its transcripts. Each
+browser is limited to the 500 most recent sessions.
 Usage overviews assign distinct, consistent colors to as many as 10 displayed
 models per provider, including model totals and stacked daily bars.
 
@@ -416,6 +417,16 @@ Kimi usage reads local `usage.record` events from Kimi Code sessions under
 cache, output, and total token history. Kimi quota/reset data is exposed by
 Kimi Code’s `/usage` flow; Firekeeper does not extract credentials or call
 undocumented quota endpoints.
+
+Claude Code usage reads assistant message usage from local transcripts under
+`CLAUDE_CONFIG_DIR/projects` (default `~/.claude/projects`), read-only. It
+shows session, model, input, cache read, cache write, output, and total token
+history. Claude Code repeats a response's usage on every content block line,
+so each message ID is counted once, including messages copied into a resumed
+session. Requests Claude Code does not write to the transcript, such as title
+generation, are not counted, so totals can be slightly below what Claude Code
+reports. Plan limits and reset times are not stored locally; use Claude Code's
+`/usage`. Firekeeper does not read credentials or call Anthropic endpoints.
 
 Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit

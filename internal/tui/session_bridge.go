@@ -14,6 +14,7 @@ func copilotHome() (string, error)                 { return session.CopilotHome(
 func parseCopilotTime(value string) time.Time      { return session.ParseCopilotTime(value) }
 func firstNonEmpty(values ...string) string        { return session.FirstNonEmpty(values...) }
 func kimiHome() (string, error)                    { return session.KimiHome() }
+func claudeConfigDir() (string, error)             { return session.ClaudeConfigDir() }
 func codexStatePath() (string, error)              { return session.CodexStatePath() }
 func emptyFallback(value, fallback string) string  { return session.EmptyFallback(value, fallback) }
 func normalizeTTY(value string) string             { return session.NormalizeTTY(value) }
