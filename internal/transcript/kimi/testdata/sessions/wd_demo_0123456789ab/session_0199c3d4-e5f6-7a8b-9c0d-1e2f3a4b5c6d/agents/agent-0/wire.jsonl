@@ -1,0 +1,2 @@
+{"type":"metadata","protocol_version":"1.5","created_at":1791460800200}
+{"type":"context.append_message","agentId":"agent-0","message":{"role":"user","content":[{"type":"text","text":"Explore the repo."}],"toolCalls":[]},"time":1791460800201}
