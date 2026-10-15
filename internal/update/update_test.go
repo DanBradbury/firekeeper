@@ -42,7 +42,7 @@ func release(t *testing.T, body string, hits *int32) *httptest.Server {
 	return srv
 }
 
-func TestAvailableCachesAndSkips(t *testing.T) {
+func TestAvailableChecksEveryLaunchAndSkips(t *testing.T) {
 	var hits int32
 	srv := release(t, `{"tag_name":"v0.3.0","prerelease":false}`, &hits)
 	now := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
@@ -51,16 +51,16 @@ func TestAvailableCachesAndSkips(t *testing.T) {
 	if v, ok := c.Available(context.Background()); !ok || v != "0.3.0" {
 		t.Fatalf("Available = %q, %v; want 0.3.0, true", v, ok)
 	}
-	if _, ok := c.Available(context.Background()); !ok || atomic.LoadInt32(&hits) != 1 {
-		t.Fatalf("second call should use the cache; hits=%d", hits)
+	if _, ok := c.Available(context.Background()); !ok || atomic.LoadInt32(&hits) != 2 {
+		t.Fatalf("second call should query again; hits=%d", hits)
 	}
 	c.Skip("0.3.0")
 	if _, ok := c.Available(context.Background()); ok {
 		t.Fatal("skipped version offered again")
 	}
-	now = now.Add(25 * time.Hour)
-	if _, ok := c.Available(context.Background()); ok || atomic.LoadInt32(&hits) != 2 {
-		t.Fatalf("stale cache should refresh once and stay skipped; hits=%d", hits)
+	now = now.Add(time.Minute)
+	if _, ok := c.Available(context.Background()); ok || atomic.LoadInt32(&hits) != 4 {
+		t.Fatalf("each launch should query and a skipped version stay skipped; hits=%d", hits)
 	}
 }
 
@@ -131,5 +131,19 @@ func TestIsHomebrew(t *testing.T) {
 	}
 	if IsHomebrew("/home/u/.local/bin/firekeeper") {
 		t.Error("plain path detected as Homebrew")
+	}
+}
+
+func TestAvailableOfflineUsesCache(t *testing.T) {
+	var hits int32
+	srv := release(t, `{"tag_name":"v0.3.0","prerelease":false}`, &hits)
+	dir := t.TempDir()
+	c := &Checker{Current: "0.2.1", Dir: dir, URL: srv.URL}
+	if _, ok := c.Available(context.Background()); !ok {
+		t.Fatal("expected an update online")
+	}
+	srv.Close()
+	if v, ok := c.Available(context.Background()); !ok || v != "0.3.0" {
+		t.Fatalf("offline Available = %q, %v; want cached 0.3.0, true", v, ok)
 	}
 }

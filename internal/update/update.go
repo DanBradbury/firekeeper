@@ -1,8 +1,8 @@
 // Package update checks GitHub for a newer Firekeeper release and, if the
 // user agrees, installs it.
 //
-// The check is one unauthenticated GET for the latest release, at most once a
-// day, and sends nothing about the machine, the user, or any session. It is
+// The check is one unauthenticated GET for the latest release on each launch,
+// and sends nothing about the machine, the user, or any session. It is
 // skipped for development builds, when stdin or stdout is not a terminal, and
 // when FIREKEEPER_NO_UPDATE_CHECK is set.
 package update
@@ -31,12 +31,11 @@ const (
 )
 
 const (
-	defaultURL    = "https://api.github.com/repos/DanBradbury/firekeeper/releases/latest"
-	scriptURLFmt  = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.sh"
-	brewFormula   = "DanBradbury/tap/firekeeper"
-	checkInterval = 24 * time.Hour
-	fetchTimeout  = 2 * time.Second
-	maxBody       = 1 << 20
+	defaultURL   = "https://api.github.com/repos/DanBradbury/firekeeper/releases/latest"
+	scriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.sh"
+	brewFormula  = "DanBradbury/tap/firekeeper"
+	fetchTimeout = 2 * time.Second
+	maxBody      = 1 << 20
 )
 
 var tagPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
@@ -84,22 +83,19 @@ func (c *Checker) save(s state) {
 }
 
 // Available returns the newest release when it is newer than the running
-// version and the user has not skipped it. It refreshes the cached answer when
-// that is more than a day old; any failure means "nothing to offer".
+// version and the user has not skipped it. It asks GitHub on every call and
+// falls back to the last cached answer when the lookup fails, so an offline
+// launch can still offer a release seen earlier.
 func (c *Checker) Available(ctx context.Context) (string, bool) {
 	if c.Current == "" || c.Current == "dev" || os.Getenv(EnvDisable) != "" {
 		return "", false
 	}
 	s := c.load()
-	if c.now().Sub(s.CheckedAt) >= checkInterval {
-		// Record the attempt first so an offline machine retries daily, not
-		// on every launch.
-		s.CheckedAt = c.now()
-		if latest, err := c.fetch(ctx); err == nil {
-			s.Latest = latest
-		}
-		c.save(s)
+	s.CheckedAt = c.now()
+	if latest, err := c.fetch(ctx); err == nil {
+		s.Latest = latest
 	}
+	c.save(s)
 	if s.Latest == "" || s.Latest == s.Skipped || !Newer(s.Latest, c.Current) {
 		return "", false
 	}

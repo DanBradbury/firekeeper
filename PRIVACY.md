@@ -43,7 +43,7 @@ The terminal dashboard makes three kinds of request that leave your machine.
 None sends session data, and none goes to me:
 
 - **Update check**: when you start `firekeeper` in a terminal, it asks
-  GitHub's API for the latest release at most once a day and offers to
+  GitHub's API for the latest release on each launch and offers to
   update if there is a newer one. The request is an unauthenticated `GET`
   that carries no identifier. Nothing installs unless you answer yes. The
   result is cached in `~/.firekeeper/update.json`. Set
