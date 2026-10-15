@@ -580,7 +580,7 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup, misses map[i
 // with session metadata worth retaining across a transient miss.
 func hasSessionMetadataAdapter(tool string) bool {
 	switch tool {
-	case "Codex", "Copilot", "Kimi", "Claude", "OpenCode":
+	case "Codex", "Copilot", "Kimi", "Claude", "OpenCode", "Gemini":
 		return true
 	}
 	return false

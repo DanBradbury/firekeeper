@@ -62,7 +62,7 @@ func TestSchemaDriftDetected(t *testing.T) {
 			props(s)["role"].(map[string]any)["enum"] = []any{"user", "assistant"}
 		},
 		"provider enum": func(s map[string]any) {
-			props(s)["provider"].(map[string]any)["enum"] = []any{"codex", "copilot", "kimi", "claude", "gemini"}
+			props(s)["provider"].(map[string]any)["enum"] = []any{"codex", "copilot", "kimi", "claude", "opencode", "aider"}
 		},
 		"nested tokens": func(s map[string]any) {
 			delete(props(props(s)["tokens"].(map[string]any)), "cache")

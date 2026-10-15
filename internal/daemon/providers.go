@@ -31,6 +31,7 @@ func DetectProviders(home string, getenv func(string) string, lookPath func(stri
 		{transcript.ProviderKimi, "KIMI_CODE_HOME", "", ".kimi-code", "kimi"},
 		{transcript.ProviderClaude, "CLAUDE_CONFIG_DIR", "", ".claude", "claude"},
 		{transcript.ProviderOpenCode, "XDG_DATA_HOME", "opencode", filepath.Join(".local", "share", "opencode"), "opencode"},
+		{transcript.ProviderGemini, "GEMINI_CLI_HOME", ".gemini", ".gemini", "gemini"},
 	} {
 		directory := strings.TrimSpace(getenv(candidate.env))
 		if directory == "" {

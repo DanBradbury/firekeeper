@@ -1,0 +1,10 @@
+not json
+{"id":"m1","type":"user","content":42}
+{"id":"m2","type":"gemini","content":{"text":"One part."},"toolCalls":"nope"}
+{"id":"m3","type":"gemini","content":null,"toolCalls":[{"name":"run_shell_command"},{"name":"run_shell_command","args":null}],"tokens":{"input":-5,"output":-1,"cached":9}}
+{"id":"m4","type":"future_type","content":"?"}
+{"id":"m5","type":"user","content":[{"functionResponse":{"name":"web_fetch","response":{"output":{"status":200}}}}]}
+{"$set":{"lastUpdated":"not a time"}}
+{"unknown":true}
+[]
+{"id":7,"type":"user"}

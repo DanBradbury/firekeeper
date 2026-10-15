@@ -26,7 +26,10 @@ type Options struct {
 	// OpenCodeDB overrides the OpenCode database path, which defaults to
 	// OPENCODE_DB or $XDG_DATA_HOME/opencode/opencode.db.
 	OpenCodeDB string
-	Run        func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// GeminiDir overrides Gemini CLI's runtime directory, which defaults to
+	// $GEMINI_CLI_HOME/.gemini or ~/.gemini.
+	GeminiDir string
+	Run       func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 // Meta describes one observable session. Runtimes without metadata have an
@@ -113,7 +116,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	for _, p := range []struct {
 		name   string
 		enrich func([]ProcessGroup) error
-	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}} {
+	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}, {"Gemini", d.enrichGeminiSessions}} {
 		if err := p.enrich(groups); err != nil {
 			warnings = append(warnings, p.name+": "+d.sanitizeProcessCommand(err.Error()))
 		}

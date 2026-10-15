@@ -6,7 +6,7 @@
 - Go module: `github.com/DanBradbury/firekeeper`
 - Command: `firekeeper`
 - Product: local, keyboard-driven terminal dashboard for monitoring coding-agent harnesses.
-- Current harness support: Codex, GitHub Copilot CLI, and OpenCode process discovery. Codex and Copilot also have session metadata adapters.
+- Current harness support: Codex, GitHub Copilot CLI, Claude Code, Kimi Code, OpenCode, and Gemini CLI process discovery, each with a session metadata adapter.
 - Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2.
 
 Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting and dashboard") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `serve`. Do not make agent CLIs depend on any of them.
@@ -16,7 +16,7 @@ Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper`
 1. Read `README.md` for current user-facing behavior and controls.
 2. Check `git status --short` and preserve unrelated or pre-existing changes.
 3. Locate tests next to the relevant implementation before editing.
-4. Treat files under `~/.codex` and `~/.copilot` as private user data. Never print prompts, secrets, raw event payloads, or full command lines unnecessarily.
+4. Treat provider data (`~/.codex`, `~/.copilot`, `~/.claude`, `~/.kimi-code`, OpenCode's database, `~/.gemini`) as private user data. Never print prompts, secrets, raw event payloads, or full command lines unnecessarily.
 
 Do not commit, push, create issues, or modify remote state unless the user asks.
 
@@ -81,7 +81,8 @@ firekeeper/
 │   │       or UNKNOWN
 │   ├── transcript/
 │   │   ├── Event contract: events, providers, roles, tokens (no session import)
-│   │   ├── claude/, codex/, copilot/: per-provider transcript parsers
+│   │   ├── claude/, codex/, copilot/, kimi/, opencode/, gemini/: per-provider
+│   │   │   transcript parsers
 │   │   ├── reader/: reader registry, provider lookup, and enumeration. reader
 │   │   │   and the provider packages import internal/session; the transcript
 │   │   │   package itself must not
@@ -126,7 +127,7 @@ Process discovery uses `ps`; open-file mapping uses `lsof`; local database queri
 Provider rules:
 
 - Read local provider data only. Never mutate provider databases, rollout files, logs, or workspace metadata.
-- Honor `CODEX_HOME` and `COPILOT_HOME` overrides.
+- Honor `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`, `OPENCODE_DB`, `XDG_DATA_HOME`, and `GEMINI_CLI_HOME` overrides.
 - Use bounded operations and actionable, sanitized errors.
 - Add parser tests for malformed, missing, partial, and evolving provider data.
 - Use temporary directories and fixtures in tests. Do not depend on developer account data or write into real home directories.
@@ -175,6 +176,7 @@ const (
     ProviderCodex    Provider = "codex"
     ProviderCopilot  Provider = "copilot"
     ProviderOpenCode Provider = "opencode"
+    ProviderGemini   Provider = "gemini"
 )
 ```
 
@@ -291,7 +293,7 @@ Firekeeper is gaining an opt-in way to send session metadata and full transcript
 - Go module `github.com/DanBradbury/firekeeper`; the root `main` package must stay installable with `go install github.com/DanBradbury/firekeeper@latest`.
 - New code goes in `internal/` packages: `session`, `transcript`, `redact`, `server`, `reporter`, `daemon`, `config`, `cli`, `tui`, `version`. Keep `main.go` thin. The TUI lives in `internal/tui`; do not rewrite or reformat it unless a task asks for that.
 - No cgo in new code. The server's own database uses `modernc.org/sqlite` with FTS5. Reading provider SQLite files keeps using `sqlite3 -readonly -json` as described above unless a task says otherwise.
-- Provider data is read-only, as above, and `CODEX_HOME`, `COPILOT_HOME`, and `KIMI_CODE_HOME` are honored.
+- Provider data is read-only, as above, and `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, and `GEMINI_CLI_HOME` are honored.
 - Never commit real transcripts. Fixtures are synthetic or fully scrubbed.
 - Tests never touch the network or the real home directory. Use `t.TempDir()` and fixture trees.
 - Never print transcript text, prompts, or raw event payloads in logs, errors, or test output.
@@ -313,7 +315,7 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 {
   "machine_id": "string",
   "session_id": "string, provider-native id",
-  "provider": "codex | copilot | kimi | claude | opencode",
+  "provider": "codex | copilot | kimi | claude | opencode | gemini",
   "seq": 0,
   "ts": "RFC3339 or null",
   "role": "user | assistant | tool_call | tool_result | system | meta",

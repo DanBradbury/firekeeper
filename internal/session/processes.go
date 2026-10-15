@@ -120,6 +120,10 @@ func (d *discoverer) classifyProcess(command string) string {
 		// Checked first: Claude Code command lines can name other
 		// harnesses in resumed transcript paths.
 		return "Claude"
+	case d.isGeminiCommand(command):
+		// Matched on the executable, so a Gemini model named in another
+		// harness's flags stays with that harness.
+		return "Gemini"
 	case strings.Contains(lower, "opencode"):
 		return "OpenCode"
 	case strings.Contains(lower, "copilot"):

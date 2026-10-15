@@ -35,6 +35,7 @@ const (
 	// openCodeID's session holds messages at gapped seqs, as OpenCode's
 	// durable event sequence leaves them.
 	openCodeID = "ses_e2eSmokeOpenCode0001"
+	geminiID   = "0199e2e0-0000-7000-8000-00000000a001"
 )
 
 // fakeSecret looks like an API key to internal/redact. It is assembled at
@@ -52,6 +53,7 @@ type home struct {
 	events   string // Copilot
 	kimiWire string // Kimi Code main agent wire log
 	openCode string // OpenCode database
+	gemini   string // Gemini CLI session log
 }
 
 func newHome(t *testing.T) *home {
@@ -132,7 +134,32 @@ func newHome(t *testing.T) *home {
 		"time":    map[string]any{"created": 1791892802000, "completed": 1791892803000},
 	})
 	h.openCodeMessage(t, 4, "idle", map[string]any{"outcome": "succeeded"})
+
+	// Gemini CLI names each project's directory in projects.json and logs
+	// sessions under it.
+	geminiDir := filepath.Join(h.dir, ".gemini")
+	write(t, filepath.Join(geminiDir, "projects.json"), fmt.Sprintf(`{"projects":{%q:"smoke"}}`, h.repo))
+	write(t, filepath.Join(geminiDir, "tmp", "smoke", ".project_root"), h.repo)
+	h.gemini = filepath.Join(geminiDir, "tmp", "smoke", "chats", "session-2026-10-07T12-00-0199e2e0.jsonl")
+	write(t, h.gemini, jsonl(
+		map[string]any{"sessionId": geminiID, "projectHash": session.GeminiProjectHash(h.repo), "startTime": "2026-10-07T12:00:00.000Z", "lastUpdated": "2026-10-07T12:00:00.000Z", "kind": "main"},
+		map[string]any{"id": "u1", "timestamp": "2026-10-07T12:00:01.000Z", "type": "user", "content": []map[string]string{{"text": "Call it with " + fakeSecret + " now."}}},
+		geminiReply("Called."),
+		map[string]any{"$set": map[string]any{"summary": "Gemini smoke", "lastUpdated": "2026-10-07T12:00:03.000Z"}},
+	))
 	return h
+}
+
+// geminiReply is one Gemini CLI model message.
+func geminiReply(text string, extra ...map[string]any) map[string]any {
+	reply := map[string]any{"id": "g1", "timestamp": "2026-10-07T12:00:02.000Z", "type": "gemini", "content": text, "model": "gemini-e2e",
+		"tokens": map[string]int{"input": 110, "output": 5, "cached": 100, "thoughts": 0, "tool": 0, "total": 115}}
+	for _, fields := range extra {
+		for k, v := range fields {
+			reply[k] = v
+		}
+	}
+	return reply
 }
 
 // openCodeSQL runs statements against h's OpenCode database.
@@ -175,12 +202,13 @@ func codexMessage(role, kind, text string) map[string]any {
 }
 
 // run answers discovery's ps, lsof, sqlite3, and git calls as if one Codex,
-// one Copilot, one Kimi, and one OpenCode process were running in h.repo.
+// one Copilot, one Kimi, one OpenCode, and one Gemini CLI process were
+// running in h.repo.
 // OpenCode queries run against the real database with sqlite3.
 func (h *home) run(_ context.Context, name string, args ...string) ([]byte, error) {
 	switch name {
 	case "ps":
-		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n400 1 ttys004 00:10 opencode\n"), nil
+		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n400 1 ttys004 00:10 opencode\n500 1 ttys005 00:10 gemini\n"), nil
 	case "lsof":
 		switch {
 		case slices.Equal(args, []string{"-Fn", "-p", "100"}):
@@ -189,6 +217,8 @@ func (h *home) run(_ context.Context, name string, args ...string) ([]byte, erro
 			return []byte("p300\nn" + h.repo + "\n"), nil
 		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "400"}):
 			return []byte("p400\nn" + h.repo + "\n"), nil
+		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "500"}):
+			return []byte("p500\nn" + h.repo + "\n"), nil
 		}
 	case "sqlite3":
 		if len(args) == 4 && args[0] == "-readonly" && args[1] == "-json" && filepath.Base(args[2]) == "state_5.sqlite" {
@@ -218,9 +248,10 @@ func (h *home) config(t *testing.T, server string) reporter.Config {
 	t.Setenv("KIMI_CODE_HOME", filepath.Join(h.dir, ".kimi-code"))
 	t.Setenv("XDG_DATA_HOME", "")
 	t.Setenv("OPENCODE_DB", "")
+	t.Setenv("GEMINI_CLI_HOME", h.dir)
 	return reporter.Config{
 		Server:    server,
-		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderOpenCode},
+		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderOpenCode, transcript.ProviderGemini},
 		Home:      h.dir,
 		Version:   "e2e",
 		Discover: func(ctx context.Context, opts session.Options) ([]session.Meta, error) {
@@ -228,6 +259,7 @@ func (h *home) config(t *testing.T, server string) reporter.Config {
 			opts.CopilotHome = filepath.Join(h.dir, ".copilot")
 			opts.KimiHome = filepath.Join(h.dir, ".kimi-code")
 			opts.OpenCodeDB = h.openCode
+			opts.GeminiDir = filepath.Join(h.dir, ".gemini")
 			opts.Run = h.run
 			return session.Discover(ctx, opts)
 		},
@@ -257,8 +289,9 @@ func TestSmoke(t *testing.T) {
 		"copilot":  expectedEvents(t, transcript.ProviderCopilot, h.events),
 		"kimi":     expectedEvents(t, transcript.ProviderKimi, h.kimiWire),
 		"opencode": expectedEvents(t, transcript.ProviderOpenCode, openCodePath),
+		"gemini":   expectedEvents(t, transcript.ProviderGemini, h.gemini),
 	}
-	ids := map[string]string{"codex": codexID, "copilot": copilotID, "kimi": kimiID, "opencode": openCodeID}
+	ids := map[string]string{"codex": codexID, "copilot": copilotID, "kimi": kimiID, "opencode": openCodeID, "gemini": geminiID}
 	for provider, n := range want {
 		if first[provider].Events != n {
 			t.Errorf("%s: first pass read %d events, want %d", provider, first[provider].Events, n)
@@ -302,15 +335,28 @@ func TestSmoke(t *testing.T) {
 		}
 	}
 
-	// Appending to the Codex rollout, the Kimi wire log, and the OpenCode
-	// session sends only the new events.
+	// Appending to the Codex rollout, the Kimi wire log, the OpenCode
+	// session, and the Gemini CLI log sends only the new events.
 	appendFile(t, h.rollout, jsonl(
 		codexMessage("user", "input_text", "One more thing."),
 		codexMessage("assistant", "output_text", "Appended reply."),
 	))
 	h.openCodeMessage(t, 7, "user", map[string]any{"text": "Next task."})
 	appendFile(t, h.kimiWire, jsonl(kimiReply("Appended Kimi reply.", 1791892804000)))
+	// Gemini CLI writes the reply again when it gains a tool call; only the
+	// call is new.
+	appendFile(t, h.gemini, jsonl(geminiReply("Called.", map[string]any{"toolCalls": []map[string]any{{
+		"id": "c1", "name": "write_file", "args": map[string]string{"file_path": "notes.md", "content": "x"}, "status": "success",
+	}}})))
 	third := runOnce(t, cfg)
+	if r := third["gemini"]; r.Events != 1 || r.Duplicates != 0 {
+		t.Errorf("gemini: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
+	}
+	geminiEvents := listEvents(t, srv.URL, machineID, geminiID)
+	assertSeqs(t, "gemini", geminiEvents, want["gemini"]+1)
+	if last := geminiEvents[len(geminiEvents)-1]; last.Role != transcript.RoleToolCall || last.ToolName == nil || *last.ToolName != "write_file" || last.Tokens != (transcript.Tokens{}) {
+		t.Errorf("gemini: appended event (seq %d) is not the new tool call alone", last.Seq)
+	}
 	if r := third["kimi"]; r.Events != 1 || r.Duplicates != 0 {
 		t.Errorf("kimi: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
 	}
@@ -362,7 +408,7 @@ func runOnce(t *testing.T, cfg reporter.Config) map[string]reporter.SessionResul
 		}
 		results[r.Provider] = r
 	}
-	for _, p := range []string{"codex", "copilot", "kimi", "opencode"} {
+	for _, p := range []string{"codex", "copilot", "kimi", "opencode", "gemini"} {
 		if _, ok := results[p]; !ok {
 			t.Fatalf("%s: session not discovered", p)
 		}

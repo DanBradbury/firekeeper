@@ -202,6 +202,40 @@ func TestChatReadsKimiSession(t *testing.T) {
 	}
 }
 
+func TestChatReadsGeminiSession(t *testing.T) {
+	const id = "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+	path := filepath.Join(t.TempDir(), "tmp", "demo", "chats", "session-2026-10-08T00-00-0199c3d4.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"sessionId":"` + id + `","projectHash":"h","startTime":"2026-10-08T00:00:00.000Z","lastUpdated":"2026-10-08T00:00:00.000Z","kind":"main"}` + "\n" +
+		`{"id":"u1","timestamp":"2026-10-08T00:00:01.000Z","type":"user","content":[{"text":"Fix the build"}]}` + "\n" +
+		`{"id":"g1","timestamp":"2026-10-08T00:00:02.000Z","type":"gemini","content":"","thoughts":[{"subject":"Plan","description":"Run it"}],"model":"gemini-test"}` + "\n" +
+		`{"id":"g1","timestamp":"2026-10-08T00:00:02.000Z","type":"gemini","content":"","toolCalls":[{"id":"c1","name":"run_shell_command","args":{"command":"go build"},"status":"success"}],"model":"gemini-test"}` + "\n" +
+		`{"id":"u2","timestamp":"2026-10-08T00:00:03.000Z","type":"user","content":[{"functionResponse":{"id":"c1","name":"run_shell_command","response":{"output":"ok"}}}]}` + "\n" +
+		`{"id":"g2","timestamp":"2026-10-08T00:00:04.000Z","type":"gemini","content":"The build passes now.","model":"gemini-test"}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel()
+	m.width, m.height = 100, 30
+	m.processGroups = []processGroup{{tool: "Gemini", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
+	m = openTestChat(t, m)
+	if m.chat.err != "" {
+		t.Fatalf("chat error: %s", m.chat.err)
+	}
+	// Thinking, tool calls, and tool results are left out.
+	if len(m.chat.messages) != 2 || m.chat.messages[0].text != "Fix the build" || m.chat.messages[1].text != "The build passes now." {
+		t.Fatalf("messages = %+v", m.chat.messages)
+	}
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{"You", "Fix the build", "Gemini", "The build passes now.", "2 messages"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("chat view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
 func TestChatIgnoresStaleResults(t *testing.T) {
 	m, _ := chatTestModel(t)
 	result := m.openChat()()

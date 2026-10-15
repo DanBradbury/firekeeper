@@ -70,6 +70,19 @@ func TestTouchedFiles(t *testing.T) {
 			[]string{"d.go"}},
 		{"kimi user message tool calls", ProviderKimi,
 			`{"type":"context.append_message","message":{"role":"user","toolCalls":[{"name":"Write","arguments":"{\"path\":\"a.go\"}"}]}}`, nil},
+		{"gemini replace and write_file", ProviderGemini,
+			`{"id":"m1","type":"gemini","content":"","toolCalls":[{"id":"c1","name":"replace","args":{"file_path":"/w/a.go","old_string":"x","new_string":"y"}},{"id":"c2","name":"write_file","args":{"file_path":"b.go","content":"z"}},{"id":"c3","name":"replace","args":{"file_path":"/w/a.go"}}]}`,
+			[]string{"/w/a.go", "b.go"}},
+		{"gemini read is not a change", ProviderGemini,
+			`{"id":"m1","type":"gemini","toolCalls":[{"id":"c1","name":"read_file","args":{"file_path":"a.go"}}]}`, nil},
+		{"gemini shell is not a change", ProviderGemini,
+			`{"id":"m1","type":"gemini","toolCalls":[{"id":"c1","name":"run_shell_command","args":{"command":"rm a.go"}}]}`, nil},
+		{"gemini user message is not a change", ProviderGemini,
+			`{"id":"m1","type":"user","toolCalls":[{"name":"write_file","args":{"file_path":"a.go"}}]}`, nil},
+		{"gemini path not a string", ProviderGemini,
+			`{"id":"m1","type":"gemini","toolCalls":[{"name":"write_file","args":{"file_path":7}}]}`, nil},
+		{"gemini patch record", ProviderGemini,
+			`{"$patch":{"updates":[{"id":"m1","toolCalls":[{"id":"c1","result":[]}]}]}}`, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
