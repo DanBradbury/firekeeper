@@ -82,6 +82,9 @@ func TestGetSessionFiles(t *testing.T) {
 	if got.Commit != "abc123" || got.Branch != "main" {
 		t.Fatalf("git context = (%q, %q)", got.Branch, got.Commit)
 	}
+	if got.FilesSource != store.FilesFromToolCalls {
+		t.Fatalf("files_source = %q, want tool_calls", got.FilesSource)
+	}
 	want := []store.SessionFile{
 		{Path: "/etc/hosts", Absolute: true, FirstSeq: 1, LastSeq: 1, Changes: 1},
 		{Path: "main.go", FirstSeq: 0, LastSeq: 0, Changes: 1, URL: "https://host.example/me/demo/blob/abc123/main.go"},
@@ -102,5 +105,39 @@ func TestGetSessionFiles(t *testing.T) {
 	}
 	if string(rawResp["files"]) != "[]" {
 		t.Fatalf("files = %s, want []", rawResp["files"])
+	}
+}
+
+func TestSessionGitFiles(t *testing.T) {
+	s := newStore(t)
+	h := Handler(s)
+	body := map[string]any{
+		"machine": map[string]any{"id": "m1"},
+		"sessions": []map[string]any{{
+			"meta": map[string]any{
+				"session_id": "s1", "provider": "claude", "cwd": "~/src/demo",
+				"files_source": "git", "files": []string{"~/src/demo/b.go", "~/src/demo/a.go"},
+			},
+			"events": []any{},
+		}},
+	}
+	if rr := post(t, h, "/v1/ingest", body); rr.Code != http.StatusOK {
+		t.Fatalf("ingest status %d: %s", rr.Code, rr.Body)
+	}
+	var got struct {
+		FilesSource string              `json:"files_source"`
+		Files       []store.SessionFile `json:"files"`
+	}
+	if code := get(t, h, "/v1/sessions/m1:s1", &got); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if got.FilesSource != "git" || len(got.Files) != 2 || got.Files[0].Path != "a.go" || got.Files[1].Path != "b.go" ||
+		got.Files[0].Changes != 0 || got.Files[0].FirstSeq != -1 {
+		t.Fatalf("session = %+v", got)
+	}
+
+	body["sessions"].([]map[string]any)[0]["meta"].(map[string]any)["files_source"] = "svn"
+	if rr := post(t, h, "/v1/ingest", body); rr.Code != http.StatusBadRequest {
+		t.Fatalf("unknown files_source status %d, want 400", rr.Code)
 	}
 }

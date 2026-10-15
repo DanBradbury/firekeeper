@@ -725,17 +725,28 @@ function sessionHeader(s) {
       fact("session", s.session_id)));
 }
 
-// filesPanel lists the files a session's tool calls changed. Paths are
+const BEST_EFFORT_FILES = "Best effort: this list only has files the agent's edit tools changed, so files changed by shell commands or scripts are missing. An accurate list needs the session to run in a Git repository.";
+
+// filesPanel lists the files a session changed. With files_source "git"
+// the list is Git's changes since the session's start commit; otherwise it
+// is only what edit tool calls named, and the panel says so. Paths are
 // relative to the session's cwd unless the file was outside it. A path
 // links to the repository host only when the server has a link template.
 function filesPanel(s, ui) {
   const files = s.files || [];
+  const fromGit = s.files_source === "git";
   const details = el("details", { class: "panel files" },
-    el("summary", {}, el("span", { text: "Files changed" }), el("span", { class: "count", text: files.length.toLocaleString() })));
+    el("summary", {},
+      el("span", { text: "Files changed" }),
+      el("span", { class: "count", text: files.length.toLocaleString() }),
+      fromGit ? null : el("span", { class: "hint", title: BEST_EFFORT_FILES, text: "best effort" })));
   details.open = ui.filesOpen;
   details.addEventListener("toggle", () => { ui.filesOpen = details.open; });
+  details.append(el("p", { class: "note" }, fromGit
+    ? (s.commit ? `From Git: changes since commit ${s.commit.slice(0, 12)}.` : "From Git.")
+    : BEST_EFFORT_FILES));
   if (!files.length) {
-    details.append(el("p", { class: "empty", text: "No file edits found in this transcript." }));
+    details.append(el("p", { class: "empty", text: fromGit ? "Git reports no changed files." : "No file edits found in this transcript." }));
     return details;
   }
   const list = el("ul");
@@ -743,11 +754,17 @@ function filesPanel(s, ui) {
     const name = f.url
       ? el("a", { href: f.url, target: "_blank", rel: "noopener noreferrer", text: f.path })
       : el("span", { text: f.path });
-    const seqs = f.first_seq === f.last_seq ? `#${f.first_seq}` : `#${f.first_seq}–${f.last_seq}`;
+    let meta;
+    if (f.changes > 0) {
+      const seqs = f.first_seq === f.last_seq ? `#${f.first_seq}` : `#${f.first_seq}–${f.last_seq}`;
+      meta = el("span", { class: "meta", title: `Changed by ${f.changes} tool ${f.changes === 1 ? "call" : "calls"}; events ${seqs}` },
+        `${f.changes}× · ${seqs}`);
+    } else {
+      meta = el("span", { class: "meta", title: "Git reports this file changed, but no edit tool call named it (for example, a shell command changed it)" }, "git");
+    }
     list.append(el("li", {},
       el("span", { class: "path" + (f.absolute ? " outside" : ""), title: f.absolute ? "Outside the session's working directory" : null }, name),
-      el("span", { class: "meta", title: `Changed by ${f.changes} tool ${f.changes === 1 ? "call" : "calls"}; events ${seqs}` },
-        `${f.changes}× · ${seqs}`)));
+      meta));
   }
   details.append(list);
   return details;

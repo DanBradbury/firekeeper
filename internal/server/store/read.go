@@ -34,6 +34,8 @@ type Session struct {
 	LastActivityAt *time.Time        `json:"last_activity_at"`
 	EventCount     int64             `json:"event_count"`
 	Tokens         transcript.Tokens `json:"tokens"`
+	// FilesSource says where the session's changed-file list comes from.
+	FilesSource FilesSource `json:"files_source"`
 	// Snippets are the best-matching transcript excerpts, set only for
 	// searches (q). Text is HTML-escaped except for <mark> around matches.
 	Snippets []Snippet `json:"snippets,omitempty"`
@@ -128,17 +130,19 @@ func ftsPhrase(q string) string {
 
 const sessionColumns = `s.machine_id, s.session_id, s.provider, s.cwd, s.project, s.branch, s."commit", s.model,
     s.state, s.title, s.started_at, s.last_activity_at, s.event_count,
-    s.input_tokens, s.output_tokens, s.cache_tokens`
+    s.input_tokens, s.output_tokens, s.cache_tokens, s.files_source`
 
 func scanSession(sc interface{ Scan(...any) error }) (Session, string, error) {
 	var se Session
 	var started, last sql.NullString
+	var source string
 	err := sc.Scan(&se.MachineID, &se.SessionID, &se.Provider, &se.CWD, &se.Project, &se.Branch,
 		&se.Commit, &se.Model, &se.State, &se.Title, &started, &last, &se.EventCount,
-		&se.Tokens.Input, &se.Tokens.Output, &se.Tokens.Cache)
+		&se.Tokens.Input, &se.Tokens.Output, &se.Tokens.Cache, &source)
 	if err != nil {
 		return se, "", err
 	}
+	se.FilesSource = storedFilesSource(source)
 	se.UID = UID(se.MachineID, se.SessionID)
 	se.StartedAt = parseTime(started)
 	se.LastActivityAt = parseTime(last)

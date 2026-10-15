@@ -47,6 +47,12 @@ type SessionMeta struct {
 	Title          string     `json:"title"`
 	StartedAt      *time.Time `json:"started_at"`
 	LastActivityAt *time.Time `json:"last_activity_at"`
+	// FilesSource set to FilesFromGit makes Files the session's changed
+	// files, replacing any earlier Git list. Empty, or FilesFromToolCalls,
+	// leaves the stored list alone, so a later report that could not run
+	// git never discards one that could.
+	FilesSource FilesSource `json:"files_source,omitempty"`
+	Files       []string    `json:"files,omitempty"`
 }
 
 // SessionBatch is one session's metadata plus new events.
@@ -301,6 +307,9 @@ func (s *Store) IngestLimited(ctx context.Context, accountID string, m Machine, 
 		if b.Meta.State != "" && !validStates[b.Meta.State] {
 			return 0, 0, fmt.Errorf("%w: invalid state", ErrInvalid)
 		}
+		if err := validateFiles(b.Meta); err != nil {
+			return 0, 0, err
+		}
 		for _, e := range b.Events {
 			if err := e.Validate(); err != nil {
 				return 0, 0, fmt.Errorf("%w: %v", ErrInvalid, err)
@@ -399,6 +408,11 @@ ON CONFLICT(account_id, machine_id, session_id, seq) DO NOTHING`,
 		}
 		if err := storeFiles(ctx, tx, accountID, m.ID, sm.SessionID, touched); err != nil {
 			return 0, 0, err
+		}
+		if sm.FilesSource == FilesFromGit {
+			if err := storeGitFiles(ctx, tx, accountID, m.ID, sm.SessionID, sm.Files); err != nil {
+				return 0, 0, err
+			}
 		}
 
 		if _, err := tx.ExecContext(ctx, `
