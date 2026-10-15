@@ -27,6 +27,10 @@ import (
 //   - opencode: tool parts of assistant messages named edit, write, or
 //     multiedit (state.input.path or filePath), and apply_patch envelopes in
 //     any other tool's input, which covers the patch tool.
+//   - kimi: tool.call loop events named Edit or Write (args.path), the same
+//     tools in assistant context messages migrated from older releases
+//     (toolCalls[].arguments), and apply_patch envelopes in any other tool's
+//     arguments.
 func TouchedFiles(e Event) []string {
 	if len(e.Raw) == 0 {
 		return nil
@@ -42,6 +46,7 @@ func TouchedFiles(e Event) []string {
 	case ProviderOpenCode:
 		paths = openCodeFiles(e.Raw)
 	case ProviderKimi:
+		paths = kimiFiles(e.Raw)
 	}
 	return dedupe(paths)
 }
@@ -188,6 +193,64 @@ func openCodeFiles(raw json.RawMessage) []string {
 		}
 	}
 	return out
+}
+
+var kimiEditTools = map[string]bool{"Edit": true, "Write": true}
+
+func kimiFiles(raw json.RawMessage) []string {
+	if !bytes.Contains(raw, []byte(`"tool.call"`)) && !bytes.Contains(raw, []byte(`"toolCalls"`)) {
+		return nil
+	}
+	var rec struct {
+		Type  string `json:"type"`
+		Event struct {
+			Type string          `json:"type"`
+			Name string          `json:"name"`
+			Args json.RawMessage `json:"args"`
+		} `json:"event"`
+		Message struct {
+			Role      string `json:"role"`
+			ToolCalls []struct {
+				Name      string          `json:"name"`
+				Arguments json.RawMessage `json:"arguments"`
+			} `json:"toolCalls"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &rec) != nil {
+		return nil
+	}
+	switch {
+	case rec.Type == "context.append_loop_event" && rec.Event.Type == "tool.call":
+		return kimiCallFiles(rec.Event.Name, rec.Event.Args)
+	case rec.Type == "context.append_message" && rec.Message.Role == "assistant":
+		var out []string
+		for _, call := range rec.Message.ToolCalls {
+			// Arguments are a JSON-encoded string here.
+			args := call.Arguments
+			if s := jsonString(args); s != "" {
+				args = json.RawMessage(s)
+			}
+			out = append(out, kimiCallFiles(call.Name, args)...)
+		}
+		return out
+	}
+	return nil
+}
+
+func kimiCallFiles(name string, args json.RawMessage) []string {
+	if !kimiEditTools[name] {
+		return patchFilesIn(args)
+	}
+	var input map[string]json.RawMessage
+	if json.Unmarshal(args, &input) != nil {
+		return nil
+	}
+	for _, key := range []string{"path", "file_path", "filePath"} {
+		if p := jsonString(input[key]); p != "" {
+			return []string{p}
+		}
+	}
+	return nil
 }
 
 // patchFilesIn finds apply_patch envelopes in every string inside v. A

@@ -91,7 +91,8 @@ func TestHumanList(t *testing.T) {
 		{nil, "no providers"},
 		{[]string{"codex"}, "Codex"},
 		{[]string{"codex", "claude"}, "Codex and Claude Code"},
-		{[]string{"codex", "copilot", "kimi"}, "Codex, Copilot CLI and kimi"},
+		{[]string{"codex", "copilot", "kimi"}, "Codex, Copilot CLI and Kimi Code"},
+		{[]string{"codex", "someday"}, "Codex and someday"},
 	} {
 		if got := humanList(tc.in); got != tc.want {
 			t.Errorf("humanList(%q) = %q, want %q", tc.in, got, tc.want)

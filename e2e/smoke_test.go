@@ -50,6 +50,7 @@ type home struct {
 	repo     string
 	rollout  string // Codex
 	events   string // Copilot
+	kimiWire string // Kimi Code main agent wire log
 	openCode string // OpenCode database
 }
 
@@ -91,12 +92,21 @@ func newHome(t *testing.T) *home {
 		}},
 	))
 
-	// Kimi has session discovery but no transcript reader yet. The context
-	// file stands in for a transcript so the test notices when one lands.
-	kimiDir := filepath.Join(h.dir, ".kimi-code", "sessions", "work", kimiID)
+	// Kimi Code writes state.json times as epoch milliseconds.
+	kimiDir := filepath.Join(h.dir, ".kimi-code", "sessions", "wd_smoke_0123456789ab", kimiID)
 	write(t, filepath.Join(kimiDir, "state.json"), fmt.Sprintf(
-		`{"title":"Kimi smoke","workDir":%q,"createdAt":"2026-10-07T12:00:00Z","updatedAt":"2026-10-07T12:01:00Z"}`, h.repo))
-	write(t, filepath.Join(kimiDir, "context.jsonl"), jsonl(map[string]any{"role": "user", "content": "Key " + fakeSecret}))
+		`{"id":%q,"version":2,"title":"Kimi smoke","cwd":%q,"createdAt":1791892800000,"updatedAt":1791892860000,"archived":false}`, kimiID, h.repo))
+	h.kimiWire = session.KimiWirePath(kimiDir)
+	write(t, h.kimiWire, jsonl(
+		map[string]any{"type": "metadata", "protocol_version": "1.5", "created_at": 1791892800000},
+		map[string]any{"type": "context.append_message", "agentId": "main", "time": 1791892801000, "message": map[string]any{
+			"role": "user", "content": []map[string]string{{"type": "text", "text": "Key " + fakeSecret + " goes here."}}, "toolCalls": []any{}, "origin": map[string]string{"kind": "user"},
+		}},
+		map[string]any{"type": "llm.request", "agentId": "main", "time": 1791892802000, "kind": "loop", "provider": "e2e", "model": "kimi-e2e"},
+		kimiReply("Stored it.", 1791892803000),
+		map[string]any{"type": "usage.record", "agentId": "main", "time": 1791892803500, "model": "__kimi_env_model__", "usageScope": "turn",
+			"usage": map[string]int{"inputOther": 10, "output": 5, "inputCacheRead": 100, "inputCacheCreation": 0}},
+	))
 
 	// OpenCode keeps every session in one SQLite database.
 	h.openCode = filepath.Join(h.dir, ".local", "share", "opencode", "opencode.db")
@@ -147,6 +157,13 @@ func (h *home) openCodeMessage(t *testing.T, seq int, kind string, data map[stri
 	}
 	h.openCodeSQL(t, fmt.Sprintf(`INSERT INTO session_message VALUES ('msg_e2e_%d', '%s', '%s', %d, %d, %d, %s)`,
 		seq, openCodeID, kind, seq, ms, ms, sqlString(string(encoded))))
+}
+
+// kimiReply is one assistant text part in a Kimi Code wire log.
+func kimiReply(text string, ms int64) map[string]any {
+	return map[string]any{"type": "context.append_loop_event", "agentId": "main", "time": ms, "event": map[string]any{
+		"type": "content.part", "stepUuid": "s1", "part": map[string]string{"type": "text", "text": text},
+	}}
 }
 
 func sqlString(v string) string { return "'" + strings.ReplaceAll(v, "'", "''") + "'" }
@@ -233,17 +250,15 @@ func TestSmoke(t *testing.T) {
 
 	// First pass uploads everything.
 	first := runOnce(t, cfg)
-	if r := first["kimi"]; r.Skipped != "no transcript reader for provider" {
-		t.Errorf("kimi: got skipped %q, events %d; a Kimi reader may have landed, so extend this test", r.Skipped, r.Events)
-	}
 	machineID := readMachineID(t, h.dir)
 	openCodePath := session.OpenCodeTranscriptPath(h.openCode, openCodeID)
 	want := map[string]int{
 		"codex":    expectedEvents(t, transcript.ProviderCodex, h.rollout),
 		"copilot":  expectedEvents(t, transcript.ProviderCopilot, h.events),
+		"kimi":     expectedEvents(t, transcript.ProviderKimi, h.kimiWire),
 		"opencode": expectedEvents(t, transcript.ProviderOpenCode, openCodePath),
 	}
-	ids := map[string]string{"codex": codexID, "copilot": copilotID, "opencode": openCodeID}
+	ids := map[string]string{"codex": codexID, "copilot": copilotID, "kimi": kimiID, "opencode": openCodeID}
 	for provider, n := range want {
 		if first[provider].Events != n {
 			t.Errorf("%s: first pass read %d events, want %d", provider, first[provider].Events, n)
@@ -287,14 +302,23 @@ func TestSmoke(t *testing.T) {
 		}
 	}
 
-	// Appending to the Codex rollout and the OpenCode session sends only
-	// the new events.
+	// Appending to the Codex rollout, the Kimi wire log, and the OpenCode
+	// session sends only the new events.
 	appendFile(t, h.rollout, jsonl(
 		codexMessage("user", "input_text", "One more thing."),
 		codexMessage("assistant", "output_text", "Appended reply."),
 	))
 	h.openCodeMessage(t, 7, "user", map[string]any{"text": "Next task."})
+	appendFile(t, h.kimiWire, jsonl(kimiReply("Appended Kimi reply.", 1791892804000)))
 	third := runOnce(t, cfg)
+	if r := third["kimi"]; r.Events != 1 || r.Duplicates != 0 {
+		t.Errorf("kimi: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
+	}
+	kimiEvents := listEvents(t, srv.URL, machineID, kimiID)
+	assertSeqs(t, "kimi", kimiEvents, want["kimi"]+1)
+	if last := kimiEvents[len(kimiEvents)-1]; last.Text != "Appended Kimi reply." || last.Role != transcript.RoleAssistant {
+		t.Errorf("kimi: appended event (seq %d) does not match what was appended", last.Seq)
+	}
 	if r := third["opencode"]; r.Events != 1 || r.Duplicates != 0 {
 		t.Errorf("opencode: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
 	}

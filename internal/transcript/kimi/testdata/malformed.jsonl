@@ -1,0 +1,12 @@
+not json {
+[1,2,3]
+{"type":"context.append_message","message":"oops","time":1791460800000}
+{"type":"context.append_message","time":"bogus"}
+{"type":"context.append_loop_event","time":-4}
+{"type":"context.append_loop_event","event":{"type":"content.part"},"time":1791460800000}
+{"type":"context.append_loop_event","event":{"type":"tool.result","toolCallId":"unknown","result":{"output":{"weird":true}}}}
+{"type":"context.append_message","message":{"role":"user","content":"plain string","origin":7}}
+{"type":"context.append_message","message":{"role":"narrator","content":[{"type":"text","text":"?"}]}}
+{"type":"usage.record","model":"__kimi_env_model__","usage":{"inputOther":-5,"output":2,"inputCacheRead":-1,"inputCacheCreation":3}}
+{"type":"usage.record","usage":null,"time":1e+300}
+{"type":"context.apply_compaction","summary":42}

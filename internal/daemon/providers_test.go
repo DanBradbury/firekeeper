@@ -11,7 +11,7 @@ import (
 )
 
 func TestDetectProviders(t *testing.T) {
-	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderClaude, transcript.ProviderOpenCode}
+	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderClaude, transcript.ProviderOpenCode}
 	for _, scenario := range []string{"none", "directories", "executables", "override", "missing override", "file"} {
 		t.Run(scenario, func(t *testing.T) {
 			home := t.TempDir()
@@ -35,7 +35,7 @@ func TestDetectProviders(t *testing.T) {
 				mkdir(filepath.Join(home, ".codex"))
 				want = all
 			case "override":
-				for _, key := range []string{"CODEX_HOME", "COPILOT_HOME", "CLAUDE_CONFIG_DIR"} {
+				for _, key := range []string{"CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR"} {
 					env[key] = filepath.Join(home, key)
 					mkdir(env[key])
 				}
@@ -47,6 +47,8 @@ func TestDetectProviders(t *testing.T) {
 				env["CODEX_HOME"] = filepath.Join(home, "missing")
 				mkdir(filepath.Join(home, ".local", "share", "opencode"))
 				env["XDG_DATA_HOME"] = filepath.Join(home, "missing")
+				mkdir(filepath.Join(home, ".kimi-code"))
+				env["KIMI_CODE_HOME"] = filepath.Join(home, "missing")
 			case "file":
 				if err := os.WriteFile(filepath.Join(home, ".codex"), nil, 0600); err != nil {
 					t.Fatal(err)

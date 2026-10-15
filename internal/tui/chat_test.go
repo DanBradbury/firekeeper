@@ -158,10 +158,47 @@ func TestChatWithoutSessionMetadataShowsStatus(t *testing.T) {
 
 func TestChatReportsMissingTranscriptReader(t *testing.T) {
 	m := NewModel()
-	m.processGroups = []processGroup{{tool: "Kimi", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "k1"}}}}
+	// Every harness discovery classifies has a reader; the message is for
+	// one added without one.
+	m.processGroups = []processGroup{{tool: "Someday", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "k1"}}}}
 	m = openTestChat(t, m)
-	if !strings.Contains(m.chat.err, "no transcript reader for kimi") {
+	if !strings.Contains(m.chat.err, "no transcript reader for someday") {
 		t.Fatalf("chat error = %q", m.chat.err)
+	}
+}
+
+func TestChatReadsKimiSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions", "wd_demo", "session_k1", "agents", "main", "wire.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"type":"metadata","protocol_version":"1.5","created_at":1791460800000}` + "\n" +
+		`{"type":"turn.prompt","input":[{"type":"text","text":"Fix the build"}],"origin":{"kind":"user"},"time":1791460800010}` + "\n" +
+		`{"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"Fix the build"}],"toolCalls":[],"origin":{"kind":"user"}},"time":1791460800011}` + "\n" +
+		`{"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"s1","part":{"type":"think","think":"Thinking it over"}},"time":1791460800020}` + "\n" +
+		`{"type":"context.append_loop_event","event":{"type":"tool.call","stepUuid":"s1","toolCallId":"Bash:0","name":"Bash","args":{"command":"go build"}},"time":1791460800030}` + "\n" +
+		`{"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"Injected reminder"}],"toolCalls":[],"origin":{"kind":"injection"}},"time":1791460800035}` + "\n" +
+		`{"type":"context.append_loop_event","event":{"type":"content.part","stepUuid":"s1","part":{"type":"text","text":"The build passes now."}},"time":1791460800040}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel()
+	m.width, m.height = 100, 30
+	m.processGroups = []processGroup{{tool: "Kimi", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "session_k1", cwd: "/workspace/demo", rolloutPath: path}}}}
+	m = openTestChat(t, m)
+	if m.chat.err != "" {
+		t.Fatalf("chat error: %s", m.chat.err)
+	}
+	// The prompt is shown once, and thinking, tool calls, and injected
+	// context are left out.
+	if len(m.chat.messages) != 2 || m.chat.messages[0].text != "Fix the build" || m.chat.messages[1].text != "The build passes now." {
+		t.Fatalf("messages = %+v", m.chat.messages)
+	}
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{"You", "Fix the build", "Kimi", "The build passes now.", "2 messages"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("chat view missing %q:\n%s", expected, view)
+		}
 	}
 }
 

@@ -511,8 +511,9 @@ by path. A malformed uid gets 400, and an unknown session gets 404.
 - `url` is present only when the server has a file link template
   (`serve --file-link`), the path is relative and unredacted, and every
   placeholder the template uses has a value.
-- Detection reads Claude Code, Codex, and Copilot tool calls. It is best
-  effort: files changed by arbitrary shell commands are not listed.
+- Detection reads Claude Code, Codex, Copilot, OpenCode, and Kimi Code tool
+  calls. It is best effort: files changed by arbitrary shell commands are not
+  listed.
 - `files` is always an array, and is not included by `GET /v1/sessions`.
 
 ### `GET /v1/sessions/{uid}/events`
