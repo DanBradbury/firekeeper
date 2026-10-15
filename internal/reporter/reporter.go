@@ -31,6 +31,7 @@ import (
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
 )
 
 // DefaultServer is the dashboard server's default listen address.
@@ -339,18 +340,18 @@ func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta,
 	if err != nil {
 		return errors.New("resolve transcript path")
 	}
-	info, err := os.Stat(abs)
+	info, err := reader.Stat(source, abs)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("stat transcript: %w", cause(err))
 	}
-	if r.cfg.Since > 0 && info.ModTime().Before(r.now().Add(-r.cfg.Since)) {
+	if r.cfg.Since > 0 && info.ModTime.Before(r.now().Add(-r.cfg.Since)) {
 		return nil
 	}
 	pos, known := r.state.Files[abs]
-	if !known || info.Size() < pos.Size {
+	if !known || info.Size < pos.Size {
 		// New, truncated, or rotated: start over and let the server's
 		// idempotency drop anything it already has.
 		if known {
@@ -394,7 +395,7 @@ func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta,
 		result.Batches++
 		result.Duplicates += dups
 		pos.LastSeq = max(pos.LastSeq, batch[len(batch)-1].Seq)
-		if pos, err = r.saveFile(ctx, abs, pos); err != nil {
+		if pos, err = r.saveFile(ctx, source, abs, pos); err != nil {
 			return err
 		}
 	}
@@ -402,9 +403,9 @@ func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta,
 		return nil // nothing changed; skip the write
 	}
 	pos.Offset = newOffset
-	pos.Size = max(info.Size(), newOffset)
-	pos.Mtime = info.ModTime().UTC()
-	_, err = r.saveFile(ctx, abs, pos)
+	pos.Size = max(info.Size, newOffset)
+	pos.Mtime = info.ModTime.UTC()
+	_, err = r.saveFile(ctx, source, abs, pos)
 	return err
 }
 
@@ -412,15 +413,15 @@ func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta,
 // first, so positions other passes saved since this one loaded are kept, and
 // merges pos with the file's saved position so it never moves backwards. It
 // returns the position saved.
-func (r *run) saveFile(ctx context.Context, abs string, pos FileState) (FileState, error) {
+func (r *run) saveFile(ctx context.Context, source reader.Source, abs string, pos FileState) (FileState, error) {
 	err := withStateLock(ctx, r.statePath, r.lockWait, func() error {
 		state, err := LoadState(r.statePath)
 		if err != nil {
 			return err
 		}
 		size := int64(-1)
-		if info, err := os.Stat(abs); err == nil {
-			size = info.Size()
+		if info, err := reader.Stat(source, abs); err == nil {
+			size = info.Size
 		}
 		var replaced *FileState
 		if old, ok := r.replaced[abs]; ok {

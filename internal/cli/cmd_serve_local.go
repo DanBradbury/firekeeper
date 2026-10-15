@@ -200,7 +200,7 @@ func offerLocalReporting(ctx context.Context, probe *localProbe, dashboardURL st
 		providers = st.Detected
 	}
 	if len(providers) == 0 {
-		fmt.Fprintln(stdout, "no Codex, Copilot CLI or Claude Code data found on this machine, so there is nothing to report yet")
+		fmt.Fprintln(stdout, "no Codex, Copilot CLI, Claude Code or OpenCode data found on this machine, so there is nothing to report yet")
 		return
 	}
 
@@ -257,6 +257,8 @@ func humanList(names []string) string {
 			pretty[i] = "Copilot CLI"
 		case transcript.ProviderClaude:
 			pretty[i] = "Claude Code"
+		case transcript.ProviderOpenCode:
+			pretty[i] = "OpenCode"
 		default:
 			pretty[i] = n
 		}

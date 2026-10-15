@@ -29,7 +29,7 @@
     },
     "provider": {
       "type": "string",
-      "enum": ["codex", "copilot", "kimi", "claude"]
+      "enum": ["codex", "copilot", "kimi", "claude", "opencode"]
     },
     "seq": {
       "type": "integer",

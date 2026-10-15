@@ -131,8 +131,8 @@ importing the sessions already on your machine, then `firekeeper backfill
 unconfigured `report` or `daemon` sends nothing.
 
 Supported harnesses are Codex, GitHub Copilot CLI, Claude Code, Kimi Code, and
-OpenCode. Codex, Copilot CLI, and Claude Code can upload transcripts. Kimi gets
-local token history and OpenCode is process discovery only. The
+OpenCode. Codex, Copilot CLI, Claude Code, and OpenCode can upload transcripts.
+Kimi gets local token history. The
 [provider table](#supported-providers) shows what each one gets.
 
 ## Other ways to run
@@ -303,12 +303,14 @@ from `firekeeper serve token create`; see [Tokens](#tokens).
 | GitHub Copilot CLI | Yes | Yes, from `events.jsonl`, `workspace.yaml`, and `session-store.db` | Local history and plan details | Yes |
 | Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | Token history | Yes |
 | Kimi Code | Yes | Metadata from session `state.json`; the state is shown as `ACTIVE` whenever a session matches | Token history | No |
-| OpenCode | Yes | No | No | No |
+| OpenCode | Yes | Yes, from `session_v2` and `session_message` in `opencode.db` | No | Yes |
 
 States describe the latest event Firekeeper can see, not ground truth.
 `kimi` is an accepted provider name in `--provider` and the config file
 because the event format allows it, but there is no Kimi transcript reader, so
-nothing is uploaded for it. `OpenCode` has no adapter beyond the process list.
+nothing is uploaded for it. OpenCode support reads the database layout
+OpenCode has used since August 2026; older releases need an OpenCode update
+first.
 
 ## Terminal dashboard
 
@@ -358,7 +360,7 @@ narrowest table columns drop out first; Enter still expands details inline.
 
 #### Chat history
 
-Press `c` on a Claude Code, Codex, or Copilot session to read its
+Press `c` on a Claude Code, Codex, Copilot, or OpenCode session to read its
 conversation: your prompts and the assistant's replies, newest at the bottom.
 Tool calls, tool output, and context the harness injects (environment blocks,
 `AGENTS.md` instructions, slash-command wrappers) are left out. The transcript
@@ -366,8 +368,8 @@ is read locally and read-only, nothing is uploaded, and new messages appear on
 the next two-second refresh while the view follows the latest message. Up/Down
 scroll, Page Up/Page Down move a page, `g`/`G` jump to the first or latest
 message, `r` reloads, and Esc, `c`, or `q` return to Processes. The view keeps
-the latest 1,000 messages. Kimi and OpenCode sessions have no transcript
-reader, so they show a message instead.
+the latest 1,000 messages. Kimi sessions have no transcript reader, so they
+show a message instead. An OpenCode reply appears once it finishes.
 
 Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
 Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
@@ -457,13 +459,22 @@ dashboard only through [`backfill`](#backfill).
   its project folder under `~/.claude/projects` and picks the most recently
   written transcript there. Several Claude Code runtimes in one directory may
   be matched to the wrong transcript. Transcripts are read, never modified.
-- **OpenCode:** process information only, with no provider-specific session
-  metadata.
+- **OpenCode:** uses an explicit `--session`/`-s` id when the command line has
+  one, and otherwise matches the runtime's working directory to the session
+  directories in OpenCode's database and picks the most recently updated
+  session there. Several OpenCode runtimes in one directory, or one started
+  with a directory argument from elsewhere, may be matched to the wrong
+  session. `opencode serve` and the other helper subcommands are listed
+  without a session. The database is read with `sqlite3 -readonly`, never
+  modified, so `sqlite3` must be on `PATH`. `NEEDS INPUT` is never reported
+  for OpenCode, because its permission prompts are not in the database.
 
-`CODEX_HOME`, `KIMI_CODE_HOME`, `COPILOT_HOME`, and `CLAUDE_CONFIG_DIR`
-overrides are honored. Provider events supply best-effort `ACTIVE`, `WAITING`,
-and `NEEDS INPUT` states. Codex Desktop helper processes that cannot be matched
-to rollout metadata are not shown as sessions.
+`CODEX_HOME`, `KIMI_CODE_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`,
+`OPENCODE_DB`, and `XDG_DATA_HOME` (for OpenCode's
+`~/.local/share/opencode/opencode.db`) overrides are honored. Provider events
+supply best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. Codex
+Desktop helper processes that cannot be matched to rollout metadata are not
+shown as sessions.
 
 Discovery is also callable without the TUI through
 `internal/session.Discover(ctx, opts)` and, from the shell, through
@@ -607,12 +618,13 @@ without a terminal to ask on, `backfill` refuses unless `--yes` is given. With
 no provider opt-in, or with `--dry-run`, it prints the plan and stops without
 opening a network connection.
 
-`--all` detects Codex, Copilot, and Claude Code from their local data directories
-or executables on `PATH`, honoring provider home overrides. It allows those
-providers for this pass, replacing any configured allowlist without changing
-the config file. Use either `--all` or `--provider`, not both. After `login`,
-the saved server and token are used automatically. Kimi and OpenCode have no
-transcript readers; Claude Code subagent files are not imported.
+`--all` detects Codex, Copilot, Claude Code, and OpenCode from their local data
+directories or executables on `PATH`, honoring provider home overrides. It
+allows those providers for this pass, replacing any configured allowlist
+without changing the config file. Use either `--all` or `--provider`, not
+both. After `login`, the saved server and token are used automatically. Kimi
+has no transcript reader; Claude Code subagent files and OpenCode subagent
+sessions are not imported.
 
 Sessions upload newest first, so the dashboard is useful early, with one
 progress line per session on stderr. Uploads go through the same redaction,
@@ -965,16 +977,16 @@ firekeeper daemon uninstall
 ```
 
 With no provider flags, `$FIREKEEPER_PROVIDERS`, or configured allowlist,
-`daemon install` detects Codex, Copilot, and Claude Code from their existing
-local data directories or CLI executables on `PATH`, honoring `CODEX_HOME`,
-`COPILOT_HOME`, and `CLAUDE_CONFIG_DIR`. Installing opts into transcript
-uploads for those detected providers; it prints and saves the allowlist in the
-service definition. Use `--dry-run` to preview it, or `--provider` to select
-providers explicitly. Environment and config-file allowlists take precedence
-over detection, including an empty config-file allowlist (which prevents
-installation). If no supported provider is detected, installation stops with
-guidance. Rerun install after adding a provider. Kimi and OpenCode are not
-detected for uploading because they have no transcript readers.
+`daemon install` detects Codex, Copilot, Claude Code, and OpenCode from their
+existing local data directories or CLI executables on `PATH`, honoring
+`CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`, and `XDG_DATA_HOME`.
+Installing opts into transcript uploads for those detected providers; it prints
+and saves the allowlist in the service definition. Use `--dry-run` to preview
+it, or `--provider` to select providers explicitly. Environment and config-file
+allowlists take precedence over detection, including an empty config-file
+allowlist (which prevents installation). If no supported provider is detected,
+installation stops with guidance. Rerun install after adding a provider. Kimi
+is not detected for uploading because it has no transcript reader.
 
 `daemon install` takes the same `--server`, `--provider`, and `--interval`
 flags as `daemon`, writes the ones you pass into a per-user service

@@ -546,13 +546,17 @@ func TestCommandErrorMessage(t *testing.T) {
 
 func TestNewServiceCapturesProviderHomes(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", "/fixture/claude")
+	t.Setenv("XDG_DATA_HOME", "/fixture/data")
+	t.Setenv("OPENCODE_DB", "/fixture/opencode.db")
 	t.Setenv("KIMI_CODE_HOME", "")
 	svc, err := NewService([]string{"--provider", "claude"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if svc.Env["CLAUDE_CONFIG_DIR"] != "/fixture/claude" {
-		t.Fatalf("CLAUDE_CONFIG_DIR not captured: %v", svc.Env)
+	for key, want := range map[string]string{"CLAUDE_CONFIG_DIR": "/fixture/claude", "XDG_DATA_HOME": "/fixture/data", "OPENCODE_DB": "/fixture/opencode.db"} {
+		if svc.Env[key] != want {
+			t.Fatalf("%s not captured: %v", key, svc.Env)
+		}
 	}
 	if _, ok := svc.Env["KIMI_CODE_HOME"]; ok {
 		t.Fatal("unset variables must not be captured")

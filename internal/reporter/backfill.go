@@ -440,38 +440,48 @@ func (r *run) planSession(ctx context.Context, source reader.Source, meta sessio
 		if err != nil {
 			return ps, errors.New("resolve transcript path")
 		}
-		info, err := os.Stat(abs)
+		info, err := reader.Stat(source, abs)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return ps, fmt.Errorf("stat transcript: %w", cause(err))
 		}
-		if meta.LastActivityAt == nil && info.ModTime().After(ps.activity) {
-			ps.activity = info.ModTime()
+		if meta.LastActivityAt == nil && info.ModTime.After(ps.activity) {
+			ps.activity = info.ModTime
 		}
 		pos, known := r.state.Files[abs]
-		if known && pos.Size == info.Size() && pos.Mtime.Equal(info.ModTime()) {
+		if known && pos.Size == info.Size && pos.Mtime.Equal(info.ModTime) {
 			continue
 		}
 		from := int64(0)
-		if known && info.Size() >= pos.Size && pos.Offset <= info.Size() {
+		if known && info.Size >= pos.Size && pos.Offset <= info.Size {
 			from = pos.Offset
 		}
-		lines, err := countLines(ctx, abs, from)
+		lines, bytes, err := pending(ctx, source, abs, from, info.Size)
 		if err != nil {
 			return ps, err
 		}
 		if lines == 0 && from > 0 {
 			continue // only a partial trailing record past the offset
 		}
-		bytes := info.Size() - from
 		ps.files++
 		ps.bytes += bytes
 		ps.events += lines
 		ps.requests += int(max((lines+maxBatchEvents-1)/maxBatchEvents, (bytes+estimatedRequestBytes-1)/estimatedRequestBytes, 1))
 	}
 	return ps, nil
+}
+
+// pending returns the events a read from offset from would return and the
+// bytes they hold, asking source when its transcripts are not files of their
+// own and counting JSONL lines otherwise.
+func pending(ctx context.Context, source reader.Source, path string, from, size int64) (events, bytes int64, err error) {
+	if stater, ok := source.(reader.Stater); ok {
+		return stater.Pending(ctx, path, from)
+	}
+	lines, err := countLines(ctx, path, from)
+	return lines, size - from, err
 }
 
 // countLines counts the complete records past from in a JSONL transcript,

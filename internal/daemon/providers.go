@@ -20,17 +20,22 @@ func DetectProviders(home string, getenv func(string) string, lookPath func(stri
 		lookPath = exec.LookPath
 	}
 	var providers []transcript.Provider
+	// The provider's directory is $env/sub, or home/directory when env is
+	// unset.
 	for _, candidate := range []struct {
-		provider                transcript.Provider
-		env, directory, command string
+		provider                     transcript.Provider
+		env, sub, directory, command string
 	}{
-		{transcript.ProviderCodex, "CODEX_HOME", ".codex", "codex"},
-		{transcript.ProviderCopilot, "COPILOT_HOME", ".copilot", "copilot"},
-		{transcript.ProviderClaude, "CLAUDE_CONFIG_DIR", ".claude", "claude"},
+		{transcript.ProviderCodex, "CODEX_HOME", "", ".codex", "codex"},
+		{transcript.ProviderCopilot, "COPILOT_HOME", "", ".copilot", "copilot"},
+		{transcript.ProviderClaude, "CLAUDE_CONFIG_DIR", "", ".claude", "claude"},
+		{transcript.ProviderOpenCode, "XDG_DATA_HOME", "opencode", filepath.Join(".local", "share", "opencode"), "opencode"},
 	} {
 		directory := strings.TrimSpace(getenv(candidate.env))
 		if directory == "" {
 			directory = filepath.Join(home, candidate.directory)
+		} else {
+			directory = filepath.Join(directory, candidate.sub)
 		}
 		info, err := os.Stat(directory)
 		if err == nil && info.IsDir() {
