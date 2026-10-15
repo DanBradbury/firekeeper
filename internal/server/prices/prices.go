@@ -41,8 +41,11 @@ var ErrInvalid = errors.New("invalid price table")
 type Table struct {
 	// AsOf is the date of the oldest entry, YYYY-MM-DD. It is the date the
 	// dashboard shows.
-	AsOf   string  `toml:"as_of"`
-	Models []Entry `toml:"model"`
+	AsOf string `toml:"as_of"`
+	// Exclude names models the weekly refresh must never add, even though
+	// their pricing page lists them.
+	Exclude []string `toml:"exclude"`
+	Models  []Entry  `toml:"model"`
 }
 
 // Entry is one model's list price in USD per million tokens.
@@ -50,9 +53,13 @@ type Entry struct {
 	Name string `toml:"name"`
 	// Aliases are other exact names a harness reports for this model.
 	Aliases []string `toml:"aliases"`
-	Input   float64  `toml:"input"`
-	Output  float64  `toml:"output"`
-	Cache   float64  `toml:"cache"`
+	// Label is the model's row label on the Source page, when it is not
+	// Name, such as "Claude Opus 5.5". The refresher reads rates from the
+	// row with exactly this label.
+	Label  string  `toml:"label"`
+	Input  float64 `toml:"input"`
+	Output float64 `toml:"output"`
+	Cache  float64 `toml:"cache"`
 	// Source is the provider's public pricing page the rates came from.
 	Source string `toml:"source"`
 	// AsOf is the date the rates were read from Source, YYYY-MM-DD.
@@ -106,6 +113,9 @@ func (t Table) Validate() error {
 				return fmt.Errorf("%w: model %q has a negative or non-finite rate", ErrInvalid, e.Name)
 			}
 		}
+		if e.Label != "" && (strings.TrimSpace(e.Label) != e.Label || strings.IndexFunc(e.Label, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0) {
+			return fmt.Errorf("%w: model %q: label %q has surrounding space or a control character", ErrInvalid, e.Name, e.Label)
+		}
 		u, err := url.Parse(e.Source)
 		if e.Source == "" || err != nil || u.Scheme != "https" || u.Host == "" {
 			return fmt.Errorf("%w: model %q needs a source that is an https URL", ErrInvalid, e.Name)
@@ -131,6 +141,14 @@ func (t Table) Validate() error {
 			seen[a] = true
 		}
 	}
+	for _, x := range t.Exclude {
+		if err := checkName(x); err != nil {
+			return fmt.Errorf("%w: exclude %w", ErrInvalid, err)
+		}
+		if seen[x] {
+			return fmt.Errorf("%w: exclude %q is also a model name or alias", ErrInvalid, x)
+		}
+	}
 	if !asOf.Equal(oldest) {
 		return fmt.Errorf("%w: as_of %s must be the oldest entry's as_of, %s", ErrInvalid, t.AsOf, oldest.Format(dateLayout))
 	}
@@ -154,6 +172,14 @@ func checkName(n string) error {
 		return fmt.Errorf("%q contains a space or control character", n)
 	}
 	return nil
+}
+
+// PageLabel is the row label to read e's rates from on its source page.
+func (e Entry) PageLabel() string {
+	if e.Label != "" {
+		return e.Label
+	}
+	return e.Name
 }
 
 // Merge returns the price lookup the usage query uses. custom is the

@@ -91,6 +91,10 @@ func TestValidate(t *testing.T) {
 		{"alias is a later model", func(t *Table) { t.Models[0].Aliases = []string{"model-b"} }, "already"},
 		{"alias repeated", func(t *Table) { t.Models[1].Aliases = []string{"model.a"} }, "already"},
 		{"alias reserved", func(t *Table) { t.Models[1].Aliases = []string{"defaults"} }, "reserved"},
+		{"exclude malformed", func(t *Table) { t.Exclude = []string{"bad name"} }, "exclude"},
+		{"exclude a listed model", func(t *Table) { t.Exclude = []string{"model.a"} }, "also a model"},
+		{"label with control", func(t *Table) { t.Models[0].Label = "Model\tA" }, "label"},
+		{"label with space around", func(t *Table) { t.Models[0].Label = " Model A" }, "label"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

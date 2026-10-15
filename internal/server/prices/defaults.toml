@@ -6,9 +6,22 @@
 # cache-write price. See docs/prices.md for how to refresh this file.
 #
 # A model is matched by its exact name, then by an entry's aliases. Add an
-# alias only when a harness is known to report that exact name.
+# alias only when a harness is known to report that exact name. label is the
+# model's row label on the source page when it differs from name; the
+# weekly refresh reads rates from that row.
+#
+# The rates and as_of dates are kept current by the "Refresh default
+# prices" workflow. Edit names, labels, aliases and comments by hand; the
+# refresh rewrites only input, output, cache and as_of lines, one per line.
+# It removes an entry whose price its page no longer gives, together with
+# the comment lines directly above it, so leave a blank line after a
+# comment that is about a whole section.
 
-as_of = "2026-10-14"
+as_of = "2026-10-15"
+
+# Models the weekly refresh must never add, although their page lists them
+# with a price. Add one here to keep it out for good.
+exclude = []
 
 # Anthropic. Source: the model pricing table, "Cache hits and refreshes"
 # is the cache rate. Claude Haiku 5.5 is left out because its price depends
@@ -18,87 +31,97 @@ as_of = "2026-10-14"
 
 [[model]]
 name = "claude-fable-5-1"
+label = "Claude Fable 5.1"
 input = 10
 output = 50
 cache = 0.25
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-opus-5-5"
+label = "Claude Opus 5.5"
 input = 4
 output = 20
 cache = 0.20
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-sonnet-5-5"
+label = "Claude Sonnet 5.5"
 input = 2
 output = 10
 cache = 0.10
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-opus-5"
+label = "Claude Opus 5"
 input = 5
 output = 25
 cache = 0.50
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-sonnet-5"
+label = "Claude Sonnet 5"
 input = 2
 output = 10
 cache = 0.20
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-opus-4-8"
+label = "Claude Opus 4.8"
 input = 5
 output = 25
 cache = 0.50
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-opus-4-7"
+label = "Claude Opus 4.7"
 input = 5
 output = 25
 cache = 0.50
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "claude-opus-4-6"
+label = "Claude Opus 4.6"
 input = 5
 output = 25
 cache = 0.50
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 # GitHub Copilot CLI reports this model as "claude-sonnet-4.6".
 [[model]]
 name = "claude-sonnet-4-6"
+label = "Claude Sonnet 4.6"
 aliases = ["claude-sonnet-4.6"]
 input = 3
 output = 15
 cache = 0.30
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 # The dated ID and its Claude API alias are both on the model IDs page.
 [[model]]
 name = "claude-haiku-4-5-20251001"
+label = "Claude Haiku 4.5"
 aliases = ["claude-haiku-4-5"]
 input = 1
 output = 5
 cache = 0.10
 source = "https://platform.claude.com/docs/en/about-claude/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 # OpenAI. Source: the Standard tier table, "Cached input" is the cache rate.
 # Models with a long-context tier (more than 272K input tokens) use the
@@ -112,7 +135,7 @@ input = 10
 output = 50
 cache = 1
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-6.1-sol"
@@ -120,7 +143,7 @@ input = 2
 output = 10
 cache = 0.10
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-6-sol"
@@ -128,7 +151,7 @@ input = 2
 output = 10
 cache = 0.20
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-6-luna"
@@ -136,7 +159,7 @@ input = 0.10
 output = 0.50
 cache = 0.01
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 # The page calls this promotional pricing, available at least through
 # 2026-11-21, without naming the later rate. Recheck after that date.
@@ -146,7 +169,7 @@ input = 4
 output = 20
 cache = 0.40
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.6-terra"
@@ -154,7 +177,7 @@ input = 2
 output = 12
 cache = 0.20
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.6-luna"
@@ -162,23 +185,25 @@ input = 0.20
 output = 1.20
 cache = 0.02
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.5"
+label = "gpt-5.5 (<272K context length)"
 input = 5
 output = 30
 cache = 0.50
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.4"
+label = "gpt-5.4 (<272K context length)"
 input = 2.50
 output = 15
 cache = 0.25
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.4-mini"
@@ -186,7 +211,7 @@ input = 0.75
 output = 4.50
 cache = 0.075
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.4-nano"
@@ -194,7 +219,7 @@ input = 0.20
 output = 1.25
 cache = 0.02
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.3-codex"
@@ -202,7 +227,7 @@ input = 1.75
 output = 14
 cache = 0.175
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.2"
@@ -210,7 +235,7 @@ input = 1.75
 output = 14
 cache = 0.175
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5.1"
@@ -218,7 +243,7 @@ input = 1.25
 output = 10
 cache = 0.125
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5"
@@ -226,7 +251,7 @@ input = 1.25
 output = 10
 cache = 0.125
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5-mini"
@@ -234,7 +259,7 @@ input = 0.25
 output = 2
 cache = 0.025
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "gpt-5-nano"
@@ -242,7 +267,7 @@ input = 0.05
 output = 0.40
 cache = 0.005
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "o3"
@@ -250,7 +275,7 @@ input = 2
 output = 8
 cache = 0.50
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "o4-mini"
@@ -258,7 +283,79 @@ input = 1.10
 output = 4.40
 cache = 0.275
 source = "https://developers.openai.com/api/docs/pricing"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
+
+[[model]]
+name = "chat-latest"
+input = 5
+output = 30
+cache = 0.5
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-4.1"
+input = 2
+output = 8
+cache = 0.5
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-4.1-mini"
+input = 0.4
+output = 1.6
+cache = 0.1
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-4.1-nano"
+input = 0.1
+output = 0.4
+cache = 0.025
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-4o"
+input = 2.5
+output = 10
+cache = 1.25
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-4o-mini"
+input = 0.15
+output = 0.6
+cache = 0.075
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "gpt-5-search-api"
+input = 1.25
+output = 10
+cache = 0.125
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "o1"
+input = 15
+output = 60
+cache = 7.5
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
+
+[[model]]
+name = "o3-mini"
+input = 1.1
+output = 4.4
+cache = 0.55
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-10-15"
 
 # Moonshot AI (Kimi). Source: the chat pricing table, "Input (cache hit)"
 # is the cache rate and "Input (cache miss)" the input rate. The page prints
@@ -270,7 +367,7 @@ input = 3
 output = 15
 cache = 0.30
 source = "https://platform.kimi.ai/docs/pricing/chat"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "kimi-k2.7-code"
@@ -278,7 +375,7 @@ input = 0.95
 output = 4
 cache = 0.19
 source = "https://platform.kimi.ai/docs/pricing/chat"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
 
 [[model]]
 name = "kimi-k2.6"
@@ -286,4 +383,12 @@ input = 0.95
 output = 4
 cache = 0.16
 source = "https://platform.kimi.ai/docs/pricing/chat"
-as_of = "2026-10-14"
+as_of = "2026-10-15"
+
+[[model]]
+name = "kimi-k2.7-code-highspeed"
+input = 1.9
+output = 8
+cache = 0.38
+source = "https://platform.kimi.ai/docs/pricing/chat"
+as_of = "2026-10-15"
