@@ -155,6 +155,10 @@ func TestLoadErrors(t *testing.T) {
 		{"relative redact path", "[redact]\npaths = [\"src\"]", "must be absolute"},
 		{"bad glob", `exclude = ["/a/[b"]`, "malformed"},
 		{"negative price", "[prices.m]\ninput = -1", "must not be negative"},
+		{"typo in a price", "[prices.m]\ninput = 1\nouput = 2", "unknown keys: prices.m.ouput"},
+		{"price as text", "[prices.m]\ninput = \"1\"", "must be a table of input, output and cache rates"},
+		{"defaults as text", "[prices]\ndefaults = \"no\"", "prices.defaults must be true or false"},
+		{"defaults as a model", "[prices.defaults]\ninput = 1", "prices.defaults must be true or false"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -168,6 +172,33 @@ func TestLoadErrors(t *testing.T) {
 				t.Fatalf("error echoes file contents: %v", err)
 			}
 		})
+	}
+}
+
+func TestLoadPricesDefaultsSwitch(t *testing.T) {
+	for _, tt := range []struct {
+		body      string
+		noDefault bool
+		models    int
+	}{
+		{"", false, 0},
+		{"[prices]\ndefaults = true\n", false, 0},
+		{"[prices]\ndefaults = false\n", true, 0},
+		{"[prices]\ndefaults = false\n\n[prices.m]\ninput = 1\n", true, 1},
+		{"[prices.m]\ninput = 1\n", false, 1},
+	} {
+		home := t.TempDir()
+		writeConfig(t, home, tt.body)
+		c, err := Load(Options{Home: home, Getenv: env(nil)})
+		if err != nil {
+			t.Fatalf("%q: %v", tt.body, err)
+		}
+		if c.NoDefaultPrices != tt.noDefault || len(c.Prices) != tt.models {
+			t.Errorf("%q: NoDefaultPrices %v prices %v", tt.body, c.NoDefaultPrices, c.Prices)
+		}
+		if _, ok := c.Prices[PricesDefaultsKey]; ok {
+			t.Errorf("%q: the defaults switch was read as a model", tt.body)
+		}
 	}
 }
 

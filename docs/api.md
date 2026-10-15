@@ -579,6 +579,8 @@ includes `cache` depends on the provider.
   "to": "2026-10-05T00:00:00Z",
   "group_by": ["day", "model"],
   "priced": true,
+  "price_source": "default",
+  "prices_as_of": "2026-10-14",
   "rows": [
     { "group": { "day": "2026-10-01", "model": "gpt-5" },
       "tokens": { "input": 100, "output": 10, "cache": 50 }, "cost": 0.000205 },
@@ -593,12 +595,27 @@ Rows are sorted by `day` ascending when grouped by day, then by total tokens
 descending. Days with no usage are omitted; clients fill gaps. An empty range
 returns `"rows": []` with zero totals.
 
-Cost appears only when the server has a per-model price table (per million
-tokens of each kind). Firekeeper ships no prices. Then `priced` is `true`,
-and every row and the totals carry `cost`, computed from priced models only.
-`unpriced_tokens`, when present, counts the tokens from models with no price
-that `cost` leaves out. Without a table, `priced` is `false` and `cost` is
-never sent.
+Cost is an **estimate** in USD from a per-model price table (per million
+tokens of each kind). By default the server uses a built-in table of the
+providers' published list prices, merged with the operator's own `[prices]`,
+which win for the models they name; see [prices.md](prices.md). With a table,
+`priced` is `true`, and every row and the totals carry `cost`, computed from
+priced models only. `unpriced_tokens`, when present, counts the tokens from
+models with no price that `cost` leaves out. A model is matched by its exact
+name, then by an alias the built-in table lists, and is otherwise unpriced;
+no price is ever guessed.
+
+When `priced` is `true`, the response also says where the prices came from:
+
+| Field | Meaning |
+| --- | --- |
+| `price_source` | `default` when `cost` used only built-in prices, `custom` when only the operator's, `mixed` when both. When nothing in range was priced, it describes the table instead. |
+| `prices_as_of` | The built-in table's date, `YYYY-MM-DD`. Sent when `price_source` is `default` or `mixed`. |
+
+Neither is what a subscription or invoice actually charged. Clients should
+label `cost` as an estimate. With the defaults turned off and no prices of
+the operator's own, `priced` is `false`, and `cost`, `price_source` and
+`prices_as_of` are never sent.
 
 ## Live stream
 

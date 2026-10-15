@@ -32,6 +32,28 @@ var usageColumns = map[string]string{
 // ValidUsageGroup reports whether k is a usage group key.
 func ValidUsageGroup(k string) bool { _, ok := usageColumns[k]; return ok }
 
+// PriceSource says where the prices behind a cost came from.
+type PriceSource string
+
+// Price sources. A cost is PriceSourceMixed when it combines both kinds.
+const (
+	PriceSourceDefault PriceSource = "default"
+	PriceSourceCustom  PriceSource = "custom"
+	PriceSourceMixed   PriceSource = "mixed"
+)
+
+// merge combines two sources: either one when the other is empty, mixed
+// when they differ.
+func (s PriceSource) merge(o PriceSource) PriceSource {
+	switch {
+	case s == "":
+		return o
+	case o == "" || s == o:
+		return s
+	}
+	return PriceSourceMixed
+}
+
 // Price is a model's cost per million tokens of each kind. Each counter is
 // priced as stored; Firekeeper does not know whether a provider's input
 // count already includes cached tokens.
@@ -39,6 +61,28 @@ type Price struct {
 	Input  float64 `json:"input"`
 	Output float64 `json:"output"`
 	Cache  float64 `json:"cache"`
+	// Source is PriceSourceDefault for a price from the built-in table.
+	// Any other value, including empty, counts as PriceSourceCustom.
+	Source PriceSource `json:"-"`
+}
+
+func (p Price) source() PriceSource {
+	if p.Source == PriceSourceDefault {
+		return PriceSourceDefault
+	}
+	return PriceSourceCustom
+}
+
+// TableSource reports what kinds of price a table holds: default, custom,
+// mixed, or "" for an empty table.
+func TableSource(prices map[string]Price) PriceSource {
+	var s PriceSource
+	for _, p := range prices {
+		if s = s.merge(p.source()); s == PriceSourceMixed {
+			break
+		}
+	}
+	return s
 }
 
 func (p Price) cost(t transcript.Tokens) float64 {
@@ -52,7 +96,8 @@ type UsageFilter struct {
 	GroupBy  []string
 	Project  string // Empty selects all projects; otherwise an exact match.
 	// Prices, when non-empty, adds cost to every row. Models are matched
-	// exactly; tokens from models without a price count as unpriced.
+	// exactly, so aliases must already be keys; tokens from models without
+	// a price count as unpriced.
 	Prices map[string]Price
 }
 
@@ -64,6 +109,9 @@ type UsageRow struct {
 	// UnpricedTokens counts the tokens it leaves out.
 	Cost           *float64 `json:"cost,omitempty"`
 	UnpricedTokens int64    `json:"unpriced_tokens,omitempty"`
+	// PriceSource says which kinds of price Cost used, or "" when it used
+	// none. It is not part of a row's JSON.
+	PriceSource PriceSource `json:"-"`
 }
 
 func total(t transcript.Tokens) int64 { return t.Input + t.Output + t.Cache }
@@ -80,6 +128,7 @@ func (r *UsageRow) add(model string, t transcript.Tokens, prices map[string]Pric
 	}
 	if p, ok := prices[model]; ok {
 		*r.Cost += p.cost(t)
+		r.PriceSource = r.PriceSource.merge(p.source())
 	} else {
 		r.UnpricedTokens += total(t)
 	}
@@ -183,4 +232,48 @@ WHERE e.account_id = ? AND e.ts >= ? AND e.ts < ? AND (e.input_tokens > 0 OR e.o
 		return 0
 	})
 	return rows, sum, nil
+}
+
+// ModelTokens is the token sum for one model.
+type ModelTokens struct {
+	Model  string
+	Tokens transcript.Tokens
+}
+
+// TokensByModel sums every stored event's tokens by model across all
+// accounts, including events without a timestamp. An event without a model
+// falls back to its session's model; "" means neither has one. It is for
+// operator reports and returns names and counts only, ordered by total
+// tokens descending, then by name.
+func (s *Store) TokensByModel(ctx context.Context) ([]ModelTokens, error) {
+	res, err := s.db.QueryContext(ctx, `SELECT `+usageColumns[GroupModel]+`,
+    SUM(e.input_tokens), SUM(e.output_tokens), SUM(e.cache_tokens)
+FROM events e JOIN sessions s ON s.account_id = e.account_id AND s.machine_id = e.machine_id AND s.session_id = e.session_id
+WHERE e.input_tokens > 0 OR e.output_tokens > 0 OR e.cache_tokens > 0
+GROUP BY 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	var out []ModelTokens
+	for res.Next() {
+		var m ModelTokens
+		if err := res.Scan(&m.Model, &m.Tokens.Input, &m.Tokens.Output, &m.Tokens.Cache); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := res.Err(); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(out, func(a, b ModelTokens) int {
+		if ta, tb := total(a.Tokens), total(b.Tokens); ta != tb {
+			if ta > tb {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Model, b.Model)
+	})
+	return out, nil
 }

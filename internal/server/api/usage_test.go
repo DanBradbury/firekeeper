@@ -11,17 +11,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/server/prices"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
 
 type usagePage struct {
-	From    time.Time        `json:"from"`
-	To      time.Time        `json:"to"`
-	GroupBy []string         `json:"group_by"`
-	Priced  bool             `json:"priced"`
-	Rows    []store.UsageRow `json:"rows"`
-	Totals  struct {
+	From        time.Time         `json:"from"`
+	To          time.Time         `json:"to"`
+	GroupBy     []string          `json:"group_by"`
+	Priced      bool              `json:"priced"`
+	PriceSource store.PriceSource `json:"price_source"`
+	PricesAsOf  string            `json:"prices_as_of"`
+	Rows        []store.UsageRow  `json:"rows"`
+	Totals      struct {
 		Tokens         transcript.Tokens `json:"tokens"`
 		Cost           *float64          `json:"cost"`
 		UnpricedTokens int64             `json:"unpriced_tokens"`
@@ -87,7 +90,7 @@ func near(a *float64, b float64) bool { return a != nil && math.Abs(*a-b) < 1e-1
 func TestUsageMatchesHandComputedFixture(t *testing.T) {
 	s := newStore(t)
 	usageFixture(t, s)
-	h := Handler(s, WithPrices(fixturePrices))
+	h := Handler(s, WithPrices(fixturePrices, ""))
 
 	var page usagePage
 	if code := get(t, h, "/v1/usage?from=2026-10-01&to=2026-10-04&group_by=project", &page); code != 200 {
@@ -181,6 +184,56 @@ func TestUsageWithoutPricesHasNoCost(t *testing.T) {
 	if _, ok := raw["totals"].(map[string]any)["cost"]; ok {
 		t.Fatal("totals have cost without prices")
 	}
+	for _, k := range []string{"price_source", "prices_as_of"} {
+		if _, ok := raw[k]; ok {
+			t.Fatalf("%s sent without prices", k)
+		}
+	}
+}
+
+// TestUsagePriceSource checks the estimate labels: which kinds of price a
+// cost used, and the defaults' date whenever defaults were used.
+func TestUsagePriceSource(t *testing.T) {
+	s := newStore(t)
+	usageFixture(t, s)
+	def := func(p store.Price) store.Price { p.Source = store.PriceSourceDefault; return p }
+	gpt5, opus := fixturePrices["gpt-5"], fixturePrices["claude-opus"]
+	tests := []struct {
+		name   string
+		prices map[string]store.Price
+		path   string
+		source store.PriceSource
+		asOf   string
+	}{
+		{"custom only", fixturePrices, "group_by=project", store.PriceSourceCustom, ""},
+		{"defaults only", map[string]store.Price{"gpt-5": def(gpt5), "claude-opus": def(opus)}, "group_by=project", store.PriceSourceDefault, "2026-10-14"},
+		{"mixed", map[string]store.Price{"gpt-5": def(gpt5), "claude-opus": opus}, "group_by=project", store.PriceSourceMixed, "2026-10-14"},
+		// Only gpt-5 is used on 2026-10-01, so the mixed table's custom
+		// price for claude-opus does not count.
+		{"mixed table, defaults used", map[string]store.Price{"gpt-5": def(gpt5), "claude-opus": opus}, "to=2026-10-01", store.PriceSourceDefault, "2026-10-14"},
+		{"mixed table, custom used", map[string]store.Price{"gpt-5": def(gpt5), "claude-opus": opus}, "from=2026-10-03&to=2026-10-03", store.PriceSourceCustom, ""},
+		// Nothing priced in range: the table's make-up answers.
+		{"empty range", map[string]store.Price{"gpt-5": def(gpt5), "claude-opus": opus}, "from=2025-01-01&to=2025-01-31", store.PriceSourceMixed, "2026-10-14"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := Handler(s, WithPrices(tt.prices, "2026-10-14"))
+			var page usagePage
+			path := "/v1/usage?" + tt.path
+			if !strings.Contains(path, "from=") {
+				path += "&from=2026-10-01"
+			}
+			if !strings.Contains(path, "to=") {
+				path += "&to=2026-10-04"
+			}
+			if code := get(t, h, path, &page); code != http.StatusOK {
+				t.Fatalf("status %d", code)
+			}
+			if !page.Priced || page.PriceSource != tt.source || page.PricesAsOf != tt.asOf {
+				t.Fatalf("priced %v source %q as_of %q, want %q %q", page.Priced, page.PriceSource, page.PricesAsOf, tt.source, tt.asOf)
+			}
+		})
+	}
 }
 
 func TestUsageProjectFilter(t *testing.T) {
@@ -202,7 +255,7 @@ func TestUsageProjectFilter(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	h := Handler(s, WithPrices(fixturePrices))
+	h := Handler(s, WithPrices(fixturePrices, ""))
 	for _, tc := range []struct {
 		project  string
 		tokens   transcript.Tokens
@@ -245,7 +298,7 @@ func TestUsageProjectFilter(t *testing.T) {
 func TestUsageEmptyRange(t *testing.T) {
 	s := newStore(t)
 	usageFixture(t, s)
-	h := Handler(s, WithPrices(fixturePrices))
+	h := Handler(s, WithPrices(fixturePrices, ""))
 	var page usagePage
 	if code := get(t, h, "/v1/usage?from=2025-01-01&to=2025-01-31&group_by=day,model", &page); code != 200 {
 		t.Fatalf("status %d", code)
@@ -341,4 +394,49 @@ func serveGet(h http.Handler, path string) *httptest.ResponseRecorder {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, httptest.NewRequest("GET", path, nil))
 	return rr
+}
+
+// TestUsageBuiltInDefaults is the acceptance check for the default table: a
+// fresh database with events for a listed model shows a cost labelled as
+// default-priced and dated, an unlisted model is never guessed, and turning
+// defaults off behaves as if no prices existed.
+func TestUsageBuiltInDefaults(t *testing.T) {
+	d, err := prices.Defaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newStore(t)
+	usageFixture(t, s) // gpt-5 and o3 are listed; claude-opus is not
+	var gpt5, o3 store.Price
+	for _, e := range d.Models {
+		p := store.Price{Input: e.Input, Output: e.Output, Cache: e.Cache}
+		switch e.Name {
+		case "gpt-5":
+			gpt5 = p
+		case "o3":
+			o3 = p
+		}
+	}
+	// In range: gpt-5 {300,30,50}, o3 {1000,100,0}, claude-opus {300,30,30}.
+	want := (300*gpt5.Input + 30*gpt5.Output + 50*gpt5.Cache + 1000*o3.Input + 100*o3.Output) / 1e6
+
+	h := Handler(s, WithPrices(prices.Merge(nil, &d), d.AsOf))
+	var page usagePage
+	if code := get(t, h, "/v1/usage?from=2026-10-01&to=2026-10-04", &page); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if !page.Priced || page.PriceSource != store.PriceSourceDefault || page.PricesAsOf != d.AsOf {
+		t.Fatalf("labels: priced %v source %q as_of %q", page.Priced, page.PriceSource, page.PricesAsOf)
+	}
+	if want == 0 || !near(page.Totals.Cost, want) || page.Totals.UnpricedTokens != 360 {
+		t.Fatalf("totals cost %v unpriced %d, want %v and 360 (claude-opus)", page.Totals.Cost, page.Totals.UnpricedTokens, want)
+	}
+
+	// defaults = false with no prices of one's own: no table at all.
+	rr := serveGet(Handler(s, WithPrices(prices.Merge(nil, nil), "")), "/v1/usage?from=2026-10-01&to=2026-10-04")
+	var raw map[string]any
+	json.Unmarshal(rr.Body.Bytes(), &raw)
+	if raw["priced"] != false || raw["price_source"] != nil || raw["prices_as_of"] != nil {
+		t.Fatalf("defaults off: %s", rr.Body)
+	}
 }

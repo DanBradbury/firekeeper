@@ -57,8 +57,11 @@ type Config struct {
 	// Out receives the startup URL; Err receives warnings. Nil discards.
 	Out, Err io.Writer
 	// Prices is the per-model price table for usage cost, per million
-	// tokens. Nil means usage shows tokens only.
+	// tokens, with aliases expanded (see prices.Merge). Nil means usage
+	// shows tokens only.
 	Prices map[string]store.Price
+	// PricesAsOf is the date of the default prices in Prices, or "".
+	PricesAsOf string
 	// FileLink is the template linking a session's changed files to their
 	// repository host, such as
 	// "https://github.com/me/{project}/blob/{ref}/{path}". Empty means no
@@ -208,7 +211,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("listen: %w", err)
 	}
 	url := "http://" + ln.Addr().String() + "/"
-	apiOpts := []api.Option{api.WithPrices(cfg.Prices), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)}
+	apiOpts := []api.Option{api.WithPrices(cfg.Prices, cfg.PricesAsOf), api.WithFileLink(cfg.FileLink), api.WithLimits(cfg.Limits)}
 	if local && cfg.Local != nil {
 		apiOpts = append(apiOpts, api.WithLocal(func(ctx context.Context) *api.LocalStatus { return cfg.Local(ctx, url) }))
 	}

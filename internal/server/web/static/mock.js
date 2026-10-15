@@ -149,8 +149,8 @@ const USAGE_MODELS = [
 ];
 const USAGE_PROJECTS = ["firekeeper", "dotfiles", "notes", "service-0", ""];
 // Made-up prices for the mock only, per million tokens. The real server
-// shows cost only when the user configures a price table. kimi-k2 is left
-// out so the partial-cost marker shows.
+// uses its built-in default table plus the user's own prices. kimi-k2 is
+// left out so the partial-cost marker shows.
 const MOCK_PRICES = {
   "gpt-5-codex": { input: 1, output: 8, cache: 0.1 }, "gpt-5": { input: 1, output: 8, cache: 0.1 },
   "claude-sonnet-5-5": { input: 3, output: 15, cache: 0.3 }, "claude-opus-5-5": { input: 15, output: 75, cache: 1.5 },
@@ -203,7 +203,7 @@ function aggregateUsage(records, from, to, groupBy) {
     (a.group.day || "").localeCompare(b.group.day || "") || sum(b.tokens) - sum(a.tokens));
   for (const row of [...list, totals]) if (!row.unpriced_tokens) delete row.unpriced_tokens;
   delete totals.group;
-  return { group_by: groupBy, priced: true, rows: list, totals };
+  return { group_by: groupBy, priced: true, price_source: "default", prices_as_of: "2026-10-14", rows: list, totals };
 }
 
 function shiftTimes(obj, offset, keys) {

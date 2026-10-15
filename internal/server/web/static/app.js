@@ -939,7 +939,7 @@ const METRICS = {
   input: { label: "Input", of: (r) => r.tokens.input || 0 },
   output: { label: "Output", of: (r) => r.tokens.output || 0 },
   cache: { label: "Cache", of: (r) => r.tokens.cache || 0 },
-  cost: { label: "Cost", of: (r) => r.cost || 0, priced: true },
+  cost: { label: "Estimated cost", of: (r) => r.cost || 0, priced: true },
 };
 
 // modelSlots keeps each model's color for the whole page visit, so changing
@@ -1023,7 +1023,7 @@ function usageView(params) {
   let alive = true;
   let token = 0;
   let refreshTimer = null;
-  let data = null; // { daily: {model, provider}, projects, providers, from, to, priced }
+  let data = null; // { daily: {model, provider}, projects, providers, from, to, priced, priceSource, pricesAsOf }
 
   let by = params.get("by") || "model";
   if (!(by in DIMS)) by = "model";
@@ -1050,6 +1050,7 @@ function usageView(params) {
 
   const status = el("div", {}, el("div", { class: "loading", text: "Loading usage…" }));
   const tiles = el("div", { class: "tiles" });
+  const costNote = el("p", { class: "footnote cost-note", hidden: true });
   const chartTitle = el("h2");
   const legend = el("ul", { class: "legend" });
   const chartBox = el("div", { class: "chart" });
@@ -1074,6 +1075,7 @@ function usageView(params) {
   }
   const content = el("div", { hidden: true },
     tiles,
+    costNote,
     el("section", { class: "panel chart-panel" },
       el("div", { class: "chart-head" }, chartTitle, bySwitch),
       legend, el("div", { class: "chart-wrap" }, chartBox, tip), dailyDetails),
@@ -1183,7 +1185,10 @@ function usageView(params) {
       ]);
       if (!alive || my !== token) return;
       const daily = { model: dailyModel, provider: dailyProvider };
-      data = { daily, projects, providers, from: f, to: t, priced: !!dailyModel.priced };
+      data = {
+        daily, projects, providers, from: f, to: t, priced: !!projects.priced,
+        priceSource: projects.price_source, pricesAsOf: projects.prices_as_of,
+      };
       for (const r of projects.rows) if (r.group.project) knownProjects.add(r.group.project);
       projectOptions.replaceChildren(...[...knownProjects].sort().map((p) => el("option", { value: p })));
       fillMetrics(data.priced);
@@ -1217,10 +1222,20 @@ function usageView(params) {
     ];
     if (data.priced) {
       const partial = t.unpriced_tokens > 0;
-      list.push(tile(partial ? "Cost (partial)" : "Cost", money(t.cost),
-        partial ? `Excludes ${f(t.unpriced_tokens)} tokens from models without a price` : "From the configured price table"));
+      list.push(tile(partial ? "Estimated cost (partial)" : "Estimated cost", money(t.cost),
+        partial ? `Excludes ${f(t.unpriced_tokens)} tokens from models without a price` : priceBasis()));
     }
     tiles.replaceChildren(...list);
+    costNote.hidden = !data.priced;
+    costNote.textContent = data.priced ? `Estimated cost uses ${priceBasis()}, not what any subscription or invoice actually charged.` : "";
+  }
+
+  // priceBasis says which prices the estimate used, from price_source.
+  function priceBasis() {
+    const listed = `published list prices as of ${data.pricesAsOf || "the table's date"}`;
+    if (data.priceSource === "custom") return "your configured prices";
+    if (data.priceSource === "mixed") return `${listed} and your configured prices`;
+    return listed;
   }
 
   // series ranks models by the chosen metric over the range; the top
@@ -1358,7 +1373,7 @@ function usageView(params) {
         el("th", { scope: "col", text: "Day" }), el("th", { scope: "col", text: DIMS[by].label[0].toUpperCase() + DIMS[by].label.slice(1) }),
         el("th", { scope: "col", class: "num", text: "Input" }), el("th", { scope: "col", class: "num", text: "Output" }),
         el("th", { scope: "col", class: "num", text: "Cache" }), el("th", { scope: "col", class: "num", text: "Total" }),
-        priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
+        priced && el("th", { scope: "col", class: "num", text: "Est. cost" }))),
       el("tbody", {}, ...rows.map((r) => el("tr", {},
         el("td", { text: r.group.day }), el("td", { class: "model", text: DIMS[by].name(r.group[by]) }),
         el("td", { class: "num", text: f(r.tokens.input) }), el("td", { class: "num", text: f(r.tokens.output) }),
@@ -1402,10 +1417,10 @@ function usageView(params) {
           el("th", { scope: "col", class: "num hide-sm", text: "Cache" }),
           el("th", { scope: "col", class: "num", text: "Total" }),
           el("th", { scope: "col", class: "hide-sm", text: "Share" }),
-          priced && el("th", { scope: "col", class: "num", text: "Cost" }))),
+          priced && el("th", { scope: "col", class: "num", text: "Est. cost" }))),
         el("tbody", {}, ...res.rows.map((r) => line(nameOf(r), r))),
         el("tfoot", {}, line("Total", { ...t, group: {} }, "total"))),
-      anyPartial && el("p", { class: "footnote", text: "* Cost covers priced models only; some tokens came from models with no price in the configured table." }),
+      anyPartial && el("p", { class: "footnote", text: "* Estimated cost covers priced models only; some tokens came from models with no price." }),
     ].filter(Boolean));
   }
 

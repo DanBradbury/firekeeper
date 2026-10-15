@@ -16,7 +16,6 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/server"
 	"github.com/DanBradbury/firekeeper/internal/server/api"
 	"github.com/DanBradbury/firekeeper/internal/server/auth"
-	"github.com/DanBradbury/firekeeper/internal/server/store"
 )
 
 // serveRun is replaced in tests so serve never binds a real port.
@@ -34,6 +33,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "invite" {
 		return runInvite(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "prices" {
+		return runPrices(args[1:], stdout, stderr)
 	}
 	fs := flag.NewFlagSet("firekeeper serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -83,11 +85,9 @@ func runServe(args []string, stdout, stderr io.Writer) int {
 	if cfg.FileLink == "" {
 		cfg.FileLink = c.RepoURLTemplate
 	}
-	if len(c.Prices) > 0 {
-		cfg.Prices = make(map[string]store.Price, len(c.Prices))
-		for model, p := range c.Prices {
-			cfg.Prices[model] = store.Price{Input: p.Input, Output: p.Output, Cache: p.Cache}
-		}
+	if cfg.Prices, cfg.PricesAsOf, err = servePrices(c); err != nil {
+		fmt.Fprintf(stderr, "firekeeper serve: %v\n", err)
+		return 1
 	}
 	cfg.Signup = mode
 	configureLocal(&cfg, c, stdout, stderr)

@@ -1,0 +1,26 @@
+name: Price table reminder
+
+# Opens or comments on a reminder issue when the default price table is
+# more than 45 days old. It runs on a schedule, apart from CI, and never
+# fails a build. See docs/prices.md.
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: check the default price table's age
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/prices-reminder.sh
