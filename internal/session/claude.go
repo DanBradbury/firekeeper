@@ -480,9 +480,10 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 				meta.messageTokens = make(map[string]TokenBreakdown)
 			}
 			meta.messageTokens[key] = TokenBreakdown{
-				Input:  max(usage.Input, 0),
-				Output: max(usage.Output, 0),
-				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+				Input:      max(usage.Input, 0),
+				Output:     max(usage.Output, 0),
+				CacheRead:  max(usage.CacheRead, 0),
+				CacheWrite: max(usage.CacheCreation, 0),
 			}
 		}
 	case "cost-state":
@@ -492,9 +493,10 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 		var total TokenBreakdown
 		for _, usage := range rec.ModelUsage {
 			total = total.add(TokenBreakdown{
-				Input:  max(usage.Input, 0),
-				Output: max(usage.Output, 0),
-				Cache:  max(usage.CacheRead, 0) + max(usage.CacheCreation, 0),
+				Input:      max(usage.Input, 0),
+				Output:     max(usage.Output, 0),
+				CacheRead:  max(usage.CacheRead, 0),
+				CacheWrite: max(usage.CacheCreation, 0),
 			})
 		}
 		if total.Total() > 0 {

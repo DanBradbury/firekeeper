@@ -501,15 +501,16 @@ func (d *discoverer) scanCopilotEvents(reader io.Reader) (CopilotEventMetadata, 
 			conversationTokens = event.Data.ConversationTokens
 		}
 		if usage := event.Data.ResponseChunk.Usage; event.Type == "model.model_call_success" && usage != nil {
-			// prompt_tokens includes cached input, which is counted as cache.
+			// prompt_tokens includes cached input, which is counted as cache
+			// reads. Copilot does not report cache writes here.
 			var cached int64
 			if usage.Details != nil {
 				cached = max(usage.Details.Cached, 0)
 			}
 			metadata.Tokens = metadata.Tokens.add(TokenBreakdown{
-				Input:  max(usage.Prompt-cached, 0),
-				Output: max(usage.Completion, 0),
-				Cache:  cached,
+				Input:     max(usage.Prompt-cached, 0),
+				Output:    max(usage.Completion, 0),
+				CacheRead: cached,
 			})
 		}
 

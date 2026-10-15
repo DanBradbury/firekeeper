@@ -84,10 +84,11 @@ func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakd
 				if event.Type == "event_msg" && event.Payload.Type == "token_count" &&
 					event.Payload.Info != nil && event.Payload.Info.Total != nil {
 					// Cumulative for the thread. input_tokens includes cached
-					// input, which is counted as cache.
+					// input, which is counted as cache reads. Codex does not
+					// report cache writes.
 					total := event.Payload.Info.Total
 					cached := max(total.Cached, 0)
-					tokens = TokenBreakdown{Input: max(total.Input-cached, 0), Output: max(total.Output, 0), Cache: cached}
+					tokens = TokenBreakdown{Input: max(total.Input-cached, 0), Output: max(total.Output, 0), CacheRead: cached}
 				}
 				switch {
 				case event.Type == "event_msg" && event.Payload.Type == "task_started":

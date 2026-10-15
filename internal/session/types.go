@@ -102,24 +102,34 @@ type Info struct {
 	UpdatedAt   time.Time
 	TokensUsed  int64
 	// Tokens breaks usage down where the provider records it. It follows the
-	// transcript event convention: Input excludes cached input, and Cache
-	// counts cache reads plus cache writes. It is zero when unknown.
+	// transcript event convention: Input excludes cached input, and cache
+	// reads and cache writes are counted apart. It is zero when unknown.
 	Tokens TokenBreakdown
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,
-// and cache tokens.
+// cache reads, and cache writes. Providers that report only cached input
+// count it as cache reads and leave CacheWrite zero.
 type TokenBreakdown struct {
-	Input  int64
-	Output int64
-	Cache  int64
+	Input      int64
+	Output     int64
+	CacheRead  int64
+	CacheWrite int64
 }
 
+// Cache is the sum of cache reads and cache writes.
+func (t TokenBreakdown) Cache() int64 { return t.CacheRead + t.CacheWrite }
+
 // Total is the sum of every counted token.
-func (t TokenBreakdown) Total() int64 { return t.Input + t.Output + t.Cache }
+func (t TokenBreakdown) Total() int64 { return t.Input + t.Output + t.Cache() }
 
 func (t TokenBreakdown) add(other TokenBreakdown) TokenBreakdown {
-	return TokenBreakdown{Input: t.Input + other.Input, Output: t.Output + other.Output, Cache: t.Cache + other.Cache}
+	return TokenBreakdown{
+		Input:      t.Input + other.Input,
+		Output:     t.Output + other.Output,
+		CacheRead:  t.CacheRead + other.CacheRead,
+		CacheWrite: t.CacheWrite + other.CacheWrite,
+	}
 }
 
 type ProcessGroup struct {
