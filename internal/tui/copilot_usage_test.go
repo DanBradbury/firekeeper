@@ -107,6 +107,7 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 			t.Fatalf("Copilot usage view missing %q", expected)
 		}
 	}
+	assertModelBreakdownAboveDays(t, view)
 	colors := modelUsageColorAssignments([]string{"claude-sonnet-4.6", "gpt-5"})
 	for _, color := range colors {
 		if !strings.Contains(view, "38;2;"+color) {

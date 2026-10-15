@@ -106,6 +106,18 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 			t.Fatalf("Codex usage view missing %q", expected)
 		}
 	}
+	assertModelBreakdownAboveDays(t, view)
+}
+
+// assertModelBreakdownAboveDays fails unless the usage view puts its
+// tokens-by-model section above its tokens-by-day section.
+func assertModelBreakdownAboveDays(t *testing.T, view string) {
+	t.Helper()
+	models := strings.Index(view, "TOKENS BY MODEL")
+	days := strings.Index(view, "TOKENS BY DAY")
+	if models < 0 || days < 0 || models > days {
+		t.Fatalf("usage view should show TOKENS BY MODEL above TOKENS BY DAY (model at %d, day at %d)", models, days)
+	}
 }
 
 func TestColorModelUsageAssignsStableDistinctColors(t *testing.T) {

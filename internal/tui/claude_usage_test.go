@@ -123,6 +123,7 @@ func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
 			t.Fatalf("Claude usage view missing %q:\n%s", expected, view)
 		}
 	}
+	assertModelBreakdownAboveDays(t, view)
 }
 
 func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
