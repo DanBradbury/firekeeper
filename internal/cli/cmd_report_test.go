@@ -97,3 +97,33 @@ func TestReportToken(t *testing.T) {
 		t.Fatalf("flag: code=%d token=%q", code, cfg.Token)
 	}
 }
+
+func TestReportScansEndedSessions(t *testing.T) {
+	tests := []struct {
+		name     string
+		file     string
+		args     []string
+		wantScan bool
+		lookback time.Duration
+	}{
+		{name: "default", wantScan: true, lookback: reporter.DefaultScanLookback},
+		{name: "--live-only", args: []string{"--live-only"}, lookback: reporter.DefaultScanLookback},
+		{name: "config file", file: "scan_ended = false\nscan_lookback = \"2h\"\n", lookback: 2 * time.Hour},
+		{name: "flag over config file", file: "scan_ended = false\n", args: []string{"--live-only=false"}, wantScan: true, lookback: reporter.DefaultScanLookback},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.file != "" {
+				withConfigFile(t, tt.file)
+			}
+			cfg := stubReport(t, reporter.Summary{}, nil)
+			var stdout, stderr bytes.Buffer
+			if code := runReport(tt.args, &stdout, &stderr); code != 0 {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+			if cfg.ScanEnded != tt.wantScan || cfg.ScanLookback != tt.lookback {
+				t.Fatalf("ScanEnded = %t, ScanLookback = %s; want %t, %s", cfg.ScanEnded, cfg.ScanLookback, tt.wantScan, tt.lookback)
+			}
+		})
+	}
+}

@@ -75,18 +75,35 @@ type Config struct {
 	Version string
 	// Out receives one summary line per session. Nil discards them.
 	Out io.Writer
+	// ScanEnded also reads sessions found in the transcript folders of
+	// allowlisted providers that discovery did not see running, such as
+	// ones that started and ended between passes. They are read newest
+	// first, at most ScanLimit per pass within ScanBudget, and carry state
+	// ENDED. False reads running sessions only.
+	ScanEnded bool
+	// ScanAfter opens the scan window: transcripts not modified after it
+	// are left to backfill. Zero means ScanLookback before the pass.
+	// Since, when later, narrows it further.
+	ScanAfter time.Time
+	// ScanLookback, ScanLimit, and ScanBudget bound the scan. Zero means
+	// DefaultScanLookback, DefaultScanLimit, and DefaultScanBudget.
+	ScanLookback time.Duration
+	ScanLimit    int
+	ScanBudget   time.Duration
 	// Stop, when closed, ends the pass early: the batch in flight finishes
 	// and its offset is saved, then RunOnce returns with Summary.Stopped
 	// set. Cancelling ctx instead aborts the request in flight.
 	Stop <-chan struct{}
 
-	// Discover, Sources, Client, and Now replace the real implementations
-	// in tests. Nil means session.Discover, reader.For,
-	// a client with a 30 second timeout, and time.Now.
-	Discover func(context.Context, session.Options) ([]session.Meta, error)
-	Sources  func(transcript.Provider) (reader.Source, bool)
-	Client   *http.Client
-	Now      func() time.Time
+	// Discover, Sources, ScanEnumerators, Client, and Now replace the real
+	// implementations in tests. Nil means session.Discover, reader.For,
+	// reader.EnumeratorFor, a client with a 30 second timeout, and
+	// time.Now.
+	Discover        func(context.Context, session.Options) ([]session.Meta, error)
+	Sources         func(transcript.Provider) (reader.Source, bool)
+	ScanEnumerators func(transcript.Provider) (reader.Enumerator, bool)
+	Client          *http.Client
+	Now             func() time.Time
 
 	// lockWait overrides DefaultLockWait in tests.
 	lockWait time.Duration
@@ -123,6 +140,9 @@ type Summary struct {
 	MachineID string
 	// Stopped reports that Config.Stop ended the pass early.
 	Stopped bool
+	// Scan counts the sessions found in the transcript folders when
+	// Config.ScanEnded is set.
+	Scan ScanSummary
 }
 
 // Failed reports whether any session hit an error.
@@ -136,7 +156,9 @@ func (s Summary) Failed() bool {
 }
 
 // RunOnce discovers sessions, reads events past the stored offsets, redacts
-// them, and uploads them in batches. Offsets advance only after the server
+// them, and uploads them in batches. With Config.ScanEnded it then reads
+// the sessions in the transcript folders that discovery did not see; a
+// running session is read once, as a live one. Offsets advance only after the server
 // accepts a batch, so an interrupted pass loses nothing and the next pass
 // re-sends nothing the server has confirmed. One session failing does not
 // stop the others; their errors are in the summary. RunOnce returns an
@@ -156,10 +178,12 @@ func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
 		summary.Warning = warning
 	}
 	seen := map[string]bool{}
+	live := map[string]bool{}
 	for _, meta := range metas {
 		if meta.ID == "" {
 			continue // a runtime with no session metadata has no transcript
 		}
+		live[liveKey(meta)] = true
 		key := meta.Provider + "\x00" + meta.ID
 		if seen[key] {
 			continue
@@ -177,6 +201,11 @@ func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
 		result := r.session(ctx, meta)
 		summary.Sessions = append(summary.Sessions, result)
 		r.print(result)
+	}
+	if cfg.ScanEnded && !r.stopping() {
+		if err := r.scan(ctx, live, &summary); err != nil {
+			return summary, err
+		}
 	}
 	summary.Stopped = r.stopping()
 	return summary, nil

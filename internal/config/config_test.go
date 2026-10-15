@@ -152,6 +152,9 @@ func TestLoadErrors(t *testing.T) {
 		{"unknown key", "servr = \"x\"\n[redact]\npath = []", "unknown keys: redact.path, servr"},
 		{"bad provider", `providers = ["codex", "gpt"]`, `unknown provider "gpt"`},
 		{"bad interval", `interval = "soon"`, "not a positive duration"},
+		{"bad scan lookback", `scan_lookback = "a while"`, "scan_lookback \"a while\" is not a positive duration"},
+		{"negative scan lookback", `scan_lookback = "-1h"`, "not a positive duration"},
+		{"scan_ended as text", `scan_ended = "no"`, "scan_ended"},
 		{"relative redact path", "[redact]\npaths = [\"src\"]", "must be absolute"},
 		{"bad glob", `exclude = ["/a/[b"]`, "malformed"},
 		{"negative price", "[prices.m]\ninput = -1", "must not be negative"},
@@ -170,6 +173,40 @@ func TestLoadErrors(t *testing.T) {
 			}
 			if err != nil && strings.Contains(err.Error(), "secret-value") {
 				t.Fatalf("error echoes file contents: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadScanSettings(t *testing.T) {
+	defaults := Config{ScanEnded: true, ScanLookback: 24 * time.Hour}
+	off := false
+	on := true
+	tests := []struct {
+		name         string
+		body         string
+		overrides    Overrides
+		wantScan     bool
+		wantLookback time.Duration
+		wantSource   string
+	}{
+		{"defaults", "", Overrides{}, true, 24 * time.Hour, ""},
+		{"file turns scanning off", "scan_ended = false\nscan_lookback = \"6h\"", Overrides{}, false, 6 * time.Hour, "file"},
+		{"--live-only over file", "scan_ended = true", Overrides{ScanEnded: &off}, false, 24 * time.Hour, "flag"},
+		{"--live-only=false over file", "scan_ended = false", Overrides{ScanEnded: &on}, true, 24 * time.Hour, "flag"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeConfig(t, home, tt.body)
+			c, err := Load(Options{Home: home, Getenv: env(nil), Defaults: defaults})
+			if err != nil {
+				t.Fatal(err)
+			}
+			c = c.Apply(tt.overrides)
+			if c.ScanEnded != tt.wantScan || c.ScanLookback != tt.wantLookback || c.Sources["scan_ended"] != tt.wantSource {
+				t.Fatalf("scan_ended = %t (%q), scan_lookback = %s; want %t (%q), %s",
+					c.ScanEnded, c.Sources["scan_ended"], c.ScanLookback, tt.wantScan, tt.wantSource, tt.wantLookback)
 			}
 		})
 	}

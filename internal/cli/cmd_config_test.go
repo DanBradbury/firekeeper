@@ -110,6 +110,7 @@ func TestConfigShowMasksToken(t *testing.T) {
 token = "fk_supersecret_token_ABCD"
 providers = ["codex"]
 repo_url_template = "https://git.example/{project}/{path}"
+scan_lookback = "6h"
 [prices."gpt-5"]
 input = 1.25
 output = 10
@@ -130,6 +131,8 @@ output = 10
 		`server = "` + reporter.DefaultServer + `"  # default`,
 		`[prices."gpt-5"]`,
 		`repo_url_template = "https://git.example/{project}/{path}"`,
+		`scan_ended = true  # default`,
+		`scan_lookback = "6h0m0s"  # file`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)

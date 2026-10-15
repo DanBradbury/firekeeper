@@ -49,7 +49,7 @@ func newHistoryFixture(t *testing.T, events ...int) *historyFixture {
 	f := &historyFixture{home: home, repo: repo}
 	base := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	for i, n := range events {
-		id := fmt.Sprintf("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a%02d", i)
+		id := fmt.Sprintf("0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f%04x", i)
 		day := filepath.Join(home, ".codex", "sessions", "2026", "09", fmt.Sprintf("%02d", i+1))
 		if err := os.MkdirAll(day, 0o755); err != nil {
 			t.Fatal(err)

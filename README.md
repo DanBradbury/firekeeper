@@ -582,9 +582,11 @@ read all of it.
 
 Other limits to know about:
 
-- `report` and `daemon` find sessions through `ps`, so they see sessions that
-  are running at the time of a pass. A session that starts and ends between
-  daemon passes may be missed until a `backfill`.
+- `report` and `daemon` look back only `scan_lookback` (24 hours by default)
+  for sessions that are not running, so a session that ended earlier than
+  that, for example while the daemon was stopped for days, waits for a
+  `backfill`. With `--live-only` or `scan_ended = false` they see only
+  sessions running at the time of a pass.
 - Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
   sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
   not imported.
@@ -608,16 +610,32 @@ dashboard server in batches of at most 500 events. It prints one line per
 session with event, batch, duplicate, and redaction counts, never transcript
 text.
 
+It then looks in the transcript folders of each allowed provider for sessions
+that are not running, such as a scripted `-p` run that started and ended
+between passes, and uploads what is new in them with state `ENDED`. It
+compares each transcript's size and modification time with the saved read
+offsets, so a transcript already uploaded is not read again, and a running
+session is read once, not twice. The search covers transcripts modified in
+the last `scan_lookback` (default 24 hours, combined with `--since` when
+that is shorter); older history is `backfill`'s job. One pass reads at most
+50 such sessions, newest first, and spends at most 10 seconds on them; the
+rest wait for the next pass. The exclusion rules apply before a transcript is
+opened, as for running sessions, and providers that are not allowed are not
+searched. `--live-only`, or `scan_ended = false` in the config file, turns
+this off and reads running sessions only.
+
 | Flag | Meaning |
 | --- | --- |
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Upload this provider's sessions. Repeatable. `codex`, `copilot`, and `claude` have transcript readers today. |
 | `--dry-run` | Read and redact, print counts, upload nothing. |
 | `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
+| `--live-only` | Read only sessions whose process is running; skip ended sessions found in the transcript folders. Default `scan_ended` in the config file (on). |
 | `--token TOKEN` | Ingest token for the server. Default `$FIREKEEPER_TOKEN`, then the config file. |
 
 Every flag here except `--dry-run` and `--since` can also come from the
-environment or the config file (see [Configuration](#configuration)).
+environment or the config file; `--live-only` comes from the file only, as
+`scan_ended` (see [Configuration](#configuration)).
 
 Upload is opt-in. With no provider from a flag, the environment, or the config
 file, `report` uploads nothing and behaves like `--dry-run`; in that case the
@@ -1007,11 +1025,22 @@ firekeeper daemon --provider codex --provider copilot
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Upload this provider's sessions. Repeatable. The daemon refuses to start unless a provider comes from a flag, `$FIREKEEPER_PROVIDERS`, or the config file. |
 | `--interval DURATION` | Time between passes. Default `15s`, minimum `5s`. |
+| `--live-only` | Read only running sessions, as before transcript scanning. Default `scan_ended` in the config file (on). |
 | `--quiet` | Log only to `~/.firekeeper/daemon.log`, not to stderr. |
 
 - The provider allowlist works exactly as it does for `report`. Heartbeats
   list only sessions the pass was allowed to read, never sessions from
   other providers or ignored directories.
+- Each pass also scans the transcript folders as `report` does, so sessions
+  that start and end between passes, or while the laptop sleeps, are
+  uploaded with state `ENDED`; they never show as active. The first pass
+  after a start looks back `scan_lookback` (24 hours by default); later
+  passes look only at transcripts modified since twice the interval before
+  the previous pass began. The window moves on only after a pass that read
+  every changed session without error, so sessions left over by the 50 per
+  pass limit or the 10 second budget, or that failed to upload, are picked
+  up next time. The window is kept in memory, not in `state.json`. The log
+  shows counts, never paths.
 - When a pass or heartbeat fails, including when any one session fails to
   upload, the daemon retries after 2 seconds, doubling up to 5 minutes,
   with each wait shortened by up to a quarter at random. The first
@@ -1053,8 +1082,8 @@ allowlists take precedence over detection, including an empty config-file
 allowlist (which prevents installation). If no supported provider is detected,
 installation stops with guidance. Rerun install after adding a provider.
 
-`daemon install` takes the same `--server`, `--provider`, and `--interval`
-flags as `daemon`, writes the ones you pass into a per-user service
+`daemon install` takes the same `--server`, `--provider`, `--interval`, and
+`--live-only` flags as `daemon`, writes the ones you pass into a per-user service
 definition, and starts the service. Settings left to the config file are read
 each time the daemon starts, so after editing the file, restart the service
 (`install` again) to apply it. The service runs the binary you ran `install` with
@@ -1107,6 +1136,8 @@ server = "https://dash.example.com"
 token = "fk_..."                 # ingest token
 providers = ["codex", "claude"]  # upload allowlist; empty uploads nothing
 interval = "30s"                 # daemon only
+scan_ended = true                # report and daemon: also upload ended sessions found on disk
+scan_lookback = "24h"            # how far back that first looks
 exclude = [
   "~/clients",                   # this directory and everything below it
   "~/work/*-secret",             # globs: * stays within one path segment

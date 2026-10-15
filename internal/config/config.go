@@ -52,6 +52,12 @@ type Config struct {
 	Token     string
 	Providers []transcript.Provider
 	Interval  time.Duration
+	// ScanEnded makes report and daemon also read sessions found in the
+	// transcript folders that are not running, from `scan_ended`.
+	ScanEnded bool
+	// ScanLookback is how far back the first scan looks, from
+	// `scan_lookback`.
+	ScanLookback time.Duration
 	// RedactPaths are extra directories scrubbed from every event, with "~"
 	// already expanded.
 	RedactPaths []string
@@ -83,6 +89,8 @@ type file struct {
 	Token           *string                   `toml:"token"`
 	Providers       []string                  `toml:"providers"`
 	Interval        *string                   `toml:"interval"`
+	ScanEnded       *bool                     `toml:"scan_ended"`
+	ScanLookback    *string                   `toml:"scan_lookback"`
 	Redact          struct{ Paths []string }  `toml:"redact"`
 	Exclude         []string                  `toml:"exclude"`
 	Prices          map[string]toml.Primitive `toml:"prices"`
@@ -108,6 +116,8 @@ type Overrides struct {
 	Token     *string
 	Providers []transcript.Provider
 	Interval  *time.Duration
+	// ScanEnded is false for --live-only.
+	ScanEnded *bool
 }
 
 // DefaultPath returns home/.firekeeper/config.toml.
@@ -241,6 +251,16 @@ func (c *Config) readFile(path, home string) error {
 		}
 		c.Interval, c.Sources["interval"] = d, "file"
 	}
+	if f.ScanEnded != nil {
+		c.ScanEnded, c.Sources["scan_ended"] = *f.ScanEnded, "file"
+	}
+	if f.ScanLookback != nil {
+		d, err := time.ParseDuration(strings.TrimSpace(*f.ScanLookback))
+		if err != nil || d <= 0 {
+			return fmt.Errorf("config: %s: scan_lookback %q is not a positive duration such as \"24h\"", path, *f.ScanLookback)
+		}
+		c.ScanLookback, c.Sources["scan_lookback"] = d, "file"
+	}
 	for _, p := range f.Redact.Paths {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -300,6 +320,9 @@ func (c Config) Apply(o Overrides) Config {
 	}
 	if o.Interval != nil {
 		c.Interval, c.Sources["interval"] = *o.Interval, "flag"
+	}
+	if o.ScanEnded != nil {
+		c.ScanEnded, c.Sources["scan_ended"] = *o.ScanEnded, "flag"
 	}
 	return c
 }

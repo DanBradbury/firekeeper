@@ -46,6 +46,23 @@ func TestDaemonFlags(t *testing.T) {
 	}
 }
 
+func TestDaemonLiveOnly(t *testing.T) {
+	cfg := stubDaemon(t, nil)
+	var stdout, stderr bytes.Buffer
+	if code := runDaemon([]string{"--provider", "codex"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if !cfg.Reporter.ScanEnded || cfg.Reporter.ScanLookback != reporter.DefaultScanLookback {
+		t.Fatalf("default daemon does not scan: %+v", cfg.Reporter)
+	}
+	if code := runDaemon([]string{"--provider", "codex", "--live-only"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if cfg.Reporter.ScanEnded {
+		t.Fatal("--live-only daemon still scans")
+	}
+}
+
 func TestDaemonQuiet(t *testing.T) {
 	cfg := stubDaemon(t, nil)
 	var stdout, stderr bytes.Buffer
@@ -167,6 +184,18 @@ func TestDaemonInstallCapturesFlags(t *testing.T) {
 	unit, err := os.ReadFile(filepath.Join(home, ".config", "systemd", "user", "firekeeper.service"))
 	if err != nil || !strings.Contains(string(unit), `"--provider" "copilot"`) {
 		t.Fatalf("unit = %s, %v", unit, err)
+	}
+}
+
+func TestDaemonInstallCapturesLiveOnly(t *testing.T) {
+	args, _, _ := stubService(t, "linux")
+	var stdout, stderr bytes.Buffer
+	if code := runDaemon([]string{"install", "--provider", "codex", "--live-only"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	want := []string{"--quiet", "--provider", "codex", "--live-only=true"}
+	if !slices.Equal(*args, want) {
+		t.Fatalf("args = %q, want %q", *args, want)
 	}
 }
 

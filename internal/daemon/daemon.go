@@ -2,7 +2,12 @@
 // it is told to stop.
 //
 // Each cycle runs reporter.RunOnce and then sends a heartbeat, so the
-// dashboard sees the machine online even when there is nothing new. A
+// dashboard sees the machine online even when there is nothing new. With
+// Reporter.ScanEnded set, each pass also reads the transcripts that
+// changed since the previous pass, so sessions that start and end between
+// passes are not missed. The scan window is held in memory: the first pass
+// looks back Reporter.ScanLookback, and each later pass starts twice the
+// interval before the previous complete pass began. A
 // failed cycle backs off exponentially. Only one daemon runs per home
 // directory, enforced by a lock on ~/.firekeeper/daemon.lock, and it logs
 // to ~/.firekeeper/daemon.log. Logs carry counts and sanitized errors,
@@ -143,6 +148,16 @@ type daemon struct {
 	cfg         Config
 	log         *log.Logger
 	lastWarning string
+	// scanAfter opens the next pass's scan window. Zero until the first
+	// pass sets it from Reporter.ScanLookback.
+	scanAfter time.Time
+}
+
+func (d *daemon) now() time.Time {
+	if d.cfg.Reporter.Now != nil {
+		return d.cfg.Reporter.Now()
+	}
+	return time.Now()
 }
 
 func (d *daemon) loop(ctx context.Context) {
@@ -150,7 +165,15 @@ func (d *daemon) loop(ctx context.Context) {
 	for i, p := range d.cfg.Reporter.Providers {
 		providers[i] = string(p)
 	}
-	d.log.Printf("started: providers %s, interval %s", strings.Join(providers, ","), d.cfg.Interval)
+	scan := "off (live sessions only)"
+	if d.cfg.Reporter.ScanEnded {
+		lookback := d.cfg.Reporter.ScanLookback
+		if lookback <= 0 {
+			lookback = reporter.DefaultScanLookback
+		}
+		scan = "lookback " + lookback.String()
+	}
+	d.log.Printf("started: providers %s, interval %s, transcript scan %s", strings.Join(providers, ","), d.cfg.Interval, scan)
 	failures := 0
 	for {
 		err := d.cycle(ctx)
@@ -181,13 +204,39 @@ func (d *daemon) loop(ctx context.Context) {
 // cycle runs one pass and one heartbeat. The pass runs on a context that
 // ctx does not cancel, with ctx.Done as its Stop channel, so a stop request
 // lets the batch in flight finish and saves its offset.
+//
+// The scan window moves forward only after a pass whose scan was complete
+// and in which no session failed, so sessions left over by the scan's
+// limit or budget, or that failed to upload, are found again next pass.
+// The margin of twice the interval covers a transcript written while the
+// previous pass was enumerating.
 func (d *daemon) cycle(ctx context.Context) error {
 	cfg := d.cfg.Reporter
 	cfg.Out = nil
 	cfg.Stop = ctx.Done()
+	start := d.now()
+	if cfg.ScanEnded {
+		if d.scanAfter.IsZero() {
+			lookback := cfg.ScanLookback
+			if lookback <= 0 {
+				lookback = reporter.DefaultScanLookback
+			}
+			d.scanAfter = start.Add(-lookback)
+		}
+		cfg.ScanAfter = d.scanAfter
+	}
 	summary, err := d.cfg.RunOnce(context.WithoutCancel(ctx), cfg)
 	if err != nil {
 		return fmt.Errorf("report pass: %w", err)
+	}
+	if cfg.ScanEnded && summary.Scan.Complete && !summary.Failed() {
+		if next := start.Add(-2 * d.cfg.Interval); next.After(d.scanAfter) {
+			d.scanAfter = next
+		}
+	}
+	if s := summary.Scan; s.Found > 0 || s.Excluded > 0 {
+		d.log.Printf("transcript scan: %d changed %s not running, %d read, %d left for the next pass, %d excluded",
+			s.Found, plural(s.Found, "session", "sessions"), s.Read, s.Deferred, s.Excluded)
 	}
 	warning := ""
 	if summary.Warning != nil {
