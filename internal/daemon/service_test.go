@@ -549,12 +549,13 @@ func TestNewServiceCapturesProviderHomes(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/fixture/data")
 	t.Setenv("OPENCODE_DB", "/fixture/opencode.db")
 	t.Setenv("GEMINI_CLI_HOME", "/fixture/gemini")
+	t.Setenv("CURSOR_CONFIG_DIR", "/fixture/cursor")
 	t.Setenv("KIMI_CODE_HOME", "")
 	svc, err := NewService([]string{"--provider", "claude"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string]string{"CLAUDE_CONFIG_DIR": "/fixture/claude", "XDG_DATA_HOME": "/fixture/data", "OPENCODE_DB": "/fixture/opencode.db", "GEMINI_CLI_HOME": "/fixture/gemini"} {
+	for key, want := range map[string]string{"CLAUDE_CONFIG_DIR": "/fixture/claude", "XDG_DATA_HOME": "/fixture/data", "OPENCODE_DB": "/fixture/opencode.db", "GEMINI_CLI_HOME": "/fixture/gemini", "CURSOR_CONFIG_DIR": "/fixture/cursor"} {
 		if svc.Env[key] != want {
 			t.Fatalf("%s not captured: %v", key, svc.Env)
 		}

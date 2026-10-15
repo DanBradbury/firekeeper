@@ -21,11 +21,12 @@ const (
 	ProviderClaude   Provider = "claude"
 	ProviderOpenCode Provider = "opencode"
 	ProviderGemini   Provider = "gemini"
+	ProviderCursor   Provider = "cursor"
 )
 
 // Providers lists every provider the event contract allows, in schema order.
 func Providers() []Provider {
-	return []Provider{ProviderCodex, ProviderCopilot, ProviderKimi, ProviderClaude, ProviderOpenCode, ProviderGemini}
+	return []Provider{ProviderCodex, ProviderCopilot, ProviderKimi, ProviderClaude, ProviderOpenCode, ProviderGemini, ProviderCursor}
 }
 
 // Valid reports whether p is a provider the event contract allows.

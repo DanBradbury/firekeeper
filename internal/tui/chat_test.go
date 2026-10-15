@@ -236,6 +236,40 @@ func TestChatReadsGeminiSession(t *testing.T) {
 	}
 }
 
+func TestChatReadsCursorSession(t *testing.T) {
+	const id = "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+	path := filepath.Join(t.TempDir(), "projects", "workspace-demo", "agent-transcripts", id, id+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"role":"user","message":{"content":[{"type":"text","text":"<user_info>OS: linux</user_info>\n<user_query>\nFix the build\n</user_query>"}]}}` + "\n" +
+		`{"role":"assistant","message":{"content":[{"type":"thinking","thinking":"Run it"}]}}` + "\n" +
+		`{"role":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Shell","input":{"command":"go build"}}]}}` + "\n" +
+		`{"role":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}` + "\n" +
+		`{"role":"assistant","message":{"content":[{"type":"text","text":"The build passes now."}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel()
+	m.width, m.height = 100, 30
+	m.processGroups = []processGroup{{tool: "Cursor", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
+	m = openTestChat(t, m)
+	if m.chat.err != "" {
+		t.Fatalf("chat error: %s", m.chat.err)
+	}
+	// Context Cursor adds around the prompt, thinking, tool calls, and tool
+	// results are left out.
+	if len(m.chat.messages) != 2 || m.chat.messages[0].text != "Fix the build" || m.chat.messages[1].text != "The build passes now." {
+		t.Fatalf("messages = %+v", m.chat.messages)
+	}
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{"You", "Fix the build", "Cursor", "The build passes now.", "2 messages"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("chat view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
 func TestChatIgnoresStaleResults(t *testing.T) {
 	m, _ := chatTestModel(t)
 	result := m.openChat()()

@@ -32,6 +32,7 @@ func DetectProviders(home string, getenv func(string) string, lookPath func(stri
 		{transcript.ProviderClaude, "CLAUDE_CONFIG_DIR", "", ".claude", "claude"},
 		{transcript.ProviderOpenCode, "XDG_DATA_HOME", "opencode", filepath.Join(".local", "share", "opencode"), "opencode"},
 		{transcript.ProviderGemini, "GEMINI_CLI_HOME", ".gemini", ".gemini", "gemini"},
+		{transcript.ProviderCursor, "CURSOR_CONFIG_DIR", "", ".cursor", "cursor-agent"},
 	} {
 		directory := strings.TrimSpace(getenv(candidate.env))
 		if directory == "" {

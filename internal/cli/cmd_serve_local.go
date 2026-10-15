@@ -200,7 +200,7 @@ func offerLocalReporting(ctx context.Context, probe *localProbe, dashboardURL st
 		providers = st.Detected
 	}
 	if len(providers) == 0 {
-		fmt.Fprintln(stdout, "no Codex, Copilot CLI, Kimi Code, Claude Code, OpenCode or Gemini CLI data found on this machine, so there is nothing to report yet")
+		fmt.Fprintln(stdout, "no Codex, Copilot CLI, Kimi Code, Claude Code, OpenCode, Gemini CLI or Cursor CLI data found on this machine, so there is nothing to report yet")
 		return
 	}
 
@@ -263,6 +263,8 @@ func humanList(names []string) string {
 			pretty[i] = "OpenCode"
 		case transcript.ProviderGemini:
 			pretty[i] = "Gemini CLI"
+		case transcript.ProviderCursor:
+			pretty[i] = "Cursor CLI"
 		default:
 			pretty[i] = n
 		}

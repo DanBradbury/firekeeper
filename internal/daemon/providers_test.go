@@ -11,7 +11,7 @@ import (
 )
 
 func TestDetectProviders(t *testing.T) {
-	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderClaude, transcript.ProviderOpenCode, transcript.ProviderGemini}
+	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderClaude, transcript.ProviderOpenCode, transcript.ProviderGemini, transcript.ProviderCursor}
 	for _, scenario := range []string{"none", "directories", "executables", "override", "missing override", "file"} {
 		t.Run(scenario, func(t *testing.T) {
 			home := t.TempDir()
@@ -26,16 +26,16 @@ func TestDetectProviders(t *testing.T) {
 			}
 			switch scenario {
 			case "directories":
-				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", filepath.Join(".local", "share", "opencode"), ".gemini"} {
+				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", filepath.Join(".local", "share", "opencode"), ".gemini", ".cursor"} {
 					mkdir(filepath.Join(home, name))
 				}
 				want = all
 			case "executables":
-				commands = map[string]bool{"codex": true, "copilot": true, "claude": true, "kimi": true, "opencode": true, "gemini": true}
+				commands = map[string]bool{"codex": true, "copilot": true, "claude": true, "kimi": true, "opencode": true, "gemini": true, "cursor-agent": true}
 				mkdir(filepath.Join(home, ".codex"))
 				want = all
 			case "override":
-				for _, key := range []string{"CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR"} {
+				for _, key := range []string{"CODEX_HOME", "COPILOT_HOME", "KIMI_CODE_HOME", "CLAUDE_CONFIG_DIR", "CURSOR_CONFIG_DIR"} {
 					env[key] = filepath.Join(home, key)
 					mkdir(env[key])
 				}
@@ -55,6 +55,8 @@ func TestDetectProviders(t *testing.T) {
 				env["KIMI_CODE_HOME"] = filepath.Join(home, "missing")
 				mkdir(filepath.Join(home, ".gemini"))
 				env["GEMINI_CLI_HOME"] = filepath.Join(home, "missing")
+				mkdir(filepath.Join(home, ".cursor"))
+				env["CURSOR_CONFIG_DIR"] = filepath.Join(home, "missing")
 			case "file":
 				if err := os.WriteFile(filepath.Join(home, ".codex"), nil, 0600); err != nil {
 					t.Fatal(err)
