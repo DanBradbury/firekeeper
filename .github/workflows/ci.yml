@@ -4,6 +4,9 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The price refresh dispatches CI on its branch, because pull requests
+  # opened with a workflow's token do not start workflows.
+  workflow_dispatch:
 
 permissions:
   contents: read

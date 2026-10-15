@@ -124,6 +124,9 @@ func writeConfig(w io.Writer, c config.Config) {
 	fmt.Fprintf(w, "repo_url_template = %q\n", c.RepoURLTemplate)
 	fmt.Fprintf(w, "trusted_proxies = %s\n", tomlList(c.TrustedProxies))
 	fmt.Fprintf(w, "\n[redact]\npaths = %s\n", tomlList(c.RedactPaths))
+	if c.NoDefaultPrices {
+		fmt.Fprintf(w, "\n[prices]\n%s = false\n", config.PricesDefaultsKey)
+	}
 	models := make([]string, 0, len(c.Prices))
 	for m := range c.Prices {
 		models = append(models, m)

@@ -1,0 +1,86 @@
+# A synthetic table for refresh tests.
+as_of = "2026-09-01"
+exclude = ["gpt-x-old"]
+
+# Anthropic entries.
+
+[[model]]
+name = "claude-alpha-9"
+label = "Claude Alpha 9"
+input = 10
+output = 50
+cache = 0.25
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+as_of = "2026-09-01"
+
+[[model]]
+name = "claude-beta-9"
+label = "Claude Beta 9 ([limited](https://example.com))"
+aliases = ["claude-beta-9.0"]
+input = 2
+output = 10
+cache = 0.20
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+as_of = "2026-09-01"
+
+[[model]]
+name = "claude-gamma-9"
+label = "Claude Gamma 9"
+input = 0.80
+output = 4
+cache = 0.08
+source = "https://platform.claude.com/docs/en/about-claude/pricing"
+as_of = "2026-09-01"
+
+# OpenAI entries.
+
+[[model]]
+name = "gpt-x"
+input = 2.00
+output = 10
+cache = 0.20
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-09-01"
+
+[[model]]
+name = "gpt-x-mini"
+label = "gpt-x-mini (<272K context length)"
+input = 0.25
+output = 2
+cache = 0.025
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-09-01"
+
+[[model]]
+name = "gpt-x-codex"
+input = 1.75
+output = 14
+cache = 0.175
+source = "https://developers.openai.com/api/docs/pricing"
+as_of = "2026-09-01"
+
+# Kimi entries.
+
+[[model]]
+name = "kimi-k9"
+input = 3
+output = 15
+cache = 0.30
+source = "https://platform.kimi.ai/docs/pricing/chat"
+as_of = "2026-09-01"
+
+[[model]]
+name = "kimi-k8-code"
+input = 0.95
+output = 4
+cache = 0.19
+source = "https://platform.kimi.ai/docs/pricing/chat"
+as_of = "2026-09-01"
+
+[[model]]
+name = "kimi-k8"
+input = 0.95
+output = 4
+cache = 0.16
+source = "https://platform.kimi.ai/docs/pricing/chat"
+as_of = "2026-09-01"

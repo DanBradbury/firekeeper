@@ -35,6 +35,10 @@ const (
 	EnvInterval  = "FIREKEEPER_INTERVAL"
 )
 
+// PricesDefaultsKey is the key under [prices] that turns the built-in
+// default prices on or off. It cannot name a model.
+const PricesDefaultsKey = "defaults"
+
 // Price is a per-model price in currency units per million tokens.
 type Price struct {
 	Input  float64 `toml:"input"`
@@ -54,8 +58,12 @@ type Config struct {
 	// Exclude holds directory globs (starting with "/" or "~", "~"
 	// expanded) and Git remote patterns (anything else). See Excluded.
 	Exclude []string
-	// Prices is the per-model price table the dashboard uses for cost.
+	// Prices is the user's per-model price table the dashboard uses for
+	// cost. It wins over the built-in defaults for every model it names.
 	Prices map[string]Price
+	// NoDefaultPrices turns the built-in default price table off, from
+	// `defaults = false` under [prices].
+	NoDefaultPrices bool
 	// RepoURLTemplate links changed files to their repository host.
 	RepoURLTemplate string
 	// TrustedProxies are the reverse proxies `serve` believes
@@ -71,15 +79,15 @@ type Config struct {
 
 // file is the TOML layout.
 type file struct {
-	Server          *string                  `toml:"server"`
-	Token           *string                  `toml:"token"`
-	Providers       []string                 `toml:"providers"`
-	Interval        *string                  `toml:"interval"`
-	Redact          struct{ Paths []string } `toml:"redact"`
-	Exclude         []string                 `toml:"exclude"`
-	Prices          map[string]Price         `toml:"prices"`
-	RepoURLTemplate *string                  `toml:"repo_url_template"`
-	TrustedProxies  []string                 `toml:"trusted_proxies"`
+	Server          *string                   `toml:"server"`
+	Token           *string                   `toml:"token"`
+	Providers       []string                  `toml:"providers"`
+	Interval        *string                   `toml:"interval"`
+	Redact          struct{ Paths []string }  `toml:"redact"`
+	Exclude         []string                  `toml:"exclude"`
+	Prices          map[string]toml.Primitive `toml:"prices"`
+	RepoURLTemplate *string                   `toml:"repo_url_template"`
+	TrustedProxies  []string                  `toml:"trusted_proxies"`
 }
 
 // Options configures Load.
@@ -181,6 +189,29 @@ func (c *Config) readFile(path, home string) error {
 		}
 		return fmt.Errorf("config: %s: %w", path, err)
 	}
+	// [prices] mixes per-model tables with the defaults switch, so each key
+	// is decoded on its own. This runs before the unknown-key check, which
+	// then still catches a typo inside a model's table.
+	prices := map[string]Price{}
+	noDefaults := false
+	for model, prim := range f.Prices {
+		if model == PricesDefaultsKey {
+			var on bool
+			if err := md.PrimitiveDecode(prim, &on); err != nil {
+				return fmt.Errorf("config: %s: prices.%s must be true or false", path, PricesDefaultsKey)
+			}
+			noDefaults = !on
+			continue
+		}
+		var p Price
+		if err := md.PrimitiveDecode(prim, &p); err != nil {
+			return fmt.Errorf("config: %s: prices.%q must be a table of input, output and cache rates", path, model)
+		}
+		if p.Input < 0 || p.Output < 0 || p.Cache < 0 {
+			return fmt.Errorf("config: %s: prices.%s must not be negative", path, model)
+		}
+		prices[model] = p
+	}
 	if undecoded := md.Undecoded(); len(undecoded) > 0 {
 		keys := make([]string, len(undecoded))
 		for i, k := range undecoded {
@@ -236,15 +267,10 @@ func (c *Config) readFile(path, home string) error {
 		}
 		c.Exclude = append(c.Exclude, e)
 	}
-	if len(f.Prices) > 0 {
-		c.Prices = map[string]Price{}
-		for model, p := range f.Prices {
-			if p.Input < 0 || p.Output < 0 || p.Cache < 0 {
-				return fmt.Errorf("config: %s: prices.%s must not be negative", path, model)
-			}
-			c.Prices[model] = p
-		}
+	if len(prices) > 0 {
+		c.Prices = prices
 	}
+	c.NoDefaultPrices = noDefaults
 	if f.RepoURLTemplate != nil {
 		c.RepoURLTemplate = strings.TrimSpace(*f.RepoURLTemplate)
 	}

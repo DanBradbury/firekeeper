@@ -1,0 +1,61 @@
+name: Refresh default prices
+
+# Rereads the default price table's rates from the providers' pricing
+# pages every week. Changed rates land through a pull request that merges
+# itself once CI passes, unless a guardrail trips. A failed refresh opens an
+# issue instead. See docs/prices.md.
+
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+
+concurrency:
+  group: prices-refresh
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: refresh the table
+        id: refresh
+        shell: bash
+        run: |
+          set -o pipefail
+          go run ./internal/server/prices/cmd/refresh-prices \
+            -report "$RUNNER_TEMP/report.md" -github-output "$GITHUB_OUTPUT" 2>&1 | tee "$RUNNER_TEMP/refresh.log"
+      - name: check the table
+        if: steps.refresh.outputs.changed == 'true'
+        run: go test ./internal/server/prices/...
+      - name: land the refresh
+        if: steps.refresh.outputs.changed == 'true'
+        run: scripts/prices-refresh-pr.sh "$RUNNER_TEMP/report.md" "${{ steps.refresh.outputs.review }}"
+      - name: report a failed refresh
+        if: failure()
+        run: |
+          log=$(tail -n 40 "$RUNNER_TEMP/refresh.log" 2>/dev/null || true)
+          url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          scripts/prices-issue.sh "Automatic price refresh failed" "The weekly price refresh did not finish: $url
+
+          If the refresh step failed, a pricing page could not be read and the table was not changed; the log is below. A page whose layout changed needs its parser in internal/server/prices/refresh/pages.go updated. If a later step failed, the refresh pull request did not pass CI or could not merge; see the run. See docs/prices.md.
+
+          \`\`\`
+          $log
+          \`\`\`"
+      - name: remind when the table is stale
+        if: always()
+        run: scripts/prices-reminder.sh

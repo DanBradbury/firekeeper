@@ -31,12 +31,18 @@ func parseBound(v string, isTo bool) (time.Time, bool) {
 }
 
 type usageResponse struct {
-	From    time.Time        `json:"from"`
-	To      time.Time        `json:"to"`
-	GroupBy []string         `json:"group_by"`
-	Priced  bool             `json:"priced"`
-	Rows    []store.UsageRow `json:"rows"`
-	Totals  usageTotals      `json:"totals"`
+	From    time.Time `json:"from"`
+	To      time.Time `json:"to"`
+	GroupBy []string  `json:"group_by"`
+	Priced  bool      `json:"priced"`
+	// PriceSource says whether cost used built-in default prices, the
+	// user's custom prices, or both. Set only when Priced.
+	PriceSource store.PriceSource `json:"price_source,omitempty"`
+	// PricesAsOf is the date of the default prices, set only when
+	// PriceSource is default or mixed.
+	PricesAsOf string           `json:"prices_as_of,omitempty"`
+	Rows       []store.UsageRow `json:"rows"`
+	Totals     usageTotals      `json:"totals"`
 }
 
 type usageTotals struct {
@@ -45,7 +51,10 @@ type usageTotals struct {
 	UnpricedTokens int64             `json:"unpriced_tokens,omitempty"`
 }
 
-func usage(s *store.Store, prices map[string]store.Price) http.HandlerFunc {
+func usage(s *store.Store, prices map[string]store.Price, asOf string) http.HandlerFunc {
+	// The table's own make-up answers price_source when a response priced
+	// nothing, so the label never flips just because a range is empty.
+	tableSource := store.TableSource(prices)
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		today := time.Now().UTC().Truncate(24 * time.Hour)
@@ -91,9 +100,19 @@ func usage(s *store.Store, prices map[string]store.Price) http.HandlerFunc {
 		if rows == nil {
 			rows = []store.UsageRow{}
 		}
-		writeJSON(w, http.StatusOK, usageResponse{
+		res := usageResponse{
 			From: from, To: to, GroupBy: groupBy, Priced: len(prices) > 0, Rows: rows,
 			Totals: usageTotals{Tokens: sum.Tokens, Cost: sum.Cost, UnpricedTokens: sum.UnpricedTokens},
-		})
+		}
+		if res.Priced {
+			res.PriceSource = sum.PriceSource
+			if res.PriceSource == "" {
+				res.PriceSource = tableSource
+			}
+			if res.PriceSource != store.PriceSourceCustom {
+				res.PricesAsOf = asOf
+			}
+		}
+		writeJSON(w, http.StatusOK, res)
 	}
 }

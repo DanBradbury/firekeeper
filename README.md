@@ -102,9 +102,9 @@ UI with every session, full transcripts, and search across all of them. Each
 session shows the files it changed and its Git context. Import the history
 already on your machine with `backfill`, or keep it current with the daemon.
 
-**Understand usage.** Token use charted by model and filtered by project. Add
-your own per-model prices and the same charts show spend. Firekeeper ships no
-price list, so the numbers are yours.
+**Understand usage.** Token use charted by model and filtered by project, with
+an estimated cost from a built-in table of published list prices. Override any
+model's price, or turn the defaults off, in the config file.
 
 **Bring machines together.** Link a laptop, a desktop, and a dev box to one
 account with a browser approval instead of a pasted token. A machines page
@@ -690,10 +690,15 @@ The web UI is a set of pages in the top bar:
 - **Usage** charts daily token use by model for the last 7, 30, or 90 days or
   a custom range, with totals by project and a daily table, and can be
   filtered by project. Days are UTC, and only events with a timestamp are
-  counted. Cost appears only when a per-model price table is configured;
-  Firekeeper never ships prices; set them under `[prices]` in the config file
-  that `serve` reads. Models are matched by exact name, and tokens from models
-  without a price count as unpriced.
+  counted. **Estimated cost** comes from a built-in table of the providers'
+  published list prices, dated on the page. It is an estimate: it is not what
+  any subscription, seat or invoice actually charged, and it leaves out
+  cache-write, long-context and batch pricing. Your own prices under
+  `[prices]` in the config file that `serve` reads win for the models they
+  name, and `defaults = false` turns the built-in table off. Models are
+  matched by exact name, then by an explicit alias list; tokens from any
+  other model count as unpriced and are never guessed. See
+  [docs/prices.md](docs/prices.md).
 - **Tokens** manages the account's tokens (see [Tokens](#tokens)).
 
 On the Sessions and Usage pages, enter an exact project name or choose a
@@ -1025,10 +1030,13 @@ trusted_proxies = ["172.29.77.0/24"]  # serve: proxies whose X-Forwarded-For is 
 [redact]
 paths = ["~/clients"]            # also scrubbed to [REDACTED:path] in uploads
 
-[prices."gpt-5"]                 # serve: cost per million tokens on Usage
-input = 1.25
-output = 10
-cache = 0.125
+[prices]
+defaults = true                  # serve: false turns the built-in prices off
+
+[prices."my-local-model"]        # serve: USD per million tokens on Usage
+input = 0.5
+output = 1.5
+cache = 0.05
 ```
 
 `exclude` entries that start with `/` or `~` are directory globs, matched
@@ -1037,7 +1045,10 @@ Anything else is a Git remote pattern, matched against every `url` in the
 repository's `.git/config` after both are reduced to `host/owner/repo`, so
 `git@github.com:acme/api.git` and `https://github.com/acme/api` both read as
 `github.com/acme/api`. `.firekeeper-ignore` still works as before. The prices
-above are placeholders, not real rates.
+above are placeholders, not real rates. A `[prices."<model>"]` table replaces
+the built-in price for that model only; `defaults` is reserved and cannot name
+a model. `firekeeper serve prices missing [--db PATH]` lists the models in the
+dashboard database that have no price, with their token counts.
 
 `firekeeper config show` prints the merged configuration with the token
 masked and notes where each layered setting came from. `login` and `logout`

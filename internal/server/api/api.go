@@ -24,6 +24,7 @@ type Option func(*options)
 
 type options struct {
 	prices   map[string]store.Price
+	asOf     string
 	fileLink string
 	limits   Limits
 	local    func(context.Context) *LocalStatus
@@ -35,10 +36,12 @@ func WithLimits(l Limits) Option {
 	return func(o *options) { o.limits = l }
 }
 
-// WithPrices sets the per-model price table /v1/usage uses to add cost.
-// With no table, usage reports tokens only; prices are never built in.
-func WithPrices(p map[string]store.Price) Option {
-	return func(o *options) { o.prices = p }
+// WithPrices sets the per-model price table /v1/usage uses to add cost,
+// with aliases already expanded to keys (see prices.Merge). asOf is the
+// date of the default prices in it, YYYY-MM-DD, or "" when it holds none.
+// With no table, usage reports tokens only.
+func WithPrices(p map[string]store.Price, asOf string) Option {
+	return func(o *options) { o.prices, o.asOf = p, asOf }
 }
 
 // WithFileLink sets the template that links a session's changed files to
@@ -68,7 +71,7 @@ func Handler(s *store.Store, opts ...Option) http.Handler {
 	mux.HandleFunc("GET /v1/sessions/{uid}", getSession(s, o.fileLink))
 	mux.HandleFunc("GET /v1/sessions/{uid}/events", listEvents(s))
 	mux.HandleFunc("GET /v1/machines", listMachines(s))
-	mux.HandleFunc("GET /v1/usage", usage(s, o.prices))
+	mux.HandleFunc("GET /v1/usage", usage(s, o.prices, o.asOf))
 	mux.HandleFunc("GET /v1/account", account(s, o.limits, o.local))
 	mux.HandleFunc("DELETE /v1/account", deleteAccount(s))
 	mux.HandleFunc("GET /v1/account/export", exportAccount(s))
