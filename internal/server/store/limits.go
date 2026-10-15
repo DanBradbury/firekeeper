@@ -118,6 +118,7 @@ FROM accounts a WHERE a.id = ?`, accountID).
 	// the account made or used go with it; a used code stays unusable.
 	for _, q := range []string{
 		`DELETE FROM session_files WHERE account_id = ?`,
+		`DELETE FROM session_git_files WHERE account_id = ?`,
 		`DELETE FROM events WHERE account_id = ?`,
 		`DELETE FROM sessions WHERE account_id = ?`,
 		`DELETE FROM machines WHERE account_id = ?`,

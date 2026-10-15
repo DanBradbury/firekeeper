@@ -325,7 +325,7 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 	}
 	sessionMeta := r.sessionMeta(meta, &result)
 	for _, path := range paths {
-		if err := r.file(ctx, source, meta, sessionMeta, path, &result); err != nil {
+		if err := r.file(ctx, source, meta, &sessionMeta, path, &result); err != nil {
 			if !errors.Is(err, errStopped) {
 				result.Err = err
 			}
@@ -337,7 +337,7 @@ func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 
 // file reads one transcript file from its stored offset and uploads what is
 // new.
-func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta, sessionMeta ingestMeta, path string, result *SessionResult) error {
+func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta, sessionMeta *ingestMeta, path string, result *SessionResult) error {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return errors.New("resolve transcript path")
@@ -386,11 +386,14 @@ func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta,
 	if err != nil {
 		return err
 	}
+	if len(batches) > 0 {
+		r.addGitFiles(ctx, meta, sessionMeta, result)
+	}
 	for _, batch := range batches {
 		if r.stopping() {
 			return errStopped
 		}
-		dups, err := r.send(ctx, meta.MachineID, sessionMeta, batch)
+		dups, err := r.send(ctx, meta.MachineID, *sessionMeta, batch)
 		if err != nil {
 			return err
 		}
@@ -489,7 +492,20 @@ type ingestMeta struct {
 	Title          string     `json:"title"`
 	StartedAt      *time.Time `json:"started_at"`
 	LastActivityAt *time.Time `json:"last_activity_at"`
+	// FilesSource is filesFromGit when Files is the session's Git change
+	// list, which then replaces the server's list built from tool calls.
+	// Empty leaves the server's list as it is.
+	FilesSource string   `json:"files_source,omitempty"`
+	Files       []string `json:"files,omitempty"`
+
+	// gitFilesDone marks that addGitFiles already ran for this pass.
+	gitFilesDone bool
+	// commitRaw is the start commit before redaction, for git.
+	commitRaw string
 }
+
+// filesFromGit is the files_source sent with a Git change list.
+const filesFromGit = "git"
 
 type ingestSession struct {
 	Meta   ingestMeta         `json:"meta"`
@@ -535,7 +551,36 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		Title:          clean(meta.Title),
 		StartedAt:      meta.StartedAt,
 		LastActivityAt: meta.LastActivityAt,
+		commitRaw:      commit,
 	}
+}
+
+// addGitFiles sets sm's file list from Git, once per session and pass, and
+// only when there is something to upload, since it runs git. Outside a
+// repository, or when Git cannot tell, sm is left without a list and the
+// server keeps the one it builds from tool calls. Paths are redacted like
+// the cwd, so the server can make them relative to it.
+func (r *run) addGitFiles(ctx context.Context, meta session.Meta, sm *ingestMeta, result *SessionResult) {
+	if sm.gitFilesDone {
+		return
+	}
+	sm.gitFilesDone = true
+	if sm.commitRaw == "" {
+		return
+	}
+	files, ok := gitChangedFiles(ctx, meta.CWD, sm.commitRaw, meta.StartedAt, meta.LastActivityAt)
+	if !ok {
+		return
+	}
+	opts := r.redactOptions()
+	clean := make([]string, 0, len(files))
+	for _, f := range files {
+		out, counts := redact.String(f, opts)
+		result.Redactions += counts.Total()
+		clean = append(clean, out)
+	}
+	sm.FilesSource = filesFromGit
+	sm.Files = clean
 }
 
 // stateName is the wire name of a session state, such as NEEDS_INPUT.

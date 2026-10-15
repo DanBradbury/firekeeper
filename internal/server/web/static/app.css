@@ -298,6 +298,8 @@ table.sessions {
   color: var(--muted);
 }
 .files > summary .count { color: var(--text); }
+.files > summary .hint { text-transform: none; letter-spacing: 0; font-style: italic; }
+.files .note { margin: 0; padding: 0 16px 8px; color: var(--muted); }
 .files ul { list-style: none; margin: 0; padding: 0 16px 10px; display: grid; gap: 4px; }
 .files li { display: flex; gap: 12px; align-items: baseline; min-width: 0; }
 .files .path { font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; flex: 1 1 auto; }

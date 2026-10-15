@@ -743,22 +743,38 @@ suggestion from the loaded results; clear the Project field to show all
 projects. Filters stay in the page URL for sharing and reloading.
 
 A session's page shows the commit it started on and a **Files changed**
-panel: the files its tool calls edited, wrote, or patched (Claude Code
-`Edit`, `MultiEdit`, `Write`, and `NotebookEdit`; Codex `apply_patch`,
-including patches run through a shell tool; Copilot `edit`, `create`,
-`write`, `str_replace_editor`, and `apply_patch`). Paths are relative to the
-session's working directory, or absolute when outside it. They are read from
-transcript events after redaction, so a home directory shows as `~` and a
-secret-shaped file name as a `[REDACTED:...]` marker. Files changed by shell
-commands such as `sed -i` or `>` are not detected, and the list says what
-the agent asked to change, not what the repository ended up with. Events
-ingested before this feature are not scanned.
+panel. Paths are relative to the session's working directory, or absolute
+when outside it, and are redacted before upload, so a home directory shows
+as `~` and a secret-shaped file name as a `[REDACTED:...]` marker.
+
+- **In a Git repository** the list comes from Git: every file changed since
+  the commit the session started on, whatever changed it, including shell
+  commands and scripts. While `HEAD` still points where it did at the
+  session's last activity, uncommitted changes and untracked files written
+  since the session started count too. Once `HEAD` has moved on, only the
+  commits up to the session's last activity count. Git cannot tell the
+  agent's changes from yours, so edits you made in the same checkout during
+  the session are listed as well. Files that edit tool calls also named
+  show how many calls changed them.
+- **Outside a Git repository**, or when the start commit is unknown, the
+  list is **best effort** and the panel says so. It only has the files the
+  agent's edit tool calls named (Claude Code `Edit`, `MultiEdit`, `Write`,
+  and `NotebookEdit`; Codex `apply_patch`, including patches run through a
+  shell tool; Copilot `edit`, `create`, `write`, `str_replace_editor`, and
+  `apply_patch`; and the equivalents for OpenCode, Kimi Code, and Gemini
+  CLI). Files changed by shell commands such as `sed -i` or `>`, or by
+  scripts, are missing. Events ingested before this feature are not
+  scanned.
 
 The reporter reads the commit, and the branch when the provider gives none,
-from the repository's `HEAD` reflog as it was at the session's start time. It
-runs no Git command and sends neither when the reflog has no entry before
+from the repository's `HEAD` reflog as it was at the session's start time,
+without running Git. It sends neither when the reflog has no entry before
 the session started, which is common for sessions older than the reflog's
-retention.
+retention. To build the Git file list it runs read-only `git rev-parse`,
+`git diff --name-only`, and `git ls-files --others --exclude-standard` in
+the repository when it has events to upload, with optional locks and
+`core.fsmonitor` turned off and a 10 second timeout. It never contacts a
+remote. A list longer than 5,000 files is cut short.
 
 ### Tokens
 

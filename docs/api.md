@@ -385,9 +385,13 @@ Returned by the read endpoints:
   "started_at": "RFC3339 or null",
   "last_activity_at": "RFC3339 or null",
   "event_count": 42,
-  "tokens": { "input": 0, "output": 0, "cache": 0 }
+  "tokens": { "input": 0, "output": 0, "cache": 0 },
+  "files_source": "git | tool_calls"
 }
 ```
+
+`files_source` says where the session's changed-file list comes from; see
+[`GET /v1/sessions/{uid}`](#get-v1sessionsuid).
 
 `event_count` and `tokens` are always recomputed from stored events, never
 taken from a request. `state` describes the latest observable provider event.
@@ -414,7 +418,8 @@ transaction.
       "meta": {
         "session_id": "0199-abc", "provider": "codex", "cwd": "/repo", "project": "repo",
         "branch": "main", "commit": "4f5ef2f…", "model": "gpt-5", "state": "ACTIVE", "title": "Fix parser",
-        "started_at": "2026-10-07T12:00:00Z", "last_activity_at": "2026-10-07T12:05:00Z"
+        "started_at": "2026-10-07T12:00:00Z", "last_activity_at": "2026-10-07T12:05:00Z",
+        "files_source": "git", "files": ["/repo/src/main.go", "/repo/src/gen.go"]
       },
       "events": [ { "provider": "codex", "seq": 0, "role": "user", "text": "...", "tokens": {"input": 0, "output": 0, "cache": 0}, "raw": {} } ]
     }
@@ -434,6 +439,11 @@ transaction.
 - Ingest also counts as a heartbeat for the machine.
 - Files: newly stored events are scanned for file-changing tool calls (see
   `GET /v1/sessions/{uid}`). Re-sent events are not scanned again.
+- Git files (optional): with `files_source` `git`, `files` replaces the
+  session's Git change list, even when empty. Paths are absolute or relative
+  to `cwd`, at most 5,000 of them, each non-blank and at most 4,096 bytes.
+  Without `files_source`, or with `tool_calls`, the stored list is kept and
+  `files` must be absent. Any other `files_source` is rejected with 400.
 
 Response `200`:
 
@@ -488,8 +498,8 @@ already read.
 
 ### `GET /v1/sessions/{uid}`
 
-Returns one Session plus `files`, the files its tool calls changed, ordered
-by path. A malformed uid gets 400, and an unknown session gets 404.
+Returns one Session plus `files`, the files the session changed, ordered by
+path. A malformed uid gets 400, and an unknown session gets 404.
 
 ```json
 {
@@ -498,22 +508,30 @@ by path. A malformed uid gets 400, and an unknown session gets 404.
   "files": [
     { "path": "/etc/hosts", "absolute": true, "first_seq": 9, "last_seq": 9, "changes": 1 },
     { "path": "src/main.go", "absolute": false, "first_seq": 4, "last_seq": 12, "changes": 3,
-      "url": "https://github.com/me/repo/blob/4f5ef2f…/src/main.go" }
+      "url": "https://github.com/me/repo/blob/4f5ef2f…/src/main.go" },
+    { "path": "src/gen.go", "absolute": false, "first_seq": -1, "last_seq": -1, "changes": 0 }
   ]
 }
 ```
 
+- With `files_source` `git`, `files` is the Git change list the reporter
+  last sent: every file changed in the session's repository since its start
+  commit, however it changed. Files that no edit tool call named have
+  `changes` 0 and `first_seq` and `last_seq` -1.
+- With `files_source` `tool_calls`, `files` is only the files that edit,
+  write, and patch tool calls named, and is best effort (see below).
+
 - `path` is relative to the session's `cwd`, or absolute (`absolute: true`)
   when the file is outside it. Paths come from events that were redacted
   before upload, so they carry the same `~` and `[REDACTED:...]` rewrites.
-- `first_seq` and `last_seq` are the first and last events that changed the
-  file; `changes` counts those events.
+- `first_seq` and `last_seq` are the first and last events whose tool calls
+  changed the file; `changes` counts those events.
 - `url` is present only when the server has a file link template
   (`serve --file-link`), the path is relative and unredacted, and every
   placeholder the template uses has a value.
-- Detection reads Claude Code, Codex, Copilot, OpenCode, Kimi Code, and Gemini
-  CLI tool calls. It is best effort: files changed by arbitrary shell commands are not
-  listed.
+- Tool-call detection reads Claude Code, Codex, Copilot, OpenCode, Kimi
+  Code, and Gemini CLI tool calls. On its own it is best effort: files
+  changed by arbitrary shell commands or scripts are not listed.
 - `files` is always an array, and is not included by `GET /v1/sessions`.
 
 ### `GET /v1/sessions/{uid}/events`
