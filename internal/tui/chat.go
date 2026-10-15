@@ -11,6 +11,7 @@ import (
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

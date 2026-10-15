@@ -41,6 +41,15 @@ func TestTouchedFiles(t *testing.T) {
 			`{"type":"tool.execution_complete","data":{"toolName":"edit","arguments":{"path":"a.go"},"note":"tool.execution_start"}}`, nil},
 		{"copilot file_path key", ProviderCopilot,
 			`{"type":"tool.execution_start","data":{"toolName":"write","arguments":{"file_path":"a.go"}}}`, []string{"a.go"}},
+		{"opencode edit, write, and patch", ProviderOpenCode,
+			`{"type":"assistant","data":{"content":[{"type":"text","text":"x"},{"type":"tool","name":"edit","state":{"input":{"path":"a.go"}}},{"type":"tool","name":"write","state":{"input":{"filePath":"b.go"}}},{"type":"tool","name":"patch","state":{"input":{"patchText":"*** Begin Patch\n*** Update File: c.go\n*** End Patch"}}}]}}`,
+			[]string{"a.go", "b.go", "c.go"}},
+		{"opencode read is not a change", ProviderOpenCode,
+			`{"type":"assistant","data":{"content":[{"type":"tool","name":"read","state":{"input":{"path":"a.go"}}}]}}`, nil},
+		{"opencode tool in a user message", ProviderOpenCode,
+			`{"type":"user","data":{"content":[{"type":"tool","name":"edit","state":{"input":{"path":"a.go"}}}]}}`, nil},
+		{"opencode input still streaming", ProviderOpenCode,
+			`{"type":"assistant","data":{"content":[{"type":"tool","name":"edit","state":{"status":"streaming","input":"{\"path\":\"a."}}]}}`, nil},
 		{"kimi has no extractor", ProviderKimi, `{"message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"a.go"}}]}}`, nil},
 	}
 	for _, tt := range tests {

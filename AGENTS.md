@@ -313,7 +313,7 @@ One record per transcript event. The idempotency key is `(machine_id, session_id
 {
   "machine_id": "string",
   "session_id": "string, provider-native id",
-  "provider": "codex | copilot | kimi | claude",
+  "provider": "codex | copilot | kimi | claude | opencode",
   "seq": 0,
   "ts": "RFC3339 or null",
   "role": "user | assistant | tool_call | tool_result | system | meta",

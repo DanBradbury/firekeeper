@@ -24,6 +24,9 @@ import (
 //   - copilot: tool.execution_start for edit, create, write, and
 //     str_replace_editor commands other than view (arguments.path), and
 //     apply_patch envelopes in any tool's arguments.
+//   - opencode: tool parts of assistant messages named edit, write, or
+//     multiedit (state.input.path or filePath), and apply_patch envelopes in
+//     any other tool's input, which covers the patch tool.
 func TouchedFiles(e Event) []string {
 	if len(e.Raw) == 0 {
 		return nil
@@ -36,6 +39,9 @@ func TouchedFiles(e Event) []string {
 		paths = codexFiles(e.Raw)
 	case ProviderCopilot:
 		paths = copilotFiles(e.Raw)
+	case ProviderOpenCode:
+		paths = openCodeFiles(e.Raw)
+	case ProviderKimi:
 	}
 	return dedupe(paths)
 }
@@ -138,6 +144,50 @@ func copilotFiles(raw json.RawMessage) []string {
 		}
 	}
 	return nil
+}
+
+var openCodeEditTools = map[string]bool{"edit": true, "write": true, "multiedit": true}
+
+func openCodeFiles(raw json.RawMessage) []string {
+	if !bytes.Contains(raw, []byte(`"tool"`)) {
+		return nil
+	}
+	var rec struct {
+		Type string `json:"type"`
+		Data struct {
+			Content []struct {
+				Type  string `json:"type"`
+				Name  string `json:"name"`
+				State struct {
+					Input json.RawMessage `json:"input"`
+				} `json:"state"`
+			} `json:"content"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(raw, &rec) != nil || rec.Type != "assistant" {
+		return nil
+	}
+	var out []string
+	for _, p := range rec.Data.Content {
+		if p.Type != "tool" {
+			continue
+		}
+		if !openCodeEditTools[p.Name] {
+			out = append(out, patchFilesIn(p.State.Input)...)
+			continue
+		}
+		var input map[string]json.RawMessage
+		if json.Unmarshal(p.State.Input, &input) != nil {
+			continue
+		}
+		for _, key := range []string{"path", "filePath", "file_path"} {
+			if path := jsonString(input[key]); path != "" {
+				out = append(out, path)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // patchFilesIn finds apply_patch envelopes in every string inside v. A

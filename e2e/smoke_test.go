@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/server/api"
 	"github.com/DanBradbury/firekeeper/internal/server/store"
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/testenv"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
@@ -30,6 +32,9 @@ const (
 	codexID   = "0199e2e0-0000-7000-8000-00000000c0de"
 	copilotID = "0199e2e0-0000-7000-8000-0000000c0b17"
 	kimiID    = "kimi-e2e-session"
+	// openCodeID's session holds messages at gapped seqs, as OpenCode's
+	// durable event sequence leaves them.
+	openCodeID = "ses_e2eSmokeOpenCode0001"
 )
 
 // fakeSecret looks like an API key to internal/redact. It is assembled at
@@ -41,10 +46,11 @@ var apiKeyMarker = redact.Marker(redact.KindAPIKey)
 // home is a synthetic home directory with one transcript per provider, all
 // running in the same Git repository.
 type home struct {
-	dir     string
-	repo    string
-	rollout string // Codex
-	events  string // Copilot
+	dir      string
+	repo     string
+	rollout  string // Codex
+	events   string // Copilot
+	openCode string // OpenCode database
 }
 
 func newHome(t *testing.T) *home {
@@ -91,8 +97,59 @@ func newHome(t *testing.T) *home {
 	write(t, filepath.Join(kimiDir, "state.json"), fmt.Sprintf(
 		`{"title":"Kimi smoke","workDir":%q,"createdAt":"2026-10-07T12:00:00Z","updatedAt":"2026-10-07T12:01:00Z"}`, h.repo))
 	write(t, filepath.Join(kimiDir, "context.jsonl"), jsonl(map[string]any{"role": "user", "content": "Key " + fakeSecret}))
+
+	// OpenCode keeps every session in one SQLite database.
+	h.openCode = filepath.Join(h.dir, ".local", "share", "opencode", "opencode.db")
+	mkdir(t, filepath.Dir(h.openCode))
+	h.openCodeSQL(t,
+		`CREATE TABLE session_v2 (id text PRIMARY KEY, project_id text NOT NULL, parent_id text,
+			slug text NOT NULL, directory text NOT NULL, title text, version text NOT NULL,
+			tokens_input integer DEFAULT 0 NOT NULL, tokens_output integer DEFAULT 0 NOT NULL,
+			tokens_reasoning integer DEFAULT 0 NOT NULL, tokens_cache_read integer DEFAULT 0 NOT NULL,
+			tokens_cache_write integer DEFAULT 0 NOT NULL, model text,
+			time_created integer NOT NULL, time_updated integer NOT NULL)`,
+		`CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL,
+			seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)`,
+		fmt.Sprintf(`INSERT INTO session_v2 (id, project_id, slug, directory, title, version, model, time_created, time_updated)
+			VALUES ('%s', 'prj', 'smoke', %s, 'OpenCode smoke', '2', '{"id":"model-e2e","providerID":"e2e"}', 1791892800000, 1791892803000)`,
+			openCodeID, sqlString(h.repo)),
+	)
+	h.openCodeMessage(t, 1, "user", map[string]any{"text": "Use " + fakeSecret + " here."})
+	h.openCodeMessage(t, 3, "assistant", map[string]any{
+		"model":   map[string]any{"id": "model-e2e", "providerID": "e2e"},
+		"content": []map[string]any{{"type": "text", "text": "Done."}},
+		"tokens":  map[string]any{"input": 1, "output": 2, "reasoning": 0, "cache": map[string]any{"read": 3, "write": 0}},
+		"time":    map[string]any{"created": 1791892802000, "completed": 1791892803000},
+	})
+	h.openCodeMessage(t, 4, "idle", map[string]any{"outcome": "succeeded"})
 	return h
 }
+
+// openCodeSQL runs statements against h's OpenCode database.
+func (h *home) openCodeSQL(t *testing.T, statements ...string) {
+	t.Helper()
+	testenv.NeedTool(t, "sqlite3")
+	if out, err := exec.Command("sqlite3", h.openCode, strings.Join(statements, ";\n")+";").CombinedOutput(); err != nil {
+		t.Fatalf("opencode database: %v: %s", err, out)
+	}
+}
+
+// openCodeMessage adds one message to the OpenCode session.
+func (h *home) openCodeMessage(t *testing.T, seq int, kind string, data map[string]any) {
+	t.Helper()
+	ms := int64(1791892800000 + seq*1000)
+	if _, ok := data["time"]; !ok {
+		data["time"] = map[string]any{"created": ms}
+	}
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.openCodeSQL(t, fmt.Sprintf(`INSERT INTO session_message VALUES ('msg_e2e_%d', '%s', '%s', %d, %d, %d, %s)`,
+		seq, openCodeID, kind, seq, ms, ms, sqlString(string(encoded))))
+}
+
+func sqlString(v string) string { return "'" + strings.ReplaceAll(v, "'", "''") + "'" }
 
 func codexMessage(role, kind, text string) map[string]any {
 	return map[string]any{"timestamp": "2026-10-07T12:00:02.000Z", "type": "response_item", "payload": map[string]any{
@@ -101,17 +158,20 @@ func codexMessage(role, kind, text string) map[string]any {
 }
 
 // run answers discovery's ps, lsof, sqlite3, and git calls as if one Codex,
-// one Copilot, and one Kimi process were running in h.repo.
+// one Copilot, one Kimi, and one OpenCode process were running in h.repo.
+// OpenCode queries run against the real database with sqlite3.
 func (h *home) run(_ context.Context, name string, args ...string) ([]byte, error) {
 	switch name {
 	case "ps":
-		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n"), nil
+		return []byte("100 1 ttys001 00:10 codex\n200 1 ttys002 00:10 copilot --resume " + copilotID + "\n300 1 ttys003 00:10 kimi\n400 1 ttys004 00:10 opencode\n"), nil
 	case "lsof":
 		switch {
 		case slices.Equal(args, []string{"-Fn", "-p", "100"}):
 			return []byte("p100\nn" + h.rollout + "\n"), nil
 		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "300"}):
 			return []byte("p300\nn" + h.repo + "\n"), nil
+		case slices.Equal(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "400"}):
+			return []byte("p400\nn" + h.repo + "\n"), nil
 		}
 	case "sqlite3":
 		if len(args) == 4 && args[0] == "-readonly" && args[1] == "-json" && filepath.Base(args[2]) == "state_5.sqlite" {
@@ -119,6 +179,9 @@ func (h *home) run(_ context.Context, name string, args ...string) ([]byte, erro
 				ID: codexID, Name: "Codex smoke", CWD: h.repo, Model: "gpt-e2e", GitBranch: "main",
 				UpdatedAtMS: time.Date(2026, 10, 7, 12, 0, 4, 0, time.UTC).UnixMilli(),
 			}})
+		}
+		if len(args) == 4 && args[2] == h.openCode {
+			return exec.Command(name, args...).Output()
 		}
 	case "git":
 		if len(args) == 4 && args[0] == "-C" && args[2] == "rev-parse" {
@@ -136,15 +199,18 @@ func (h *home) config(t *testing.T, server string) reporter.Config {
 	t.Setenv("CODEX_HOME", filepath.Join(h.dir, ".codex"))
 	t.Setenv("COPILOT_HOME", filepath.Join(h.dir, ".copilot"))
 	t.Setenv("KIMI_CODE_HOME", filepath.Join(h.dir, ".kimi-code"))
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("OPENCODE_DB", "")
 	return reporter.Config{
 		Server:    server,
-		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi},
+		Providers: []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderKimi, transcript.ProviderOpenCode},
 		Home:      h.dir,
 		Version:   "e2e",
 		Discover: func(ctx context.Context, opts session.Options) ([]session.Meta, error) {
 			opts.CodexHome = filepath.Join(h.dir, ".codex")
 			opts.CopilotHome = filepath.Join(h.dir, ".copilot")
 			opts.KimiHome = filepath.Join(h.dir, ".kimi-code")
+			opts.OpenCodeDB = h.openCode
 			opts.Run = h.run
 			return session.Discover(ctx, opts)
 		},
@@ -171,11 +237,13 @@ func TestSmoke(t *testing.T) {
 		t.Errorf("kimi: got skipped %q, events %d; a Kimi reader may have landed, so extend this test", r.Skipped, r.Events)
 	}
 	machineID := readMachineID(t, h.dir)
+	openCodePath := session.OpenCodeTranscriptPath(h.openCode, openCodeID)
 	want := map[string]int{
-		"codex":   expectedEvents(t, transcript.ProviderCodex, h.rollout),
-		"copilot": expectedEvents(t, transcript.ProviderCopilot, h.events),
+		"codex":    expectedEvents(t, transcript.ProviderCodex, h.rollout),
+		"copilot":  expectedEvents(t, transcript.ProviderCopilot, h.events),
+		"opencode": expectedEvents(t, transcript.ProviderOpenCode, openCodePath),
 	}
-	ids := map[string]string{"codex": codexID, "copilot": copilotID}
+	ids := map[string]string{"codex": codexID, "copilot": copilotID, "opencode": openCodeID}
 	for provider, n := range want {
 		if first[provider].Events != n {
 			t.Errorf("%s: first pass read %d events, want %d", provider, first[provider].Events, n)
@@ -199,7 +267,11 @@ func TestSmoke(t *testing.T) {
 	}
 	for provider, n := range want {
 		events := listEvents(t, srv.URL, machineID, ids[provider])
-		assertSeqs(t, provider, events, n)
+		if provider == "opencode" {
+			assertSeqList(t, provider, events, []int64{1, 3, 4})
+		} else {
+			assertSeqs(t, provider, events, n)
+		}
 		assertRedacted(t, provider, events)
 	}
 	machines := listMachines(t, srv.URL)
@@ -215,12 +287,22 @@ func TestSmoke(t *testing.T) {
 		}
 	}
 
-	// Appending to the Codex rollout sends only the new events.
+	// Appending to the Codex rollout and the OpenCode session sends only
+	// the new events.
 	appendFile(t, h.rollout, jsonl(
 		codexMessage("user", "input_text", "One more thing."),
 		codexMessage("assistant", "output_text", "Appended reply."),
 	))
+	h.openCodeMessage(t, 7, "user", map[string]any{"text": "Next task."})
 	third := runOnce(t, cfg)
+	if r := third["opencode"]; r.Events != 1 || r.Duplicates != 0 {
+		t.Errorf("opencode: third pass sent %d events (%d duplicates), want 1 new", r.Events, r.Duplicates)
+	}
+	openCodeEvents := listEvents(t, srv.URL, machineID, openCodeID)
+	assertSeqList(t, "opencode", openCodeEvents, []int64{1, 3, 4, 7})
+	if last := openCodeEvents[len(openCodeEvents)-1]; last.Text != "Next task." || last.Role != transcript.RoleUser {
+		t.Errorf("opencode: appended event (seq %d) does not match what was added", last.Seq)
+	}
 	if r := third["codex"]; r.Events != 2 || r.Duplicates != 0 {
 		t.Errorf("codex: third pass sent %d events (%d duplicates), want 2 new", r.Events, r.Duplicates)
 	}
@@ -256,7 +338,7 @@ func runOnce(t *testing.T, cfg reporter.Config) map[string]reporter.SessionResul
 		}
 		results[r.Provider] = r
 	}
-	for _, p := range []string{"codex", "copilot", "kimi"} {
+	for _, p := range []string{"codex", "copilot", "kimi", "opencode"} {
 		if _, ok := results[p]; !ok {
 			t.Fatalf("%s: session not discovered", p)
 		}
@@ -290,6 +372,19 @@ func assertSeqs(t *testing.T, provider string, events []transcript.Event, n int)
 		if e.Seq != int64(i) {
 			t.Fatalf("%s: event %d has seq %d", provider, i, e.Seq)
 		}
+	}
+}
+
+// assertSeqList checks the server holds exactly the events at seqs, for
+// providers whose seqs have gaps.
+func assertSeqList(t *testing.T, provider string, events []transcript.Event, seqs []int64) {
+	t.Helper()
+	got := make([]int64, len(events))
+	for i, e := range events {
+		got[i] = e.Seq
+	}
+	if !slices.Equal(got, seqs) {
+		t.Fatalf("%s: server has seqs %v, want %v", provider, got, seqs)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 )
 
 func TestDetectProviders(t *testing.T) {
+	all := []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderClaude, transcript.ProviderOpenCode}
 	for _, scenario := range []string{"none", "directories", "executables", "override", "missing override", "file"} {
 		t.Run(scenario, func(t *testing.T) {
 			home := t.TempDir()
@@ -25,23 +26,27 @@ func TestDetectProviders(t *testing.T) {
 			}
 			switch scenario {
 			case "directories":
-				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", ".opencode"} {
+				for _, name := range []string{".codex", ".copilot", ".claude", ".kimi-code", filepath.Join(".local", "share", "opencode")} {
 					mkdir(filepath.Join(home, name))
 				}
-				want = []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderClaude}
+				want = all
 			case "executables":
 				commands = map[string]bool{"codex": true, "copilot": true, "claude": true, "kimi": true, "opencode": true}
 				mkdir(filepath.Join(home, ".codex"))
-				want = []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderClaude}
+				want = all
 			case "override":
 				for _, key := range []string{"CODEX_HOME", "COPILOT_HOME", "CLAUDE_CONFIG_DIR"} {
 					env[key] = filepath.Join(home, key)
 					mkdir(env[key])
 				}
-				want = []transcript.Provider{transcript.ProviderCodex, transcript.ProviderCopilot, transcript.ProviderClaude}
+				env["XDG_DATA_HOME"] = filepath.Join(home, "data")
+				mkdir(filepath.Join(env["XDG_DATA_HOME"], "opencode"))
+				want = all
 			case "missing override":
 				mkdir(filepath.Join(home, ".codex"))
 				env["CODEX_HOME"] = filepath.Join(home, "missing")
+				mkdir(filepath.Join(home, ".local", "share", "opencode"))
+				env["XDG_DATA_HOME"] = filepath.Join(home, "missing")
 			case "file":
 				if err := os.WriteFile(filepath.Join(home, ".codex"), nil, 0600); err != nil {
 					t.Fatal(err)
