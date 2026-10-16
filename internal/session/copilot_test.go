@@ -9,6 +9,26 @@ import (
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
 
+func TestClassifyCopilot(t *testing.T) {
+	d := &discoverer{}
+	tests := []struct {
+		command string
+		want    string
+	}{
+		{"copilot", "Copilot"},
+		{"node /opt/homebrew/lib/node_modules/@github/copilot/index.js --resume", "Copilot"},
+		{"/Applications/GitHub Copilot.app/Contents/MacOS/GitHub Copilot", ""},
+		{"/Applications/GitHub Copilot.app/Contents/Frameworks/GitHub Copilot Helper (Renderer).app/Contents/MacOS/GitHub Copilot Helper (Renderer) --type=renderer", ""},
+		{"/Applications/GitHub Copilot.app/Contents/Resources/copilot --server", ""},
+		{"node /Applications/Copilot.app/Contents/Resources/app/index.js", ""},
+	}
+	for _, tt := range tests {
+		if got := d.classifyProcess(tt.command); got != tt.want {
+			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		}
+	}
+}
+
 func TestCopilotSessionIDFromStatePath(t *testing.T) {
 	d := &discoverer{}
 	path := "/Users/test/.copilot/session-state/" + testCopilotSessionID + "/events.jsonl"

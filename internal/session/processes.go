@@ -130,6 +130,9 @@ func (d *discoverer) classifyProcess(command string) string {
 		return "Cursor"
 	case strings.Contains(lower, "opencode"):
 		return "OpenCode"
+	case isCopilotDesktopCommand(lower):
+		// The desktop app is not the Copilot CLI and has no CLI session.
+		return ""
 	case strings.Contains(lower, "copilot"):
 		return "Copilot"
 	case strings.Contains(lower, "codex"):
