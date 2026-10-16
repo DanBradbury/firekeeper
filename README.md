@@ -9,6 +9,8 @@ Code, OpenCode, Gemini CLI, and Cursor CLI, on one machine or several, and it
 runs on your hardware. Nothing starts and
 nothing uploads unless you ask.
 
+![Firekeeper terminal dashboard showing four agent sessions across Claude, Codex, Copilot, and OpenCode](docs/firekeeper-tui.jpg)
+
 ## Install
 
 ```sh
