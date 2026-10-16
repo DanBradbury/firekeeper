@@ -21,6 +21,7 @@ func TestClassifyCopilot(t *testing.T) {
 		{"/Applications/GitHub Copilot.app/Contents/Frameworks/GitHub Copilot Helper (Renderer).app/Contents/MacOS/GitHub Copilot Helper (Renderer) --type=renderer", ""},
 		{"/Applications/GitHub Copilot.app/Contents/Resources/copilot --server", ""},
 		{"node /Applications/Copilot.app/Contents/Resources/app/index.js", ""},
+		{"/Library/Caches/github-copilot-sdk/cli/1.0.0/copilot --stdio", ""},
 	}
 	for _, tt := range tests {
 		if got := d.classifyProcess(tt.command); got != tt.want {
