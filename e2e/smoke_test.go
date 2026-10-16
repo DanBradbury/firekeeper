@@ -722,3 +722,87 @@ func TestSmokeScanEnded(t *testing.T) {
 	}
 	assertSeqs(t, "codex", listEvents(t, srv.URL, machineID, codexID), want["codex"]+2)
 }
+
+// TestSmokeOpenCodeLegacyLayout reports an OpenCode session from a database
+// in the layout before session_v2 (session, message, part): the title comes
+// from the first prompt, events are redacted, and a second pass finds nothing
+// new.
+func TestSmokeOpenCodeLegacyLayout(t *testing.T) {
+	ctx := context.Background()
+	h := newHome(t)
+	if err := os.Remove(h.openCode); err != nil {
+		t.Fatal(err)
+	}
+	msg := func(id string, ms int64, data string) string {
+		return fmt.Sprintf(`INSERT INTO message VALUES ('%s', '%s', %d, %d, %s)`, id, openCodeID, ms, ms, sqlString(data))
+	}
+	part := func(id, message string, ms int64, data string) string {
+		return fmt.Sprintf(`INSERT INTO part VALUES ('%s', '%s', '%s', %d, %d, %s)`, id, message, openCodeID, ms, ms, sqlString(data))
+	}
+	h.openCodeSQL(t,
+		`CREATE TABLE session (id text PRIMARY KEY, project_id text NOT NULL, parent_id text,
+			slug text NOT NULL, directory text NOT NULL, title text NOT NULL, version text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, model text,
+			tokens_input integer DEFAULT 0 NOT NULL, tokens_output integer DEFAULT 0 NOT NULL,
+			tokens_reasoning integer DEFAULT 0 NOT NULL, tokens_cache_read integer DEFAULT 0 NOT NULL,
+			tokens_cache_write integer DEFAULT 0 NOT NULL)`,
+		`CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)`,
+		`CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)`,
+		fmt.Sprintf(`INSERT INTO session (id, project_id, slug, directory, title, version, model, time_created, time_updated)
+			VALUES ('%s', 'prj', 'smoke', %s, 'New session - 2026-10-13T12:00:00.000Z', '1', '{"id":"model-e2e","providerID":"e2e"}', 1791892800000, 1791892803000)`,
+			openCodeID, sqlString(h.repo)),
+		msg("msg_1", 1791892801000, `{"role":"user","time":{"created":1791892801000}}`),
+		part("prt_1", "msg_1", 1791892801000, `{"type":"text","text":"Use `+fakeSecret+` here."}`),
+		msg("msg_2", 1791892802000, `{"role":"assistant","modelID":"model-e2e","time":{"created":1791892802000,"completed":1791892803000},"tokens":{"input":1,"output":2,"reasoning":0,"cache":{"read":3,"write":0}}}`),
+		part("prt_2", "msg_2", 1791892802000, `{"type":"text","text":"Done."}`),
+	)
+
+	st, err := store.Open(ctx, filepath.Join(t.TempDir(), "firekeeper.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(api.Handler(st))
+	t.Cleanup(func() {
+		srv.Close()
+		st.Close()
+	})
+	cfg := h.config(t, srv.URL)
+	cfg.Providers = []transcript.Provider{transcript.ProviderOpenCode}
+
+	run := func() reporter.SessionResult {
+		t.Helper()
+		summary, err := reporter.RunOnce(ctx, cfg)
+		if err != nil {
+			t.Fatalf("RunOnce: %v", err)
+		}
+		if summary.Warning != nil {
+			t.Fatalf("discovery warning: %v", summary.Warning)
+		}
+		for _, r := range summary.Sessions {
+			if r.Err != nil {
+				t.Fatalf("%s: %v", r.Provider, r.Err)
+			}
+			if r.Provider == "opencode" {
+				return r
+			}
+		}
+		t.Fatal("opencode session not reported")
+		return reporter.SessionResult{}
+	}
+	if first := run(); first.Events != 2 {
+		t.Errorf("first pass read %d events, want 2", first.Events)
+	}
+	machineID := readMachineID(t, h.dir)
+	events := listEvents(t, srv.URL, machineID, openCodeID)
+	assertSeqList(t, "opencode", events, []int64{1, 2})
+	assertRedacted(t, "opencode", events)
+	sessions := listSessions(t, srv.URL)
+	if len(sessions) != 1 || sessions[0].Title != "Use "+apiKeyMarker+" here." {
+		t.Errorf("sessions = %+v; want one titled from the redacted first prompt", sessions)
+	}
+	if second := run(); second.Events != 0 {
+		t.Errorf("second pass read %d events, want 0", second.Events)
+	}
+}

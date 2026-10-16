@@ -303,18 +303,21 @@ from `firekeeper serve token create`; see [Tokens](#tokens).
 | GitHub Copilot CLI | Yes | Yes, from `events.jsonl`, `workspace.yaml`, and `session-store.db` | Local history and plan details | Yes |
 | Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | Token history | Yes |
 | Kimi Code | Yes | Metadata from session `state.json`; the state is shown as `ACTIVE` whenever a session matches | Token history | Yes, from the main agent's `wire.jsonl` |
-| OpenCode | Yes | Yes, from `session_v2` and `session_message` in `opencode.db` | No | Yes |
+| OpenCode | Yes | Yes, from `session_v2` and `session_message`, or the older `session`, `message`, and `part`, in `opencode.db` | No | Yes |
 | Gemini CLI | Yes | Yes, from session logs under `~/.gemini/tmp`; `NEEDS INPUT` is never shown | No | Yes, from the main session log |
 | Cursor CLI | Yes | Yes, from agent transcripts under `~/.cursor/projects` and chat titles in `~/.cursor/chats`; `NEEDS INPUT` is never shown | No | Yes, from the main agent transcript, without timestamps or token counts |
 
 States describe the latest event Firekeeper can see, not ground truth.
 Kimi Code support reads the session layout under `~/.kimi-code` (wire protocol
 1.5 and the sessions it migrates); the older Python Kimi CLI's `~/.kimi` data
-is not read. OpenCode support reads the database layout
-OpenCode has used since August 2026; older releases need an OpenCode update
-first. Gemini CLI support reads the JSONL session logs Gemini CLI has written
-since April 2026, and the whole-file `.json` sessions of earlier releases.
-Cursor CLI support reads the agent transcripts `cursor-agent` writes; Cursor
+is not read. OpenCode support reads both database layouts: `session_v2` and
+`session_message` (since August 2026), and the earlier `session`, `message`,
+and `part` tables that releases such as 1.19.1 still write. The earlier layout
+has no shell, synthetic, or compaction messages, and a user message's file
+`summary` diff is left out of uploads. OpenCode's JSON `storage/` files from
+before the database are not read. Gemini CLI support reads the JSONL session
+logs Gemini CLI has written since April 2026, and the whole-file `.json`
+sessions of earlier releases. Cursor CLI support reads the agent transcripts `cursor-agent` writes; Cursor
 does not document that format, so it may change without notice. Cursor's
 transcripts record no timestamps or token counts, so Cursor sessions show
 neither.
@@ -474,10 +477,13 @@ dashboard only through [`backfill`](#backfill).
   directories in OpenCode's database and picks the most recently updated
   session there. Several OpenCode runtimes in one directory, or one started
   with a directory argument from elsewhere, may be matched to the wrong
-  session. `opencode serve` and the other helper subcommands are listed
-  without a session. The database is read with `sqlite3 -readonly`, never
-  modified, so `sqlite3` must be on `PATH`. `NEEDS INPUT` is never reported
-  for OpenCode, because its permission prompts are not in the database.
+  session. Until OpenCode generates a title (it starts as `New session -`
+  and a timestamp), the summary is the first line of the session's first
+  prompt, cut to 80 characters. `opencode serve` and the other helper
+  subcommands are listed without a session. The database is read with
+  `sqlite3 -readonly`, never modified, so `sqlite3` must be on `PATH`.
+  `NEEDS INPUT` is never reported for OpenCode, because its permission
+  prompts are not in the database.
 - **Gemini CLI:** recognizes `gemini` and the node process it relaunches as
   one runtime, and lists the `mcp`, `extensions`, `skills`, `hooks`, and
   `gemma` subcommands without a session. It uses an explicit `--session-id`,

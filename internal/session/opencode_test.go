@@ -249,3 +249,84 @@ func TestDiscoverOpenCodeWithoutDatabase(t *testing.T) {
 		t.Fatalf("Discover = %+v, %v; want one runtime without a session and no warning", metas, err)
 	}
 }
+
+// OpenCode releases that keep sessions in session and messages in message
+// (no session_v2) still map to runtimes, with state from the latest message.
+func TestDiscoverOpenCodeLegacyLayout(t *testing.T) {
+	testenv.NeedTool(t, "sqlite3")
+	home := t.TempDir()
+	db := filepath.Join(home, "opencode.db")
+	base := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC).UnixMilli()
+	statements := []string{
+		`CREATE TABLE session (id text PRIMARY KEY, project_id text NOT NULL, parent_id text,
+			slug text NOT NULL, directory text NOT NULL, title text NOT NULL, version text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, model text,
+			tokens_input integer DEFAULT 0 NOT NULL, tokens_output integer DEFAULT 0 NOT NULL,
+			tokens_reasoning integer DEFAULT 0 NOT NULL, tokens_cache_read integer DEFAULT 0 NOT NULL,
+			tokens_cache_write integer DEFAULT 0 NOT NULL)`,
+		`CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)`,
+		`CREATE TABLE part (id text PRIMARY KEY, message_id text NOT NULL, session_id text NOT NULL,
+			time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)`,
+		fmt.Sprintf(`INSERT INTO session VALUES ('ses_done', 'prj', NULL, 's', '/w', 'Done', '1', %d, %d, NULL, 10, 4, 1, 100, 5)`, base, base),
+		fmt.Sprintf(`INSERT INTO session VALUES ('ses_busy', 'prj', NULL, 's', '/w', 'New session - 2026-10-13T12:00:00.000Z', '1', %d, %d, NULL, 0, 0, 0, 0, 0)`, base, base),
+		fmt.Sprintf(`INSERT INTO message VALUES ('msg_1', 'ses_done', %d, %d, '{"role":"assistant","time":{"completed":1}}')`, base+1, base+1),
+		// Malformed rows must not fail the query for the other sessions.
+		fmt.Sprintf(`INSERT INTO message VALUES ('msg_bad', 'ses_done', %d, %d, 'not json')`, base+9, base+9),
+		`INSERT INTO part VALUES ('prt_bad', 'msg_2', 'ses_busy', 0, 0, 'not json')`,
+		`INSERT INTO part VALUES ('prt_2', 'msg_2', 'ses_busy', 1, 1, '{"type":"text","text":"refactor the parser"}')`,
+		fmt.Sprintf(`INSERT INTO message VALUES ('msg_2', 'ses_busy', %d, %d, '{"role":"user"}')`, base+1, base+1),
+	}
+	if out, err := exec.Command("sqlite3", db, strings.Join(statements, ";\n")+";").CombinedOutput(); err != nil {
+		t.Fatalf("build database: %v: %s", err, out)
+	}
+	opts := Options{Home: home, OpenCodeDB: db}
+	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte("50 1 pts/0 00:01 opencode -s ses_done\n60 1 pts/1 00:02 opencode -s ses_busy\n"), nil
+		case "lsof", "git":
+			return nil, fmt.Errorf("unavailable")
+		case "sqlite3":
+			return exec.CommandContext(ctx, name, args...).Output()
+		}
+		t.Fatalf("unexpected command %s", name)
+		return nil, nil
+	}
+	metas, err := Discover(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	want := map[int]struct {
+		id    string
+		state State
+	}{50: {"ses_done", SessionStateWaiting}, 60: {"ses_busy", SessionStateActive}}
+	for _, m := range metas {
+		if w := want[m.PID]; m.ID != w.id || m.State != w.state {
+			t.Errorf("pid %d: id %q state %s; want %q %s", m.PID, m.ID, m.State, w.id, w.state)
+		}
+	}
+	for _, m := range metas {
+		if m.PID == 60 && m.Title != "refactor the parser" {
+			t.Errorf("placeholder title = %q, want the first prompt", m.Title)
+		}
+	}
+	if len(metas) != 2 {
+		t.Fatalf("got %d runtimes, want 2", len(metas))
+	}
+}
+
+func TestOpenCodeTitle(t *testing.T) {
+	long := strings.Repeat("word ", 40)
+	for _, tt := range []struct{ name, title, prompt, want string }{
+		{"placeholder uses prompt", "New session - 2026-10-16T04:12:28.668Z", "  fix the\n login   bug\nplease", "fix the login bug please"},
+		{"child placeholder", "Child session - 2026-10-16T04:12:28.668Z", "look into tests", "look into tests"},
+		{"real title kept", "Fix login", "something else", "Fix login"},
+		{"no prompt keeps placeholder", "New session - 2026-10-16T04:12:28.668Z", " \n", "New session - 2026-10-16T04:12:28.668Z"},
+		{"long prompt cut", "New session - 2026-10-16T04:12:28.668Z", long, strings.TrimSpace(long[:79]) + "…"},
+	} {
+		if got := OpenCodeTitle(tt.title, tt.prompt); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

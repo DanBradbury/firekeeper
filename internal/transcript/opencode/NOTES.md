@@ -30,12 +30,47 @@ implements `reader.Stater`, so the reporter and backfill ask it for a
 session's size and change time instead of stat-ing that path, and keep a read
 offset per session in `state.json` under that path.
 
+## Legacy layout
+
+OpenCode 1.19.1, among others, still writes the layout from before
+`session_v2`, and Firekeeper reads it too. `session_v2` plus `session_message`
+win when both layouts are present, since OpenCode copies the old tables into
+the new ones on upgrade. Otherwise `session`, `message`, and `part` are used:
+
+- `session`: same columns as `session_v2`, same meaning.
+- `message`: `id`, `session_id`, `time_created`, `time_updated`, and `data`, the
+  message JSON: `role` (`user` or `assistant`), `time.created`,
+  `time.completed`, `modelID` (assistant) or `model.modelID` (user), `tokens`.
+  It has no type or seq column. The row's `rowid`, which only grows, is the
+  event `seq`, so offsets, `Stat`, and `Pending` work as described below.
+- `part`: `message_id`, `data`. Part types `text`, `reasoning`, and `tool`
+  (`tool`, `state.status`, `state.input`, `state.output`, `state.error` as
+  a string) become the content of the event, as for the current layout. `step-start`,
+  `step-finish`, `patch`, `file`, and `compaction` parts are kept only in raw.
+
+Differences from the current layout:
+
+- Role is `user` or `assistant`; there are no shell, synthetic, or idle
+  messages. Compaction is a part, not a message.
+- Without idle markers, every message except the session's last counts as
+  finished; the last assistant message is finished once `time.completed` is
+  set, or after an hour unchanged.
+- `raw.data` is the message JSON plus derived `text`, `model`, and `content`,
+  and the original part rows in `parts`. A user message's `summary` (a diff of
+  touched files, up to hundreds of KiB) is left out, because `sqlite3 -json`
+  takes seconds to print values that large.
+- Pages are 50 messages, not 500.
+- SQLite reuses the highest rowid after that message is deleted, so after a
+  revert a new message can get a seq an earlier read already used. The server
+  keeps the first copy, as for any reverted message.
+- Malformed `data` JSON in a message or part becomes a `meta` event or is
+  skipped from `content`, and does not fail the page.
+
 ## Tables read
 
 The current tables date from the `20260804233008_loose_psylocke` migration
-(August 2026). Earlier releases wrote `session`, `message`, and `part`; on
-upgrade OpenCode copies those into the tables below. A database without
-`session_v2` and `session_message` returns `ErrUnsupportedSchema`; Firekeeper
+(August 2026). Earlier releases wrote `session`, `message`, and `part` (see "Legacy layout");
+on upgrade OpenCode copies those into the tables below. A database with neither layout returns `ErrUnsupportedSchema`; Firekeeper
 does not read the older tables or the JSON `storage/` directory that came
 before the database.
 
@@ -135,14 +170,23 @@ The model is `model.id`, without the provider.
   background server, do not.
 - `--session`/`-s <id>` names the session unless `--fork` is given.
 - Otherwise the runtime's working directory, from `lsof`, is matched against
-  `session_v2.directory`, and the most recently updated top-level sessions
+  `session_v2.directory` (`session.directory` in the legacy layout), and the most recently updated top-level sessions
   there are taken, newer processes first. A runtime started with a directory
   argument (`opencode ~/src/app`) from elsewhere is not matched, and several
   runtimes in one directory may get each other's sessions.
+- Title: OpenCode names a session "New session - <timestamp>" until it
+  generates a title. Discovery and enumeration replace that placeholder with
+  the first line of the session's first user prompt (text parts, not
+  synthetic ones), cut to 80 characters (`session.OpenCodeTitle`). A real
+  title is never changed. The reporter redacts titles like other metadata.
 - State: `WAITING` when the latest message is `idle` or there is none yet,
   `ACTIVE` after a prompt or while a reply, shell command, or compaction is in
   progress, `UNKNOWN` otherwise. Permission and question prompts are not
   visible in these tables, so `NEEDS INPUT` is never reported.
+
+In the legacy layout the state comes from the latest `message`: a user
+message or an assistant message without `time.completed` is `ACTIVE`, a
+completed assistant message is `WAITING`.
 
 Subagent sessions (`parent_id` set) are not mapped to runtimes or enumerated
 for backfill.

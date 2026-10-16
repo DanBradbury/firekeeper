@@ -11,8 +11,9 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
-// Enumerate lists every top-level session in the database from its
-// session_v2 row, without reading messages beyond their last update time.
+// Enumerate lists every top-level session in the database from its session
+// row (session_v2, or session in the legacy layout), without reading messages
+// beyond their last update time and first prompt.
 // Subagent sessions, which have a parent, are left out.
 func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	if err := ctx.Err(); err != nil {
@@ -24,7 +25,8 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
-	if ok, err := s.open(ctx, db); !ok || err != nil {
+	l, ok, err := s.open(ctx, db)
+	if !ok || err != nil {
 		return nil, err
 	}
 	var rows []struct {
@@ -32,14 +34,16 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		Title     string `json:"title"`
 		Directory string `json:"directory"`
 		Model     string `json:"model"`
+		Prompt    string `json:"first_prompt"`
 		CreatedMS int64  `json:"time_created"`
 		UpdatedMS int64  `json:"time_updated"`
 	}
-	const query = `SELECT s.id, COALESCE(s.title, '') AS title, s.directory,
+	query := fmt.Sprintf(`SELECT s.id, COALESCE(s.title, '') AS title, s.directory,
 			COALESCE(s.model, '') AS model, s.time_created,
-			MAX(s.time_updated, COALESCE((SELECT MAX(m.time_updated) FROM session_message m
+			COALESCE(%s, '') AS first_prompt,
+			MAX(s.time_updated, COALESCE((SELECT MAX(m.time_updated) FROM %s m
 				WHERE m.session_id = s.id), 0)) AS time_updated
-		FROM session_v2 s WHERE s.parent_id IS NULL`
+		FROM %s s WHERE s.parent_id IS NULL`, session.OpenCodeFirstPromptSQL(l.legacy), l.messageTable(), l.sessionTable())
 	if err := s.query(ctx, db, query, &rows); err != nil {
 		return nil, err
 	}
@@ -64,7 +68,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			State:          session.SessionStateEnded,
 			CWD:            clean(row.Directory),
 			Model:          clean(session.OpenCodeModel([]byte(row.Model))),
-			Title:          clean(row.Title),
+			Title:          clean(session.OpenCodeTitle(row.Title, row.Prompt)),
 			RolloutPath:    session.OpenCodeTranscriptPath(db, row.ID),
 			UpdatedAt:      updated,
 			LastActivityAt: &updated,

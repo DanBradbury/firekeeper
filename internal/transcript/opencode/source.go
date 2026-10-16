@@ -29,6 +29,9 @@ const (
 	maxToolText = 64 << 10
 	// pageRows bounds the rows one sqlite3 call returns.
 	pageRows = 500
+	// legacyPageRows is the same bound for the legacy layout, whose rows
+	// carry the message's parts and so are larger.
+	legacyPageRows = 50
 	// queryTimeout bounds one sqlite3 call.
 	queryTimeout = 30 * time.Second
 	// settleAfter is how long a message still being written may go
@@ -37,10 +40,10 @@ const (
 	settleAfter = time.Hour
 )
 
-// ErrUnsupportedSchema reports an OpenCode database without the session_v2
-// and session_message tables, written by an OpenCode release older than
-// August 2026 or by one that changed its schema since.
-var ErrUnsupportedSchema = errors.New("opencode: database has no session_v2 and session_message tables; update OpenCode, or Firekeeper if OpenCode is current")
+// ErrUnsupportedSchema reports an OpenCode database with neither the
+// session_v2 and session_message tables nor the session, message, and part
+// tables, written by an OpenCode release that changed its schema since.
+var ErrUnsupportedSchema = errors.New("opencode: database has no known session tables; update Firekeeper if OpenCode is current")
 
 func init() {
 	reader.Register(transcript.ProviderOpenCode, &Source{})
@@ -91,13 +94,14 @@ func (s *Source) Locate(meta session.Meta) ([]string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
-	if ok, err := s.open(ctx, db); !ok || err != nil {
+	l, ok, err := s.open(ctx, db)
+	if !ok || err != nil {
 		return nil, err
 	}
 	var rows []struct {
 		ID string `json:"id"`
 	}
-	if err := s.query(ctx, db, "SELECT id FROM session_v2 WHERE id = "+quote(meta.ID), &rows); err != nil {
+	if err := s.query(ctx, db, "SELECT id FROM "+l.sessionTable()+" WHERE id = "+quote(meta.ID), &rows); err != nil {
 		return nil, err
 	}
 	if len(rows) == 0 {
@@ -106,26 +110,62 @@ func (s *Source) Locate(meta session.Meta) ([]string, error) {
 	return []string{session.OpenCodeTranscriptPath(db, meta.ID)}, nil
 }
 
-// open reports whether db exists and has the tables this source reads.
-func (s *Source) open(ctx context.Context, db string) (bool, error) {
+// layout names the tables a database keeps sessions in. Current OpenCode
+// releases use session_v2 and session_message. Earlier ones use session,
+// message, and part: a message's content is split across part rows, and
+// message has no type or seq column, so the legacy layout uses the message
+// role as its type and the row's rowid, which only grows, as its seq.
+type layout struct{ legacy bool }
+
+func (l layout) sessionTable() string {
+	if l.legacy {
+		return "session"
+	}
+	return "session_v2"
+}
+
+func (l layout) messageTable() string {
+	if l.legacy {
+		return "message"
+	}
+	return "session_message"
+}
+
+// seqColumn is the column Stat uses as a message's seq.
+func (l layout) seqColumn() string {
+	if l.legacy {
+		return "rowid"
+	}
+	return "seq"
+}
+
+// open reports whether db exists and which of the known layouts it has.
+func (s *Source) open(ctx context.Context, db string) (layout, bool, error) {
 	if _, err := os.Stat(db); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
+			return layout{}, false, nil
 		}
-		return false, fmt.Errorf("opencode: stat database: %w", cause(err))
+		return layout{}, false, fmt.Errorf("opencode: stat database: %w", cause(err))
 	}
 	var rows []struct {
-		Tables int `json:"tables"`
+		Name string `json:"name"`
 	}
-	const query = `SELECT COUNT(*) AS tables FROM sqlite_master
-		WHERE type = 'table' AND name IN ('session_v2', 'session_message')`
+	const query = `SELECT name FROM sqlite_master WHERE type = 'table'
+		AND name IN ('session_v2', 'session_message', 'session', 'message', 'part')`
 	if err := s.query(ctx, db, query, &rows); err != nil {
-		return false, err
+		return layout{}, false, err
 	}
-	if len(rows) == 0 || rows[0].Tables != 2 {
-		return false, ErrUnsupportedSchema
+	have := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		have[r.Name] = true
 	}
-	return true, nil
+	switch {
+	case have["session_v2"] && have["session_message"]:
+		return layout{}, true, nil
+	case have["session"] && have["message"] && have["part"]:
+		return layout{legacy: true}, true, nil
+	}
+	return layout{}, false, ErrUnsupportedSchema
 }
 
 // row is one session_message row. Data is the message JSON as OpenCode
@@ -137,6 +177,8 @@ type row struct {
 	TimeCreated int64  `json:"time_created"`
 	TimeUpdated int64  `json:"time_updated"`
 	Data        string `json:"data"`
+	// Parts is the legacy layout's part rows as a JSON array.
+	Parts string `json:"parts,omitempty"`
 }
 
 // Read returns the messages of the session at path whose seq is at least
@@ -160,11 +202,24 @@ func (s *Source) Read(path string, fromOffset int64) ([]transcript.Event, int64,
 	if _, err := os.Stat(db); err != nil {
 		return nil, fromOffset, fmt.Errorf("opencode: stat database: %w", cause(err))
 	}
+	l, ok, err := s.open(ctx, db)
+	if err != nil {
+		return nil, fromOffset, err
+	}
+	if !ok {
+		return nil, fromOffset, fmt.Errorf("opencode: stat database: %w", os.ErrNotExist)
+	}
 	var idle []struct {
 		Seq int64 `json:"seq"`
 	}
-	err := s.query(ctx, db, `SELECT COALESCE(MAX(seq), -1) AS seq FROM session_message
-		WHERE type = 'idle' AND session_id = `+quote(id), &idle)
+	if l.legacy {
+		// No idle markers: every message but the session's last is final.
+		err = s.query(ctx, db, `SELECT COALESCE(MAX(rowid), -1) AS seq FROM message
+			WHERE session_id = `+quote(id), &idle)
+	} else {
+		err = s.query(ctx, db, `SELECT COALESCE(MAX(seq), -1) AS seq FROM session_message
+			WHERE type = 'idle' AND session_id = `+quote(id), &idle)
+	}
 	if err != nil {
 		return nil, fromOffset, err
 	}
@@ -177,17 +232,21 @@ func (s *Source) Read(path string, fromOffset int64) ([]transcript.Event, int64,
 		now = s.now()
 	}
 
+	page := pageRows
+	if l.legacy {
+		page = legacyPageRows
+	}
 	var events []transcript.Event
 	offset := fromOffset
 	for {
 		var rows []row
-		query := fmt.Sprintf(`SELECT id, type, seq, time_created, time_updated, data
-			FROM session_message WHERE session_id = %s AND seq >= %d
-			ORDER BY seq LIMIT %d`, quote(id), offset, pageRows)
-		if err := s.query(ctx, db, query, &rows); err != nil {
+		if err := s.query(ctx, db, l.readQuery(id, offset, page), &rows); err != nil {
 			return events, offset, err
 		}
 		for _, r := range rows {
+			if l.legacy {
+				r = legacyRow(r)
+			}
 			msg, decoded := decode(r.Data)
 			if !settled(r, msg, decoded, lastIdle, now) {
 				return events, r.Seq, nil
@@ -195,10 +254,28 @@ func (s *Source) Read(path string, fromOffset int64) ([]transcript.Event, int64,
 			events = append(events, parse(id, r, msg, decoded))
 			offset = r.Seq + 1
 		}
-		if len(rows) < pageRows {
+		if len(rows) < page {
 			return events, offset, nil
 		}
 	}
+}
+
+// readQuery selects up to limit messages of session id from seq on. The
+// legacy layout's parts come back as a JSON array in the parts column. A
+// legacy user message's summary, a diff of the files it touched that can be
+// hundreds of KiB, is left out: sqlite3 -json takes seconds to print it.
+func (l layout) readQuery(id string, from int64, limit int) string {
+	if !l.legacy {
+		return fmt.Sprintf(`SELECT id, type, seq, time_created, time_updated, data
+			FROM session_message WHERE session_id = %s AND seq >= %d
+			ORDER BY seq LIMIT %d`, quote(id), from, limit)
+	}
+	return fmt.Sprintf(`SELECT m.id, '' AS type, m.rowid AS seq, m.time_created, m.time_updated,
+			CASE WHEN json_valid(m.data) THEN json_remove(m.data, '$.summary') ELSE m.data END AS data,
+			COALESCE((SELECT json_group_array(CASE WHEN json_valid(p.data) THEN json(p.data) ELSE json_quote(p.data) END)
+				FROM (SELECT data FROM part WHERE message_id = m.id ORDER BY id) p), '[]') AS parts
+		FROM message m WHERE m.session_id = %s AND m.rowid >= %d
+		ORDER BY m.rowid LIMIT %d`, quote(id), from, limit)
 }
 
 // Stat implements reader.Stater. Size is one past the session's highest
@@ -214,15 +291,23 @@ func (s *Source) Stat(path string) (reader.Info, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
+	l, ok, err := s.open(ctx, db)
+	if err != nil {
+		return reader.Info{}, err
+	}
+	if !ok {
+		return reader.Info{}, fmt.Errorf("opencode: session not in database: %w", os.ErrNotExist)
+	}
 	var rows []struct {
 		Session *int64 `json:"session_updated"`
 		Message *int64 `json:"message_updated"`
 		MaxSeq  *int64 `json:"max_seq"`
 	}
 	query := fmt.Sprintf(`SELECT
-			(SELECT time_updated FROM session_v2 WHERE id = %[1]s) AS session_updated,
-			(SELECT MAX(time_updated) FROM session_message WHERE session_id = %[1]s) AS message_updated,
-			(SELECT MAX(seq) FROM session_message WHERE session_id = %[1]s) AS max_seq`, quote(id))
+			(SELECT time_updated FROM %[2]s WHERE id = %[1]s) AS session_updated,
+			(SELECT MAX(time_updated) FROM %[3]s WHERE session_id = %[1]s) AS message_updated,
+			(SELECT MAX(%[4]s) FROM %[3]s WHERE session_id = %[1]s) AS max_seq`,
+		quote(id), l.sessionTable(), l.messageTable(), l.seqColumn())
 	if err := s.query(ctx, db, query, &rows); err != nil {
 		return reader.Info{}, err
 	}
@@ -248,12 +333,21 @@ func (s *Source) Pending(ctx context.Context, path string, from int64) (events, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
+	l, ok, err := s.open(ctx, db)
+	if err != nil || !ok {
+		return 0, 0, err
+	}
 	var rows []struct {
 		Events int64 `json:"events"`
 		Bytes  int64 `json:"bytes"`
 	}
 	query := fmt.Sprintf(`SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(data)), 0) AS bytes
 		FROM session_message WHERE session_id = %s AND seq >= %d`, quote(id), max(from, 0))
+	if l.legacy {
+		query = fmt.Sprintf(`SELECT COUNT(*) AS events, COALESCE(SUM(LENGTH(m.data)
+				+ COALESCE((SELECT SUM(LENGTH(p.data)) FROM part p WHERE p.message_id = m.id), 0)), 0) AS bytes
+			FROM message m WHERE m.session_id = %s AND m.rowid >= %d`, quote(id), max(from, 0))
+	}
 	if err := s.query(ctx, db, query, &rows); err != nil {
 		return 0, 0, err
 	}
