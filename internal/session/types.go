@@ -148,6 +148,7 @@ type ThreadMetadataRow struct {
 	GitBranch   string `json:"git_branch"`
 	UpdatedAtMS int64  `json:"updated_at_ms"`
 	TokensUsed  int64  `json:"tokens_used"`
+	RolloutPath string `json:"rollout_path"`
 }
 
 const RolloutStatusTailBytes int64 = 4 << 20
