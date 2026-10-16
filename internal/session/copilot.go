@@ -15,6 +15,14 @@ import (
 	"time"
 )
 
+// isCopilotDesktopCommand reports whether the lowercased command runs from
+// the GitHub Copilot desktop app's bundle, including its helpers and anything
+// it runs from inside the bundle. The bundle name contains a space, so the
+// whole command line is searched rather than its first field.
+func isCopilotDesktopCommand(lower string) bool {
+	return strings.Contains(filepath.ToSlash(lower), "copilot.app/contents/")
+}
+
 func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for groupIndex := range groups {
