@@ -37,6 +37,16 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			}
 		}
 	}
+	// Recent Codex builds keep no rollout open in the TUI process: an
+	// app-server holds the thread, so match the remaining runtimes by cwd.
+	unmatched := d.unmatchedCodexGroups(groups, rollouts)
+	candidates := make(map[string]bool)
+	if len(unmatched) > 0 {
+		candidates = d.discoverHeldCodexThreads(groups)
+		for id := range candidates {
+			threadIDs[id] = true
+		}
+	}
 	if len(threadIDs) == 0 {
 		return nil
 	}
@@ -45,6 +55,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	if err != nil {
 		return err
 	}
+	d.matchCodexGroupsByCWD(unmatched, candidates, metadata, rollouts)
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
 		if group.Tool != "Codex" {
@@ -85,6 +96,109 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 		})
 	}
 	return nil
+}
+
+// unmatchedCodexGroups returns the Codex groups with no open rollout file,
+// runtimes with a terminal first so a CLI wins over a background server.
+func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[int][]string) []ProcessGroup {
+	var unmatched []ProcessGroup
+	for _, group := range groups {
+		if group.Tool == "Codex" && len(rollouts[group.Root.PID]) == 0 {
+			unmatched = append(unmatched, group)
+		}
+	}
+	sort.SliceStable(unmatched, func(i, j int) bool {
+		iTTY, jTTY := unmatched[i].Root.TTY != "", unmatched[j].Root.TTY != ""
+		if iTTY != jTTY {
+			return iTTY
+		}
+		return unmatched[i].Root.PID < unmatched[j].Root.PID
+	})
+	return unmatched
+}
+
+// discoverHeldCodexThreads returns the thread IDs that any Codex process
+// holds open, either as a rollout file or as a thread-writer lock.
+func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) map[string]bool {
+	var pids []string
+	for _, group := range groups {
+		if group.Tool != "Codex" {
+			continue
+		}
+		for _, process := range group.Processes {
+			pids = append(pids, strconv.Itoa(process.PID))
+		}
+	}
+	held := make(map[string]bool)
+	if len(pids) == 0 {
+		return held
+	}
+	output, _ := d.command("lsof", "-Fn", "-p", strings.Join(pids, ",")).Output()
+	for _, line := range strings.Split(string(output), "\n") {
+		if len(line) < 2 || line[0] != 'n' {
+			continue
+		}
+		path := line[1:]
+		base := filepath.Base(path)
+		switch {
+		case strings.HasPrefix(base, "rollout-") && filepath.Ext(base) == ".jsonl":
+		case filepath.Base(filepath.Dir(path)) == "thread-writer-locks" && filepath.Ext(base) == ".lock":
+		default:
+			continue
+		}
+		if id, ok := d.threadIDFromRolloutPath(path); ok {
+			held[id] = true
+		}
+	}
+	return held
+}
+
+// matchCodexGroupsByCWD assigns each unmatched group the newest held,
+// unclaimed, non-subagent thread that shares its working directory.
+func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+	claimed := make(map[string]bool)
+	for _, paths := range rollouts {
+		for _, path := range paths {
+			if id, ok := d.threadIDFromRolloutPath(path); ok {
+				claimed[id] = true
+			}
+		}
+	}
+	for _, group := range unmatched {
+		cwd := d.processCWD(group.Root.PID)
+		if cwd == "" {
+			continue
+		}
+		var best ThreadMetadataRow
+		for id := range candidates {
+			row, ok := metadata[id]
+			if !ok || claimed[id] || row.CWD != cwd || row.RolloutPath == "" || strings.HasPrefix(row.Source, "{") {
+				continue
+			}
+			if best.ID == "" || row.UpdatedAtMS > best.UpdatedAtMS {
+				best = row
+			}
+		}
+		if best.ID == "" {
+			continue
+		}
+		claimed[best.ID] = true
+		rollouts[group.Root.PID] = append(rollouts[group.Root.PID], best.RolloutPath)
+	}
+}
+
+// processCWD returns the working directory lsof reports for pid, or "".
+func (d *discoverer) processCWD(pid int) string {
+	output, err := d.command("lsof", "-a", "-d", "cwd", "-Fn", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "n") {
+			return d.sanitizeProcessCommand(line[1:])
+		}
+	}
+	return ""
 }
 
 func (d *discoverer) discoverOpenRollouts(rootPIDs []int) (map[int][]string, error) {
@@ -204,7 +318,8 @@ func (d *discoverer) readThreadMetadata(threadIDs map[string]bool) (map[string]T
 			COALESCE(thread_source, source, '') AS source,
 			COALESCE(git_branch, '') AS git_branch,
 			COALESCE(updated_at_ms, updated_at * 1000) AS updated_at_ms,
-			tokens_used
+			tokens_used,
+			COALESCE(rollout_path, '') AS rollout_path
 		FROM threads
 		WHERE id IN (%s)
 	`, strings.Join(quoted, ","))
