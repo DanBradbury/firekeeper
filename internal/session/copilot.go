@@ -23,6 +23,13 @@ func isCopilotDesktopCommand(lower string) bool {
 	return strings.Contains(filepath.ToSlash(lower), "copilot.app/contents/")
 }
 
+// isCopilotSDKCommand reports whether the lowercased command runs the CLI the
+// Copilot SDK caches under github-copilot-sdk. Host apps spawn it in the
+// background with no terminal, so it is not a session the user can switch to.
+func isCopilotSDKCommand(lower string) bool {
+	return strings.Contains(filepath.ToSlash(lower), "/github-copilot-sdk/")
+}
+
 func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for groupIndex := range groups {

@@ -133,6 +133,9 @@ func (d *discoverer) classifyProcess(command string) string {
 	case isCopilotDesktopCommand(lower):
 		// The desktop app is not the Copilot CLI and has no CLI session.
 		return ""
+	case isCopilotSDKCommand(lower):
+		// Background SDK runtime spawned by other apps, with no terminal.
+		return ""
 	case strings.Contains(lower, "copilot"):
 		return "Copilot"
 	case strings.Contains(lower, "codex"):
