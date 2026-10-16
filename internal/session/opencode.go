@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -178,6 +179,11 @@ func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 		return errors.New("stat OpenCode database")
 	}
 
+	layout, err := d.openCodeLayout(db)
+	if err != nil {
+		return err
+	}
+
 	// Explicit ids from the command line win.
 	ids := make(map[int]string, len(groupIndexes))
 	claimed := make(map[string]bool)
@@ -207,7 +213,7 @@ func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 			for dir := range byDir {
 				dirs = append(dirs, dir)
 			}
-			recent, err := d.recentOpenCodeSessions(db, dirs)
+			recent, err := d.recentOpenCodeSessions(db, layout, dirs)
 			if err != nil {
 				return err
 			}
@@ -231,7 +237,7 @@ func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 	for _, id := range ids {
 		wanted = append(wanted, id)
 	}
-	rows, err := d.readOpenCodeSessions(db, wanted)
+	rows, err := d.readOpenCodeSessions(db, layout, wanted)
 	if err != nil {
 		return err
 	}
@@ -269,9 +275,109 @@ func (d *discoverer) openCodeQuery(db, query string, rows any) error {
 	return nil
 }
 
+// openCodeLayout names the tables a database keeps sessions in. Current
+// OpenCode releases use session_v2 and session_message; earlier ones use
+// session, with messages in message.
+type openCodeLayout struct{ legacy bool }
+
+func (l openCodeLayout) sessionTable() string {
+	if l.legacy {
+		return "session"
+	}
+	return "session_v2"
+}
+
+func (d *discoverer) openCodeLayout(db string) (openCodeLayout, error) {
+	var rows []struct {
+		Name string `json:"name"`
+	}
+	const query = `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('session_v2', 'session')`
+	if err := d.openCodeQuery(db, query, &rows); err != nil {
+		return openCodeLayout{}, err
+	}
+	legacy := true
+	for _, row := range rows {
+		if row.Name == "session_v2" {
+			legacy = false
+		}
+	}
+	if len(rows) == 0 {
+		return openCodeLayout{}, errors.New("OpenCode database has no session table")
+	}
+	return openCodeLayout{legacy: legacy}, nil
+}
+
+// lastTypeSQL selects the latest message's type, or "" when there is none.
+// The legacy layout has no type column; it is derived from the message role,
+// with an assistant message that has not completed counted as in progress.
+func (l openCodeLayout) lastTypeSQL() string {
+	if !l.legacy {
+		return `COALESCE((SELECT m.type FROM session_message m WHERE m.session_id = s.id
+				ORDER BY m.seq DESC LIMIT 1), '')`
+	}
+	return `COALESCE((SELECT CASE
+					WHEN NOT json_valid(m.data) THEN ''
+					WHEN json_extract(m.data, '$.role') = 'assistant'
+						AND json_extract(m.data, '$.time.completed') IS NOT NULL THEN 'idle'
+					ELSE COALESCE(json_extract(m.data, '$.role'), '') END
+				FROM message m WHERE m.session_id = s.id
+				ORDER BY m.time_created DESC, m.id DESC LIMIT 1), '')`
+}
+
+// OpenCodeFirstPromptSQL selects the text of the session's first user
+// message, cut to 200 characters, or NULL. s is the session table's alias.
+// The legacy flag selects the session/message/part layout.
+func OpenCodeFirstPromptSQL(legacy bool) string {
+	if !legacy {
+		return `(SELECT substr(json_extract(m.data, '$.text'), 1, 200) FROM session_message m
+				WHERE m.session_id = s.id AND m.type = 'user' ORDER BY m.seq LIMIT 1)`
+	}
+	// json_extract fails the whole query on malformed JSON, so each use is
+	// inside a CASE that checks json_valid first; SQLite may reorder AND terms.
+	return `(SELECT CASE WHEN json_valid(p.data) THEN substr(json_extract(p.data, '$.text'), 1, 200) END
+				FROM message m JOIN part p ON p.message_id = m.id
+				WHERE m.session_id = s.id
+					AND CASE WHEN json_valid(m.data) THEN json_extract(m.data, '$.role') END = 'user'
+					AND CASE WHEN json_valid(p.data) THEN json_extract(p.data, '$.type') END = 'text'
+					AND CASE WHEN json_valid(p.data) THEN COALESCE(json_extract(p.data, '$.synthetic'), 0) END = 0
+				ORDER BY m.time_created, m.id, p.id LIMIT 1)`
+}
+
+// openCodeDefaultTitle matches the placeholder OpenCode gives a session until
+// it has generated a title: "New session - <ISO timestamp>", or "Child
+// session - ..." for a subagent.
+var openCodeDefaultTitle = regexp.MustCompile(`^(New|Child) session - \d{4}-\d{2}-\d{2}T[\d:.]+Z$`)
+
+const openCodeTitleRunes = 80
+
+// OpenCodeTitle returns title, unless it is OpenCode's placeholder and the
+// session has a first prompt: then the prompt's first line, whitespace
+// collapsed and cut to a short summary.
+func OpenCodeTitle(title, firstPrompt string) string {
+	if !openCodeDefaultTitle.MatchString(strings.TrimSpace(title)) {
+		return title
+	}
+	line := strings.Join(strings.Fields(strings.TrimSpace(firstPrompt)), " ")
+	if line == "" {
+		return title
+	}
+	if runes := []rune(line); len(runes) > openCodeTitleRunes {
+		line = strings.TrimSpace(string(runes[:openCodeTitleRunes-1])) + "…"
+	}
+	return line
+}
+
+func (l openCodeLayout) lastUpdatedSQL() string {
+	table := "session_message"
+	if l.legacy {
+		table = "message"
+	}
+	return `COALESCE((SELECT MAX(m.time_updated) FROM ` + table + ` m WHERE m.session_id = s.id), 0)`
+}
+
 // recentOpenCodeSessions returns top-level session ids per directory, most
 // recently updated first.
-func (d *discoverer) recentOpenCodeSessions(db string, dirs []string) (map[string][]string, error) {
+func (d *discoverer) recentOpenCodeSessions(db string, layout openCodeLayout, dirs []string) (map[string][]string, error) {
 	quoted := make([]string, len(dirs))
 	for i, dir := range dirs {
 		quoted[i] = sqlQuote(dir)
@@ -280,9 +386,9 @@ func (d *discoverer) recentOpenCodeSessions(db string, dirs []string) (map[strin
 		ID        string `json:"id"`
 		Directory string `json:"directory"`
 	}
-	query := fmt.Sprintf(`SELECT id, directory FROM session_v2
+	query := fmt.Sprintf(`SELECT id, directory FROM %s
 		WHERE parent_id IS NULL AND directory IN (%s)
-		ORDER BY time_updated DESC, id DESC LIMIT 200`, strings.Join(quoted, ","))
+		ORDER BY time_updated DESC, id DESC LIMIT 200`, layout.sessionTable(), strings.Join(quoted, ","))
 	if err := d.openCodeQuery(db, query, &rows); err != nil {
 		return nil, err
 	}
@@ -311,9 +417,10 @@ type openCodeSessionRow struct {
 	CacheWrite  int64  `json:"tokens_cache_write"`
 	LastType    string `json:"last_type"`
 	LastUpdated int64  `json:"last_updated"`
+	FirstPrompt string `json:"first_prompt"`
 }
 
-func (d *discoverer) readOpenCodeSessions(db string, ids []string) (map[string]openCodeSessionRow, error) {
+func (d *discoverer) readOpenCodeSessions(db string, layout openCodeLayout, ids []string) (map[string]openCodeSessionRow, error) {
 	result := make(map[string]openCodeSessionRow, len(ids))
 	var quoted []string
 	for _, id := range ids {
@@ -329,10 +436,10 @@ func (d *discoverer) readOpenCodeSessions(db string, ids []string) (map[string]o
 			COALESCE(s.model, '') AS model, s.time_created, s.time_updated,
 			s.tokens_input, s.tokens_output, s.tokens_reasoning,
 			s.tokens_cache_read, s.tokens_cache_write,
-			COALESCE((SELECT m.type FROM session_message m WHERE m.session_id = s.id
-				ORDER BY m.seq DESC LIMIT 1), '') AS last_type,
-			COALESCE((SELECT MAX(m.time_updated) FROM session_message m WHERE m.session_id = s.id), 0) AS last_updated
-		FROM session_v2 s WHERE s.id IN (%s)`, strings.Join(quoted, ","))
+			%s AS last_type,
+			%s AS last_updated,
+			COALESCE(%s, '') AS first_prompt
+		FROM %s s WHERE s.id IN (%s)`, layout.lastTypeSQL(), layout.lastUpdatedSQL(), OpenCodeFirstPromptSQL(layout.legacy), layout.sessionTable(), strings.Join(quoted, ","))
 	if err := d.openCodeQuery(db, query, &rows); err != nil {
 		return nil, err
 	}
@@ -364,7 +471,7 @@ func (row openCodeSessionRow) info(db string) Info {
 	}
 	return Info{
 		ID:          row.ID,
-		Name:        clean(row.Title),
+		Name:        clean(OpenCodeTitle(row.Title, row.FirstPrompt)),
 		State:       openCodeState(row.LastType),
 		CWD:         clean(row.Directory),
 		Model:       clean(OpenCodeModel([]byte(row.Model))),

@@ -436,3 +436,84 @@ func TestTruncate(t *testing.T) {
 		t.Error("short text changed")
 	}
 }
+
+func legacyDB(t *testing.T) string {
+	t.Helper()
+	testenv.NeedTool(t, "sqlite3")
+	schema, err := filepath.Abs(filepath.Join("testdata", "opencode_legacy.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := filepath.Join(t.TempDir(), "opencode.db")
+	if out, err := exec.Command("sqlite3", db, ".read "+schema).CombinedOutput(); err != nil {
+		t.Fatalf("build legacy database: %v: %s", err, out)
+	}
+	return db
+}
+
+// The layout before session_v2 keeps messages in message and their content in
+// part. It reads like the current one, with rowid as seq.
+func TestLegacyLayout(t *testing.T) {
+	db := legacyDB(t)
+	const id = "ses_legacyA"
+	path := session.OpenCodeTranscriptPath(db, id)
+	source := at(db, 2*time.Hour)
+
+	events, offset, err := source.Read(path, 0)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(events) != 3 || offset != 4 {
+		t.Fatalf("got %d events, offset %d; want 3 events, offset 4", len(events), offset)
+	}
+	check(t, events, []want{
+		{seq: 1, role: transcript.RoleUser, text: "fix the bug"},
+		{seq: 2, role: transcript.RoleAssistant, text: "done", tool: "edit", model: "model-test",
+			tokens: transcript.Tokens{Input: 10, Output: 5, Cache: 105}},
+		{seq: 3, role: transcript.RoleToolCall, text: "{\"command\":\"false\"}\nerror: exit 1", tool: "bash", model: "model-test"},
+	})
+	if strings.Contains(string(events[0].Raw), "summary") {
+		t.Errorf("user message summary should be left out of raw")
+	}
+	if got := transcript.TouchedFiles(events[1]); !reflect.DeepEqual(got, []string{"/work/demo/main.go"}) {
+		t.Errorf("TouchedFiles = %v", got)
+	}
+
+	// Offsets resume after the last message read.
+	rest, next, err := source.Read(path, 3)
+	if err != nil || len(rest) != 1 || rest[0].Seq != 3 || next != 4 {
+		t.Errorf("Read from 3 = %d events, offset %d, %v", len(rest), next, err)
+	}
+
+	// An unfinished last message waits until it is old enough to count as
+	// final.
+	waiting, offset, err := at(db, 0).Read(path, 0)
+	if err != nil || len(waiting) != 2 || offset != 3 {
+		t.Errorf("fresh unfinished message: %d events, offset %d, %v; want 2 events, offset 3", len(waiting), offset, err)
+	}
+
+	info, err := reader.Stat(source, path)
+	if err != nil || info.Size != 4 {
+		t.Errorf("Stat = %+v, %v; want size 4", info, err)
+	}
+	pending, size, err := source.Pending(context.Background(), path, 2)
+	if err != nil || pending != 2 || size <= 0 {
+		t.Errorf("Pending = %d, %d, %v", pending, size, err)
+	}
+
+	located, err := source.Locate(session.Meta{ID: id})
+	if err != nil || !reflect.DeepEqual(located, []string{path}) {
+		t.Errorf("Locate = %v, %v", located, err)
+	}
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{})
+	titles := map[string]string{}
+	for _, m := range metas {
+		titles[m.ID] = m.Title
+	}
+	// Subagent sessions are left out, and a placeholder title becomes the
+	// first prompt.
+	wantTitles := map[string]string{id: "Legacy demo", "ses_legacyNew": "add a --verbose flag to the CLI"}
+	if err != nil || !reflect.DeepEqual(titles, wantTitles) {
+		t.Errorf("Enumerate titles = %v, %v; want %v", titles, err, wantTitles)
+	}
+}
