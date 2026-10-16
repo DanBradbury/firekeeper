@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -68,5 +69,27 @@ func TestEnrichKimiSessionsCurrentStateLayout(t *testing.T) {
 	if got.ID != "session_abc" || got.Name != "Kimi now" || got.CWD != cwd || got.RolloutPath != KimiWirePath(sessionDir) ||
 		!got.StartedAt.Equal(time.UnixMilli(1791460800000)) || !got.UpdatedAt.Equal(time.UnixMilli(1791460860000)) {
 		t.Fatalf("unexpected session %+v", got)
+	}
+}
+
+func TestEnrichKimiSessionsBeforeFirstPrompt(t *testing.T) {
+	home := t.TempDir()
+	cwd := filepath.Join(home, "project")
+	if err := os.MkdirAll(filepath.Join(home, "kimi", "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	d := &discoverer{ctx: context.Background(), opts: Options{Home: home, KimiHome: filepath.Join(home, "kimi"), Run: func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+		return []byte("p30\nn" + cwd + "\n"), nil
+	}}}
+	groups := []ProcessGroup{{Tool: "Kimi", Root: ProcessInfo{PID: 30}}}
+	if err := d.enrichKimiSessions(groups); err != nil {
+		t.Fatal(err)
+	}
+	if len(groups[0].Sessions) != 1 {
+		t.Fatalf("got %d sessions, want 1", len(groups[0].Sessions))
+	}
+	got := groups[0].Sessions[0]
+	if got.ID != "" || got.CWD != cwd || got.State != SessionStateUnknown || got.RolloutPath != "" {
+		t.Fatalf("unexpected placeholder %+v", got)
 	}
 }

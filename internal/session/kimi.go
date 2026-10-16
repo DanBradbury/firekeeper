@@ -44,8 +44,17 @@ func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 		if groups[index].Tool != "Kimi" {
 			continue
 		}
-		state, ok := latest[workDirs[groups[index].Root.PID]]
+		cwd := workDirs[groups[index].Root.PID]
+		state, ok := latest[cwd]
 		if !ok {
+			// Kimi writes state.json only after the first prompt. Show the
+			// runtime's working directory until then instead of no metadata.
+			if cwd != "" {
+				groups[index].Sessions = []Info{{
+					Name: "Kimi Code", State: SessionStateUnknown,
+					CWD: d.sanitizeProcessCommand(cwd), Source: "Kimi Code",
+				}}
+			}
 			continue
 		}
 		sessionDir := filepath.Dir(state.Path)
