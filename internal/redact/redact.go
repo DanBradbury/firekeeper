@@ -122,13 +122,41 @@ func redactString(s string, opts Options, counts Counts) string {
 	}
 	s = redactAssignments(s, counts)
 	for _, p := range opts.Paths {
-		s = redactPrefix(s, p, Marker(KindPath), KindPath, counts)
+		for _, form := range pathForms(p) {
+			s = redactPrefix(s, form, Marker(KindPath), KindPath, counts)
+		}
 		if tilde, ok := homeForm(p, opts.HomeDir); ok {
 			s = redactPrefix(s, tilde, Marker(KindPath), KindPath, counts)
 		}
 	}
-	return redactHome(s, opts.HomeDir, counts)
+	for _, form := range pathForms(opts.HomeDir) {
+		s = redactHome(s, form, counts)
+	}
+	return s
 }
+
+// pathForms returns the spellings of p to look for. A Windows drive path is
+// written in several ways by the programs that record it: with backslashes or
+// slashes, with either case of the drive letter, and as /c/Users/... by Git
+// Bash and MSYS. Any other path has one form.
+func pathForms(p string) []string {
+	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') || !isASCIILetter(p[0]) {
+		return []string{p}
+	}
+	rest := p[2:]
+	slashed := strings.ReplaceAll(rest, `\`, "/")
+	var forms []string
+	for _, drive := range []string{strings.ToUpper(p[:1]), strings.ToLower(p[:1])} {
+		forms = append(forms, drive+":"+rest)
+		if slashed != rest {
+			forms = append(forms, drive+":"+slashed)
+		}
+		forms = append(forms, "/"+drive+slashed)
+	}
+	return forms
+}
+
+func isASCIILetter(b byte) bool { return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') }
 
 // detector replaces regular expression matches with a marker. hints are
 // literal substrings, at least one of which every match contains; they let

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/winterm"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -300,7 +301,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
 				group := m.processGroups[m.processCursor]
 				target := newTerminalSwitchTarget(group, 0)
-				m.terminalStatus = "switching to " + displayTTY(target.tty) + "…"
+				m.terminalStatus = "switching to " + switchingLabel(target) + "…"
 				return m, switchToTerminal(target)
 			}
 		}
@@ -338,7 +339,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.terminalStatus = "terminal switch failed: " + sanitizeProcessCommand(msg.err.Error())
 		} else {
-			m.terminalStatus = "switched to " + msg.app + " " + displayTTY(msg.tty)
+			m.terminalStatus = "switched to " + strings.TrimSpace(msg.app+" "+switchedLabel(msg.tty))
 			if msg.multiplexer != "" {
 				m.terminalStatus += " • " + msg.multiplexer + " pane"
 			}
@@ -746,8 +747,20 @@ end run`,
 
 func switchToTerminal(target terminalSwitchTarget) tea.Cmd {
 	return func() tea.Msg {
+		if runtime.GOOS == "windows" {
+			// Windows has no TTY to match and no Herdr; raise the window
+			// that hosts the runtime.
+			return switchTerminalTargetWith(target, noHerdr, func(string, string) (string, error) {
+				return winterm.Focus(target.processPIDs)
+			})
+		}
 		return switchTerminalTargetWith(target, focusHerdrTarget, focusTerminalSession)
 	}
+}
+
+// noHerdr stands in for Herdr on platforms that do not run it.
+func noHerdr(context.Context, terminalSwitchTarget) (herdrFocusTarget, bool, error) {
+	return herdrFocusTarget{}, false, nil
 }
 
 func switchTerminalTargetWith(
@@ -883,4 +896,20 @@ func fitLine(s string, width int) string {
 		return string(runes[:width])
 	}
 	return s + strings.Repeat(" ", width-len(runes))
+}
+
+// switchingLabel names what the switch is aimed at: the TTY where there is
+// one, and the terminal window on Windows, which has none.
+func switchingLabel(target terminalSwitchTarget) string {
+	if runtime.GOOS == "windows" {
+		return "terminal window"
+	}
+	return displayTTY(target.tty)
+}
+
+func switchedLabel(tty string) string {
+	if runtime.GOOS == "windows" {
+		return "window"
+	}
+	return displayTTY(tty)
 }

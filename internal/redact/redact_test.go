@@ -346,3 +346,45 @@ func TestRedactConfiguredPaths(t *testing.T) {
 		t.Fatalf("path count = %d", counts[KindPath])
 	}
 }
+
+func TestHomeDirWindowsSpellings(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`}
+	tests := []struct{ name, in, want string }{
+		{"backslashes", `see C:\Users\me\src\app.go`, `see ~\src\app.go`},
+		{"slashes", `see C:/Users/me/src/app.go`, `see ~/src/app.go`},
+		{"lowercase drive", `see c:\Users\me\src`, `see ~\src`},
+		{"lowercase drive slashes", `see c:/Users/me/src`, `see ~/src`},
+		{"git bash", `cd /c/Users/me/src && ls`, `cd ~/src && ls`},
+		{"git bash uppercase", `cd /C/Users/me/src`, `cd ~/src`},
+		{"other user", `C:\Users\meg\src`, `C:\Users\meg\src`},
+		{"other drive", `D:\Users\me\src`, `D:\Users\me\src`},
+		{"extended prefix", `\\?\C:\Users\me\src`, `\\?\~\src`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := String(tt.in, opts); got != tt.want {
+				t.Fatalf("String(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRedactedWindowsPathsInJSON(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`, Paths: []string{`C:\Users\me\clients\acme`}}
+	got, counts := JSON([]byte(`{"cwd":"C:\\Users\\me\\clients\\acme\\api","file":"C:/Users/me/notes.txt"}`), opts)
+	want := `{"cwd":"[REDACTED:path]\\api","file":"~/notes.txt"}`
+	if string(got) != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+	if counts[KindPath] != 1 || counts[KindHomeDir] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+}
+
+func TestPathFormsLeaveOtherPathsAlone(t *testing.T) {
+	for _, p := range []string{"", "/Users/me", "relative/path", `\\server\share`, "C:", "1:\\x"} {
+		if got := pathForms(p); len(got) != 1 || got[0] != p {
+			t.Errorf("pathForms(%q) = %q", p, got)
+		}
+	}
+}

@@ -267,6 +267,7 @@ func (h *home) run(_ context.Context, name string, args ...string) ([]byte, erro
 // take no home from the reporter.
 func (h *home) config(t *testing.T, server string) reporter.Config {
 	t.Setenv("HOME", h.dir)
+	t.Setenv("USERPROFILE", h.dir) // the home directory on Windows
 	t.Setenv("CODEX_HOME", filepath.Join(h.dir, ".codex"))
 	t.Setenv("COPILOT_HOME", filepath.Join(h.dir, ".copilot"))
 	t.Setenv("KIMI_CODE_HOME", filepath.Join(h.dir, ".kimi-code"))

@@ -16,6 +16,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 )
 
 const (
@@ -420,7 +422,7 @@ func readCodexHistoricalSessions() ([]codexHistoricalSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	columnsOutput, err := exec.Command("sqlite3", "-readonly", "-json", statePath, "PRAGMA table_info(threads)").Output()
+	columnsOutput, err := sqlitejson.Run(context.Background(), "-readonly", "-json", statePath, "PRAGMA table_info(threads)")
 	if err != nil {
 		return nil, fmt.Errorf("inspect Codex state: %w", err)
 	}
@@ -438,7 +440,7 @@ func readCodexHistoricalSessions() ([]codexHistoricalSession, error) {
 	if err != nil {
 		return nil, err
 	}
-	output, err := exec.Command("sqlite3", "-readonly", "-json", statePath, query).Output()
+	output, err := sqlitejson.Run(context.Background(), "-readonly", "-json", statePath, query)
 	if err != nil {
 		return nil, fmt.Errorf("read Codex session history: %w", err)
 	}

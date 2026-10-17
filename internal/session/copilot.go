@@ -20,14 +20,16 @@ import (
 // it runs from inside the bundle. The bundle name contains a space, so the
 // whole command line is searched rather than its first field.
 func isCopilotDesktopCommand(lower string) bool {
-	return strings.Contains(filepath.ToSlash(lower), "copilot.app/contents/")
+	path := slashPath(lower)
+	// The Windows app installs as Microsoft.Copilot under WindowsApps.
+	return strings.Contains(path, "copilot.app/contents/") || strings.Contains(path, "/windowsapps/microsoft.copilot")
 }
 
 // isCopilotSDKCommand reports whether the lowercased command runs the CLI the
 // Copilot SDK caches under github-copilot-sdk. Host apps spawn it in the
 // background with no terminal, so it is not a session the user can switch to.
 func isCopilotSDKCommand(lower string) bool {
-	return strings.Contains(filepath.ToSlash(lower), "/github-copilot-sdk/")
+	return strings.Contains(slashPath(lower), "/github-copilot-sdk/")
 }
 
 func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {

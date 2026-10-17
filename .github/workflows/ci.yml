@@ -30,6 +30,8 @@ jobs:
       - run: go vet ./...
       - name: go vet (darwin)
         run: GOOS=darwin go vet ./...
+      - name: go vet (windows)
+        run: GOOS=windows go vet ./...
       - name: server does not depend on process discovery
         run: |
           if go list -deps ./internal/server/... | grep -q 'firekeeper/internal/session$'; then
@@ -74,6 +76,44 @@ jobs:
             grep -q -- "--- PASS: $name " macos-tests.log || { echo "$name did not run and pass" >&2; exit 1; }
           done
 
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: install sqlite3 for the tests that build fixtures with it
+        shell: pwsh
+        run: |
+          if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
+            choco install sqlite --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Get-Command sqlite3
+      - name: go test
+        run: go test ./...
+      - name: Windows-specific tests must run, not skip
+        shell: bash
+        run: |
+          tests="TestWindowsProcessListReportsChildren TestWindowsProcessListFeedsDiscovery TestWindowsProcessCWD TestWindowsLockIsExclusiveAndReadable TestWindowsTryLockIsExclusive TestTaskSchedulerRoundTrip TestSnapshotListsThisProcess TestFocusWithNoWindowReportsIt"
+          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" ./internal/session ./internal/daemon ./internal/reporter ./internal/winterm | tee windows-tests.log
+          if grep -q -- '--- SKIP' windows-tests.log; then
+            echo "a Windows-specific test was skipped" >&2
+            exit 1
+          fi
+          for name in $tests; do
+            grep -q -- "--- PASS: $name " windows-tests.log || { echo "$name did not run and pass" >&2; exit 1; }
+          done
+      - name: installer test (PowerShell 7)
+        shell: pwsh
+        run: ./scripts/test-install.ps1
+      - name: installer test (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./scripts/test-install.ps1
+
   installer:
     runs-on: ubuntu-latest
     steps:
@@ -82,6 +122,9 @@ jobs:
         run: shellcheck $(git ls-files '*.sh')
       - name: installer test
         run: sh scripts/test-install.sh
+      - name: PowerShell installer test
+        shell: pwsh
+        run: ./scripts/test-install.ps1
 
   snapshot:
     runs-on: ubuntu-latest
@@ -96,6 +139,12 @@ jobs:
         with:
           version: "~> v2"
           args: release --snapshot --clean
+      - name: snapshot builds Windows binaries and zip archives
+        run: |
+          for arch in amd64 arm64; do
+            ls dist/firekeeper_*_windows_${arch}.zip
+          done
+          ls dist/firekeeper_windows_amd64_v1/firekeeper.exe
       - name: snapshot binary reports the injected version
         run: |
           out=$(dist/firekeeper_linux_amd64_v1/firekeeper version)

@@ -83,9 +83,12 @@ func (s *Service) InstalledArgs() ([]string, error) {
 		return nil, err
 	}
 	var args []string
-	if s.GOOS == "darwin" {
+	switch s.GOOS {
+	case "darwin":
 		args, err = plistProgramArgs(data)
-	} else {
+	case "windows":
+		args, err = taskProgramArgs(data)
+	default:
 		args, err = systemdExecStart(data)
 	}
 	if err != nil {

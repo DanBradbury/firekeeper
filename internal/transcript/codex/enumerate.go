@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
@@ -256,7 +256,7 @@ func (s *Source) sqlite(ctx context.Context, path, query string) ([]byte, error)
 	if s.run != nil {
 		return s.run(ctx, "sqlite3", args...)
 	}
-	return exec.CommandContext(ctx, "sqlite3", args...).Output()
+	return sqlitejson.Run(ctx, args...)
 }
 
 type head struct {

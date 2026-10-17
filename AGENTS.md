@@ -7,7 +7,7 @@
 - Command: `firekeeper`
 - Product: local, keyboard-driven terminal dashboard for monitoring coding-agent harnesses.
 - Current harness support: Codex, GitHub Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI process discovery, each with a session metadata adapter.
-- Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2.
+- Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2. Windows (10 1809+, amd64 and arm64) is a supported platform with its own process discovery, window switching, login service, and installer; Linux is best effort.
 
 Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting and dashboard") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `serve`. Do not make agent CLIs depend on any of them.
 
@@ -30,15 +30,19 @@ Run these local checks in order before handoff. The fast checks come before the 
 gofmt -w .
 go build ./...
 go vet ./...
+GOOS=windows go vet ./...
+GOOS=darwin go vet ./...
 go test -race ./...
 git diff --check
 ```
+
+`GOOS=windows go vet ./...` type-checks the Windows-only files (`*_windows.go`, which no Linux or macOS build compiles), so run it for any change near process discovery, locks, the daemon service, terminal switching, or file handling. Cross-build the release targets with `CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build .` when touching dependencies.
 
 Use `-race` for changes involving model updates, polling, commands, parsing, provider adapters, server, reporter, or daemon. For other changes, plain `go test ./...` is enough.
 
 When creating or modifying shell scripts (`*.sh`), run `shellcheck` on each touched script and fix its findings. CI also runs `shellcheck` on every tracked script.
 
-GitHub CI runs more than the local checks: Linux tests through `scripts/ci-go-test.sh` (which fails on any skipped test outside a short allowlist), a check that `internal/server` does not depend on `internal/session`, macOS AppleScript tests (set `FIREKEEPER_MACOS_INTEGRATION=1` to run them locally), the installer test, a GoReleaser snapshot build that must report the injected version, and (in `security.yml`, also weekly) `govulncheck` plus a `gitleaks` scan of the full history. A test fixture or doc example that trips gitleaks gets a narrow allowlist entry in `.gitleaks.toml`. CI uses the Go version declared in `go.mod`, so do not use APIs newer than that version. A green local run usually means CI passes, but does not guarantee it.
+GitHub CI runs more than the local checks: Linux tests through `scripts/ci-go-test.sh` (which fails on any skipped test outside a short allowlist), a check that `internal/server` does not depend on `internal/session`, macOS AppleScript tests (set `FIREKEEPER_MACOS_INTEGRATION=1` to run them locally), a Windows job (build, vet, `go test ./...`, the Windows-only tests named in `ci.yml`, which must run and pass, and `scripts/test-install.ps1` under PowerShell 7 and 5.1), the installer tests (`scripts/test-install.sh`, and `scripts/test-install.ps1`, which also runs under PowerShell 7 on Linux), a GoReleaser snapshot build that must report the injected version, and (in `security.yml`, also weekly) `govulncheck` plus a `gitleaks` scan of the full history. A test fixture or doc example that trips gitleaks gets a narrow allowlist entry in `.gitleaks.toml`. CI uses the Go version declared in `go.mod`, so do not use APIs newer than that version. A green local run usually means CI passes, but does not guarantee it.
 
 Release builds set version information with `-ldflags "-X github.com/DanBradbury/firekeeper/internal/version.Version=..."` (also `Commit` and `Date`). A wrong `-X` path fails silently and the binary reports `dev`.
 
@@ -78,7 +82,14 @@ firekeeper/
 │   ├── session/
 │   │   └── Process discovery and grouping, per-provider metadata enrichment,
 │   │       and best-effort state parsing into ACTIVE, WAITING, NEEDS INPUT,
-│   │       or UNKNOWN
+│   │       or UNKNOWN. native_windows.go answers the ps and lsof calls with
+│   │       Win32 (process snapshot, command line and cwd from the process
+│   │       environment block); native_other.go is the no-op elsewhere
+│   ├── sqlitejson/
+│   │   └── Read-only SQLite query as JSON: the sqlite3 command when it is on
+│   │       PATH, an in-process modernc connection when it is not (Windows)
+│   ├── winterm/
+│   │   └── Windows: find and raise the window hosting a process
 │   ├── transcript/
 │   │   ├── Event contract: events, providers, roles, tokens (no session import)
 │   │   ├── claude/, codex/, copilot/, cursor/, kimi/, opencode/, gemini/: per-provider
@@ -122,7 +133,11 @@ The tree describes architectural responsibilities. Confirm actual file and funct
 
 ## Process and provider integrations
 
-Process discovery uses `ps`; open-file mapping uses `lsof`; local database queries use `sqlite3 -readonly -json`; terminal focus uses `osascript`. Invoke commands with argument arrays, never shell interpolation.
+Process discovery uses `ps`; open-file mapping uses `lsof`; local database queries use `sqlite3 -readonly -json` (through `internal/sqlitejson`); terminal focus uses `osascript`. Invoke commands with argument arrays, never shell interpolation.
+
+Windows has none of `ps`, `lsof`, `sqlite3`, or `osascript`, and Firekeeper does not ask users to install them or start PowerShell on the two-second poll. `internal/session` keeps its call sites as they are and answers `ps` and `lsof` in `nativeCommand` (a seam below the `Run` test override), listing processes with a Toolhelp snapshot and reading command lines and working directories from each process's own environment block. Open-file lists are not available there, so code that relies on them needs a fallback (see Codex's `discoverRecentCodexThreads`). Command lines are Windows-quoted and use either separator: parse them with `commandFields`, `baseName`, and `slashPath`, not `strings.Fields` and `filepath.Base`, so classification stays identical on every platform and testable on Linux. Windows paths compare case-insensitively and in several spellings (`sameDirectory`, `redact.pathForms`).
+
+The login service is per platform: a LaunchAgent, a systemd user unit, or a Task Scheduler task registered with `schtasks` from an XML file (`internal/daemon/service_windows_task.go`, compiled everywhere so it is testable everywhere). Services never need administrator rights; a Windows logon trigger must name the user for that to hold. Windows status uses exit codes and the daemon's lock file, never `schtasks` text, which is localized.
 
 Provider rules:
 
@@ -293,7 +308,7 @@ Firekeeper is gaining an opt-in way to send session metadata and full transcript
 
 - Go module `github.com/DanBradbury/firekeeper`; the root `main` package must stay installable with `go install github.com/DanBradbury/firekeeper@latest`.
 - New code goes in `internal/` packages: `session`, `transcript`, `redact`, `server`, `reporter`, `daemon`, `config`, `cli`, `tui`, `version`. Keep `main.go` thin. The TUI lives in `internal/tui`; do not rewrite or reformat it unless a task asks for that.
-- No cgo in new code. The server's own database uses `modernc.org/sqlite` with FTS5. Reading provider SQLite files keeps using `sqlite3 -readonly -json` as described above unless a task says otherwise.
+- No cgo in new code. The server's own database uses `modernc.org/sqlite` with FTS5. Reading provider SQLite files goes through `internal/sqlitejson`, which runs `sqlite3 -readonly -json` when the command exists and reads the file read-only in-process when it does not (Windows ships no `sqlite3`). Call sites pass the same arguments either way and must not depend on which ran.
 - Provider data is read-only, as above, and `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `GEMINI_CLI_HOME`, and `CURSOR_CONFIG_DIR` are honored.
 - Never commit real transcripts. Fixtures are synthetic or fully scrubbed.
 - Tests never touch the network or the real home directory. Use `t.TempDir()` and fixture trees.
@@ -383,7 +398,7 @@ The reporter and daemon keep per-file read offsets in `~/.firekeeper/state.json`
 - Test errors without exposing machine-specific absolute paths or terminal escape sequences.
 - Every bug fix adds a regression test that fails without the fix.
 - Changes that cross packages or call external tools (`ps`, `lsof`, `sqlite3`, `osascript`, `git`) get an integration test.
-- Integration tests must not skip in CI. Locally, a test may skip when an optional tool such as `sqlite3` is missing or an opt-in variable such as `FIREKEEPER_MACOS_INTEGRATION` is unset, but when `CI` is set (GitHub Actions sets `CI=true`) the same condition is a test failure with a clear message. Limit platform-specific tests with build constraints (for example `_darwin_test.go`) instead of runtime skips. Use `testenv.NeedTool` from `internal/testenv` for missing tools and `testenv.InCI` for other conditions.
+- Integration tests must not skip in CI. Locally, a test may skip when an optional tool such as `sqlite3` is missing or an opt-in variable such as `FIREKEEPER_MACOS_INTEGRATION` is unset, but when `CI` is set (GitHub Actions sets `CI=true`) the same condition is a test failure with a clear message. Limit platform-specific tests with build constraints (for example `_darwin_test.go` or `_windows_test.go`) instead of runtime skips. Use `testenv.NeedTool` from `internal/testenv` for missing tools and `testenv.InCI` for other conditions.
 - Changes to the report pipeline (discovery, transcript readers, redaction, reporter state and offsets, ingest, or the session and event read API) keep `e2e/smoke_test.go` passing, and extend it when they add behavior such as a new provider reader.
 - `e2e/` does not cover accounts, login, tokens, or machine linking. Changes there add or update tests in `internal/server/auth` and `internal/server/api`.
 - Test authorization boundaries explicitly. An account can read, change, and delete its own resources, and cannot read, change, delete, or discover another account's. A lookup by ID of another account's session, event, or token returns `404`, as the tenancy rules require; lists, search, usage, and the stream leave another account's data out.

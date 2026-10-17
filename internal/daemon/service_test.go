@@ -7,6 +7,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -17,7 +18,8 @@ var update = flag.Bool("update", false, "rewrite golden files")
 
 // fakeRunner records commands and answers them from replies, keyed by the
 // joined command line. Unknown commands succeed with no output. It fails
-// the test on anything but launchctl or systemctl, which also catches sudo.
+// the test on anything but launchctl, systemctl, or schtasks, which also
+// catches sudo.
 type fakeRunner struct {
 	t       *testing.T
 	calls   []string
@@ -30,8 +32,8 @@ type reply struct {
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte, error) {
-	if name != "launchctl" && name != "systemctl" {
-		f.t.Fatalf("ran %q; only launchctl and systemctl are allowed", name)
+	if name != "launchctl" && name != "systemctl" && name != "schtasks" {
+		f.t.Fatalf("ran %q; only launchctl, systemctl, and schtasks are allowed", name)
 	}
 	line := strings.Join(append([]string{name}, args...), " ")
 	f.calls = append(f.calls, line)
@@ -157,7 +159,7 @@ func TestFileRejectsBadSetups(t *testing.T) {
 		edit func(*Service)
 		want string
 	}{
-		{"windows", func(s *Service) { s.GOOS = "windows" }, "not supported on windows"},
+		{"plan9", func(s *Service) { s.GOOS = "plan9" }, "not supported on plan9"},
 		{"relative", func(s *Service) { s.Executable = "firekeeper" }, "not absolute"},
 		{"go run", func(s *Service) { s.Executable = "/Users/dev/Library/Caches/go-build/ab/exe/firekeeper" }, "temporary build"},
 		{"temp dir", func(s *Service) { s.Executable = filepath.Join(os.TempDir(), "go-run-1", "firekeeper") }, "temporary build"},
@@ -197,7 +199,7 @@ func TestInstallLaunchdFresh(t *testing.T) {
 		t.Fatalf("calls = %q, want %q", runner.calls, want)
 	}
 	assertServiceFile(t, svc)
-	if info, err := os.Stat(svc.DataDir()); err != nil || info.Mode().Perm() != 0o700 {
+	if info, err := os.Stat(svc.DataDir()); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o700) {
 		t.Fatalf("data dir = %v, %v", info, err)
 	}
 	if !strings.Contains(out.String(), "started") {
@@ -304,7 +306,7 @@ func assertServiceFile(t *testing.T, svc *Service) {
 		t.Fatalf("service file = %s", got)
 	}
 	info, _ := os.Stat(svc.Path())
-	if info.Mode().Perm() != 0o644 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o644 {
 		t.Fatalf("mode = %v", info.Mode())
 	}
 	leftovers, _ := filepath.Glob(filepath.Join(filepath.Dir(svc.Path()), ".firekeeper-service-*"))

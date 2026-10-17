@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
@@ -271,7 +272,7 @@ func (s *Source) query(ctx context.Context, db, query string, rows any) error {
 	if s.run != nil {
 		output, err = s.run(ctx, "sqlite3", args...)
 	} else {
-		output, err = exec.CommandContext(ctx, "sqlite3", args...).Output()
+		output, err = sqlitejson.Run(ctx, args...)
 	}
 	if err != nil {
 		if ctx.Err() != nil {

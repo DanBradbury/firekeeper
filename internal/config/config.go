@@ -354,6 +354,9 @@ func expand(p, home string) string {
 	if rest, ok := strings.CutPrefix(p, "~/"); ok {
 		return filepath.Join(home, rest)
 	}
+	if rest, ok := strings.CutPrefix(p, `~\`); ok && os.PathSeparator == '\\' {
+		return filepath.Join(home, rest)
+	}
 	return p
 }
 

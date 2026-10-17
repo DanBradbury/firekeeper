@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 )
 
 const copilotSessionHistoryLimit = 500
@@ -158,7 +161,7 @@ func readCopilotHistoricalSessions() ([]copilotHistoricalSession, error) {
 		ORDER BY updated_at DESC
 		LIMIT %d
 	`, copilotSessionHistoryLimit)
-	output, err := exec.Command("sqlite3", "-readonly", "-json", path, query).Output()
+	output, err := sqlitejson.Run(context.Background(), "-readonly", "-json", path, query)
 	if err != nil {
 		return nil, fmt.Errorf("read Copilot session history: %w", err)
 	}
@@ -282,7 +285,7 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 		FROM rows
 		ORDER BY sort_group, sort_label
 	`
-	output, err := exec.Command("sqlite3", "-readonly", "-json", path, query).Output()
+	output, err := sqlitejson.Run(context.Background(), "-readonly", "-json", path, query)
 	if err != nil {
 		return copilotUsageSnapshot{}, fmt.Errorf("read Copilot usage: %w", err)
 	}

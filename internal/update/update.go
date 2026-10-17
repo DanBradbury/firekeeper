@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -33,10 +34,15 @@ const (
 const (
 	defaultURL   = "https://api.github.com/repos/DanBradbury/firekeeper/releases/latest"
 	scriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.sh"
-	brewFormula  = "DanBradbury/tap/firekeeper"
-	fetchTimeout = 2 * time.Second
-	maxBody      = 1 << 20
+	// windowsScriptURLFmt is the PowerShell installer for the same tag.
+	windowsScriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.ps1"
+	brewFormula         = "DanBradbury/tap/firekeeper"
+	fetchTimeout        = 2 * time.Second
+	maxBody             = 1 << 20
 )
+
+// goos is replaced in tests.
+var goos = runtime.GOOS
 
 var tagPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+$`)
 
@@ -223,8 +229,9 @@ func (c *Checker) Prompt(ctx context.Context, latest string, in io.Reader, out, 
 }
 
 // Install upgrades to version. Homebrew installs go through brew; others run
-// the release install script for that exact tag, which checks the download's
-// SHA-256, into the directory holding exe.
+// the release install script for that exact tag (install.sh, or install.ps1
+// on Windows), which checks the download's SHA-256, into the directory
+// holding exe.
 func Install(ctx context.Context, version, exe string, out, errOut io.Writer) error {
 	tag := "v" + strings.TrimPrefix(version, "v")
 	if !tagPattern.MatchString(tag) {
@@ -235,6 +242,9 @@ func Install(ctx context.Context, version, exe string, out, errOut io.Writer) er
 		cmd.Stdout, cmd.Stderr = out, errOut
 		return cmd.Run()
 	}
+	if goos == "windows" {
+		return installWindows(ctx, tag, exe, out, errOut)
+	}
 	script, err := fetchScript(ctx, fmt.Sprintf(scriptURLFmt, tag))
 	if err != nil {
 		return err
@@ -244,6 +254,48 @@ func Install(ctx context.Context, version, exe string, out, errOut io.Writer) er
 	cmd.Stdout, cmd.Stderr = out, errOut
 	cmd.Env = append(os.Environ(), "FIREKEEPER_INSTALL_DIR="+filepath.Dir(exe))
 	return cmd.Run()
+}
+
+// installWindows runs the PowerShell installer for tag into the directory
+// holding exe. The script replaces a running firekeeper.exe by renaming it,
+// so this works from firekeeper itself. PATH is left alone: the directory is
+// where firekeeper already runs from.
+func installWindows(ctx context.Context, tag, exe string, out, errOut io.Writer) error {
+	script, err := fetchScript(ctx, fmt.Sprintf(windowsScriptURLFmt, tag))
+	if err != nil {
+		return err
+	}
+	dir, err := os.MkdirTemp("", "firekeeper-update-")
+	if err != nil {
+		return fmt.Errorf("create temporary directory: %w", err)
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "install.ps1")
+	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+		return fmt.Errorf("write install script: %w", err)
+	}
+	shell, err := exec.LookPath("powershell")
+	if err != nil {
+		if shell, err = exec.LookPath("pwsh"); err != nil {
+			return errors.New("PowerShell not found")
+		}
+	}
+	cmd := exec.CommandContext(ctx, shell, windowsInstallArgs(path, tag, filepath.Dir(exe))...)
+	cmd.Stdout, cmd.Stderr = out, errOut
+	return cmd.Run()
+}
+
+// windowsInstallArgs are the PowerShell arguments that run the installer at
+// script. -ExecutionPolicy Bypass applies to this process only; the script was
+// just downloaded, and the default policy would refuse any unsigned file.
+func windowsInstallArgs(script, tag, installDir string) []string {
+	return []string{
+		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-File", script,
+		"-Version", tag,
+		"-InstallDir", installDir,
+		"-NoPathUpdate",
+	}
 }
 
 func fetchScript(ctx context.Context, url string) (string, error) {

@@ -54,14 +54,14 @@ func (d *discoverer) isCursorCommand(command string) bool {
 // name agent is too generic to match on its own, so only the launcher's
 // cursor-agent name and the versioned install directory are recognized.
 func (d *discoverer) cursorArgs(command string) []string {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
 	if len(fields) == 0 {
 		return nil
 	}
-	if strings.Contains(filepath.ToSlash(fields[0]), ".app/Contents/") {
+	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
 		return nil
 	}
-	switch strings.ToLower(filepath.Base(fields[0])) {
+	switch strings.ToLower(baseName(fields[0])) {
 	case "cursor-agent", "cursor-agent.exe":
 		return append([]string{}, fields[1:]...)
 	case "node", "node.exe", "bun", "bun.exe", "sh", "bash", "zsh":
@@ -79,10 +79,10 @@ func (d *discoverer) cursorArgs(command string) []string {
 }
 
 func isCursorScript(path string) bool {
-	if filepath.Base(path) == "cursor-agent" {
+	if baseName(path) == "cursor-agent" {
 		return true
 	}
-	return strings.Contains(filepath.ToSlash(path), "/cursor-agent/versions/")
+	return strings.Contains(slashPath(path), "/cursor-agent/versions/")
 }
 
 // cursorSessionIDFromCommand reads the chat id from --resume. Bare --resume,

@@ -383,6 +383,7 @@ func TestLocateHonorsKimiCodeHome(t *testing.T) {
 	}
 	t.Setenv("KIMI_CODE_HOME", home)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir()) // the home directory on Windows
 	got, err := (&Source{}).Locate(session.Meta{ID: "session_a"})
 	if err != nil || len(got) != 1 || got[0] != path {
 		t.Fatalf("Locate = %v, %v", got, err)
