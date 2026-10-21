@@ -126,6 +126,14 @@ environment, and exit status. It looks in `$FIREKEEPER_SERVER_BIN`, then next
 to the `firekeeper` executable, then on your `PATH`. If it finds nothing, it
 says so and exits with status 2.
 
+Where an install source is switched on (it is not by default), `firekeeper
+serve` can instead offer to download `firekeeper-server` for you. It asks
+`[y/N]` first, only in an interactive terminal, and downloads nothing unless
+you answer `y`. That prompt is the only place Firekeeper downloads a binary;
+plain `firekeeper` uploads nothing and starts no daemon, and neither `report`,
+`daemon` nor anything else fetches software. See
+[Installing the server from `serve`](docs/reference.md#installing-the-server-from-serve).
+
 The protocol is open. The reporter speaks the HTTP API in
 [docs/api.md](docs/api.md) and the event format in
 [docs/event.schema.json](docs/event.schema.json), so other tools can accept
