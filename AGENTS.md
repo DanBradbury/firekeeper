@@ -11,6 +11,8 @@
 
 Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `login`. `serve` is only a handoff: it execs the separate, commercial `firekeeper-server` binary (see `internal/cli/cmd_serve.go`), whose source is not in this repository. It is not part of the client and must not be needed by it. Do not make agent CLIs depend on any of them.
 
+`internal/serverinstall` (standard library only) can download `firekeeper-server` for `serve`. It is disabled unless a release source is configured (`-X ...serverinstall.ReleasesURL` or `FIREKEEPER_SERVER_RELEASES_URL`), and `.goreleaser.yaml` must not set it. Rule: nothing in this repository downloads anything without an explicit interactive yes, and only from `serve`. Never prompt when stdin or stderr is not a terminal, or `CI` or `FIREKEEPER_NO_PROMPT` is set. The release layout is documented in `docs/reference.md`.
+
 ## Before changing code
 
 1. Read `README.md` for current user-facing behavior and controls.
@@ -95,6 +97,9 @@ firekeeper/
 │   │   └── Background reporting and local state tracking
 │   ├── config/
 │   │   └── Reporting and provider configuration
+│   ├── serverinstall/
+│   │   └── Consented download, checksum check and install of firekeeper-server
+│   │       (used only by `serve`; off by default)
 │   ├── version/
 │   │   └── Build information set at link time
 │   └── testenv/

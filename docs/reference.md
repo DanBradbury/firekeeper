@@ -257,6 +257,70 @@ status 2. `serve` hands over to the separate `firekeeper-server` binary and exit
 with status 2 when it cannot find it (see the
 [README](../README.md#the-dashboard-server)).
 
+### Installing the server from `serve`
+
+When `serve` cannot find `firekeeper-server`, it can offer to install it. This
+is off unless a release source is configured, which release builds of
+Firekeeper do not do yet; until then `serve` prints its instructions and exits
+with status 2, as above.
+
+When on, the offer is made only if stdin and stderr are terminals and neither
+`CI` nor `FIREKEEPER_NO_PROMPT` is set. Otherwise `serve` behaves as if it were
+off, with no network use. The prompt is:
+
+```text
+firekeeper-server is not installed. Download it from <host> and install it to <dir>? [y/N]
+```
+
+The default is no. Only `y` or `yes` proceeds; then Firekeeper looks up the
+latest release, downloads the archive for your OS and architecture, checks its
+SHA-256 against the release's `checksums.txt`, extracts only the
+`firekeeper-server` file, installs it atomically, runs `firekeeper-server
+version` once, and hands over to it. Any failed check installs nothing. It
+never uses `sudo`.
+
+`<dir>` is the directory of the running `firekeeper` (symlinks resolved) if
+that is writable, otherwise `~/.local/bin` (created; a `PATH` hint is printed
+if it is not on your `PATH`). If `firekeeper` lives under a Homebrew prefix
+Firekeeper does not write there. It offers to run `brew install
+DanBradbury/tap/firekeeper-server` instead, and downloads directly only if
+`brew` is not installed.
+
+To try the feature before it is switched on, point it at a release server:
+
+```sh
+FIREKEEPER_SERVER_RELEASES_URL=https://releases.example/firekeeper-server firekeeper serve
+```
+
+Setting `FIREKEEPER_SERVER_RELEASES_URL` enables the offer. The URL must be
+https; plain http is accepted only for `127.0.0.1`, `::1` and `localhost`, and
+only through this variable. Redirects to non-https are refused. A maintainer
+can also bake in a default with `-ldflags "-X
+github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."`;
+the release config does not.
+
+#### Release layout contract
+
+For whoever publishes the server (task A6). The repository is the public,
+binaries-only `DanBradbury/firekeeper-server-releases`.
+
+- Latest release: `https://api.github.com/repos/DanBradbury/firekeeper-server-releases/releases/latest`,
+  read for `tag_name` (for example `v1.4.0`; letters, digits and `._+-` only).
+- Assets, at
+  `https://github.com/DanBradbury/firekeeper-server-releases/releases/download/<tag>/<asset>`:
+  - `firekeeper-server_<version>_<os>_<arch>.tar.gz`, where `<version>` is the
+    tag without a leading `v`, `<os>` is `darwin` or `linux`, and `<arch>` is
+    `amd64` or `arm64`. The archive holds exactly two regular files at its
+    top level: `firekeeper-server` and `LICENSE`. Any other entry, a link, a
+    nested or absolute path, or a duplicate makes the client reject it.
+  - `checksums.txt` in `sha256sum` format (`<hex>  <asset>` per line), with a
+    line for every archive. A missing line or a mismatch aborts the install.
+- Size caps: 200 MB for the archive and for each entry.
+
+For a custom base URL `B` (the override or `-X` value, anything other than the
+production repository), the same files are served from `B/latest` (JSON with
+`tag_name`) and `B/download/<tag>/<asset>`.
+
 ### What is uploaded and what is not caught
 
 For each allowed provider, per session, Firekeeper sends metadata (provider,

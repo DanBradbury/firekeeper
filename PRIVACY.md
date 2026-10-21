@@ -14,6 +14,15 @@ on how you use it:
 A dashboard server is separate software with its own terms and privacy notice.
 This policy does not cover it.
 
+One more network use, off by default: if a release source is configured and
+`firekeeper serve` cannot find `firekeeper-server`, it asks whether to download
+it. This prompt is the only place the Software downloads a binary. It appears
+only in an interactive terminal, and nothing is fetched unless you answer
+yes. The download is a plain file request to the release host (a GitHub
+repository), which sees your IP address like any web server; no session data,
+identifiers or other information are sent. Plain `firekeeper` uploads nothing
+and starts no daemon.
+
 ## 1. The Firekeeper software
 
 ### 1.1 No telemetry

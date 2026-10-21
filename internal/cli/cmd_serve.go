@@ -108,6 +108,12 @@ func resolveServer(l serverLookup) (string, error) {
 // commands are the server's too.
 func runServe(args []string, _, stderr io.Writer) int {
 	path, err := resolveServer(defaultLookup)
+	if errors.Is(err, errServerNotFound) {
+		// Off by default; asks first, and only on a terminal.
+		if path = offerInstall(stderr); path != "" {
+			err = nil
+		}
+	}
 	if err != nil {
 		if errors.Is(err, errServerNotFound) {
 			printServerMissing(stderr)
