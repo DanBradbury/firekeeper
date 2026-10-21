@@ -8,6 +8,12 @@ that implements it can receive sessions. The commercial dashboard,
 Servers may offer more endpoints (reading sessions, search, a web UI); only
 what a client needs to send data is specified here.
 
+The bodies shown below are also kept as golden fixtures in the Go package
+[`pkg/contract`](../pkg/contract), with validators, so that a client and a
+server can test against the same examples. A test fails if this document lists
+an endpoint (a `###` heading of the form `` `METHOD /path` ``) or an error code
+(a row of the table below) that has no fixture.
+
 - Default server address the client assumes: `http://127.0.0.1:7777`. A
   server that is not on this machine must be reached over `https`.
 - Authentication: `Authorization: Bearer TOKEN`. Tokens are ingest-scoped and

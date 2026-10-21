@@ -1,0 +1,5 @@
+{
+  "id": "9f2c0000",
+  "email": "you@example.com",
+  "token": { "name": "Alice's laptop", "scope": "ingest", "machine_id": "m1" }
+}

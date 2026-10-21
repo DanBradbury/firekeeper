@@ -1,0 +1,1 @@
+{ "error": "more than 500 events in one request", "code": "too_many_events" }

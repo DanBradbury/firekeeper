@@ -1,0 +1,22 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "codex",
+  "seq": 2,
+  "ts": "2026-10-07T12:00:01Z",
+  "role": "tool_call",
+  "text": "apply_patch src/main.go",
+  "tool_name": "apply_patch",
+  "model": null,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cache": 0
+  },
+  "raw": {
+    "type": "function_call",
+    "arguments": {
+      "path": "src/main.go"
+    }
+  }
+}

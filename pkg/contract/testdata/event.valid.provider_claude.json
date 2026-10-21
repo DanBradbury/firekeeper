@@ -1,0 +1,17 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "claude",
+  "seq": 10,
+  "ts": "2026-10-07T12:00:01Z",
+  "role": "user",
+  "text": "Hello.",
+  "tool_name": null,
+  "model": null,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cache": 0
+  },
+  "raw": {}
+}

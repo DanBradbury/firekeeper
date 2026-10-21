@@ -1,0 +1,17 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "codex",
+  "seq": 1,
+  "ts": "2026-10-07T12:00:01Z",
+  "role": "assistant",
+  "text": "Done.",
+  "tool_name": null,
+  "model": "gpt-5",
+  "tokens": {
+    "input": 120,
+    "output": 18,
+    "cache": 64
+  },
+  "raw": {}
+}

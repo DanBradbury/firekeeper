@@ -7,6 +7,7 @@ lives under `internal/` and may change at any time.
 | --- | --- |
 | `pkg/event` | The normalized transcript event (`Event`, `Tokens`, `Role`, `Provider` and their constants), `Validate`, and `TouchedFiles`. Standard library only. |
 | `pkg/redact` | The redaction entry points (`Event`, `String`, `Options`, `Counts`, `Kind`). |
+| `pkg/contract` | The versioned wire contract as data: the embedded event schema, golden request and response bodies for every endpoint a client calls, `ValidateEvent`, `ValidateBatch`, `Fixture`, `Names`, `Endpoints`, `ErrorCases` and `MatchShape`. Standard library only. |
 
 They are a stable contract with other tools, such as servers that receive
 sessions from the reporter, and follow semantic versioning. Names and JSON

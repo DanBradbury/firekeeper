@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/DanBradbury/firekeeper/docs/event.schema.json",
   "title": "Firekeeper transcript event",
-  "description": "One normalized transcript event. The idempotency key is (machine_id, session_id, seq). Kept in sync with transcript.Event by internal/transcript/schema_test.go.",
+  "description": "One normalized transcript event. The idempotency key is (machine_id, session_id, seq). Kept in sync with event.Event by pkg/event/schema_test.go; pkg/contract embeds a copy that a test keeps identical.",
   "type": "object",
   "additionalProperties": false,
   "required": [

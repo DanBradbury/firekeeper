@@ -1,0 +1,19 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "codex",
+  "seq": 3,
+  "ts": "2026-10-07T12:00:01Z",
+  "role": "tool_result",
+  "text": "ok",
+  "tool_name": "apply_patch",
+  "model": null,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cache": 0
+  },
+  "raw": {
+    "output": "ok"
+  }
+}
