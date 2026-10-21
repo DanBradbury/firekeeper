@@ -1,0 +1,14 @@
+{
+  "machine": {
+    "id": "m1"
+  },
+  "sessions": [
+    {
+      "meta": {
+        "session_id": "0199-abc",
+        "provider": "codex"
+      },
+      "events": []
+    }
+  ]
+}

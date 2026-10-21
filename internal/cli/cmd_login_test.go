@@ -39,7 +39,7 @@ func (s *syncBuffer) String() string {
 	return s.b.String()
 }
 
-const e2eIngest = `{"machine":{"id":"%s","name":"x"},"sessions":[{"meta":{"session_id":"s1","provider":"codex","project":"p","state":"ACTIVE"},"events":[{"machine_id":"%s","session_id":"s1","provider":"codex","seq":0,"role":"user","text":"hi","raw":{}}]}]}`
+const e2eIngest = `{"machine":{"id":"%s","name":"x"},"sessions":[{"meta":{"session_id":"s1","provider":"codex","project":"p","state":"ACTIVE"},"events":[{"machine_id":"%s","session_id":"s1","provider":"codex","seq":0,"ts":null,"role":"user","text":"hi","tool_name":null,"model":null,"tokens":{"input":0,"output":0,"cache":0},"raw":{}}]}]}`
 
 // linkEnv is a stand-in dashboard server (fakeapi, following docs/api.md)
 // and a private home for the CLI under test.

@@ -1,0 +1,42 @@
+{
+  "machine": { "id": "m1", "name": "laptop", "hostname": "laptop.local", "os": "darwin", "version": "0.4.0" },
+  "sessions": [
+    {
+      "meta": {
+        "session_id": "0199-abc",
+        "provider": "codex",
+        "cwd": "/repo",
+        "project": "repo",
+        "branch": "main",
+        "commit": "4f5ef2f0a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "model": "gpt-5",
+        "state": "ACTIVE",
+        "title": "Fix parser",
+        "started_at": "2026-10-07T12:00:00Z",
+        "last_activity_at": "2026-10-07T12:05:00Z",
+        "files_source": "git",
+        "files": ["/repo/src/main.go", "/repo/src/gen.go"]
+      },
+      "events": [
+        {
+          "machine_id": "m1", "session_id": "0199-abc", "provider": "codex", "seq": 0,
+          "ts": "2026-10-07T12:00:01Z", "role": "user", "text": "Fix the parser.",
+          "tool_name": null, "model": null,
+          "tokens": { "input": 0, "output": 0, "cache": 0 }, "raw": { "type": "user_message" }
+        },
+        {
+          "machine_id": "m1", "session_id": "0199-abc", "provider": "codex", "seq": 1,
+          "ts": "2026-10-07T12:00:05Z", "role": "assistant", "text": "Looking at src/main.go.",
+          "tool_name": null, "model": "gpt-5",
+          "tokens": { "input": 120, "output": 18, "cache": 64 }, "raw": { "type": "agent_message" }
+        },
+        {
+          "machine_id": "m1", "session_id": "0199-abc", "provider": "codex", "seq": 2,
+          "ts": null, "role": "tool_call", "text": "apply_patch src/main.go",
+          "tool_name": "apply_patch", "model": "gpt-5",
+          "tokens": { "input": 0, "output": 0, "cache": 0 }, "raw": { "type": "function_call" }
+        }
+      ]
+    }
+  ]
+}

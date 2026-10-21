@@ -117,15 +117,21 @@ firekeeper daemon install             # report in the background, starting at lo
 
 A web dashboard for browsing, searching, and charting uploaded sessions is a
 separate commercial product, `firekeeper-server`. It is not part of this
-repository, and `firekeeper serve` only hands off to it. Details are to come;
-if you are interested, watch this repository or [open an
-issue](https://github.com/DanBradbury/firekeeper/issues).
+repository. Details are to come; if you are interested, watch this repository
+or [open an issue](https://github.com/DanBradbury/firekeeper/issues).
+
+If you have the server binary, `firekeeper serve [args]` runs
+`firekeeper-server serve [args]` in its place, with the same arguments,
+environment, and exit status. It looks in `$FIREKEEPER_SERVER_BIN`, then next
+to the `firekeeper` executable, then on your `PATH`. If it finds nothing, it
+says so and exits with status 2.
 
 The protocol is open. The reporter speaks the HTTP API in
 [docs/api.md](docs/api.md) and the event format in
 [docs/event.schema.json](docs/event.schema.json), so other tools can accept
-sessions too. The Go packages in [pkg/](pkg/README.md) are the stable,
-importable pieces of that contract.
+sessions too. The Go packages in [pkg/](pkg/README.md) (`event`, `redact`, and
+`contract`, which carries the schema and example API bodies with validators)
+are the stable, importable pieces of that contract.
 
 ## Documentation
 

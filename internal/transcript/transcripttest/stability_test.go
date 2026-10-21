@@ -14,7 +14,10 @@ import (
 // lineSource is a minimal JSONL source: one meta event per complete line,
 // seq is the line index, and the offset is the byte after the last complete
 // line. restartSeq makes it number events per read instead, which is wrong.
-type lineSource struct{ restartSeq bool }
+type lineSource struct {
+	restartSeq bool
+	badRole    bool
+}
 
 func (lineSource) Locate(session.Meta) ([]string, error) { return nil, nil }
 
@@ -34,10 +37,14 @@ func (s lineSource) Read(path string, from int64) ([]transcript.Event, int64, er
 		if n < 0 {
 			return events, offset, nil
 		}
+		role := transcript.RoleMeta
+		if s.badRole {
+			role = "bot"
+		}
 		events = append(events, transcript.Event{
 			Provider: transcript.ProviderCodex,
 			Seq:      seq,
-			Role:     transcript.RoleMeta,
+			Role:     role,
 			Text:     string(data[offset : offset+int64(n)]),
 		})
 		seq++
@@ -72,6 +79,7 @@ func TestCheckSeqStabilityFailures(t *testing.T) {
 		want    string
 	}{
 		{name: "seq restarts per read", source: lineSource{restartSeq: true}, content: "1\n2\n3\n4\n", want: "split at offset"},
+		{name: "breaks the event schema", source: lineSource{badRole: true}, content: "1\n2\n3\n4\n", want: "breaks the event schema"},
 		{name: "too few events", content: "1\n", want: "need at least 2"},
 		{name: "partial not a prefix", content: "1\n2\n", partial: "1\n2\n", want: "strict, non-empty prefix"},
 	}

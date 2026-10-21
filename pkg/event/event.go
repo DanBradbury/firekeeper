@@ -1,4 +1,4 @@
-// Package transcript defines the normalized transcript event shared by
+// Package event defines the normalized transcript event shared by
 // provider parsers, the reporter, and the dashboard server.
 //
 // The JSON form of Event is pinned by docs/event.schema.json; a test fails if

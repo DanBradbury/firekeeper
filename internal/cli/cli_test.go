@@ -30,7 +30,7 @@ func TestRunSubcommandDispatch(t *testing.T) {
 		{args: []string{"export"}, handled: true, code: 2, wantStderr: "firekeeper export: not implemented"},
 		{args: []string{"report", "--bogus"}, handled: true, code: 2},
 		{args: []string{"serve"}, handled: true, code: 2, wantStderr: "firekeeper-server"},
-		{args: []string{"serve", "--listen", "127.0.0.1:0"}, handled: true, code: 2, wantStderr: "separate program"},
+		{args: []string{"serve", "--listen", "127.0.0.1:0"}, handled: true, code: 2, wantStderr: "separate commercial binary"},
 		{args: []string{"daemon"}, handled: true, code: 2, wantStderr: "firekeeper daemon: no --provider given"},
 		{args: []string{"snapshot"}, handled: true, code: 2, wantStderr: "only --json"},
 		{args: []string{"snapshot", "--bogus"}, handled: true, code: 2},

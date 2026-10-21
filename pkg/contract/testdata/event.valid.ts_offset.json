@@ -1,0 +1,17 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "codex",
+  "seq": 9,
+  "ts": "2026-10-07T05:00:01-07:00",
+  "role": "user",
+  "text": "Hello.",
+  "tool_name": null,
+  "model": null,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cache": 0
+  },
+  "raw": {}
+}

@@ -19,12 +19,14 @@ import (
 var testConfigHome string
 
 func TestMain(m *testing.M) {
+	runHelperProcess() // exits when this process is a handoff test helper
 	dir, err := os.MkdirTemp("", "firekeeper-config-home")
 	if err != nil {
 		panic(err)
 	}
 	testConfigHome = dir
 	configHome = func() (string, error) { return testConfigHome, nil }
+	isolateServerLookup()
 	for _, k := range []string{config.EnvConfig, config.EnvServer, config.EnvToken, config.EnvProviders, config.EnvInterval} {
 		os.Unsetenv(k)
 	}

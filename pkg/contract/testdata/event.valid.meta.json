@@ -1,0 +1,19 @@
+{
+  "machine_id": "m1",
+  "session_id": "0199-abc",
+  "provider": "codex",
+  "seq": 5,
+  "ts": null,
+  "role": "meta",
+  "text": "",
+  "tool_name": null,
+  "model": null,
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "cache": 0
+  },
+  "raw": {
+    "unknown_record_type": true
+  }
+}

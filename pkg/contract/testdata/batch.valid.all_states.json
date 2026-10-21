@@ -1,0 +1,137 @@
+{
+  "machine": {
+    "id": "m1"
+  },
+  "sessions": [
+    {
+      "meta": {
+        "session_id": "s0",
+        "provider": "codex",
+        "state": "ACTIVE"
+      },
+      "events": [
+        {
+          "machine_id": "m1",
+          "session_id": "s0",
+          "provider": "codex",
+          "seq": 0,
+          "ts": "2026-10-07T12:00:01Z",
+          "role": "user",
+          "text": "Hello.",
+          "tool_name": null,
+          "model": null,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cache": 0
+          },
+          "raw": {}
+        }
+      ]
+    },
+    {
+      "meta": {
+        "session_id": "s1",
+        "provider": "codex",
+        "state": "WAITING"
+      },
+      "events": [
+        {
+          "machine_id": "m1",
+          "session_id": "s1",
+          "provider": "codex",
+          "seq": 0,
+          "ts": "2026-10-07T12:00:01Z",
+          "role": "user",
+          "text": "Hello.",
+          "tool_name": null,
+          "model": null,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cache": 0
+          },
+          "raw": {}
+        }
+      ]
+    },
+    {
+      "meta": {
+        "session_id": "s2",
+        "provider": "codex",
+        "state": "NEEDS_INPUT"
+      },
+      "events": [
+        {
+          "machine_id": "m1",
+          "session_id": "s2",
+          "provider": "codex",
+          "seq": 0,
+          "ts": "2026-10-07T12:00:01Z",
+          "role": "user",
+          "text": "Hello.",
+          "tool_name": null,
+          "model": null,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cache": 0
+          },
+          "raw": {}
+        }
+      ]
+    },
+    {
+      "meta": {
+        "session_id": "s3",
+        "provider": "codex",
+        "state": "ENDED"
+      },
+      "events": [
+        {
+          "machine_id": "m1",
+          "session_id": "s3",
+          "provider": "codex",
+          "seq": 0,
+          "ts": "2026-10-07T12:00:01Z",
+          "role": "user",
+          "text": "Hello.",
+          "tool_name": null,
+          "model": null,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cache": 0
+          },
+          "raw": {}
+        }
+      ]
+    },
+    {
+      "meta": {
+        "session_id": "s4",
+        "provider": "codex",
+        "state": "UNKNOWN"
+      },
+      "events": [
+        {
+          "machine_id": "m1",
+          "session_id": "s4",
+          "provider": "codex",
+          "seq": 0,
+          "ts": "2026-10-07T12:00:01Z",
+          "role": "user",
+          "text": "Hello.",
+          "tool_name": null,
+          "model": null,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "cache": 0
+          },
+          "raw": {}
+        }
+      ]
+    }
+  ]
+}
