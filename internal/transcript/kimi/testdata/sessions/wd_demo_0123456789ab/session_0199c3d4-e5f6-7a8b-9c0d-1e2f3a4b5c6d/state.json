@@ -1,0 +1,23 @@
+{
+  "id": "session_0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+  "version": 2,
+  "cwd": "/work/demo",
+  "createdAt": 1791460800000,
+  "updatedAt": 1791460800300,
+  "archived": false,
+  "title": "List files",
+  "titleKind": "generated",
+  "lastPrompt": "List the files.",
+  "agents": {
+    "main": {
+      "homedir": "<runtime>",
+      "type": "main",
+      "parentAgentId": null
+    },
+    "agent-0": {
+      "homedir": "<runtime>",
+      "type": "sub",
+      "parentAgentId": "main"
+    }
+  }
+}

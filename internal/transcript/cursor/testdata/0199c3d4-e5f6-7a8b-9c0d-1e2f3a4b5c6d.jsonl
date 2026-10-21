@@ -1,0 +1,11 @@
+{"role":"user","message":{"content":[{"type":"text","text":"<user_info>\nOS: linux\n</user_info>\n<user_query>\nList the files.\n</user_query>"}]}}
+{"role":"assistant","message":{"content":[{"type":"thinking","thinking":"I should list the directory."}]}}
+{"role":"assistant","message":{"content":[{"type":"text","text":"Listing files."},{"type":"tool_use","id":"toolu_1","name":"Shell","input":{"command":"ls","working_directory":"/workspace/demo"}}]}}
+{"role":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"README.md"}]}}
+{"role":"assistant","message":{"content":[{"type":"tool-call","name":"read_file","input":{"path":"README.md"}}]}}
+{"role":"user","message":{"content":[{"type":"tool-result","name":"read_file","content":[{"type":"text","text":"# Demo"}]}]},"metadata":{"toolResultStatus":"success"}}
+{"role":"assistant","model":"cursor-test","message":{"content":[{"type":"text","text":"There is one file: README.md."}]}}
+{"type":"turn_ended","status":"success"}
+{"type":"turn_ended","status":"error","error":"Connection lost"}
+{"role":"user","message":{"content":"<user_query>Thanks</user_query>"}}
+{"role":"assistant","message":{"content":[{"type":"custom_block","text":"A block type added later."}]}}

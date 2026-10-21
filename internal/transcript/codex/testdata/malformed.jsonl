@@ -1,0 +1,10 @@
+{"timestamp":"2026-01-02T03:04:05.000Z","type":"session_meta","ordinal":0,"payload":{"id":"0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c","cwd":"/work/demo"}}
+{"timestamp":"2026-01-02T03:04:06.000Z","type":"future_record","ordinal":1,"payload":{"shape":"unknown"}}
+{"timestamp":"not-a-time","type":"response_item","ordinal":2,"payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}}
+{"type":"response_item","payload":"not an object"}
+{"timestamp":"2026-01-02T03:04:07.000Z","type":"response_item","payload":{"type":"message","role":"critic","content":[]}}
+{"timestamp":"2026-01-02T03:04:08.000Z","type":"response_item","payload":{"type":"web_search_call","status":"completed"}}
+{"timestamp":"2026-01-02T03:04:09.000Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{}}}
+{"truncated json
+[1,2,3]
+{"timestamp":"2026-01-02T03:04:10.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"never_called","output":{"unexpected":true}}}

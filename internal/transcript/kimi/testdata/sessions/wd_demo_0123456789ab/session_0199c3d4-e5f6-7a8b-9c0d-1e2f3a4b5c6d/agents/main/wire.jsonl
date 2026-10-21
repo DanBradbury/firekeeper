@@ -1,0 +1,29 @@
+{"type":"metadata","protocol_version":"1.5","created_at":1791460800000}
+{"type":"config.update","agentId":"main","modelAlias":"__kimi_env_model__","profileName":"agent","environmentDisclosure":{"cwd":"/work/demo"},"time":1791460800001}
+{"type":"tools.set_active_tools","agentId":"main","names":["Bash","Edit","Read","Write"],"time":1791460800002}
+{"type":"turn.prompt","agentId":"main","input":[{"type":"text","text":"List the files."}],"origin":{"kind":"user"},"turnId":0,"time":1791460800010}
+{"type":"context.append_message","agentId":"main","message":{"role":"user","content":[{"type":"text","text":"List the files."}],"toolCalls":[],"origin":{"kind":"user"}},"time":1791460800011}
+{"type":"llm.request","agentId":"main","kind":"loop","provider":"moonshot","model":"kimi-k3-test","modelAlias":"__kimi_env_model__","toolSelect":true,"systemPromptHash":"h","toolsHash":"h","messageCount":2,"time":1791460800020}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"step.begin","uuid":"s1","turnId":"0","step":1},"time":1791460800030}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"content.part","uuid":"c1","turnId":"0","step":1,"stepUuid":"s1","part":{"type":"think","think":"Planning."}},"time":1791460800040}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"content.part","uuid":"c2","turnId":"0","step":1,"stepUuid":"s1","part":{"type":"text","text":"Listing files."}},"time":1791460800050}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"tool.call","uuid":"c3","turnId":"0","step":1,"stepUuid":"s1","toolCallId":"Bash:0","name":"Bash","args":{"command":"ls"},"display":{"command":"ls","cwd":"/work/demo"}},"time":1791460800060}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"step.end","uuid":"s1","turnId":"0","step":1,"finishReason":"tool_calls","usage":{"inputOther":10,"output":20,"inputCacheRead":100,"inputCacheCreation":5},"messageId":"m1"},"time":1791460800070}
+{"type":"usage.record","agentId":"main","model":"__kimi_env_model__","usage":{"inputOther":10,"output":20,"inputCacheRead":100,"inputCacheCreation":5},"usageScope":"turn","time":1791460800071}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"tool.result","toolCallId":"Bash:0","result":{"output":"README.md","durationMs":12}},"time":1791460800080}
+{"type":"llm.request","agentId":"main","kind":"loop","provider":"moonshot","model":"kimi-k3-test","toolSelect":true,"systemPromptHash":"h","toolsHash":"h","messageCount":4,"time":1791460800090}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"step.begin","uuid":"s2","turnId":"0","step":2},"time":1791460800100}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"tool.call","uuid":"c4","turnId":"0","step":2,"stepUuid":"s2","toolCallId":"Edit:1","name":"Edit","args":{"path":"README.md","old_string":"a","new_string":"b"}},"time":1791460800110}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"tool.result","toolCallId":"Edit:1","result":{"output":[{"type":"text","text":"Replaced 1 occurrence in README.md"}],"isError":false}},"time":1791460800120}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"content.part","uuid":"c5","turnId":"0","step":2,"stepUuid":"s2","part":{"type":"text","text":"Done editing."}},"time":1791460800130}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"step.end","uuid":"s2","turnId":"0","step":2,"finishReason":"end_turn","usage":{"inputOther":3,"output":4,"inputCacheRead":200,"inputCacheCreation":0}},"time":1791460800140}
+{"type":"usage.record","agentId":"main","model":"__kimi_env_model__","usage":{"inputOther":3,"output":4,"inputCacheRead":200,"inputCacheCreation":0},"usageScope":"turn","time":1791460800141}
+{"type":"turn.ended","agentId":"main","turnId":0,"reason":"completed","time":1791460800150}
+{"type":"context.append_message","agentId":"main","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>Todo list changed.</system-reminder>"}],"toolCalls":[],"origin":{"kind":"injection"}},"time":1791460800160}
+{"type":"context.append_message","agentId":"main","message":{"role":"user","content":[{"type":"text","text":"Background task finished."}],"toolCalls":[],"origin":"task"},"time":1791460800170}
+{"type":"context.append_message","agentId":"main","message":{"role":"user","content":[{"type":"text","text":"/review"}],"toolCalls":[],"origin":{"kind":"skill_activation","trigger":"user-slash","name":"review"}},"time":1791460800180}
+{"type":"context.apply_compaction","agentId":"main","summary":"Compacted summary.","compactedCount":6,"tokensBefore":900,"tokensAfter":120,"time":1791460800190}
+{"type":"usage.record","agentId":"main","model":"kimi-title","usage":{"inputOther":1,"output":2,"inputCacheRead":0,"inputCacheCreation":0},"usageScope":"session","time":1791460800191}
+{"type":"subagent.spawned","subagentId":"agent-0","subagentName":"explore","parentToolCallId":"Agent:2","runInBackground":false,"time":1791460800200}
+{"type":"context.append_loop_event","agentId":"main","event":{"type":"content.part","uuid":"c6","turnId":"1","step":1,"stepUuid":"s3","part":{"type":"image_url","imageUrl":{"url":"blob:1"}}},"time":1791460800210}
+{"type":"brand.new_record","agentId":"main","time":"2026-10-08T00:00:00.300Z"}

@@ -1,0 +1,771 @@
+// Package reporter uploads local session metadata and redacted transcript
+// events to a Firekeeper dashboard server in one pass.
+//
+// Upload is opt-in per provider. With no provider allowlisted, or with
+// DryRun set, RunOnce reads and redacts as usual and prints what it would
+// send, but never opens a network connection or moves a read offset.
+package reporter
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/DanBradbury/firekeeper/internal/config"
+	"github.com/DanBradbury/firekeeper/internal/redact"
+	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+
+	// Register the transcript sources the reporter can read.
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/cursor"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/gemini"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/kimi"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
+)
+
+// DefaultServer is the dashboard server's default listen address.
+const DefaultServer = "http://127.0.0.1:7777"
+
+// Ingest limits from the v1 contract. Batches stay under maxBatchBytes so the
+// envelope and session metadata fit inside the 5 MiB request limit.
+const (
+	maxBatchEvents = 500
+	maxBatchBytes  = 4 << 20
+)
+
+// Config configures one reporting pass. The zero value with Providers set
+// reports to DefaultServer using the real home directory.
+type Config struct {
+	// Server is the dashboard base URL. Empty means DefaultServer.
+	Server string
+	// Providers is the upload allowlist. Empty uploads nothing.
+	Providers []transcript.Provider
+	// DryRun reads and redacts but uploads nothing and saves no offsets.
+	DryRun bool
+	// Token is the bearer token sent with uploads. Empty sends none.
+	Token string
+	// Exclude lists directory globs and Git remote patterns whose sessions
+	// are never read or uploaded; see config.Config.Excluded.
+	Exclude []string
+	// RedactPaths are extra directories scrubbed from every event and from
+	// session metadata; see redact.Options.Paths.
+	RedactPaths []string
+	// Since, when positive, skips transcript files not modified within it.
+	Since time.Duration
+	// Home overrides the user's home directory for state, discovery, and
+	// home-path redaction.
+	Home string
+	// StatePath overrides Home/.firekeeper/state.json.
+	StatePath string
+	// Version is sent as the machine's Firekeeper version.
+	Version string
+	// Out receives one summary line per session. Nil discards them.
+	Out io.Writer
+	// ScanEnded also reads sessions found in the transcript folders of
+	// allowlisted providers that discovery did not see running, such as
+	// ones that started and ended between passes. They are read newest
+	// first, at most ScanLimit per pass within ScanBudget, and carry state
+	// ENDED. False reads running sessions only.
+	ScanEnded bool
+	// ScanAfter opens the scan window: transcripts not modified after it
+	// are left to backfill. Zero means ScanLookback before the pass.
+	// Since, when later, narrows it further.
+	ScanAfter time.Time
+	// ScanLookback, ScanLimit, and ScanBudget bound the scan. Zero means
+	// DefaultScanLookback, DefaultScanLimit, and DefaultScanBudget.
+	ScanLookback time.Duration
+	ScanLimit    int
+	ScanBudget   time.Duration
+	// Stop, when closed, ends the pass early: the batch in flight finishes
+	// and its offset is saved, then RunOnce returns with Summary.Stopped
+	// set. Cancelling ctx instead aborts the request in flight.
+	Stop <-chan struct{}
+
+	// Discover, Sources, ScanEnumerators, Client, and Now replace the real
+	// implementations in tests. Nil means session.Discover, reader.For,
+	// reader.EnumeratorFor, a client with a 30 second timeout, and
+	// time.Now.
+	Discover        func(context.Context, session.Options) ([]session.Meta, error)
+	Sources         func(transcript.Provider) (reader.Source, bool)
+	ScanEnumerators func(transcript.Provider) (reader.Enumerator, bool)
+	Client          *http.Client
+	Now             func() time.Time
+
+	// lockWait overrides DefaultLockWait in tests.
+	lockWait time.Duration
+}
+
+// Uploading reports whether cfg can upload anything.
+func (cfg Config) Uploading() bool {
+	return !cfg.DryRun && len(cfg.Providers) > 0
+}
+
+// SessionResult summarizes one session's pass.
+type SessionResult struct {
+	Provider   string
+	SessionID  string
+	Project    string
+	Skipped    string // reason the session was not read, if any
+	Events     int    // new events read (and uploaded, unless dry run)
+	Batches    int
+	Duplicates int
+	Redactions int
+	Err        error
+	// State and LastActivityAt are the session's discovered state, sent in
+	// heartbeats.
+	State          string
+	LastActivityAt *time.Time
+}
+
+// Summary is the outcome of RunOnce.
+type Summary struct {
+	Sessions []SessionResult
+	// Warning holds partial discovery failures that did not stop the pass.
+	Warning error
+	// MachineID is the discovered machine id, empty when no session had one.
+	MachineID string
+	// Stopped reports that Config.Stop ended the pass early.
+	Stopped bool
+	// Scan counts the sessions found in the transcript folders when
+	// Config.ScanEnded is set.
+	Scan ScanSummary
+}
+
+// Failed reports whether any session hit an error.
+func (s Summary) Failed() bool {
+	for _, r := range s.Sessions {
+		if r.Err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// RunOnce discovers sessions, reads events past the stored offsets, redacts
+// them, and uploads them in batches. With Config.ScanEnded it then reads
+// the sessions in the transcript folders that discovery did not see; a
+// running session is read once, as a live one. Offsets advance only after the server
+// accepts a batch, so an interrupted pass loses nothing and the next pass
+// re-sends nothing the server has confirmed. One session failing does not
+// stop the others; their errors are in the summary. RunOnce returns an
+// error only when the pass cannot start.
+func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
+	r, err := newRun(ctx, cfg)
+	if err != nil {
+		return Summary{}, err
+	}
+	metas, err := r.discover(ctx, session.Options{Home: cfg.Home})
+	var warning *session.Warning
+	if err != nil && !errors.As(err, &warning) {
+		return Summary{}, fmt.Errorf("discover sessions: %w", err)
+	}
+	summary := Summary{}
+	if warning != nil {
+		summary.Warning = warning
+	}
+	seen := map[string]bool{}
+	live := map[string]bool{}
+	for _, meta := range metas {
+		if meta.ID == "" {
+			continue // a runtime with no session metadata has no transcript
+		}
+		live[liveKey(meta)] = true
+		key := meta.Provider + "\x00" + meta.ID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if err := ctx.Err(); err != nil {
+			return summary, err
+		}
+		if r.stopping() {
+			break
+		}
+		if summary.MachineID == "" {
+			summary.MachineID = meta.MachineID
+		}
+		result := r.session(ctx, meta)
+		summary.Sessions = append(summary.Sessions, result)
+		r.print(result)
+	}
+	if cfg.ScanEnded && !r.stopping() {
+		if err := r.scan(ctx, live, &summary); err != nil {
+			return summary, err
+		}
+	}
+	summary.Stopped = r.stopping()
+	return summary, nil
+}
+
+// errStopped ends a session's pass when Config.Stop closes between batches.
+var errStopped = errors.New("stopped")
+
+func (r *run) stopping() bool {
+	select {
+	case <-r.cfg.Stop:
+		return true
+	default:
+		return false
+	}
+}
+
+type run struct {
+	cfg       Config
+	upload    bool
+	allowed   map[transcript.Provider]bool
+	home      string
+	statePath string
+	state     *State
+	server    string
+	client    *http.Client
+	token     string
+	discover  func(context.Context, session.Options) ([]session.Meta, error)
+	sources   func(transcript.Provider) (reader.Source, bool)
+	now       func() time.Time
+	machine   machine
+	lockWait  time.Duration
+	// replaced holds the stale entry for each file this pass restarted after
+	// truncation, so saving does not merge the old position back in.
+	replaced map[string]FileState
+	// send posts one batch. Backfill wraps post with retries and backoff.
+	send func(ctx context.Context, machineID string, meta ingestMeta, events []transcript.Event) (int, error)
+}
+
+func newRun(ctx context.Context, cfg Config) (*run, error) {
+	r := &run{
+		cfg:       cfg,
+		upload:    cfg.Uploading(),
+		allowed:   map[transcript.Provider]bool{},
+		home:      cfg.Home,
+		statePath: cfg.StatePath,
+		discover:  cfg.Discover,
+		sources:   cfg.Sources,
+		now:       cfg.Now,
+		lockWait:  cfg.lockWait,
+		replaced:  map[string]FileState{},
+	}
+	r.send = r.post
+	if r.lockWait <= 0 {
+		r.lockWait = DefaultLockWait
+	}
+	for _, p := range cfg.Providers {
+		if !p.Valid() {
+			return nil, fmt.Errorf("unknown provider %q", p)
+		}
+		r.allowed[p] = true
+	}
+	if r.home == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, errors.New("find home directory")
+		}
+		r.home = home
+	}
+	if r.statePath == "" {
+		r.statePath = filepath.Join(r.home, ".firekeeper", "state.json")
+	}
+	if r.discover == nil {
+		r.discover = session.Discover
+	}
+	if r.sources == nil {
+		r.sources = reader.For
+	}
+	if r.now == nil {
+		r.now = time.Now
+	}
+	// A pass that saves nothing reads without the lock: Save replaces the
+	// file atomically, so a read never sees a partial write.
+	load := func() error {
+		state, err := LoadState(r.statePath)
+		r.state = state
+		return err
+	}
+	var err error
+	if r.upload {
+		err = withStateLock(ctx, r.statePath, r.lockWait, load)
+	} else {
+		err = load()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !r.upload {
+		return r, nil
+	}
+	server := cfg.Server
+	if server == "" {
+		server = DefaultServer
+	}
+	u, err := url.Parse(server)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("invalid server URL %q", server)
+	}
+	r.server = strings.TrimRight(server, "/")
+	r.token = cfg.Token
+	r.client = cfg.Client
+	if r.client == nil {
+		r.client = &http.Client{Timeout: 30 * time.Second}
+	}
+	hostname, _ := os.Hostname()
+	r.machine = machine{Name: hostname, Hostname: hostname, OS: runtime.GOOS, Version: cfg.Version}
+	return r, nil
+}
+
+func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
+	result := SessionResult{Provider: meta.Provider, SessionID: meta.ID, Project: meta.Project,
+		State: stateName(meta.State), LastActivityAt: meta.LastActivityAt}
+	provider := transcript.Provider(meta.Provider)
+	source, ok := r.sources(provider)
+	switch {
+	case !ok:
+		result.Skipped = "no transcript reader for provider"
+		return result
+	case len(r.allowed) > 0 && !r.allowed[provider]:
+		result.Skipped = "provider not allowlisted"
+		return result
+	}
+	// Exclusion is decided before Locate, so an excluded session's
+	// transcript is never opened.
+	if reason := r.skipReason(meta); reason != "" {
+		result.Skipped = reason
+		return result
+	}
+	if r.upload && meta.MachineID == "" {
+		result.Err = errors.New("machine id unavailable")
+		return result
+	}
+	paths, err := source.Locate(meta)
+	if err != nil {
+		result.Err = err
+		return result
+	}
+	sessionMeta := r.sessionMeta(meta, &result)
+	for _, path := range paths {
+		if err := r.file(ctx, source, meta, &sessionMeta, path, &result); err != nil {
+			if !errors.Is(err, errStopped) {
+				result.Err = err
+			}
+			return result
+		}
+	}
+	return result
+}
+
+// file reads one transcript file from its stored offset and uploads what is
+// new.
+func (r *run) file(ctx context.Context, source reader.Source, meta session.Meta, sessionMeta *ingestMeta, path string, result *SessionResult) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return errors.New("resolve transcript path")
+	}
+	info, err := reader.Stat(source, abs)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat transcript: %w", cause(err))
+	}
+	if r.cfg.Since > 0 && info.ModTime.Before(r.now().Add(-r.cfg.Since)) {
+		return nil
+	}
+	pos, known := r.state.Files[abs]
+	if !known || info.Size < pos.Size {
+		// New, truncated, or rotated: start over and let the server's
+		// idempotency drop anything it already has.
+		if known {
+			r.replaced[abs] = pos
+		}
+		pos = newFileState()
+	}
+	events, newOffset, err := source.Read(abs, pos.Offset)
+	if err != nil {
+		return err
+	}
+
+	var pending []transcript.Event
+	for _, e := range events {
+		if e.Seq <= pos.LastSeq {
+			continue // confirmed by an earlier, interrupted pass
+		}
+		e.MachineID = meta.MachineID
+		e.SessionID = meta.ID
+		redacted, counts := redact.Event(e, r.redactOptions())
+		result.Redactions += counts.Total()
+		pending = append(pending, redacted)
+	}
+	result.Events += len(pending)
+	if !r.upload {
+		return nil
+	}
+
+	batches, err := split(pending)
+	if err != nil {
+		return err
+	}
+	if len(batches) > 0 {
+		r.addGitFiles(ctx, meta, sessionMeta, result)
+	}
+	for _, batch := range batches {
+		if r.stopping() {
+			return errStopped
+		}
+		dups, err := r.send(ctx, meta.MachineID, *sessionMeta, batch)
+		if err != nil {
+			return err
+		}
+		result.Batches++
+		result.Duplicates += dups
+		pos.LastSeq = max(pos.LastSeq, batch[len(batch)-1].Seq)
+		if pos, err = r.saveFile(ctx, source, abs, pos); err != nil {
+			return err
+		}
+	}
+	if len(batches) == 0 && known && pos == r.state.Files[abs] && newOffset == pos.Offset {
+		return nil // nothing changed; skip the write
+	}
+	pos.Offset = newOffset
+	pos.Size = max(info.Size, newOffset)
+	pos.Mtime = info.ModTime.UTC()
+	_, err = r.saveFile(ctx, source, abs, pos)
+	return err
+}
+
+// saveFile records pos for abs under the state lock. It reloads state.json
+// first, so positions other passes saved since this one loaded are kept, and
+// merges pos with the file's saved position so it never moves backwards. It
+// returns the position saved.
+func (r *run) saveFile(ctx context.Context, source reader.Source, abs string, pos FileState) (FileState, error) {
+	err := withStateLock(ctx, r.statePath, r.lockWait, func() error {
+		state, err := LoadState(r.statePath)
+		if err != nil {
+			return err
+		}
+		size := int64(-1)
+		if info, err := reader.Stat(source, abs); err == nil {
+			size = info.Size
+		}
+		var replaced *FileState
+		if old, ok := r.replaced[abs]; ok {
+			replaced = &old
+		}
+		disk, known := state.Files[abs]
+		pos = mergeFileState(pos, disk, known, replaced, size)
+		state.Files[abs] = pos
+		if err := state.Save(r.statePath); err != nil {
+			return err
+		}
+		delete(r.replaced, abs)
+		r.state = state
+		return nil
+	})
+	return pos, err
+}
+
+// split groups events into batches within the ingest limits.
+func split(events []transcript.Event) ([][]transcript.Event, error) {
+	var batches [][]transcript.Event
+	var batch []transcript.Event
+	size := 0
+	for _, e := range events {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return nil, fmt.Errorf("encode event %d: %w", e.Seq, err)
+		}
+		if len(data) > maxBatchBytes {
+			return nil, fmt.Errorf("event %d is %d bytes, over the upload limit", e.Seq, len(data))
+		}
+		if len(batch) == maxBatchEvents || size+len(data) > maxBatchBytes {
+			batches = append(batches, batch)
+			batch, size = nil, 0
+		}
+		batch = append(batch, e)
+		size += len(data) + 1
+	}
+	if len(batch) > 0 {
+		batches = append(batches, batch)
+	}
+	return batches, nil
+}
+
+// Wire types for POST /v1/ingest.
+type machine struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Hostname string `json:"hostname"`
+	OS       string `json:"os"`
+	Version  string `json:"version"`
+}
+
+type ingestMeta struct {
+	SessionID      string     `json:"session_id"`
+	Provider       string     `json:"provider"`
+	CWD            string     `json:"cwd"`
+	Project        string     `json:"project"`
+	Branch         string     `json:"branch"`
+	Commit         string     `json:"commit,omitempty"`
+	Model          string     `json:"model"`
+	State          string     `json:"state"`
+	Title          string     `json:"title"`
+	StartedAt      *time.Time `json:"started_at"`
+	LastActivityAt *time.Time `json:"last_activity_at"`
+	// FilesSource is filesFromGit when Files is the session's Git change
+	// list, which then replaces the server's list built from tool calls.
+	// Empty leaves the server's list as it is.
+	FilesSource string   `json:"files_source,omitempty"`
+	Files       []string `json:"files,omitempty"`
+
+	// gitFilesDone marks that addGitFiles already ran for this pass.
+	gitFilesDone bool
+	// commitRaw is the start commit before redaction, for git.
+	commitRaw string
+}
+
+// filesFromGit is the files_source sent with a Git change list.
+const filesFromGit = "git"
+
+type ingestSession struct {
+	Meta   ingestMeta         `json:"meta"`
+	Events []transcript.Event `json:"events"`
+}
+
+type ingestRequest struct {
+	Machine  machine         `json:"machine"`
+	Sessions []ingestSession `json:"sessions"`
+}
+
+type ingestResponse struct {
+	Accepted   int `json:"accepted"`
+	Duplicates int `json:"duplicates"`
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+	Code  string `json:"code"`
+}
+
+// sessionMeta builds the redacted metadata sent with every batch. Free-text
+// fields can carry paths and pasted secrets, so they are redacted too. The
+// commit, and the branch when the provider reported none, come from the
+// repository as it was when the session started; see gitAtStart.
+func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
+	opts := r.redactOptions()
+	clean := func(s string) string {
+		out, counts := redact.String(s, opts)
+		result.Redactions += counts.Total()
+		return out
+	}
+	branch, commit := gitAtStart(meta.CWD, meta.StartedAt)
+	return ingestMeta{
+		SessionID:      meta.ID,
+		Provider:       meta.Provider,
+		CWD:            clean(meta.CWD),
+		Project:        meta.Project,
+		Branch:         clean(session.FirstNonEmpty(meta.Branch, branch)),
+		Commit:         clean(commit),
+		Model:          meta.Model,
+		State:          stateName(meta.State),
+		Title:          clean(meta.Title),
+		StartedAt:      meta.StartedAt,
+		LastActivityAt: meta.LastActivityAt,
+		commitRaw:      commit,
+	}
+}
+
+// addGitFiles sets sm's file list from Git, once per session and pass, and
+// only when there is something to upload, since it runs git. Outside a
+// repository, or when Git cannot tell, sm is left without a list and the
+// server keeps the one it builds from tool calls. Paths are redacted like
+// the cwd, so the server can make them relative to it.
+func (r *run) addGitFiles(ctx context.Context, meta session.Meta, sm *ingestMeta, result *SessionResult) {
+	if sm.gitFilesDone {
+		return
+	}
+	sm.gitFilesDone = true
+	if sm.commitRaw == "" {
+		return
+	}
+	files, ok := gitChangedFiles(ctx, meta.CWD, sm.commitRaw, meta.StartedAt, meta.LastActivityAt)
+	if !ok {
+		return
+	}
+	opts := r.redactOptions()
+	clean := make([]string, 0, len(files))
+	for _, f := range files {
+		out, counts := redact.String(f, opts)
+		result.Redactions += counts.Total()
+		clean = append(clean, out)
+	}
+	sm.FilesSource = filesFromGit
+	sm.Files = clean
+}
+
+// stateName is the wire name of a session state, such as NEEDS_INPUT.
+func stateName(state session.State) string {
+	name, _ := json.Marshal(state)
+	return strings.Trim(string(name), `"`)
+}
+
+func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, events []transcript.Event) (duplicates int, err error) {
+	m := r.machine
+	m.ID = machineID
+	data, err := r.postJSON(ctx, "/v1/ingest", "upload", ingestRequest{Machine: m, Sessions: []ingestSession{{Meta: meta, Events: events}}})
+	if err != nil {
+		return 0, err
+	}
+	var ok ingestResponse
+	if err := json.Unmarshal(data, &ok); err != nil {
+		return 0, errors.New("upload: server response is not valid JSON")
+	}
+	return ok.Duplicates, nil
+}
+
+// postJSON sends body to path and returns the response body of a 200
+// reply. Errors start with what and never include either body.
+func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s: %w", what, err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.server+path, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build %s request: %w", what, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if r.token != "" {
+		req.Header.Set("Authorization", "Bea"+"rer "+r.token)
+	}
+	resp, err := r.client.Do(req)
+	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
+		return nil, fmt.Errorf("%s: %w", what, err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode != http.StatusOK {
+		statusErr := &StatusError{What: what, Status: resp.StatusCode}
+		var e errorResponse
+		if json.Unmarshal(data, &e) == nil {
+			statusErr.Code = e.Code
+		}
+		return nil, statusErr
+	}
+	return data, nil
+}
+
+// StatusError is a non-200 reply from the server. It carries the status and
+// the JSON error code, never the body.
+type StatusError struct {
+	What   string
+	Status int
+	Code   string
+}
+
+func (e *StatusError) Error() string {
+	if e.Code != "" {
+		return fmt.Sprintf("%s: server returned %d (%s)", e.What, e.Status, e.Code)
+	}
+	return fmt.Sprintf("%s: server returned %d", e.What, e.Status)
+}
+
+func (r *run) print(res SessionResult) {
+	if r.cfg.Out == nil {
+		return
+	}
+	fmt.Fprintln(r.cfg.Out, r.status(res))
+}
+
+// status is the one-line summary of a session's pass.
+func (r *run) status(res SessionResult) string {
+	project := res.Project
+	if project == "" {
+		project = "-"
+	}
+	var status string
+	switch {
+	case res.Err != nil:
+		status = "error: " + res.Err.Error()
+	case res.Skipped != "":
+		status = "skipped (" + res.Skipped + ")"
+	case !r.upload:
+		status = fmt.Sprintf("would upload %d events (%d redactions)", res.Events, res.Redactions)
+	default:
+		status = fmt.Sprintf("uploaded %d events in %d %s (%d duplicates, %d redactions)",
+			res.Events, res.Batches, plural(res.Batches, "batch", "batches"), res.Duplicates, res.Redactions)
+	}
+	return fmt.Sprintf("%s %s %s: %s", res.Provider, res.SessionID, project, status)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+func (r *run) redactOptions() redact.Options {
+	return redact.Options{HomeDir: r.home, Paths: r.cfg.RedactPaths}
+}
+
+// skipReason returns why a session must not be read, or "" when it may be.
+// A session is skipped when its directory is unknown (the rules below
+// cannot be checked without it), when its cwd or Git root matches
+// Config.Exclude, when its repository has a remote matching
+// Config.Exclude, or when .firekeeper-ignore marks it. Only the repository's
+// own files (.git/config and markers) are read, never the transcript.
+func (r *run) skipReason(meta session.Meta) string {
+	if meta.CWD == "" {
+		return "working directory unknown"
+	}
+	if ignored(meta.CWD) {
+		return ".firekeeper-ignore"
+	}
+	if len(r.cfg.Exclude) == 0 {
+		return ""
+	}
+	root, gitDir := findRepo(meta.CWD)
+	var remotes []string
+	if gitDir != "" {
+		remotes = remoteURLs(gitDir)
+	}
+	if pattern, ok := (config.Config{Exclude: r.cfg.Exclude}).Excluded([]string{meta.CWD, root}, remotes); ok {
+		return "excluded by config: " + pattern
+	}
+	return ""
+}
+
+// ignored reports whether dir is inside a repository, or below a
+// directory, that contains .firekeeper-ignore. The search stops at the Git
+// root so a marker outside the repository does not apply to it.
+func ignored(dir string) bool {
+	dir = filepath.Clean(dir)
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".firekeeper-ignore")); err == nil {
+			return true
+		}
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return false
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}

@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "gofmt needed on:" >&2
+            echo "$out" >&2
+            exit 1
+          fi
+      - run: go vet ./...
+      - name: go vet (darwin)
+        run: GOOS=darwin go vet ./...
+      - name: install sqlite3 if missing
+        run: command -v sqlite3 || { sudo apt-get update && sudo apt-get install -y sqlite3; }
+      - name: go test -race, failing on skipped tests
+        run: scripts/ci-go-test.sh
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - name: install terminal apps for AppleScript checks
+        run: |
+          brew install --cask iterm2 ghostty
+          lsregister=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+          "$lsregister" -f /Applications/iTerm.app /Applications/Ghostty.app
+      - name: go test
+        env:
+          FIREKEEPER_MACOS_INTEGRATION: "1"
+        run: go test ./...
+      - name: macOS-specific tests must run, not skip
+        shell: bash
+        env:
+          FIREKEEPER_MACOS_INTEGRATION: "1"
+        run: |
+          tests="TestMacTerminalAdapterScriptsCompile TestFocusTerminalSessionRunsOsascript TestDiscoverProcessesPreservesLongCopilotCommand"
+          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" ./internal/tui ./internal/session | tee macos-tests.log
+          if grep -q -- '--- SKIP' macos-tests.log; then
+            echo "a macOS-specific test was skipped" >&2
+            exit 1
+          fi
+          for name in $tests; do
+            grep -q -- "--- PASS: $name " macos-tests.log || { echo "$name did not run and pass" >&2; exit 1; }
+          done
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck $(git ls-files '*.sh')
+      - name: installer test
+        run: sh scripts/test-install.sh
+
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+      - name: snapshot binary reports the injected version
+        run: |
+          out=$(dist/firekeeper_linux_amd64_v1/firekeeper version)
+          echo "$out"
+          if echo "$out" | grep -qE '^firekeeper dev |commit dev,|built dev,'; then
+            echo "version, commit, or date was not injected; check the -X paths in .goreleaser.yaml" >&2
+            exit 1
+          fi

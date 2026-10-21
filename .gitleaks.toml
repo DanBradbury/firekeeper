@@ -1,0 +1,13 @@
+# Secret scan configuration for gitleaks, run in CI by security.yml.
+# Extends the default rules; each allowlist covers a known false positive.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Redaction tests hold synthetic secrets by design"
+paths = ['''^internal/redact/[^/]*_test\.go$''']
+
+[[allowlists]]
+description = "Docs show a deliberately invalid token"
+regexes = ['''^fk_wrong$''']

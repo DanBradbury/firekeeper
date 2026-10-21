@@ -1,0 +1,9 @@
+{"type":"metadata","protocol_version":"1.1","created_at":1791374400000}
+{"type":"config.update","cwd":"/work/legacy","profileName":"agent","systemPrompt":"You are Kimi.","time":1791374400001}
+{"type":"context.append_message","message":{"role":"system","content":[{"type":"text","text":"You are Kimi."}],"toolCalls":[]},"time":1791374400002}
+{"type":"context.append_message","message":{"role":"user","content":[{"type":"text","text":"Write the file."}],"toolCalls":[]},"time":1791374400003}
+{"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"Writing."}],"toolCalls":[{"type":"function","id":"call_1","name":"Write","arguments":"{\"path\": \"notes.md\", \"content\": \"hi\"}"}]},"time":1791374400004}
+{"type":"context.append_message","message":{"role":"tool","content":[{"type":"text","text":"Wrote 2 bytes to notes.md"}],"toolCalls":[],"toolCallId":"call_1"},"time":1791374400005}
+{"type":"context.append_message","message":{"role":"assistant","content":[{"type":"text","text":"Done."}],"toolCalls":[]},"time":1791374400006}
+{"type":"context.append_message","message":{"role":"assistant","content":[{"type":"think","think":"Nothing left."}],"toolCalls":[]},"time":1791374400007}
+{"type":"context.apply_compaction","summary":{"role":"user","content":[{"type":"text","text":"Summary message."}],"toolCalls":[]},"count":4,"time":1791374400008}
