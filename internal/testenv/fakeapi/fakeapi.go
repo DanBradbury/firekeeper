@@ -4,13 +4,21 @@
 // link flow, GET /v1/account and DELETE /v1/tokens/current. It also answers
 // the two session reads the tests use to check what was uploaded. It stores
 // nothing on disk and is not a server: it has no accounts, limits or web UI.
+//
+// It follows the golden fixtures of pkg/contract: every error body is the
+// fixture for its code, every ingest body must pass contract.ValidateBatch
+// (so a reporter that produces an event the schema rejects fails its test),
+// and TestResponsesMatchFixtures checks each success body against the
+// fixture's shape.
 package fakeapi
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -18,13 +26,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/pkg/contract"
 	"github.com/DanBradbury/firekeeper/pkg/event"
 )
 
 // Limits from docs/api.md.
 const (
-	MaxBodyBytes    = 5 << 20
-	MaxEventsPerReq = 500
+	MaxBodyBytes    = contract.MaxBodyBytes
+	MaxEventsPerReq = contract.MaxEventsPerReq
 )
 
 var validStates = map[string]bool{"ACTIVE": true, "WAITING": true, "NEEDS_INPUT": true, "ENDED": true, "UNKNOWN": true}
@@ -83,6 +92,7 @@ type Server struct {
 	machines map[string]*Machine
 	links    map[string]*link  // by device code
 	tokens   map[string]*token // by secret
+	skew     time.Duration     // added to the clock by Advance
 }
 
 // New returns an empty server.
@@ -94,6 +104,17 @@ func New() *Server {
 }
 
 func key(machine, session string) string { return machine + "\x00" + session }
+
+// Advance moves the server's clock forward, so a test can let a link code
+// expire without waiting.
+func (s *Server) Advance(d time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.skew += d
+}
+
+// nowLocked is the server's clock. The caller holds s.mu.
+func (s *Server) nowLocked() time.Time { return time.Now().Add(s.skew) }
 
 // Approve marks the link with userCode as approved by the account email,
 // as the dashboard's approval page would, and names the machine.
@@ -204,8 +225,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// fail answers with the golden error envelope for code. The message argument
+// documents the call site only: clients see the fixture's text. The two
+// test-only session reads use codes docs/api.md does not define, and for
+// those the message is sent as given.
 func fail(w http.ResponseWriter, status int, code, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+	body := contract.Fixture("error." + code)
+	if body == nil {
+		writeJSON(w, status, map[string]string{"error": msg, "code": code})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Fakeapi-Detail", strings.ReplaceAll(msg, "\n", " "))
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
 }
 
 func random(prefix string, n int) string {
@@ -275,7 +308,15 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxBodyBytes))
+	if err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			fail(w, http.StatusRequestEntityTooLarge, "payload_too_large", "body over 5 MiB")
+			return
+		}
+		fail(w, http.StatusBadRequest, "bad_request", "unreadable body")
+		return
+	}
 	var req struct {
 		Machine  machineBody `json:"machine"`
 		Sessions []struct {
@@ -283,9 +324,11 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 			Events []event.Event `json:"events"`
 		} `json:"sessions"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		if strings.Contains(err.Error(), "too large") {
-			fail(w, http.StatusRequestEntityTooLarge, "payload_too_large", "body over 5 MiB")
+	if err := json.Unmarshal(body, &req); err != nil {
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			// Well-formed JSON of the wrong shape breaks a rule.
+			fail(w, http.StatusBadRequest, "invalid_request", "wrong type")
 			return
 		}
 		fail(w, http.StatusBadRequest, "bad_request", "malformed JSON")
@@ -307,29 +350,11 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusRequestEntityTooLarge, "too_many_events", "more than 500 events")
 		return
 	}
-	for _, sess := range req.Sessions {
-		if sess.Meta.SessionID == "" {
-			fail(w, http.StatusBadRequest, "invalid_request", "session_id is required")
-			return
-		}
-		if !event.Provider(sess.Meta.Provider).Valid() {
-			fail(w, http.StatusBadRequest, "invalid_request", "unknown provider")
-			return
-		}
-		if st := sess.Meta.State; st != "" && !validStates[st] {
-			fail(w, http.StatusBadRequest, "invalid_request", "unknown state")
-			return
-		}
-		if sess.Meta.FilesSource != "" && sess.Meta.FilesSource != "git" && sess.Meta.FilesSource != "tool_calls" {
-			fail(w, http.StatusBadRequest, "invalid_request", "unknown files_source")
-			return
-		}
-		for _, e := range sess.Events {
-			if err := e.Validate(); err != nil || e.MachineID != req.Machine.ID || e.SessionID != sess.Meta.SessionID {
-				fail(w, http.StatusBadRequest, "invalid_request", "invalid event")
-				return
-			}
-		}
+	// The whole body must satisfy the public contract: the schema for every
+	// event, plus the metadata rules of docs/api.md.
+	if err := contract.ValidateBatch(body); err != nil {
+		fail(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
 	}
 
 	s.mu.Lock()
@@ -476,7 +501,7 @@ func (s *Server) linkStart(w http.ResponseWriter, r *http.Request) {
 	}
 	device := random("fkd_", 16)
 	s.mu.Lock()
-	s.links[device] = &link{machineID: req.MachineID, userCode: string(code), expires: time.Now().Add(10 * time.Minute)}
+	s.links[device] = &link{machineID: req.MachineID, userCode: string(code), expires: s.nowLocked().Add(10 * time.Minute)}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{"device_code": device, "user_code": string(code), "expires_in": 600, "interval": 1})
 }
@@ -493,7 +518,7 @@ func (s *Server) linkPoll(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "link_invalid", "unknown, expired or used link code")
 		return
 	}
-	if time.Now().After(l.expires) {
+	if s.nowLocked().After(l.expires) {
 		fail(w, http.StatusGone, "link_expired", "the code expired")
 		return
 	}

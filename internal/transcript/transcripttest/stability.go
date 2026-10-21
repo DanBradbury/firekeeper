@@ -4,6 +4,7 @@ package transcripttest
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+	"github.com/DanBradbury/firekeeper/pkg/contract"
 )
 
 // SeqCase is one fixture for RunSeqStability.
@@ -82,6 +84,18 @@ func checkSeqStability(source reader.Source, c SeqCase, tempDir string) error {
 	for i, e := range whole {
 		if e.Seq < 0 || (i > 0 && e.Seq <= whole[i-1].Seq) {
 			return fmt.Errorf("seqs not strictly increasing from zero or above: %v", seqs(whole))
+		}
+	}
+
+	// Every event a reader produces must satisfy the public event schema,
+	// the same check a server applies to what the reporter uploads.
+	for _, e := range whole {
+		data, err := json.Marshal(e)
+		if err != nil {
+			return fmt.Errorf("seq %d: encode: %w", e.Seq, err)
+		}
+		if err := contract.ValidateEvent(data); err != nil {
+			return fmt.Errorf("seq %d breaks the event schema: %w", e.Seq, err)
 		}
 	}
 
