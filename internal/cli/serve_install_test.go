@@ -57,6 +57,18 @@ func newFakeRelease(t *testing.T, sumOverride string) fakeRelease {
 
 // installSetup isolates everything an offer reads. exeDir is where the fake
 // firekeeper executable "lives".
+// resolvedTempDir is t.TempDir() with symlinks resolved. offerInstall resolves
+// the executable's path, and on macOS the temp dir sits under /var, a symlink
+// to /private/var, so paths built from the unresolved name would never match.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 type installSetup struct {
 	env    map[string]string
 	exeDir string
@@ -74,7 +86,7 @@ func setupInstall(t *testing.T, url, stdin string) *installSetup {
 	}
 	s := &installSetup{
 		env:    map[string]string{"PATH": "/usr/bin"},
-		exeDir: t.TempDir(),
+		exeDir: resolvedTempDir(t),
 		home:   t.TempDir(),
 		stdin:  stdin,
 		tty:    true,
