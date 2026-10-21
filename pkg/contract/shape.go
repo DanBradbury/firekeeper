@@ -16,7 +16,18 @@ import (
 //     array (any elements, including none, when the golden array is empty).
 //
 // The error lists every difference by path. It never includes values.
-func MatchShape(golden, got []byte) error {
+//
+// Use MatchShape for a stand-in that must mirror the fixtures (the client's
+// fake server) and ContainsShape for a real server, which may add fields.
+func MatchShape(golden, got []byte) error { return compareShape(golden, got, true) }
+
+// ContainsShape is MatchShape except that objects in got may have keys the
+// golden object lacks, at any depth. Every key of golden must still be in got
+// with the same JSON type. This is the rule for a real server: docs/api.md
+// lets servers add fields, so a client must ignore the ones it does not know.
+func ContainsShape(golden, got []byte) error { return compareShape(golden, got, false) }
+
+func compareShape(golden, got []byte, exact bool) error {
 	g, err := decodeJSON(golden)
 	if err != nil {
 		return fmt.Errorf("golden: %w", err)
@@ -25,10 +36,10 @@ func MatchShape(golden, got []byte) error {
 	if err != nil {
 		return fmt.Errorf("got: %w", err)
 	}
-	return joinProblems(diffShape("$", g, v))
+	return joinProblems(diffShape("$", g, v, exact))
 }
 
-func diffShape(path string, golden, got any) []string {
+func diffShape(path string, golden, got any, exact bool) []string {
 	if golden == nil || got == nil {
 		return nil
 	}
@@ -58,9 +69,11 @@ func diffShape(path string, golden, got any) []string {
 			case !inGot:
 				out = append(out, fmt.Sprintf("%s.%s: missing", path, k))
 			case !inGolden:
-				out = append(out, fmt.Sprintf("%s.%s: unexpected", path, k))
+				if exact {
+					out = append(out, fmt.Sprintf("%s.%s: unexpected", path, k))
+				}
 			default:
-				out = append(out, diffShape(path+"."+k, gv, vv)...)
+				out = append(out, diffShape(path+"."+k, gv, vv, exact)...)
 			}
 		}
 	case []any:
@@ -69,7 +82,7 @@ func diffShape(path string, golden, got any) []string {
 			return nil
 		}
 		for i, item := range v {
-			out = append(out, diffShape(fmt.Sprintf("%s[%d]", path, i), g[0], item)...)
+			out = append(out, diffShape(fmt.Sprintf("%s[%d]", path, i), g[0], item, exact)...)
 		}
 	}
 	return out

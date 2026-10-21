@@ -260,6 +260,25 @@ func TestMatchShape(t *testing.T) {
 	}
 }
 
+func TestContainsShape(t *testing.T) {
+	golden := []byte(`{"a": 1, "b": {"c": "x"}, "e": [{"f": true}]}`)
+	for _, tt := range []struct {
+		name, got string
+		ok        bool
+	}{
+		{"same", `{"a": 1, "b": {"c": "x"}, "e": [{"f": true}]}`, true},
+		{"extra keys at every depth", `{"a": 1, "z": 0, "b": {"c": "x", "y": 1}, "e": [{"f": true, "g": 1}]}`, true},
+		{"missing key", `{"a": 1, "e": []}`, false},
+		{"missing nested key", `{"a": 1, "b": {"y": 1}, "e": []}`, false},
+		{"wrong type", `{"a": "1", "b": {"c": "x"}, "e": []}`, false},
+		{"wrong type in array", `{"a": 1, "b": {"c": "x"}, "e": [{"f": "yes"}]}`, false},
+	} {
+		if err := ContainsShape(golden, []byte(tt.got)); (err == nil) != tt.ok {
+			t.Errorf("%s: err = %v, want ok=%v", tt.name, err, tt.ok)
+		}
+	}
+}
+
 var (
 	endpointHeading = regexp.MustCompile("(?m)^#{2,4} `(GET|POST|PUT|PATCH|DELETE) (/[^` ]+)`\\s*$")
 	errorRow        = regexp.MustCompile("^\\|\\s*(\\d{3})\\s*\\|([^|]+)\\|")

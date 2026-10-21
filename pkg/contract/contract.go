@@ -40,7 +40,9 @@
 //	batch.malformed                        not JSON: rejected with bad_request
 //
 // Response fixtures hold example values. Compare a live response with
-// MatchShape, which checks keys and JSON types and ignores values.
+// ContainsShape (a real server, which may add fields) or MatchShape (a stand-in
+// that must mirror the fixtures). Both check keys and JSON types and ignore
+// values.
 package contract
 
 import (
