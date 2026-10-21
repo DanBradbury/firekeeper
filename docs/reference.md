@@ -253,8 +253,9 @@ firekeeper config show                # print the merged configuration, token ma
 ```
 
 `export` is a placeholder that prints `not implemented` and exits with
-status 2. `serve` is a placeholder that explains the dashboard server is a
-separate program.
+status 2. `serve` hands over to the separate `firekeeper-server` binary and exits
+with status 2 when it cannot find it (see the
+[README](../README.md#the-dashboard-server)).
 
 ### What is uploaded and what is not caught
 
