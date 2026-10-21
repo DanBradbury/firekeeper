@@ -13,6 +13,18 @@ Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper`
 
 `internal/serverinstall` (standard library only) can download `firekeeper-server` for `serve`. It is disabled unless a release source is configured (`-X ...serverinstall.ReleasesURL` or `FIREKEEPER_SERVER_RELEASES_URL`), and `.goreleaser.yaml` must not set it. Rule: nothing in this repository downloads anything without an explicit interactive yes, and only from `serve`. Never prompt when stdin or stderr is not a terminal, or `CI` or `FIREKEEPER_NO_PROMPT` is set. The release layout is documented in `docs/reference.md`.
 
+## Releases and tags
+
+Full procedure: `docs/releasing.md`. Hard rules:
+
+- Never reuse, move, delete-and-re-push, or re-push a tag. The original project
+  used this module path and published `v0.0.1`-`v0.0.9`, `v0.1.0`, `v0.1.0-rc1`,
+  `v0.1.1` and `v0.2.1`-`v0.2.14`; the Go module proxy remembers them.
+- New tags must be above the current highest, `v0.4.0`.
+- Do not set `serverinstall.ReleasesURL` in `.goreleaser.yaml` (release builds)
+  until the owner switches the server install prompt on.
+- Do not create tags or releases unless the user asks.
+
 ## Before changing code
 
 1. Read `README.md` for current user-facing behavior and controls.

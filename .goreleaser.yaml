@@ -25,6 +25,11 @@ builds:
       - -X github.com/DanBradbury/firekeeper/internal/version.Version={{ .Version }}
       - -X github.com/DanBradbury/firekeeper/internal/version.Commit={{ .Commit }}
       - -X github.com/DanBradbury/firekeeper/internal/version.Date={{ .Date }}
+      # TODO(owner): do NOT enable yet. Once the server pipeline has published
+      # to firekeeper-server-releases and license checks exist, add this line
+      # to switch on the `firekeeper serve` install prompt (see
+      # docs/releasing.md):
+      # - -X github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=https://github.com/DanBradbury/firekeeper-server-releases
 
 archives:
   - id: firekeeper
