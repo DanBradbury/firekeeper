@@ -117,6 +117,10 @@ h1 em { font-style: normal; color: var(--ember); }
 
 /* Screenshot */
 .shot-link { display: block; cursor: zoom-in; }
+dialog.lightbox { border: 0; padding: 0; margin: 0; max-width: none; max-height: none; width: 100vw; height: 100vh; background: rgba(10,8,6,.92); cursor: zoom-out; }
+dialog.lightbox::backdrop { background: transparent; }
+dialog.lightbox img { position: absolute; inset: 0; margin: auto; max-width: 96vw; max-height: 94vh; width: auto; height: auto; border-radius: var(--radius); }
+dialog.lightbox button { position: absolute; top: 12px; right: 16px; font: inherit; font-size: 28px; line-height: 1; color: #fff; background: none; border: 0; cursor: pointer; padding: 4px 10px; }
 @media (max-width: 900px) { .shot-link { max-width: 654px; margin: 0 auto; } }
 .shot { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); background: var(--code-bg); }
 
@@ -482,6 +486,31 @@ firekeeper daemon install</pre></div>
   var isLinux = /linux|x11|cros/i.test(platform + ' ' + ua) && !/android/i.test(ua);
   var preferred = isLinux && !isMac ? document.getElementById('t-curl') : null;
   if (preferred) select(preferred);
+
+  // Expand screenshots in an in-page lightbox; the link still opens the
+  // image directly if scripting or <dialog> is unavailable.
+  var shotLink = document.querySelector('.shot-link');
+  if (shotLink && typeof HTMLDialogElement === 'function') {
+    var box = document.createElement('dialog');
+    box.className = 'lightbox';
+    box.setAttribute('aria-label', 'Dashboard screenshot');
+    var big = document.createElement('img');
+    big.alt = shotLink.querySelector('img').alt;
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '×';
+    box.appendChild(big);
+    box.appendChild(close);
+    document.body.appendChild(box);
+    // Clicking anywhere (backdrop, image, or close button) dismisses; Esc works natively.
+    box.addEventListener('click', function () { box.close(); });
+    shotLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      big.src = shotLink.getAttribute('href');
+      box.showModal();
+    });
+  }
 
   document.querySelectorAll('.copy').forEach(function (btn) {
     btn.addEventListener('click', function () {
