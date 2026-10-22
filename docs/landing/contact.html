@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Talk to Firekeeper – pricing, pilots and team questions</title>
+<title>Contact Firekeeper – pricing and design-partner pilot</title>
 <meta name="description" content="Tell us about your team and the coding agents you use. We will email you to schedule a call about the Firekeeper dashboard server.">
 <link rel="canonical" href="https://firekeeper.ai/contact">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -161,12 +161,6 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .mode p { margin: 0; font-size: 15px; color: var(--muted); }
 .mode .leaves { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 14px; }
 .mode .leaves b { color: var(--text); }
-.tier { display: flex; flex-direction: column; gap: 6px; }
-.price { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
-.price small { font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
-.tier ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
-.tier .btn { margin-top: auto; align-self: flex-start; }
-.tier .spacer { flex: 1; }
 
 /* Table */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
@@ -234,7 +228,7 @@ button.btn { font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; 
       Firekeeper
     </a>
     <ul>
-      <li><a href="/#pricing">Pricing</a></li>
+      <li><a href="/#talk">Pilot</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
     </ul>
   </div>
@@ -245,7 +239,7 @@ button.btn { font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; 
   <div class="wrap form-wrap">
     <div class="section-head">
       <h2>Talk to us</h2>
-      <p>Interested in the dashboard server, a design-partner pilot, or Team and Enterprise pricing? Tell us a little about your company. We will email you to find a time to talk.</p>
+      <p>Interested in pricing for the dashboard server, or in joining the free design-partner pilot? Tell us a little about your company. We will email you to find a time to talk.</p>
     </div>
     <form class="contact" id="contact-form" method="POST" action="https://formspree.io/f/xgaawrky">
       <div class="field"><label for="name">Your name</label><input type="text" id="name" name="name" required autocomplete="name"></div>
@@ -259,7 +253,7 @@ button.btn { font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; 
       <div class="field"><fieldset><legend>Which agents do you use?</legend><label><input type="checkbox" name="agents" value="Claude Code"> Claude Code</label><label><input type="checkbox" name="agents" value="Codex"> Codex</label><label><input type="checkbox" name="agents" value="GitHub Copilot CLI"> GitHub Copilot CLI</label><label><input type="checkbox" name="agents" value="Cursor CLI"> Cursor CLI</label><label><input type="checkbox" name="agents" value="Gemini CLI"> Gemini CLI</label><label><input type="checkbox" name="agents" value="OpenCode"> OpenCode</label><label><input type="checkbox" name="agents" value="Kimi Code"> Kimi Code</label></fieldset></div>
       <div class="field"><label for="interest">What are you interested in?</label>
         <select id="interest" name="interest">
-          <option>Design-partner pilot</option><option>Team</option><option>Enterprise</option><option>Personal</option><option>Something else</option>
+          <option>Join the design-partner pilot</option><option>Pricing</option><option>Something else</option>
         </select></div>
       <div class="field"><label for="notes">Anything else? <span class="hint">(optional: compliance needs, where you would host it)</span></label><textarea id="notes" name="notes"></textarea></div>
       <div class="hp" aria-hidden="true"><label>Leave empty <input type="text" name="_gotcha" tabindex="-1" autocomplete="off"></label></div>
