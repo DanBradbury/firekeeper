@@ -115,17 +115,8 @@ h1 em { font-style: normal; color: var(--ember); }
 .btn-ghost { border-color: var(--border); color: var(--text); background: var(--surface); }
 .btn-ghost:hover { border-color: var(--muted); }
 
-/* Terminal mockup */
-.term { background: var(--code-bg); color: var(--code-text); border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); font: 12.5px/1.55 var(--mono); overflow: hidden; }
-.term-bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #2c2722; }
-.term-bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a332d; }
-.term-body { padding: 14px 16px; overflow-x: auto; white-space: pre; }
-.t-tab { color: #fdba74; font-weight: 700; }
-.t-dim { color: var(--code-muted); }
-.t-ok { color: #4ade80; }
-.t-wait { color: #fbbf24; }
-.t-need { color: #f87171; }
-.t-sel { background: #2e2620; display: inline-block; min-width: 100%; }
+/* Screenshot */
+.shot { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); background: var(--code-bg); }
 
 /* Sections */
 section { padding: 64px 0; border-top: 1px solid var(--border); }
@@ -236,22 +227,7 @@ footer a { color: var(--muted); }
         <a class="btn btn-ghost" href="#quickstart">Quick start →</a>
       </div>
     </div>
-    <div class="term" role="img" aria-label="Illustration of the Firekeeper terminal dashboard listing agent sessions">
-      <div class="term-bar"><i></i><i></i><i></i></div>
-<div class="term-body"><span class="t-tab">[ Processes ]</span>  <span class="t-dim">Usage                          ? help</span>
-
-<span class="t-ok">ACTIVE 2</span>   <span class="t-wait">WAITING 1</span>   <span class="t-need">NEEDS INPUT 1</span>   <span class="t-dim">UNKNOWN 0</span>
-
-<span class="t-dim">PROVIDER  PROJECT     STATE         MODEL     TOKENS  UP</span>
-<span class="t-sel">claude    api-server  <span class="t-ok">ACTIVE</span>        opus      412k    48m</span>
-<span class="t-dim">          ⎇ feat/auth  ~/src/api-server</span>
-codex     web-app     <span class="t-need">NEEDS INPUT</span>   gpt       188k    22m
-<span class="t-dim">          ⎇ main       ~/src/web-app</span>
-copilot   infra       <span class="t-wait">WAITING</span>       sonnet     61k    1h03
-gemini    docs-site   <span class="t-ok">ACTIVE</span>        gemini     34k    7m
-
-<span class="t-dim">↑↓ select  ⏎ details  s switch terminal  c chat  q quit</span></div>
-    </div>
+    <img class="shot" src="firekeeper-tui.jpg" width="1600" height="872" alt="The Firekeeper terminal dashboard: overview, token and provider panels, and a table of Claude, Codex, Copilot and OpenCode sessions with their state, model and token use">
   </div>
 </header>
 
