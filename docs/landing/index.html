@@ -177,6 +177,12 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .mode p { margin: 0; font-size: 15px; color: var(--muted); }
 .mode .leaves { margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--border); font-size: 14px; }
 .mode .leaves b { color: var(--text); }
+.tier { display: flex; flex-direction: column; gap: 6px; }
+.price { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.price small { font-size: 14px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.tier ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+.tier .btn { margin-top: auto; align-self: flex-start; }
+.tier .spacer { flex: 1; }
 
 /* Table */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
@@ -233,6 +239,7 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
     <ul id="nav-links">
       <li class="opt"><a href="#features">Features</a></li>
       <li class="opt"><a href="#providers">Providers</a></li>
+      <li class="opt"><a href="#pricing">Pricing</a></li>
       <li class="opt"><a href="#privacy">Privacy</a></li>
       <li><a href="#install">Install</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
@@ -430,6 +437,50 @@ firekeeper backfill --all</pre></div>
 firekeeper daemon install</pre></div>
       </div></li>
     </ol>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Pricing</h2>
+      <p>The terminal client is free and open source. Pay only if you want the dashboard server.</p>
+    </div>
+    <div class="modes">
+      <div class="mode tier">
+        <span class="step">Free</span>
+        <h3>Client</h3>
+        <div class="price">$0</div>
+        <ul><li>Terminal dashboard for seven agent CLIs</li><li>Local chat history and usage</li><li>Open source, Apache 2.0</li></ul>
+        <div class="spacer"></div>
+        <a class="btn btn-ghost" href="#install">Install</a>
+      </div>
+      <div class="mode tier">
+        <span class="step">Personal</span>
+        <h3>Dashboard server for one</h3>
+        <div class="price">$49 <small>one-time</small></div>
+        <ul><li>A year of updates included, then $29 a year for updates</li><li><b>$29 for the first 100 buyers</b></li></ul>
+        <div class="spacer"></div>
+        <a class="btn btn-ghost" href="https://github.com/DanBradbury/firekeeper/issues/new">Get in touch</a>
+      </div>
+      <div class="mode tier">
+        <span class="step">Team</span>
+        <h3>Shared, self-hosted</h3>
+        <div class="price">$15 <small>per seat / month</small></div>
+        <ul><li>$12 per seat a month, billed annually</li><li>3-seat minimum</li></ul>
+        <div class="spacer"></div>
+        <a class="btn btn-primary" href="https://github.com/DanBradbury/firekeeper/issues/new">Get in touch</a>
+      </div>
+      <div class="mode tier">
+        <span class="step">Enterprise</span>
+        <h3>For larger organizations</h3>
+        <div class="price">From $10K <small>per year</small></div>
+        <ul><li>Up to 50 seats</li><li>SSO and the fleet agent</li><li>Source review under an NDA</li><li>Data processing agreement</li></ul>
+        <div class="spacer"></div>
+        <a class="btn btn-ghost" href="https://github.com/DanBradbury/firekeeper/issues/new">Get in touch</a>
+      </div>
+    </div>
+    <div class="callout"><strong>Design partners:</strong> run a free 60–90 day pilot, then pay half price for the first year. In return we ask for feedback, a case study, and your logo.</div>
   </div>
 </section>
 
