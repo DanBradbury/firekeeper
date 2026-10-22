@@ -1,6 +1,6 @@
 # Firekeeper Privacy Policy
 
-Last updated: October 20, 2026
+Last updated: October 22, 2026
 
 This policy covers the Firekeeper client software in this repository ("the
 Software"), by Dan Bradbury ("**I**", "**me**"). Who handles your data depends
@@ -86,6 +86,13 @@ markers and rewrites your home directory to `~`. **This redaction is best
 effort.** It misses secrets in unusual formats, passwords in prose, personal
 data, and confidential code. Assume that anything in a session may be
 uploaded as written. `--dry-run` shows what would be sent without sending it.
+
+### 1.4 The website contact form
+
+If you fill in the contact form on firekeeper.ai, your name, work email,
+company, and the other answers you give are sent to Formspree, a third-party
+form service, which emails them to me. I use them only to reply to you. This is
+separate from the Firekeeper client, which never sends anything to that form.
 
 ## 2. Changes
 
