@@ -96,17 +96,6 @@ working-directory match Firekeeper remembers the pane's stable ID for repeated
 switches. The initial match remains ambiguous when multiple Ghostty panes share
 the same working directory.
 
-When the selected Codex or Copilot runtime is inside
-[Herdr](https://herdr.dev/), Firekeeper also focuses its Herdr pane before
-bringing the containing terminal forward. Detection is read-only and happens
-only when switching. Firekeeper checks all running Herdr sessions and matches by
-native agent session ID when available, then by process ID, with a unique
-working-directory match as a fallback. The optional Herdr integrations
-(`herdr integration install codex` and `herdr integration install copilot`)
-improve matching but are not required. Named Herdr sessions and attached
-Ghostty or Terminal.app clients are supported; if Herdr is unavailable or no
-unambiguous pane is found, Firekeeper falls back to normal terminal switching.
-
 ### Usage
 
 | Key | Action |
