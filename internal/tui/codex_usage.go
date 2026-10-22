@@ -312,109 +312,6 @@ func readCodexUsageResponses(reader io.Reader) (codexUsageSnapshot, error) {
 	return codexUsageSnapshot{}, fmt.Errorf("Codex app-server closed before returning usage data")
 }
 
-func (m model) viewCodexUsage(contentRows int) string {
-	if m.codexHistoryOpen {
-		return m.viewCodexHistory(contentRows)
-	}
-	lines := m.codexUsageHeaderLines()
-	if m.codexUsageLoading && !m.codexUsage.hasData() {
-		lines = append(lines,
-			usageDividerLine(m.width),
-			usageSectionLine("LOADING", m.width),
-			usagePaintLine("  Fetching Codex account usage…", m.width, usageMutedColor, false, usagePanelColor),
-		)
-		return fillUsageLines(lines, contentRows, m.width)
-	}
-	if m.codexUsageErr != "" && !m.codexUsage.hasData() {
-		lines = append(lines,
-			usageDividerLine(m.width),
-			usageSectionLine("UNAVAILABLE", m.width),
-			usagePaintLine("  "+m.codexUsageErr, m.width, usageMutedColor, false, usagePanelColor),
-		)
-		return fillUsageLines(lines, contentRows, m.width)
-	}
-
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine("LIMITS", m.width))
-	limits := m.codexUsage.sortedRateLimits()
-	if len(limits) == 0 {
-		lines = append(lines, usagePaintLine("  No ChatGPT-backed quota data", m.width, usageMutedColor, false, usagePanelColor))
-	} else {
-		for _, limit := range limits {
-			name := limit.LimitName
-			if name == "" {
-				name = limit.LimitID
-			}
-			if limit.Primary != nil {
-				lines = append(lines, codexQuotaBlock(name, *limit.Primary, m.width, time.Now())...)
-			}
-			if limit.Secondary != nil {
-				lines = append(lines, codexQuotaBlock(name+" secondary", *limit.Secondary, m.width, time.Now())...)
-			}
-			if limit.RateLimitReachedType != "" {
-				lines = append(lines, usagePaintLine("  LIMIT REACHED  "+limit.RateLimitReachedType, m.width, usageBrightColor, true, usagePanelColor))
-			}
-		}
-	}
-
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine("ACTIVE TOKENS BY MODEL", m.width))
-	models := activeCodexModelUsage(m.processGroups)
-	modelNames := make([]string, 0, len(models)+len(m.codexUsage.DailyByModel))
-	for _, model := range models {
-		modelNames = append(modelNames, model.Model)
-	}
-	for _, entry := range m.codexUsage.DailyByModel {
-		modelNames = append(modelNames, entry.Model)
-	}
-	modelColors := modelUsageColorAssignments(modelNames)
-	if len(models) == 0 {
-		lines = append(lines, usagePaintLine("  No active model usage", m.width, usageMutedColor, false, usageHighlightColor))
-	} else {
-		peak := int64(0)
-		for _, model := range models {
-			peak = max(peak, model.Tokens)
-		}
-		for _, model := range colorModelUsageWithAssignments(models, modelColors) {
-			lines = append(lines, usageModelBarLine(model, peak, m.width))
-		}
-	}
-
-	title := "TOKENS BY DAY"
-	dayCount := min(7, max(contentRows-len(lines)-2, 1))
-	if len(m.codexUsage.DailyByModel) > 0 {
-		title += " · MODEL"
-	}
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
-	if len(m.codexUsage.DailyByModel) > 0 {
-		days := recentCodexDailyModelUsage(m.codexUsage.DailyByModel, time.Now(), dayCount)
-		for index := range days {
-			days[index].Models = colorModelUsageWithAssignments(days[index].Models, modelColors)
-		}
-		peak := int64(0)
-		for _, day := range days {
-			total := int64(0)
-			for _, model := range day.Models {
-				total += model.Tokens
-			}
-			peak = max(peak, total)
-		}
-		for index, day := range days {
-			label := dayLabel(day.StartDate, index == len(days)-1)
-			lines = append(lines, usageModelStackBarLine(label, day.Models, peak, m.width, index == len(days)-1))
-		}
-	} else {
-		days := recentCodexDailyUsage(m.codexUsage.Daily, time.Now(), dayCount)
-		peak := int64(0)
-		for _, day := range days {
-			peak = max(peak, day.Tokens)
-		}
-		for index, day := range days {
-			label := dayLabel(day.StartDate, index == len(days)-1)
-			lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
-		}
-	}
-	return fillUsageLines(lines, contentRows, m.width)
-}
-
 func readCodexHistoricalSessions() ([]codexHistoricalSession, error) {
 	statePath, err := codexStatePath()
 	if err != nil {
@@ -536,104 +433,10 @@ func decodeCodexHistoricalSessions(output []byte) ([]codexHistoricalSession, err
 	return sessions, nil
 }
 
-func (m model) viewCodexHistory(contentRows int) string {
-	lines := []string{
-		usagePaintLine("  ╭────╮  Codex", m.width, usageBrightColor, true, usagePanelColor),
-		usagePaintLine(fmt.Sprintf("  │ >_ │  HISTORICAL SESSIONS (%d)  •  Enter/Esc back", len(m.codexUsage.History)), m.width, usageTextColor, true, usagePanelColor),
-		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
-		usageDividerLine(m.width),
-	}
-	start, end := codexHistoryWindow(len(m.codexUsage.History), m.codexHistoryCursor, contentRows-len(lines))
-	for index := start; index < end; index++ {
-		session := m.codexUsage.History[index]
-		cursor := " "
-		if index == m.codexHistoryCursor {
-			cursor = ">"
-		}
-		cwd := "unknown cwd"
-		if session.WorkDir != "" {
-			cwd = truncateKimiText(filepath.Base(session.WorkDir), 24)
-		}
-		model := emptyFallback(session.Model, "unknown model")
-		metadata := make([]string, 0, 3)
-		if session.GitBranch != "" {
-			metadata = append(metadata, "branch "+truncateKimiText(session.GitBranch, 20))
-		}
-		if session.Source != "" {
-			metadata = append(metadata, truncateKimiText(session.Source, 24))
-		}
-		if session.Archived != 0 {
-			metadata = append(metadata, "archived")
-		}
-		if len(metadata) == 0 {
-			metadata = append(metadata, "local session")
-		}
-		lines = append(lines,
-			usagePaintLine(fmt.Sprintf("%s %-28s %s", cursor, truncateKimiText(session.Title, 28), formatSessionTime(session.UpdatedAt)), m.width, usageBrightColor, index == m.codexHistoryCursor, usageHighlightColor),
-			usagePaintLine(fmt.Sprintf("    %-20s %s  •  %s tokens", truncateKimiText(model, 20), cwd, formatTokenCount(session.Tokens)), m.width, usageMutedColor, false, usagePanelColor),
-			usagePaintLine("    "+strings.Join(metadata, "  •  "), m.width, usageMutedColor, false, usagePanelColor),
-		)
-	}
-	if len(m.codexUsage.History) == 0 {
-		message := "  No historical Codex sessions"
-		if m.codexHistoryErr != "" {
-			message = "  Session history unavailable: " + m.codexHistoryErr
-		} else if m.codexUsageLoading {
-			message = "  Loading historical Codex sessions…"
-		}
-		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
-	}
-	return fillUsageLines(lines, contentRows, m.width)
-}
-
-func codexHistoryWindow(total, cursor, availableRows int) (int, int) {
-	if total <= 0 || availableRows <= 0 {
-		return 0, 0
-	}
-	capacity := max(availableRows/3, 1)
-	capacity = min(capacity, total)
-	cursor = min(max(cursor, 0), total-1)
-	start := max(cursor-capacity+1, 0)
-	start = min(start, total-capacity)
-	return start, start + capacity
-}
-
 type modelUsage struct {
 	Model  string
 	Tokens int64
 	Color  string
-}
-
-func (m model) codexUsageHeaderLines() []string {
-	plan := "CODEX"
-	for _, limit := range m.codexUsage.sortedRateLimits() {
-		if limit.PlanType != "" {
-			plan = strings.ToUpper(limit.PlanType)
-			break
-		}
-	}
-	details := plan
-	if m.codexUsage.Summary.LifetimeTokens != nil {
-		details += "  •  " + formatTokenCount(*m.codexUsage.Summary.LifetimeTokens) + " TOKENS"
-	}
-	if m.codexUsage.ResetCredits > 0 {
-		details += fmt.Sprintf("  •  %d RESET", m.codexUsage.ResetCredits)
-	}
-	return []string{
-		usagePaintLine("  ╭────╮  Codex", m.width, usageBrightColor, true, usagePanelColor),
-		usagePaintLine("  │ >_ │  "+details, m.width, usageTextColor, true, usagePanelColor),
-		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
-	}
-}
-
-func codexQuotaBlock(name string, window codexQuotaWindow, width int, now time.Time) []string {
-	title := quotaWindowTitle(name, window.WindowDurationMin)
-	percent := fmt.Sprintf("%.0f%%", window.UsedPercent)
-	return []string{
-		usageSidesLine("  "+title, percent+"  ", width, usageTextColor, usageBrightColor),
-		usageQuotaBarLine(window.UsedPercent, width),
-		usagePaintLine("  "+formatResetCountdown(window.ResetsAt, now), width, usageMutedColor, false, usagePanelColor),
-	}
 }
 
 func quotaWindowTitle(name string, minutes int64) string {
@@ -988,37 +791,6 @@ func modelUsageColorIndex(model string) int {
 	return int(hash) % len(modelUsageColors)
 }
 
-func usageSectionLine(title string, width int) string {
-	return usagePaintLine("  "+title, width, usageMutedColor, true, usagePanelColor)
-}
-
-func usageDividerLine(width int) string {
-	line := ""
-	if width > 4 {
-		line = "  " + strings.Repeat("─", width-4) + "  "
-	}
-	return usagePaintLine(line, width, usageDividerColor, false, usagePanelColor)
-}
-
-func usageSidesLine(left, right string, width int, leftColor, rightColor string) string {
-	space := max(width-len([]rune(left))-len([]rune(right)), 1)
-	leftText := left + strings.Repeat(" ", space)
-	return usagePaint(leftText, leftColor, true, usagePanelColor) + usagePaint(right, rightColor, true, usagePanelColor)
-}
-
-func usageQuotaBarLine(percent float64, width int) string {
-	barWidth := max(width-4, 1)
-	filled := int(float64(barWidth)*min(max(percent, 0), 100)/100 + 0.5)
-	if percent > 0 {
-		filled = max(filled, 1)
-	}
-	filled = min(filled, barWidth)
-	return usagePaint("  ", usagePanelColor, false, usagePanelColor) +
-		usagePaint(strings.Repeat("━", filled), usageBrightColor, true, usagePanelColor) +
-		usagePaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false, usagePanelColor) +
-		usagePaint("  ", usagePanelColor, false, usagePanelColor)
-}
-
 func usageMetricBarLine(label string, value, maximum int64, width int, emphasized bool) string {
 	labelWidth := min(8, max(width/8, 5))
 	valueWidth := min(9, max(width/10, 6))
@@ -1044,25 +816,6 @@ func usageMetricBarLine(label string, value, maximum int64, width int, emphasize
 		usagePaint(strings.Repeat("━", filled), fillColor, true, usagePanelColor) +
 		usagePaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false, usagePanelColor) +
 		usagePaint(suffix, labelColor, emphasized, usagePanelColor)
-}
-
-func usageModelBarLine(model modelUsage, maximum int64, width int) string {
-	name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
-	value := formatTokenCount(model.Tokens)
-	labelWidth := min(18, max(width/4, 8))
-	valueWidth := min(9, max(width/10, 6))
-	barWidth := max(width-labelWidth-valueWidth-8, 1)
-	filled := int(float64(barWidth)*float64(model.Tokens)/float64(max(maximum, 1)) + 0.5)
-	if model.Tokens > 0 {
-		filled = max(filled, 1)
-	}
-	filled = min(filled, barWidth)
-	prefix := "  ◆ " + padText(name, labelWidth) + " "
-	suffix := " " + fmt.Sprintf("%*s", valueWidth, value) + "  "
-	return usagePaint(prefix, model.Color, true, usageHighlightColor) +
-		usagePaint(strings.Repeat("━", filled), model.Color, true, usageHighlightColor) +
-		usagePaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false, usageHighlightColor) +
-		usagePaint(suffix, usageTextColor, false, usageHighlightColor)
 }
 
 func usageModelStackBarLine(label string, models []modelUsage, maximum int64, width int, emphasized bool) string {
@@ -1109,23 +862,6 @@ func usageModelStackBarLine(label string, models []modelUsage, maximum int64, wi
 	return usagePaint(prefix, labelColor, emphasized, usagePanelColor) + bar.String() + usagePaint(suffix, labelColor, emphasized, usagePanelColor)
 }
 
-func usageModelLine(model modelUsage, width int) string {
-	name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
-	value := formatTokenCount(model.Tokens)
-	contentWidth := max(width-4, 1)
-	space := max(contentWidth-len([]rune(name))-len([]rune(value)), 1)
-	line := "  " + name + strings.Repeat(" ", space) + value + "  "
-	color := model.Color
-	if color == "" {
-		color = usageTextColor
-	}
-	return usagePaintLine(line, width, color, true, usageHighlightColor)
-}
-
-func usagePaintLine(value string, width int, foreground string, bold bool, background string) string {
-	return usagePaint(fitLine(value, width), foreground, bold, background)
-}
-
 func usagePaint(value, foreground string, bold bool, background string) string {
 	weight := "22"
 	if bold {
@@ -1162,14 +898,4 @@ func formatTokenCount(value int64) string {
 	default:
 		return fmt.Sprintf("%d", value)
 	}
-}
-
-func fillUsageLines(lines []string, height, width int) string {
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for len(lines) < height {
-		lines = append(lines, usagePaintLine("", width, usageTextColor, false, usagePanelColor))
-	}
-	return strings.Join(lines, "\n")
 }

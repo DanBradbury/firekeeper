@@ -38,13 +38,12 @@ var helpSections = []helpSection{
 		{"PgUp / PgDn", "Scroll a page"},
 		{"g / G", "Jump to the first or latest message"},
 		{"r", "Reload the transcript"},
-		{"Esc / c / q", "Back to Processes"},
+		{"Esc / c / q", "Back"},
 	}},
 	{"Usage", []helpKey{
 		{"← → / h l", "Switch provider"},
-		{"Enter", "Open or close session history"},
-		{"↑ ↓ / j k", "Select a history session"},
-		{"Esc / Backspace", "Close session history"},
+		{"Enter", "Open the selected session's chat"},
+		{"↑ ↓ / j k", "Select a session (PgUp/PgDn/Home/End also work)"},
 		{"r", "Refresh selected provider"},
 	}},
 }

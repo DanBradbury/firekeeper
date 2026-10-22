@@ -112,7 +112,6 @@ type model struct {
 	codexUsageLoading       bool
 	codexUsageRefreshedAt   time.Time
 	codexHistoryErr         string
-	codexHistoryOpen        bool
 	codexHistoryCursor      int
 	usageProvider           usageProvider
 	copilotUsage            copilotUsageSnapshot
@@ -120,19 +119,16 @@ type model struct {
 	copilotUsageLoading     bool
 	copilotUsageRefreshedAt time.Time
 	copilotHistoryErr       string
-	copilotHistoryOpen      bool
 	copilotHistoryCursor    int
 	kimiUsage               kimiUsageSnapshot
 	kimiUsageErr            string
 	kimiUsageLoading        bool
 	kimiUsageRefreshedAt    time.Time
-	kimiHistoryOpen         bool
 	kimiHistoryCursor       int
 	claudeUsage             claudeUsageSnapshot
 	claudeUsageErr          string
 	claudeUsageLoading      bool
 	claudeUsageRefreshedAt  time.Time
-	claudeHistoryOpen       bool
 	claudeHistoryCursor     int
 	helpOpen                bool
 	metadataMisses          map[int]int
@@ -183,65 +179,53 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "left", "h":
 			if m.activeTab == usageTab {
-				if !m.usageHistoryOpen() {
-					return m, m.cycleUsageProvider(-1)
-				}
+				return m, m.cycleUsageProvider(-1)
 			}
 		case "right", "l":
 			if m.activeTab == usageTab {
-				if !m.usageHistoryOpen() {
-					return m, m.cycleUsageProvider(1)
-				}
+				return m, m.cycleUsageProvider(1)
 			}
 		case "up", "k":
 			if m.activeTab == processesTab {
 				m.processCursor--
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
-				if m.usageProvider == codexProvider && m.codexHistoryOpen {
-					m.codexHistoryCursor = max(m.codexHistoryCursor-1, 0)
-				} else if m.usageProvider == copilotProvider && m.copilotHistoryOpen {
-					m.copilotHistoryCursor = max(m.copilotHistoryCursor-1, 0)
-				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
-					m.kimiHistoryCursor = max(m.kimiHistoryCursor-1, 0)
-				} else if m.usageProvider == claudeProvider && m.claudeHistoryOpen {
-					m.claudeHistoryCursor = max(m.claudeHistoryCursor-1, 0)
-				}
+				m.moveUsageCursor(-1)
 			}
 		case "down", "j":
 			if m.activeTab == processesTab {
 				m.processCursor++
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
-				if m.usageProvider == codexProvider && m.codexHistoryOpen {
-					m.codexHistoryCursor = min(m.codexHistoryCursor+1, max(len(m.codexUsage.History)-1, 0))
-				} else if m.usageProvider == copilotProvider && m.copilotHistoryOpen {
-					m.copilotHistoryCursor = min(m.copilotHistoryCursor+1, max(len(m.copilotUsage.History)-1, 0))
-				} else if m.usageProvider == kimiProvider && m.kimiHistoryOpen {
-					m.kimiHistoryCursor = min(m.kimiHistoryCursor+1, max(len(m.kimiUsage.History)-1, 0))
-				} else if m.usageProvider == claudeProvider && m.claudeHistoryOpen {
-					m.claudeHistoryCursor = min(m.claudeHistoryCursor+1, max(len(m.claudeUsage.History)-1, 0))
-				}
+				m.moveUsageCursor(1)
 			}
 		case "pgup":
 			if m.activeTab == processesTab {
 				m.processCursor -= max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
+			} else if m.activeTab == usageTab {
+				m.moveUsageCursor(-usageSessionPage)
 			}
 		case "pgdown":
 			if m.activeTab == processesTab {
 				m.processCursor += max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
+			} else if m.activeTab == usageTab {
+				m.moveUsageCursor(usageSessionPage)
 			}
 		case "home":
 			if m.activeTab == processesTab {
 				m.processCursor = 0
 				m.clampProcessSelection()
+			} else if m.activeTab == usageTab {
+				*m.usageCursorRef() = 0
 			}
 		case "end":
 			if m.activeTab == processesTab {
 				m.processCursor = len(m.processGroups) - 1
 				m.clampProcessSelection()
+			} else if m.activeTab == usageTab {
+				m.setUsageCursorEnd()
 			}
 		case "enter":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
@@ -249,45 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.expandedGroups[rootPID] = !m.expandedGroups[rootPID]
 				m.ensureSelectedProcessVisible()
 			} else if m.activeTab == usageTab {
-				if m.usageProvider == codexProvider {
-					if m.codexHistoryOpen {
-						m.codexHistoryOpen = false
-					} else {
-						m.codexHistoryOpen = true
-						m.codexHistoryCursor = 0
-					}
-				} else if m.usageProvider == copilotProvider {
-					if m.copilotHistoryOpen {
-						m.copilotHistoryOpen = false
-					} else {
-						m.copilotHistoryOpen = true
-						m.copilotHistoryCursor = 0
-					}
-				} else if m.usageProvider == kimiProvider {
-					if m.kimiHistoryOpen {
-						m.kimiHistoryOpen = false
-					} else if len(m.kimiUsage.History) > 0 {
-						m.kimiHistoryOpen = true
-						m.kimiHistoryCursor = 0
-					}
-				} else if m.usageProvider == claudeProvider {
-					if m.claudeHistoryOpen {
-						m.claudeHistoryOpen = false
-					} else if len(m.claudeUsage.History) > 0 {
-						m.claudeHistoryOpen = true
-						m.claudeHistoryCursor = 0
-					}
-				}
-			}
-		case "esc", "backspace":
-			if m.activeTab == usageTab && m.usageProvider == codexProvider && m.codexHistoryOpen {
-				m.codexHistoryOpen = false
-			} else if m.activeTab == usageTab && m.usageProvider == copilotProvider && m.copilotHistoryOpen {
-				m.copilotHistoryOpen = false
-			} else if m.activeTab == usageTab && m.usageProvider == kimiProvider && m.kimiHistoryOpen {
-				m.kimiHistoryOpen = false
-			} else if m.activeTab == usageTab && m.usageProvider == claudeProvider && m.claudeHistoryOpen {
-				m.claudeHistoryOpen = false
+				return m, m.openUsageSessionChat()
 			}
 		case "r":
 			if m.activeTab == processesTab {
@@ -363,10 +309,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.codexUsage.History = msg.snapshot.History
 			m.codexHistoryErr = ""
-			m.codexHistoryCursor = min(m.codexHistoryCursor, max(len(m.codexUsage.History)-1, 0))
-			if len(m.codexUsage.History) == 0 {
-				m.codexHistoryOpen = false
-			}
+			m.clampUsageCursors()
 		}
 
 	case copilotUsageResultMsg:
@@ -385,7 +328,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.copilotUsage.History = msg.snapshot.History
 			m.copilotHistoryErr = ""
-			m.copilotHistoryCursor = min(m.copilotHistoryCursor, max(len(m.copilotUsage.History)-1, 0))
+			m.clampUsageCursors()
 		}
 
 	case kimiUsageResultMsg:
@@ -406,10 +349,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.claudeUsage = msg.snapshot
 			m.claudeUsageErr = ""
-			m.claudeHistoryCursor = min(m.claudeHistoryCursor, max(len(m.claudeUsage.History)-1, 0))
-			if len(m.claudeUsage.History) == 0 {
-				m.claudeHistoryOpen = false
-			}
+			m.clampUsageCursors()
 		}
 
 	}
@@ -418,10 +358,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) cycleUsageProvider(delta int) tea.Cmd {
-	m.codexHistoryOpen = false
-	m.copilotHistoryOpen = false
-	m.kimiHistoryOpen = false
-	m.claudeHistoryOpen = false
 	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
 		return nil
@@ -436,13 +372,6 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 		return nil
 	}
 	return m.beginUsageRefresh()
-}
-
-func (m model) usageHistoryOpen() bool {
-	return (m.usageProvider == codexProvider && m.codexHistoryOpen) ||
-		(m.usageProvider == copilotProvider && m.copilotHistoryOpen) ||
-		(m.usageProvider == kimiProvider && m.kimiHistoryOpen) ||
-		(m.usageProvider == claudeProvider && m.claudeHistoryOpen)
 }
 
 func (m *model) beginUsageRefresh() tea.Cmd {
