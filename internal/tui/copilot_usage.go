@@ -449,201 +449,36 @@ func (m model) viewUsage(contentRows int) string {
 	if contentRows == 1 {
 		return selector
 	}
-	bodyRows := contentRows - 1
-	body := m.viewCodexUsage(bodyRows)
-	if m.usageProvider == copilotProvider {
-		body = m.viewCopilotUsage(bodyRows)
-	} else if m.usageProvider == kimiProvider {
-		body = m.viewKimiUsage(bodyRows)
-	} else if m.usageProvider == claudeProvider {
-		body = m.viewClaudeUsage(bodyRows)
-	}
-	return selector + "\n" + body
+	return selector + "\n" + m.viewUsagePage(contentRows-1)
 }
 
+func (m model) usageProviderName() string {
+	switch m.usageProvider {
+	case copilotProvider:
+		return "copilot"
+	case kimiProvider:
+		return "kimi"
+	case claudeProvider:
+		return "claude"
+	default:
+		return "codex"
+	}
+}
+
+// usageProviderSelectorLine mirrors the tab bar styling of the Processes tab:
+// the active provider is a highlighted chip, the others are muted.
 func (m model) usageProviderSelectorLine() string {
-	codex := "  [ CODEX ]"
-	copilot := "    COPILOT  "
-	kimi := "    KIMI  "
-	claude := "    CLAUDE  "
-	if m.usageProvider == copilotProvider {
-		codex = "    CODEX  "
-		copilot = "  [ COPILOT ]"
-	} else if m.usageProvider == kimiProvider {
-		codex = "    CODEX  "
-		kimi = "  [ KIMI ]"
-	} else if m.usageProvider == claudeProvider {
-		codex = "    CODEX  "
-		claude = "  [ CLAUDE ]"
-	}
-	return usagePaintLine(codex+copilot+kimi+claude+"    ←/→ provider", m.width, usageBrightColor, true, usageHighlightColor)
-}
-
-func (m model) viewCopilotUsage(contentRows int) string {
-	if m.copilotHistoryOpen {
-		return m.viewCopilotHistory(contentRows)
-	}
-	lines := m.copilotUsageHeaderLines()
-	if m.copilotUsageLoading && !m.copilotUsage.hasData() {
-		lines = append(lines,
-			usageDividerLine(m.width),
-			usageSectionLine("LOADING", m.width),
-			usagePaintLine("  Reading local Copilot CLI usage…", m.width, usageMutedColor, false, usagePanelColor),
-		)
-		return fillUsageLines(lines, contentRows, m.width)
-	}
-	if m.copilotUsageErr != "" && !m.copilotUsage.hasData() {
-		lines = append(lines,
-			usageDividerLine(m.width),
-			usageSectionLine("UNAVAILABLE", m.width),
-			usagePaintLine("  "+m.copilotUsageErr, m.width, usageMutedColor, false, usagePanelColor),
-		)
-		return fillUsageLines(lines, contentRows, m.width)
-	}
-
-	if m.copilotUsage.Plan.Available {
-		plan := m.copilotUsage.Plan
-		lines = append(lines, usagePaintLine(fmt.Sprintf("  AI Credits %s AIC  •  Plan %s / %s AIC", formatAICredits(plan.UsedCredits), formatAICredits(plan.UsedCredits), formatAICredits(plan.TotalCredits)), m.width, usageMutedColor, false, usagePanelColor))
-	} else {
-		message := "  Plan information unavailable"
-		if m.copilotUsage.PlanErr != "" {
-			message += ": " + m.copilotUsage.PlanErr
-		}
-		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
-	}
-	lines = append(lines,
-		usageDividerLine(m.width),
-		usageSectionLine("LOCAL CLI HISTORY", m.width),
-		usageSidesLine(
-			fmt.Sprintf("  %d sessions  •  %s model calls", m.copilotUsage.Summary.Sessions, formatTokenCount(m.copilotUsage.Summary.ModelCalls)),
-			formatRequestCount(m.copilotUsage.Summary.UserRequests)+" weighted requests  ",
-			m.width,
-			usageTextColor,
-			usageBrightColor,
-		),
-		usagePaintLine("  Account allowance and remaining quota: GitHub billing", m.width, usageMutedColor, false, usagePanelColor),
-	)
-
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine("TOKENS BY MODEL", m.width))
-	modelNames := make([]string, 0, len(m.copilotUsage.Models)+len(m.copilotUsage.DailyByModel))
-	for _, model := range m.copilotUsage.Models {
-		modelNames = append(modelNames, model.Model)
-	}
-	for _, entry := range m.copilotUsage.DailyByModel {
-		modelNames = append(modelNames, entry.Model)
-	}
-	modelColors := modelUsageColorAssignments(modelNames)
-	if len(m.copilotUsage.Models) == 0 {
-		lines = append(lines, usagePaintLine("  No local Copilot CLI model usage", m.width, usageMutedColor, false, usageHighlightColor))
-	} else {
-		models := make([]modelUsage, 0, len(m.copilotUsage.Models))
-		peak := int64(0)
-		for _, model := range m.copilotUsage.Models {
-			models = append(models, modelUsage{Model: model.Model, Tokens: model.Tokens})
-			peak = max(peak, model.Tokens)
-		}
-		for _, model := range colorModelUsageWithAssignments(models, modelColors) {
-			lines = append(lines, usageModelBarLine(model, peak, m.width))
+	line := dashPaint(" ", usageTextColor, false)
+	for _, name := range []string{"codex", "copilot", "kimi", "claude"} {
+		label := strings.ToUpper(name)
+		if name == m.usageProviderName() {
+			line += usagePaint("[ "+label+" ]", dashOrange, true, usageHighlightColor) + dashPaint(" ", usageTextColor, false)
+		} else {
+			line += dashPaint("  "+label+"   ", usageMutedColor, false)
 		}
 	}
-
-	title := "TOKENS BY DAY"
-	if len(m.copilotUsage.DailyByModel) > 0 {
-		title += " · MODEL"
-	}
-	dayCount := min(7, max(contentRows-len(lines)-2, 1))
-	lines = append(lines, usageDividerLine(m.width), usageSectionLine(title, m.width))
-	if len(m.copilotUsage.DailyByModel) > 0 {
-		days := recentCopilotDailyModelUsage(m.copilotUsage.DailyByModel, time.Now(), dayCount)
-		for index := range days {
-			days[index].Models = colorModelUsageWithAssignments(days[index].Models, modelColors)
-		}
-		peak := int64(0)
-		for _, day := range days {
-			total := int64(0)
-			for _, model := range day.Models {
-				total += model.Tokens
-			}
-			peak = max(peak, total)
-		}
-		for index, day := range days {
-			label := dayLabel(day.StartDate, index == len(days)-1)
-			lines = append(lines, usageModelStackBarLine(label, day.Models, peak, m.width, index == len(days)-1))
-		}
-	} else {
-		days := recentCopilotDailyUsage(m.copilotUsage.Daily, time.Now(), dayCount)
-		peak := int64(0)
-		for _, day := range days {
-			peak = max(peak, day.Tokens)
-		}
-		for index, day := range days {
-			label := dayLabel(day.StartDate, index == len(days)-1)
-			lines = append(lines, usageMetricBarLine(label, day.Tokens, peak, m.width, index == len(days)-1))
-		}
-	}
-	return fillUsageLines(lines, contentRows, m.width)
-}
-
-func (m model) viewCopilotHistory(contentRows int) string {
-	lines := []string{
-		usagePaintLine("  ╭────╮  GitHub Copilot", m.width, usageBrightColor, true, usagePanelColor),
-		usagePaintLine(fmt.Sprintf("  │ ◖◗ │  HISTORICAL SESSIONS (%d)  •  Enter/Esc back", len(m.copilotUsage.History)), m.width, usageTextColor, true, usagePanelColor),
-		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
-		usageDividerLine(m.width),
-	}
-	start, end := codexHistoryWindow(len(m.copilotUsage.History), m.copilotHistoryCursor, contentRows-len(lines))
-	for index := start; index < end; index++ {
-		session := m.copilotUsage.History[index]
-		cursor := " "
-		if index == m.copilotHistoryCursor {
-			cursor = ">"
-		}
-		cwd := "unknown cwd"
-		if session.WorkDir != "" {
-			cwd = truncateKimiText(filepath.Base(session.WorkDir), 24)
-		}
-		model := emptyFallback(session.Model, "unknown model")
-		metadata := make([]string, 0, 3)
-		if session.Repository != "" {
-			metadata = append(metadata, truncateKimiText(session.Repository, 28))
-		}
-		if session.GitBranch != "" {
-			metadata = append(metadata, "branch "+truncateKimiText(session.GitBranch, 20))
-		}
-		if session.HostType != "" {
-			metadata = append(metadata, session.HostType)
-		}
-		if len(metadata) == 0 {
-			metadata = append(metadata, "local session")
-		}
-		lines = append(lines,
-			usagePaintLine(fmt.Sprintf("%s %-28s %s", cursor, truncateKimiText(session.Title, 28), formatSessionTime(session.UpdatedAt)), m.width, usageBrightColor, index == m.copilotHistoryCursor, usageHighlightColor),
-			usagePaintLine(fmt.Sprintf("    %-20s %s  •  %s tokens", truncateKimiText(model, 20), cwd, formatTokenCount(session.LifetimeTokens)), m.width, usageMutedColor, false, usagePanelColor),
-			usagePaintLine(fmt.Sprintf("    %s  •  %s calls  •  %s requests", strings.Join(metadata, "  •  "), formatTokenCount(session.ModelCalls), formatRequestCount(session.UserRequests)), m.width, usageMutedColor, false, usagePanelColor),
-		)
-	}
-	if len(m.copilotUsage.History) == 0 {
-		message := "  No historical Copilot sessions"
-		if m.copilotHistoryErr != "" {
-			message = "  Session history unavailable: " + m.copilotHistoryErr
-		} else if m.copilotUsageLoading {
-			message = "  Loading historical Copilot sessions…"
-		}
-		lines = append(lines, usagePaintLine(message, m.width, usageMutedColor, false, usagePanelColor))
-	}
-	return fillUsageLines(lines, contentRows, m.width)
-}
-
-func (m model) copilotUsageHeaderLines() []string {
-	details := "LOCAL CLI"
-	if m.copilotUsage.Summary.LifetimeTokens > 0 {
-		details += "  •  " + formatTokenCount(m.copilotUsage.Summary.LifetimeTokens) + " TOKENS"
-	}
-	return []string{
-		usagePaintLine("  ╭────╮  GitHub Copilot", m.width, usageBrightColor, true, usagePanelColor),
-		usagePaintLine("  │ ◖◗ │  "+details, m.width, usageTextColor, true, usagePanelColor),
-		usagePaintLine("  ╰────╯", m.width, usageMutedColor, false, usagePanelColor),
-	}
+	line += dashPaint(" ←/→ provider", usageMutedColor, false)
+	return dashFit(line, m.width, usagePanelColor)
 }
 
 func recentCopilotDailyUsage(buckets []copilotDailyUsage, now time.Time, count int) []copilotDailyUsage {
@@ -719,11 +554,11 @@ func formatCommaInt(value int64) string {
 
 func (m model) usageFooter() (string, string) {
 	help := "  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
-	if m.usageProvider == copilotProvider {
-		if m.copilotHistoryOpen {
-			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Copilot historical sessions"
-		}
-		help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+	if m.usageSessionCount() > 0 {
+		help = "  ↑/↓ session  •  Enter chat  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+	}
+	switch m.usageProvider {
+	case copilotProvider:
 		if m.copilotUsageLoading {
 			return help, "  reading local Copilot CLI usage…"
 		}
@@ -737,11 +572,7 @@ func (m model) usageFooter() (string, string) {
 			return help, "  Copilot usage not loaded"
 		}
 		return help, "  Copilot refreshed " + m.copilotUsageRefreshedAt.Format("15:04:05")
-	}
-	if m.usageProvider == kimiProvider {
-		if m.kimiHistoryOpen {
-			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Kimi historical sessions"
-		}
+	case kimiProvider:
 		if m.kimiUsageLoading {
 			return help, "  reading local Kimi Code usage…"
 		}
@@ -752,14 +583,7 @@ func (m model) usageFooter() (string, string) {
 			return help, "  Kimi usage not loaded"
 		}
 		return help, "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
-	}
-	if m.usageProvider == claudeProvider {
-		if m.claudeHistoryOpen {
-			return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Claude Code historical sessions"
-		}
-		if len(m.claudeUsage.History) > 0 {
-			help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
-		}
+	case claudeProvider:
 		if m.claudeUsageLoading {
 			return help, "  reading local Claude Code usage…"
 		}
@@ -770,26 +594,21 @@ func (m model) usageFooter() (string, string) {
 			return help, "  Claude usage not loaded"
 		}
 		return help, "  Claude refreshed " + m.claudeUsageRefreshedAt.Format("15:04:05")
+	default:
+		if m.codexUsageLoading {
+			return help, "  fetching Codex quotas and usage…"
+		}
+		if m.codexUsageErr != "" {
+			return help, "  Codex usage refresh failed: " + m.codexUsageErr
+		}
+		if m.codexHistoryErr != "" {
+			return help, "  Codex session history unavailable: " + m.codexHistoryErr
+		}
+		if m.codexUsageRefreshedAt.IsZero() {
+			return help, "  Codex usage not loaded"
+		}
+		return help, "  Codex refreshed " + m.codexUsageRefreshedAt.Format("15:04:05")
 	}
-	if m.codexHistoryOpen {
-		return "  ↑/↓ session  •  Enter/Esc back  •  q quit", "  Codex historical sessions"
-	}
-	if len(m.codexUsage.History) > 0 {
-		help = "  Enter sessions  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
-	}
-	if m.codexUsageLoading {
-		return help, "  fetching Codex quotas and usage…"
-	}
-	if m.codexUsageErr != "" {
-		return help, "  Codex usage refresh failed: " + m.codexUsageErr
-	}
-	if m.codexHistoryErr != "" {
-		return help, "  Codex session history unavailable: " + m.codexHistoryErr
-	}
-	if m.codexUsageRefreshedAt.IsZero() {
-		return help, "  Codex usage not loaded"
-	}
-	return help, "  Codex refreshed " + m.codexUsageRefreshedAt.Format("15:04:05")
 }
 
 func (snapshot copilotUsageSnapshot) hasData() bool {

@@ -2,8 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -83,20 +85,22 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 	}}
 	m.codexUsageRefreshedAt = time.Now()
 
-	view := m.View()
+	view := ansi.Strip(m.View())
 	for _, expected := range []string{
 		"[ Usage ]",
 		"[ CODEX ]",
-		"╭────╮  Codex",
-		"PLUS  •  248.7M TOKENS  •  1 RESET",
-		"LIMITS",
+		"╭─limits",
+		"╭─lifetime",
+		"PLUS",
+		"248.7M",
+		"1 available",
 		"Weekly",
 		"32%",
-		"Resets in 4d 17h",
-		"TOKENS BY DAY",
+		"↻ 4d 17h",
+		"╭─tokens by day",
 		"Today",
 		"14.6M",
-		"ACTIVE TOKENS BY MODEL",
+		"╭─active models",
 		"GPT 5.6 SOL",
 		"9.8M",
 		"GPT 5.6 CODEX",
@@ -106,17 +110,22 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 			t.Fatalf("Codex usage view missing %q", expected)
 		}
 	}
-	assertModelBreakdownAboveDays(t, view)
+	if cards, days := strings.Index(view, "╭─active models"), strings.Index(view, "╭─tokens by day"); cards < 0 || days < 0 || cards > days {
+		t.Fatalf("active models card should sit above tokens by day (card at %d, days at %d)", cards, days)
+	}
 }
 
-// assertModelBreakdownAboveDays fails unless the usage view puts its
-// tokens-by-model section above its tokens-by-day section.
+var modelsCardTitle = regexp.MustCompile("╭─(active )?models")
+
+// assertModelBreakdownAboveDays fails unless the usage view puts its models
+// card above its tokens by day panel.
 func assertModelBreakdownAboveDays(t *testing.T, view string) {
 	t.Helper()
-	models := strings.Index(view, "TOKENS BY MODEL")
-	days := strings.Index(view, "TOKENS BY DAY")
-	if models < 0 || days < 0 || models > days {
-		t.Fatalf("usage view should show TOKENS BY MODEL above TOKENS BY DAY (model at %d, day at %d)", models, days)
+	view = ansi.Strip(view)
+	loc := modelsCardTitle.FindStringIndex(view)
+	days := strings.Index(view, "╭─tokens by day")
+	if loc == nil || days < 0 || loc[0] > days {
+		t.Fatalf("usage view should show the models card above tokens by day (models at %v, days at %d):\n%s", loc, days, view)
 	}
 }
 
@@ -201,7 +210,7 @@ func TestCodexUsageViewUsesModelSplitDailyBars(t *testing.T) {
 		{StartDate: today, Model: "gpt-5.6-codex", Tokens: 100},
 	}}
 	view := m.View()
-	if !strings.Contains(view, "TOKENS BY DAY · MODEL") {
+	if !strings.Contains(ansi.Strip(view), "tokens by day · model") {
 		t.Fatalf("model daily heading missing:\n%s", view)
 	}
 	colors := modelUsageColorAssignments([]string{"gpt-5.6-sol", "gpt-5.6-codex"})
@@ -304,45 +313,65 @@ func TestDecodeCodexHistoricalSessionsSanitizesPartialRows(t *testing.T) {
 	}
 }
 
-func TestCodexUsageEnterBrowsesHistoricalSessions(t *testing.T) {
+func TestCodexUsageArrowsSelectSessionWithoutEnter(t *testing.T) {
 	m := testModel()
 	m.activeTab = usageTab
 	m.usageProvider = codexProvider
-	m.width = 100
+	m.width = 120
+	m.height = 40
 	m.codexUsage.History = []codexHistoricalSession{
 		{ID: "one", Title: "First session", Model: "gpt-5.6-sol", WorkDir: "/work/one"},
 		{ID: "two", Title: "Second session", Model: "gpt-5.6-codex", WorkDir: "/work/two"},
 	}
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
-	if !m.codexHistoryOpen {
-		t.Fatal("Enter did not open Codex history")
+	view := ansi.Strip(m.View())
+	if m.codexHistoryCursor != 1 || !strings.Contains(view, "▸ Second session") || !strings.Contains(view, "╭─session") || !strings.Contains(view, "/work/two") {
+		t.Fatalf("cursor = %d\n%s", m.codexHistoryCursor, view)
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = updated.(model)
-	if m.codexHistoryCursor != 1 || !strings.Contains(m.viewCodexHistory(7), "Second session") {
-		t.Fatalf("history cursor/view = %d\n%s", m.codexHistoryCursor, m.viewCodexHistory(7))
-	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(model)
-	if m.codexHistoryOpen {
-		t.Fatal("Esc did not close Codex history")
+	for key, want := range map[tea.KeyType]int{tea.KeyHome: 0, tea.KeyEnd: 1} {
+		updated, _ = m.Update(tea.KeyMsg{Type: key})
+		m = updated.(model)
+		if m.codexHistoryCursor != want {
+			t.Fatalf("key %v cursor = %d, want %d", key, m.codexHistoryCursor, want)
+		}
 	}
 }
 
-func TestCodexUsageEnterShowsEmptyHistoryState(t *testing.T) {
+func TestCodexUsageEnterOpensSelectedSessionChat(t *testing.T) {
 	m := testModel()
 	m.activeTab = usageTab
 	m.usageProvider = codexProvider
-	m.width = 100
-	m.codexHistoryErr = "state database unavailable"
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(model)
-	if !m.codexHistoryOpen {
-		t.Fatal("Enter did not open empty Codex history")
+	m.width, m.height = 100, 30
+	m.codexUsage.History = []codexHistoricalSession{
+		{ID: "11111111-1111-1111-1111-111111111111", Title: "First"},
+		{ID: "22222222-2222-2222-2222-222222222222", Title: "Second", WorkDir: "/work/two"},
 	}
-	if view := m.viewCodexHistory(8); !strings.Contains(view, "Session history unavailable") {
+	m.codexHistoryCursor = 1
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil || !m.chat.open || m.chat.meta.ID != "22222222-2222-2222-2222-222222222222" || m.chat.meta.Provider != "codex" {
+		t.Fatalf("chat = %+v, cmd nil = %v", m.chat, cmd == nil)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	if m.chat.open || m.activeTab != usageTab {
+		t.Fatalf("Esc should return to the Usage tab, chat open = %v tab = %v", m.chat.open, m.activeTab)
+	}
+}
+
+func TestCodexUsageEnterWithoutHistoryDoesNothing(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.usageProvider = codexProvider
+	m.width, m.height = 100, 40
+	m.codexHistoryErr = "state database unavailable"
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd != nil || m.chat.open {
+		t.Fatal("Enter opened a chat with no sessions")
+	}
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Session history unavailable") {
 		t.Fatalf("empty history did not explain failure:\n%s", view)
 	}
 }
@@ -394,3 +423,124 @@ var errTestCodexUsage = &codexUsageTestError{}
 type codexUsageTestError struct{}
 
 func (*codexUsageTestError) Error() string { return "temporary failure" }
+
+func TestCodexUsageViewShowsRecentSessionsAndProjects(t *testing.T) {
+	m := testModel()
+	m.activeTab = usageTab
+	m.width = 120
+	m.height = 40
+	now := time.Now()
+	m.codexUsage = codexUsageSnapshot{History: []codexHistoricalSession{
+		{ID: "a", Title: "fix parser", WorkDir: "/tmp/alpha", GitBranch: "main", Tokens: 2_000_000, UpdatedAt: now.Add(-5 * time.Minute)},
+		{ID: "b", Title: "add tests", WorkDir: "/tmp/beta", Tokens: 9_000_000, UpdatedAt: now.Add(-3 * time.Hour)},
+		{ID: "c", Title: "refactor", WorkDir: "/tmp/alpha", Tokens: 1_000_000, UpdatedAt: now.Add(-50 * time.Hour)},
+	}}
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{"╭─sessions", "╭─projects · last 3", "fix parser", "5m", "3h", "2d", "×2"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("view missing %q:\n%s", expected, view)
+		}
+	}
+	beta, alpha := strings.Index(view, "beta   "), strings.Index(view, "alpha  ")
+	if beta < 0 || alpha < 0 {
+		t.Fatalf("projects missing:\n%s", view)
+	}
+}
+
+func TestCodexProjectLinesSortByTokens(t *testing.T) {
+	lines := usageProjectLines([]usageSession{
+		{WorkDir: "/x/small", Tokens: 10},
+		{WorkDir: "/x/big", Tokens: 500},
+		{WorkDir: "/y/big", Tokens: 500},
+		{Tokens: 50},
+	}, 10)
+	got := ansi.Strip(strings.Join(lines, "\n"))
+	if !(strings.Index(got, "big") < strings.Index(got, "unknown") && strings.Index(got, "unknown") < strings.Index(got, "small")) {
+		t.Fatalf("unexpected order:\n%s", got)
+	}
+	if !strings.Contains(got, "×2") {
+		t.Fatalf("same-named projects should merge:\n%s", got)
+	}
+}
+
+func TestCodexHistoryPanelsAreWidthSafe(t *testing.T) {
+	history := []codexHistoricalSession{{Title: "a very long session title that must be truncated", WorkDir: "/tmp/alpha", GitBranch: "feature/long-branch-name", Tokens: 12345, UpdatedAt: time.Now()}}
+	for _, size := range [][2]int{{120, 40}, {90, 30}, {70, 30}, {40, 30}} {
+		m := testModel()
+		m.activeTab = usageTab
+		m.width, m.height = size[0], size[1]
+		m.codexUsage = codexUsageSnapshot{History: history}
+		for _, line := range strings.Split(m.viewUsagePage(m.height-chromeRows-1), "\n") {
+			if got := ansi.StringWidth(line); got != m.width {
+				t.Fatalf("%dx%d: line width = %d", size[0], size[1], got)
+			}
+		}
+	}
+}
+
+func TestCodexSessionWindowKeepsCursorVisible(t *testing.T) {
+	for _, tc := range []struct{ total, cursor, capacity, start, end int }{
+		{10, 0, 4, 0, 4}, {10, 5, 4, 2, 6}, {10, 9, 4, 6, 10}, {3, 1, 8, 0, 3}, {0, 0, 4, 0, 0}, {5, 2, 0, 0, 0},
+	} {
+		start, end := usageSessionWindow(tc.total, tc.cursor, tc.capacity)
+		if start != tc.start || end != tc.end {
+			t.Fatalf("%+v: got %d,%d", tc, start, end)
+		}
+	}
+}
+
+func TestCodexSessionListIsWidthSafeAndKeepsCursorVisible(t *testing.T) {
+	history := make([]codexHistoricalSession, 30)
+	for i := range history {
+		history[i] = codexHistoricalSession{ID: "id", Title: fmt.Sprintf("session %02d with a very long title that must be truncated", i), WorkDir: "/tmp/alpha", GitBranch: "feature/long-branch-name", Model: "gpt-5.6-codex", Tokens: 12345, UpdatedAt: time.Now()}
+	}
+	for _, size := range [][2]int{{140, 50}, {120, 40}, {90, 30}, {70, 24}, {40, 24}} {
+		m := testModel()
+		m.width, m.height = size[0], size[1]
+		m.codexUsage = codexUsageSnapshot{History: history}
+		m.codexHistoryCursor = 25
+		rows := m.height - chromeRows - 1
+		view := m.viewUsagePage(rows)
+		lines := strings.Split(view, "\n")
+		if len(lines) != rows {
+			t.Fatalf("%dx%d: rows = %d, want %d", size[0], size[1], len(lines), rows)
+		}
+		for _, line := range lines {
+			if got := ansi.StringWidth(line); got != m.width {
+				t.Fatalf("%dx%d: line width = %d", size[0], size[1], got)
+			}
+		}
+		if !strings.Contains(ansi.Strip(view), "▸ session 25") {
+			t.Fatalf("%dx%d: selected session not visible:\n%s", size[0], size[1], ansi.Strip(view))
+		}
+	}
+}
+
+// TestUsagePagesFitEveryTerminalSize renders each provider at many sizes and
+// checks the row count and line width never drift, which layout arithmetic in
+// the card, chart and session panels can get wrong at odd heights.
+func TestUsagePagesFitEveryTerminalSize(t *testing.T) {
+	now := time.Now()
+	for _, provider := range []usageProvider{codexProvider, copilotProvider, kimiProvider, claudeProvider} {
+		for _, width := range []int{24, 40, 64, 80, 96, 120, 160} {
+			for rows := 1; rows <= 60; rows++ {
+				m := testModel()
+				m.usageProvider = provider
+				m.width, m.height = width, rows+chromeRows
+				m.codexUsage = codexUsageSnapshot{Summary: codexUsageSummary{}, History: []codexHistoricalSession{{ID: "a", Title: "t", WorkDir: "/x/y", Tokens: 5, UpdatedAt: now}}}
+				m.copilotUsage = copilotUsageSnapshot{Summary: copilotUsageSummary{Sessions: 1}, History: []copilotHistoricalSession{{ID: "a", Title: "t", WorkDir: "/x/y", UpdatedAt: now}}}
+				m.kimiUsage = kimiUsageSnapshot{Summary: kimiUsageSummary{Sessions: 1}, History: []kimiHistoricalSession{{ID: "a", Title: "t", WorkDir: "/x/y", UpdatedAt: now}}}
+				m.claudeUsage = claudeUsageSnapshot{Summary: claudeUsageSummary{Sessions: 1}, History: []claudeHistoricalSession{{ID: "a", Title: "t", WorkDir: "/x/y", UpdatedAt: now}}}
+				lines := strings.Split(m.viewUsagePage(rows), "\n")
+				if len(lines) != rows {
+					t.Fatalf("provider %d %dx%d: rows = %d, want %d", provider, width, rows, len(lines), rows)
+				}
+				for _, line := range lines {
+					if got := ansi.StringWidth(line); got != width {
+						t.Fatalf("provider %d %dx%d: line width = %d", provider, width, rows, got)
+					}
+				}
+			}
+		}
+	}
+}

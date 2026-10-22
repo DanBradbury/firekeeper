@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func writeClaudeTranscript(t *testing.T, root, project, id string, modified time.Time, lines ...string) {
@@ -94,8 +95,8 @@ func TestFetchClaudeUsageNeverExposesTranscriptText(t *testing.T) {
 	m := NewModel()
 	m.width = 120
 	m.claudeUsage = snapshot
-	m.claudeHistoryOpen = true
-	if view := m.viewClaudeUsage(20); strings.Contains(view, "do not show") || !strings.Contains(view, "Claude Code session") {
+	m.usageProvider = claudeProvider
+	if view := ansi.Strip(m.viewUsagePage(30)); strings.Contains(view, "do not show") || !strings.Contains(view, "Claude Code session") {
 		t.Fatalf("history view:\n%s", view)
 	}
 }
@@ -111,19 +112,21 @@ func TestClaudeUsageMissingHistoryReturnsActionableError(t *testing.T) {
 func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
 	m := NewModel()
 	m.width = 110
+	m.usageProvider = claudeProvider
 	today := time.Now().Format("2006-01-02")
 	m.claudeUsage = claudeUsageSnapshot{
 		Summary: claudeUsageSummary{Sessions: 2, Messages: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100},
 		Daily:   []claudeDailyUsage{{StartDate: today, Tokens: 1200}},
 		Models:  []claudeUsageModel{{Model: "claude-opus-5-5", Tokens: 1200}},
 	}
-	view := m.viewClaudeUsage(24)
-	for _, expected := range []string{"Claude Code", "2 sessions", "1.2K tokens", "Plan limits and reset", "TOKENS BY DAY", "Today", "CLAUDE OPUS"} {
+	rawView := m.viewUsagePage(24)
+	view := ansi.Strip(rawView)
+	for _, expected := range []string{"╭─lifetime", "Responses", "1.2K", "Plan limits: Claude Code /usage", "╭─tokens by day", "Today", "CLAUDE OPUS"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Claude usage view missing %q:\n%s", expected, view)
 		}
 	}
-	assertModelBreakdownAboveDays(t, view)
+	assertModelBreakdownAboveDays(t, rawView)
 }
 
 func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
@@ -149,24 +152,47 @@ func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
 	}
 }
 
-func TestClaudeUsageEnterOpensAndEscClosesHistory(t *testing.T) {
+func TestClaudeUsageArrowsSelectAndEnterOpensChat(t *testing.T) {
 	m := NewModel()
 	m.activeTab = usageTab
 	m.usageProvider = claudeProvider
-	m.claudeUsage.History = []claudeHistoricalSession{{ID: "a", Title: "one"}, {ID: "b", Title: "two"}}
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(model)
-	if !m.claudeHistoryOpen {
-		t.Fatal("Enter did not open Claude history")
+	m.width, m.height = 120, 40
+	m.claudeUsage.History = []claudeHistoricalSession{
+		{ID: "11111111-1111-1111-1111-111111111111", Title: "one"},
+		{ID: "22222222-2222-2222-2222-222222222222", Title: "two", GitBranch: "main"},
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
 	if m.claudeHistoryCursor != 1 {
 		t.Fatalf("cursor = %d, want 1", m.claudeHistoryCursor)
 	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil || !m.chat.open || m.chat.meta.ID != "22222222-2222-2222-2222-222222222222" || m.chat.meta.Provider != "claude" || m.chat.tool != "Claude" {
+		t.Fatalf("chat = %+v", m.chat)
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(model)
-	if m.claudeHistoryOpen {
-		t.Fatal("Esc did not close Claude history")
+	if m.chat.open || m.activeTab != usageTab {
+		t.Fatal("Esc should return to the Usage tab")
+	}
+}
+
+func TestUsageViewIsCardsAndWidthSafe(t *testing.T) {
+	for _, provider := range []usageProvider{codexProvider, copilotProvider, kimiProvider, claudeProvider} {
+		m := model{width: 80, height: 24, usageProvider: provider}
+		lines := strings.Split(m.viewUsage(20), "\n")
+		if len(lines) != 20 {
+			t.Fatalf("%v: rows = %d, want 20", provider, len(lines))
+		}
+		for _, line := range lines {
+			if got := ansi.StringWidth(line); got != 80 {
+				t.Fatalf("%v: line width = %d, want 80", provider, got)
+			}
+		}
+		wantTitle := map[usageProvider]string{codexProvider: "limits", copilotProvider: "plan", kimiProvider: "lifetime", claudeProvider: "lifetime"}[provider]
+		if !strings.Contains(ansi.Strip(lines[1]), "╭─"+wantTitle) {
+			t.Fatalf("%v: missing panel border: %q", provider, ansi.Strip(lines[1]))
+		}
 	}
 }

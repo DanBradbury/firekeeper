@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,37 +58,48 @@ func TestKimiUsageMissingHistoryReturnsActionableError(t *testing.T) {
 func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 	m := NewModel()
 	m.width = 100
+	m.usageProvider = kimiProvider
 	today := time.Now().Format("2006-01-02")
 	m.kimiUsage = kimiUsageSnapshot{
 		Summary: kimiUsageSummary{Sessions: 2, Turns: 4, LifetimeTokens: 1200, InputTokens: 900, CacheRead: 200, OutputTokens: 100},
 		Daily:   []kimiDailyUsage{{StartDate: today, Tokens: 1200}},
 		Models:  []kimiUsageModel{{Model: "kimi-k3", Tokens: 1200}},
 	}
-	view := m.viewKimiUsage(20)
-	for _, expected := range []string{"Kimi Code", "2 sessions", "1.2K tokens", "Quota and reset", "TOKENS BY DAY", "Today", "KIMI K3"} {
+	rawView := m.viewUsagePage(24)
+	view := ansi.Strip(rawView)
+	for _, expected := range []string{"╭─lifetime", "Turns", "1.2K", "Quota: Kimi Code /usage", "╭─tokens by day", "Today", "KIMI K3"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Kimi usage view missing %q:\n%s", expected, view)
 		}
 	}
-	assertModelBreakdownAboveDays(t, view)
+	assertModelBreakdownAboveDays(t, rawView)
 }
 
 func TestKimiUsageViewUsesUniqueModelColors(t *testing.T) {
 	m := NewModel()
 	m.width = 100
+	m.usageProvider = kimiProvider
 	modelNames := make([]string, 10)
 	for index := range modelNames {
 		modelNames[index] = fmt.Sprintf("kimi-model-%d", index)
 		m.kimiUsage.Models = append(m.kimiUsage.Models, kimiUsageModel{Model: modelNames[index], Tokens: int64(100 - index)})
 	}
-	view := m.viewKimiUsage(40)
+	view := m.viewUsagePage(40)
 	assignments := modelUsageColorAssignments(modelNames)
 	if len(assignments) != 10 {
 		t.Fatalf("Kimi model color count = %d, want 10", len(assignments))
 	}
+	seen := map[string]bool{}
 	for _, color := range assignments {
-		if !strings.Contains(view, "38;2;"+color) {
-			t.Fatalf("Kimi model color %s missing", color)
+		seen[color] = true
+	}
+	if len(seen) != 10 {
+		t.Fatalf("Kimi model colors are not unique: %v", assignments)
+	}
+	// The models card has room for the largest models only.
+	for _, name := range modelNames[:4] {
+		if !strings.Contains(view, "38;2;"+assignments[name]) {
+			t.Fatalf("Kimi model color for %s missing", name)
 		}
 	}
 }
@@ -100,19 +112,20 @@ func TestRecentKimiDailyUsageFillsMissingDays(t *testing.T) {
 	}
 }
 
-func TestKimiUsageEnterOpensAndEscClosesHistory(t *testing.T) {
+func TestKimiUsageEnterOpensSelectedSessionChat(t *testing.T) {
 	m := NewModel()
 	m.activeTab = usageTab
 	m.usageProvider = kimiProvider
+	m.width, m.height = 120, 40
 	m.kimiUsage.History = []kimiHistoricalSession{{ID: "session_1", Title: "history"}}
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(model)
-	if !m.kimiHistoryOpen {
-		t.Fatal("Enter did not open Kimi history")
+	if cmd == nil || !m.chat.open || m.chat.meta.ID != "session_1" || m.chat.meta.Provider != "kimi" {
+		t.Fatalf("chat = %+v", m.chat)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(model)
-	if m.kimiHistoryOpen {
-		t.Fatal("Esc did not close Kimi history")
+	if m.chat.open {
+		t.Fatal("Esc did not close the chat")
 	}
 }

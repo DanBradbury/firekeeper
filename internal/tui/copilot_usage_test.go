@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/charmbracelet/x/ansi"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -97,14 +98,14 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 	}
 
 	view := m.View()
+	plain := ansi.Strip(view)
 	for _, expected := range []string{
-		"[ Usage ]", "[ COPILOT ]", "GitHub Copilot", "LOCAL CLI",
-		"12 sessions", "42 model calls", "7.5 weighted requests",
-		"AI Credits", "0 / 7,000 AIC", "TOKENS BY DAY · MODEL", "2.3M", "TOKENS BY MODEL",
+		"[ Usage ]", "[ COPILOT ]", "╭─plan", "╭─lifetime", "Allowance: GitHub billing",
+		"AI credits", "0 / 7,000", "7.5", "42", "╭─tokens by day · model", "2.3M",
 		"CLAUDE SONNET 4.6", "12.5M", "GPT 5", "800.0K",
 	} {
-		if !strings.Contains(view, expected) {
-			t.Fatalf("Copilot usage view missing %q", expected)
+		if !strings.Contains(plain, expected) {
+			t.Fatalf("Copilot usage view missing %q:\n%s", expected, plain)
 		}
 	}
 	assertModelBreakdownAboveDays(t, view)
@@ -186,46 +187,41 @@ func TestDecodeCopilotHistoricalSessionsSanitizesPartialRows(t *testing.T) {
 	}
 }
 
-func TestCopilotUsageEnterBrowsesHistoricalSessions(t *testing.T) {
+func TestCopilotUsageArrowsSelectAndEnterOpensChat(t *testing.T) {
 	m := testModel()
 	m.activeTab = usageTab
 	m.usageProvider = copilotProvider
-	m.width = 100
+	m.width, m.height = 120, 40
 	m.copilotUsage.History = []copilotHistoricalSession{
-		{ID: "one", Title: "First session", Model: "gpt-5", WorkDir: "/work/one"},
-		{ID: "two", Title: "Second session", Model: "claude-opus", WorkDir: "/work/two"},
+		{ID: "11111111-1111-1111-1111-111111111111", Title: "First session", Model: "gpt-5", WorkDir: "/work/one"},
+		{ID: "22222222-2222-2222-2222-222222222222", Title: "Second session", Model: "claude-opus", WorkDir: "/work/two", ModelCalls: 3, UserRequests: 1.5},
 	}
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
-	if !m.copilotHistoryOpen {
-		t.Fatal("Enter did not open Copilot history")
+	view := ansi.Strip(m.View())
+	if m.copilotHistoryCursor != 1 || !strings.Contains(view, "▸ Second session") || !strings.Contains(view, "3 calls · 1.5 requests") {
+		t.Fatalf("cursor = %d\n%s", m.copilotHistoryCursor, view)
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(model)
-	if m.copilotHistoryCursor != 1 || !strings.Contains(m.viewCopilotHistory(7), "Second session") {
-		t.Fatalf("history cursor/view = %d\n%s", m.copilotHistoryCursor, m.viewCopilotHistory(7))
-	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(model)
-	if m.copilotHistoryOpen {
-		t.Fatal("Esc did not close Copilot history")
+	if cmd == nil || !m.chat.open || m.chat.meta.Provider != "copilot" || m.chat.meta.ID != "22222222-2222-2222-2222-222222222222" {
+		t.Fatalf("chat = %+v", m.chat)
 	}
 }
 
-func TestCopilotUsageEnterShowsHistoryError(t *testing.T) {
+func TestCopilotUsageShowsHistoryError(t *testing.T) {
 	m := testModel()
 	m.activeTab = usageTab
 	m.usageProvider = copilotProvider
-	m.width = 100
+	m.width, m.height = 100, 40
+	m.copilotUsage.Summary.Sessions = 1
 	m.copilotHistoryErr = "session store unavailable"
-
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(model)
-	if !m.copilotHistoryOpen {
-		t.Fatal("Enter did not open empty Copilot history")
-	}
-	if view := m.viewCopilotHistory(8); !strings.Contains(view, "Session history unavailable") {
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Session history unavailable") {
 		t.Fatalf("empty history did not explain failure:\n%s", view)
+	}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || updated.(model).chat.open {
+		t.Fatal("Enter opened a chat with no sessions")
 	}
 }
 
