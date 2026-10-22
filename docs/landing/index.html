@@ -87,7 +87,7 @@ body {
 }
 a { color: var(--ember-text); }
 code { font-family: var(--mono); font-size: 0.9em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 4px; }
-.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+.wrap { max-width: 1160px; margin: 0 auto; padding: 0 16px; }
 
 /* Nav */
 nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
@@ -101,9 +101,9 @@ nav ul a:hover { color: var(--text); }
 
 /* Hero */
 .hero { padding: 72px 0 48px; }
-.hero-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 40px; align-items: center; }
 .hero-grid > *, .mode, .card, ol.steps li > div { min-width: 0; }
-@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; gap: 32px; } }
+@media (max-width: 900px) { .hero-grid { grid-template-columns: 1fr; gap: 32px; } .hero { padding-top: 48px; } }
 .eyebrow { display: inline-block; font-size: 13px; font-weight: 600; color: var(--ember-text); background: var(--ember-soft); padding: 4px 10px; border-radius: 999px; margin-bottom: 16px; }
 h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 16px; }
 h1 em { font-style: normal; color: var(--ember); }
@@ -116,6 +116,7 @@ h1 em { font-style: normal; color: var(--ember); }
 .btn-ghost:hover { border-color: var(--muted); }
 
 /* Screenshot */
+.shot-link { display: block; cursor: zoom-in; }
 .shot { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); background: var(--code-bg); }
 
 /* Sections */
@@ -177,7 +178,7 @@ ol.steps h3 { margin-top: 4px; }
 ol.steps p { margin: 0 0 10px; color: var(--muted); font-size: 15px; }
 
 /* Privacy */
-.privacy { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.privacy { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
 .privacy div { padding: 18px; border-left: 3px solid var(--ember); background: var(--surface); border-radius: 0 8px 8px 0; }
 .privacy p { margin: 0; font-size: 14px; color: var(--muted); }
 .callout { margin-top: 20px; padding: 14px 16px; border-radius: 8px; background: var(--ember-soft); color: var(--text); font-size: 14px; }
@@ -227,7 +228,9 @@ footer a { color: var(--muted); }
         <a class="btn btn-ghost" href="#quickstart">Quick start →</a>
       </div>
     </div>
-    <img class="shot" src="firekeeper-tui.jpg" width="1600" height="872" alt="The Firekeeper terminal dashboard: overview, token and provider panels, and a table of Claude, Codex, Copilot and OpenCode sessions with their state, model and token use">
+    <a class="shot-link" href="firekeeper-tui.jpg" aria-label="Open the dashboard screenshot at full size">
+      <img class="shot" src="firekeeper-tui.jpg" width="1600" height="872" alt="The Firekeeper terminal dashboard: overview, token and provider panels, and a table of Claude, Codex, Copilot and OpenCode sessions with their state, model and token use">
+    </a>
   </div>
 </header>
 
