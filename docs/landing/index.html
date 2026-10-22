@@ -3,25 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Firekeeper</title>
+<title>Firekeeper – live dashboard and audit trail for AI coding agents (Claude Code, Codex, Cursor)</title>
 <meta name="description" content="Firekeeper: a local terminal dashboard and session reporter for Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI.">
-<link rel="canonical" href="https://usefirekeeper.com/">
+<link rel="canonical" href="https://firekeeper.ai/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#14110f">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Firekeeper">
-<meta property="og:url" content="https://usefirekeeper.com/">
+<meta property="og:url" content="https://firekeeper.ai/">
 <meta property="og:title" content="Firekeeper: tend every coding agent from one bonfire">
 <meta property="og:description" content="See what your AI coding agents are doing, right from your terminal. Works with Claude Code, Codex, Copilot CLI, Gemini CLI, Cursor, OpenCode, and Kimi.">
-<meta property="og:image" content="https://usefirekeeper.com/og.png">
+<meta property="og:image" content="https://firekeeper.ai/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Firekeeper's terminal dashboard listing coding agent sessions">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Firekeeper: tend every coding agent from one bonfire">
-<meta name="twitter:description" content="See what your AI coding agents are doing, and keep a searchable record of what they did.">
-<meta name="twitter:image" content="https://usefirekeeper.com/og.png">
+<meta name="twitter:description" content="See what your AI coding agents are doing, live from your terminal. Works with Claude Code, Codex, Copilot CLI, Gemini CLI, Cursor, OpenCode, and Kimi.">
+<meta name="twitter:image" content="https://firekeeper.ai/og.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","url":"https://firekeeper.ai/","description":"Live terminal dashboard and redacted session reporter for AI coding agents: Claude Code, Codex, Copilot CLI, Cursor, Gemini, OpenCode, and Kimi.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+</script>
 <style>
 :root {
   --bg: #fbf8f4;
@@ -95,9 +98,18 @@ nav .wrap { display: flex; align-items: center; gap: 24px; height: 56px; }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text); text-decoration: none; }
 .brand svg { width: 22px; height: 22px; }
 nav ul { list-style: none; display: flex; gap: 20px; margin: 0 0 0 auto; padding: 0; }
-nav ul a { color: var(--muted); text-decoration: none; font-size: 14px; }
+nav ul a { display: inline-block; padding: 14px 2px; color: var(--muted); text-decoration: none; font-size: 14px; }
+.menu { display: none; margin-left: auto; font: inherit; font-size: 14px; font-weight: 600; color: var(--text); background: none; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
 nav ul a:hover { color: var(--text); }
-@media (max-width: 720px) { nav ul li.opt { display: none; } }
+@media (max-width: 720px) {
+  nav .wrap { flex-wrap: wrap; height: auto; min-height: 56px; gap: 0 16px; }
+  .menu { display: inline-block; }
+  nav ul { margin-left: 0; gap: 14px; }
+  nav ul li.opt { display: none; }
+  nav.open ul { flex-basis: 100%; order: 3; flex-direction: column; gap: 0; padding-bottom: 8px; }
+  nav.open ul li.opt { display: list-item; }
+  nav.open ul a { display: block; padding: 12px 2px; }
+}
 
 /* Hero */
 .hero { padding: 72px 0 48px; }
@@ -151,6 +163,9 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .code .c { color: var(--code-muted); }
 .copy { position: absolute; top: 8px; right: 8px; font: 600 12px var(--sans); color: var(--code-text); background: #2c2722; border: 1px solid #3d362f; border-radius: 6px; padding: 5px 9px; cursor: pointer; }
 .copy:hover { background: #3a322b; }
+@media (max-width: 520px) { .code pre { padding: 44px 16px 16px; } }
+@media (pointer: coarse) { .copy { min-height: 44px; min-width: 44px; } }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .install-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
 .install-meta div { font-size: 14px; color: var(--muted); padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .install-meta strong { display: block; color: var(--text); font-size: 14px; }
@@ -200,11 +215,13 @@ kbd { font: 600 12px var(--mono); background: var(--surface); border: 1px solid 
 
 footer { border-top: 1px solid var(--border); padding: 36px 0 48px; color: var(--muted); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; }
-footer ul { list-style: none; display: flex; flex-wrap: wrap; gap: 18px; margin: 0; padding: 0; }
-footer a { color: var(--muted); }
+footer ul { list-style: none; display: flex; flex-wrap: wrap; gap: 0 18px; margin: 0; padding: 0; }
+footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
 </style>
 </head>
 <body>
+
+<div class="sr-only" role="status" aria-live="polite" id="live"></div>
 
 <nav>
   <div class="wrap">
@@ -212,7 +229,8 @@ footer a { color: var(--muted); }
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2c1.5 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.2 1-3.6 2.2-4.8.3 1.6 1.1 2.6 2.3 3C11 7.4 11.2 4.6 12 2Z" fill="#f97316"/><path d="M12 13c.8 1.2 2 2 2 3.6a2 2 0 0 1-4 0c0-1.2.9-2 2-3.6Z" fill="#fde68a"/><path d="M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       Firekeeper
     </a>
-    <ul>
+    <button class="menu" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    <ul id="nav-links">
       <li class="opt"><a href="#features">Features</a></li>
       <li class="opt"><a href="#providers">Providers</a></li>
       <li class="opt"><a href="#privacy">Privacy</a></li>
@@ -225,9 +243,9 @@ footer a { color: var(--muted); }
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow">Open source · Apache 2.0 · Runs on your hardware</span>
+      <span class="eyebrow">Open-source client · Apache 2.0 · Runs on your hardware</span>
       <h1>Tend every coding agent from <em>one bonfire</em>.</h1>
-      <p class="lede">See what your AI coding agents are doing right now, how many tokens they used, and what they said. One tool for seven agent CLIs. If you want, it can also send redacted session history to a dashboard server. Nothing starts and nothing uploads unless you ask.</p>
+      <p class="lede">Live state, tokens, and transcripts for seven coding-agent CLIs, in one terminal dashboard. Optionally send redacted session history to a dashboard server. Nothing uploads unless you ask.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#install">Install Firekeeper</a>
         <a class="btn btn-ghost" href="#quickstart">Quick start →</a>
@@ -371,7 +389,7 @@ firekeeper</pre></div>
   <div class="wrap">
     <div class="section-head">
       <h2>Quick start</h2>
-      <p>From the terminal dashboard to uploading history in four steps. Stop at any step.</p>
+      <p>From the terminal dashboard to uploading history in five steps. Stop at any step.</p>
     </div>
     <ol class="steps">
       <li><div>
@@ -428,7 +446,7 @@ firekeeper daemon install</pre></div>
       <div><h3>Read-only on provider data</h3><p>Firekeeper never changes your agents' databases, logs, or launch commands.</p></div>
       <div><h3>You pick the server</h3><p>Uploads go only to the server you name, over HTTPS unless it is on this machine, with a token bound to this machine.</p></div>
     </div>
-    <div class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. Read <a href="https://github.com/DanBradbury/firekeeper#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> before you turn uploads on.</div>
+    <div class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. Read <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> before you turn uploads on.</div>
   </div>
 </section>
 
@@ -454,7 +472,7 @@ firekeeper daemon install</pre></div>
 
 <footer>
   <div class="wrap">
-    <div>Firekeeper is an early-stage open source project, licensed under Apache 2.0.</div>
+    <div>© 2026 Dan Bradbury. The Firekeeper client is an early-stage open source project, licensed under Apache 2.0. The dashboard server is a separate, commercial product and is not covered by that license.</div>
     <ul>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper/releases">Releases</a></li>
@@ -512,17 +530,52 @@ firekeeper daemon install</pre></div>
     });
   }
 
+  var navEl = document.querySelector('nav');
+  var menuBtn = document.querySelector('.menu');
+  menuBtn.addEventListener('click', function () {
+    var open = navEl.classList.toggle('open');
+    menuBtn.setAttribute('aria-expanded', String(open));
+  });
+  document.querySelectorAll('#nav-links a').forEach(function (a) {
+    a.addEventListener('click', function () {
+      navEl.classList.remove('open');
+      menuBtn.setAttribute('aria-expanded', 'false');
+    });
+  });
+
+  var live = document.getElementById('live');
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      ok ? resolve() : reject();
+    });
+  }
+
   document.querySelectorAll('.copy').forEach(function (btn) {
+    var first = btn.parentElement.querySelector('pre').textContent.trim().split('\n')[0];
+    btn.setAttribute('aria-label', 'Copy command: ' + first);
     btn.addEventListener('click', function () {
       var text = btn.parentElement.querySelector('pre').innerText
         .split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n').trim();
       var done = function () {
         btn.textContent = 'Copied';
-        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        live.textContent = 'Copied to clipboard';
+        setTimeout(function () { btn.textContent = 'Copy'; live.textContent = ''; }, 1500);
       };
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(done, function () { btn.textContent = 'Select & copy'; });
-      }
+      copyText(text).then(done, function () {
+        btn.textContent = 'Select & copy';
+        live.textContent = 'Copy failed. Select the command and copy it manually.';
+      });
     });
   });
 })();
