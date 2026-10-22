@@ -117,6 +117,7 @@ h1 em { font-style: normal; color: var(--ember); }
 
 /* Screenshot */
 .shot-link { display: block; cursor: zoom-in; }
+@media (max-width: 900px) { .shot-link { max-width: 654px; margin: 0 auto; } }
 .shot { display: block; width: 100%; height: auto; border-radius: var(--radius); border: 1px solid #2c2722; box-shadow: 0 20px 50px -20px rgba(0,0,0,.45); background: var(--code-bg); }
 
 /* Sections */
@@ -229,7 +230,10 @@ footer a { color: var(--muted); }
       </div>
     </div>
     <a class="shot-link" href="firekeeper-tui.jpg" aria-label="Open the dashboard screenshot at full size">
-      <img class="shot" src="firekeeper-tui.jpg" width="1600" height="872" alt="The Firekeeper terminal dashboard: overview, token and provider panels, and a table of Claude, Codex, Copilot and OpenCode sessions with their state, model and token use">
+      <picture>
+        <source media="(max-width: 900px)" srcset="firekeeper-tui-narrow.jpg" width="654" height="617">
+        <img class="shot" src="firekeeper-tui.jpg" width="1600" height="872" alt="The Firekeeper terminal dashboard: overview, token and provider panels, and a table of Claude, Codex, Copilot and OpenCode sessions with their state, model and token use">
+      </picture>
     </a>
   </div>
 </header>
