@@ -1,4 +1,8 @@
-# Release config. CI runs `goreleaser release --snapshot --clean` on pull
+# Release config for the `firekeeper` client only. Firekeeper ships as two
+# binaries: this repository builds `firekeeper`; the commercial `firekeeper-server`
+# is built and released from the private firekeeper-server repository to the
+# public DanBradbury/firekeeper-server-releases repository. Nothing here builds
+# or archives the server. CI runs `goreleaser release --snapshot --clean` on pull
 # requests; .github/workflows/release.yml runs the real release on v* tags.
 version: 2
 
@@ -63,9 +67,16 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: https://github.com/DanBradbury/firekeeper
-    description: Keyboard-driven terminal dashboard for monitoring coding-agent harnesses
+    description: Keyboard-driven terminal dashboard for monitoring coding-agent harnesses (installs firekeeper-server too)
     license: Apache-2.0
     # Prereleases do not move the tap.
     skip_upload: auto
+    # `brew install DanBradbury/tap/firekeeper` installs both binaries. The
+    # firekeeper-server formula lives in the same tap and is published from the
+    # server's release pipeline. The client never needs it to run: plain
+    # `firekeeper` does not call the server, and `serve` finds the brew-installed
+    # one on PATH.
+    dependencies:
+      - name: firekeeper-server
     test: |
       assert_match version.to_s, shell_output("#{bin}/firekeeper --version")

@@ -2,6 +2,13 @@
 # Tags with a suffix, such as v0.1.0-rc1, publish as prereleases and do not
 # update the Homebrew tap. The Homebrew tap repository and its token
 # (HOMEBREW_TAP_GITHUB_TOKEN) are owner setup.
+#
+# This publishes only the `firekeeper` client. `firekeeper-server` is released
+# from the private firekeeper-server repository to
+# DanBradbury/firekeeper-server-releases. The firekeeper formula depends on the
+# firekeeper-server formula in the same tap, so that formula must exist in the
+# tap before a firekeeper release is pushed to it, or `brew install` of the new
+# formula fails to resolve its dependency.
 name: Release
 
 on:

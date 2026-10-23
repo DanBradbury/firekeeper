@@ -249,9 +249,10 @@ with status 2 when it cannot find it (see the
 ### Installing the server from `serve`
 
 When `serve` cannot find `firekeeper-server`, it can offer to install it. This
-is off unless a release source is configured, which release builds of
-Firekeeper do not do yet; until then `serve` prints its instructions and exits
-with status 2, as above.
+is off unless a release source is configured. Release builds of Firekeeper
+configure it (see below); builds from source do not, and `serve` then prints
+its instructions and exits with status 2, as above. Installing Firekeeper with
+Homebrew already installs the server as a dependency, so `serve` finds it.
 
 When on, the offer is made only if stdin and stderr are terminals and neither
 `CI` nor `FIREKEEPER_NO_PROMPT` is set. Otherwise `serve` behaves as if it were

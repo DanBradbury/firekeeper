@@ -3,9 +3,10 @@ Copyright 2026 Dan Bradbury
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Binaries built from this repository include third-party
+The `firekeeper` binary built from this repository includes third-party
 software under its own licenses. Their notices and license texts are in
-THIRD_PARTY_NOTICES.md.
+THIRD_PARTY_NOTICES.md. The separate `firekeeper-server` binary is not part of
+this repository and has its own license and notices.
 
 Codex, GitHub Copilot, Claude Code, Kimi Code, OpenCode, Ghostty, Terminal.app
 and iTerm2 are trademarks of their respective owners. Firekeeper is not

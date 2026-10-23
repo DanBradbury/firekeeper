@@ -10,6 +10,16 @@ curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install
 Use either one, then run `firekeeper`. Both install a prebuilt binary, so no Go
 toolchain is needed. Check it with `firekeeper --version`.
 
+Firekeeper is two binaries. `firekeeper` is built from this repository.
+`firekeeper-server`, the optional dashboard server, is built and released from
+a separate repository to `DanBradbury/firekeeper-server-releases`. The Homebrew
+formula for `firekeeper` depends on the `firekeeper-server` formula in the same
+tap, so `brew install DanBradbury/tap/firekeeper` installs both. Installing the
+server does not start it, and plain `firekeeper` never calls it. The install
+script installs only `firekeeper`; when you run `firekeeper serve` without a
+server it offers to download one (see [Installing the server from
+`serve`](reference.md#installing-the-server-from-serve)).
+
 The install script puts the binary in `~/.local/bin` (set
 `FIREKEEPER_INSTALL_DIR` to change that) and prints a `PATH` hint if that
 directory is not on your `PATH`. It never uses `sudo`. It verifies the
@@ -55,8 +65,11 @@ reports its version as `dev`. For development, use `go run .`. If
 
 1. If you installed the daemon, remove the service first, while the binary
    still exists: `firekeeper daemon uninstall`.
-2. Remove the binary: `brew uninstall firekeeper`, or
-   `rm ~/.local/bin/firekeeper` (or wherever you installed it).
+2. Remove the binaries: `brew uninstall firekeeper firekeeper-server`, or
+   `rm ~/.local/bin/firekeeper ~/.local/bin/firekeeper-server` (or wherever you
+   installed them). Homebrew will not remove `firekeeper-server` on its own
+   while it is installed as a dependency; run `brew autoremove` or name it as
+   above.
 
 Neither step touches `~/.firekeeper`. It holds your configuration
 (`config.toml`, which may contain a server token), the daemon's read

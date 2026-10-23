@@ -38,7 +38,11 @@ or
 curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
 ```
 
-Both install a prebuilt binary, so you do not need a Go toolchain. Then run:
+Both install a prebuilt binary, so you do not need a Go toolchain. Firekeeper
+is two binaries: `firekeeper`, the terminal dashboard and reporter, and
+`firekeeper-server`, the optional [dashboard server](#the-dashboard-server). The
+Homebrew formula installs both. The install script installs only `firekeeper`;
+`firekeeper serve` offers to download the server later if you want it. Then run:
 
 ```sh
 firekeeper
@@ -172,3 +176,6 @@ are welcome as [issues](https://github.com/DanBradbury/firekeeper/issues).
 
 Apache License 2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), and
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+That covers `firekeeper`. `firekeeper-server` is a separate commercial product
+with its own license and notices.
