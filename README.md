@@ -117,8 +117,12 @@ firekeeper daemon install             # report in the background, starting at lo
 
 A web dashboard for browsing, searching, and charting uploaded sessions is a
 separate commercial product, `firekeeper-server`, made by Lucky Daisy LLC. It is
-not part of this repository and needs a license key to run. To get a key or a
-free evaluation key, email dan.luckydaisy@gmail.com.
+not part of this repository. **It is free to run on your own machine**: with no
+license key, `firekeeper serve` starts a dashboard for you alone on this
+computer, with every feature, so you can browse your sessions outside the
+terminal and see what it does. Running it for a team, on other machines or as a
+hosted service needs a license key; to get one, or a free evaluation key, email
+dan.luckydaisy@gmail.com.
 
 `firekeeper serve [args]` runs `firekeeper-server serve [args]` in its place,
 with the same arguments, environment, and exit status. It looks in
@@ -129,9 +133,9 @@ If it finds nothing, `firekeeper serve` offers to download the server for you.
 It asks `[y/N]` first, only in an interactive terminal, and downloads nothing
 unless you answer `y`. On `y` it fetches the latest release from the public
 `firekeeper-server-releases` repository, checks it against the published
-checksums, installs it, and starts it. The server reads your license key from
-`--license FILE`, `FIREKEEPER_LICENSE`, `FIREKEEPER_LICENSE_FILE` or
-`~/.firekeeper/license.key`; without one it says how to get one and exits.
+checksums, installs it, and starts it. With no license key it starts the free
+local dashboard; for shared use it reads a key from `--license FILE`,
+`FIREKEEPER_LICENSE`, `FIREKEEPER_LICENSE_FILE` or `~/.firekeeper/license.key`.
 Set `FIREKEEPER_NO_PROMPT=1` to never be asked. That prompt is the only place
 Firekeeper downloads a binary; plain `firekeeper` uploads nothing and starts no
 daemon, and neither `report`, `daemon` nor anything else fetches software. See
