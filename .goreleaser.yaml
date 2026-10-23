@@ -25,6 +25,11 @@ builds:
       - -X github.com/DanBradbury/firekeeper/internal/version.Version={{ .Version }}
       - -X github.com/DanBradbury/firekeeper/internal/version.Commit={{ .Commit }}
       - -X github.com/DanBradbury/firekeeper/internal/version.Date={{ .Date }}
+      # Switches on the `firekeeper serve` offer to download firekeeper-server
+      # from the public, binaries-only releases repository. It is asked only on
+      # a terminal, after an explicit yes (see AGENTS.md). Keep this equal to
+      # serverinstall.ProductionBase, which the code recognises by value.
+      - -X github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=https://github.com/DanBradbury/firekeeper-server-releases
 
 archives:
   - id: firekeeper

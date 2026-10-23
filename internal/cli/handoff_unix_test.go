@@ -282,3 +282,31 @@ func TestRunChildForwardsSignals(t *testing.T) {
 		t.Fatal("child did not stop after SIGTERM")
 	}
 }
+
+func TestResolveServerFindsLocalBinWhenNotOnPath(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	local := fakeBinary(t, filepath.Join(home, ".local", "bin"), serverBinName)
+	exe := filepath.Join(root, "install", "bin", "firekeeper") // no sibling server
+	env := map[string]string{"HOME": home}
+
+	got, err := resolveServer(lookupFor(env, exe))
+	if err != nil || got != local {
+		t.Fatalf("resolveServer = %q, %v; want %q", got, err, local)
+	}
+
+	// PATH still wins over ~/.local/bin.
+	onPath := fakeBinary(t, filepath.Join(root, "pathdir"), serverBinName)
+	got, err = resolveServer(lookupFor(env, exe, filepath.Join(root, "pathdir")))
+	if err != nil || got != onPath {
+		t.Fatalf("with PATH: resolveServer = %q, %v; want %q", got, err, onPath)
+	}
+
+	// Nothing anywhere, or no HOME: not found.
+	if _, err := resolveServer(lookupFor(map[string]string{"HOME": filepath.Join(root, "empty")}, exe)); !errors.Is(err, errServerNotFound) {
+		t.Fatalf("empty home: %v", err)
+	}
+	if _, err := resolveServer(lookupFor(nil, exe)); !errors.Is(err, errServerNotFound) {
+		t.Fatalf("no HOME: %v", err)
+	}
+}

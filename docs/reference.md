@@ -275,7 +275,10 @@ Firekeeper does not write there. It offers to run `brew install
 DanBradbury/tap/firekeeper-server` instead, and downloads directly only if
 `brew` is not installed.
 
-To try the feature before it is switched on, point it at a release server:
+Release builds of `firekeeper` have the offer switched on, pointing at
+`DanBradbury/firekeeper-server-releases`. Builds made with plain `go build`
+leave it off. To try it against another release server, or to turn it on in
+such a build, point it at one:
 
 ```sh
 FIREKEEPER_SERVER_RELEASES_URL=https://releases.example/firekeeper-server firekeeper serve
@@ -283,10 +286,10 @@ FIREKEEPER_SERVER_RELEASES_URL=https://releases.example/firekeeper-server fireke
 
 Setting `FIREKEEPER_SERVER_RELEASES_URL` enables the offer. The URL must be
 https; plain http is accepted only for `127.0.0.1`, `::1` and `localhost`, and
-only through this variable. Redirects to non-https are refused. A maintainer
-can also bake in a default with `-ldflags "-X
-github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."`;
-the release config does not.
+only through this variable. Redirects to non-https are refused. The release config
+bakes the default in with `-ldflags "-X
+github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."`; the
+environment variable wins over it.
 
 #### Release layout contract
 

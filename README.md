@@ -116,22 +116,25 @@ firekeeper daemon install             # report in the background, starting at lo
 ### The dashboard server
 
 A web dashboard for browsing, searching, and charting uploaded sessions is a
-separate commercial product, `firekeeper-server`. It is not part of this
-repository. Details are to come; if you are interested, watch this repository
-or [open an issue](https://github.com/DanBradbury/firekeeper/issues).
+separate commercial product, `firekeeper-server`, made by Lucky Daisy LLC. It is
+not part of this repository and needs a license key to run. To get a key or a
+free evaluation key, email dan.luckydaisy@gmail.com.
 
-If you have the server binary, `firekeeper serve [args]` runs
-`firekeeper-server serve [args]` in its place, with the same arguments,
-environment, and exit status. It looks in `$FIREKEEPER_SERVER_BIN`, then next
-to the `firekeeper` executable, then on your `PATH`. If it finds nothing, it
-says so and exits with status 2.
+`firekeeper serve [args]` runs `firekeeper-server serve [args]` in its place,
+with the same arguments, environment, and exit status. It looks in
+`$FIREKEEPER_SERVER_BIN`, then next to the `firekeeper` executable, then on your
+`PATH`, then in `~/.local/bin`.
 
-Where an install source is switched on (it is not by default), `firekeeper
-serve` can instead offer to download `firekeeper-server` for you. It asks
-`[y/N]` first, only in an interactive terminal, and downloads nothing unless
-you answer `y`. That prompt is the only place Firekeeper downloads a binary;
-plain `firekeeper` uploads nothing and starts no daemon, and neither `report`,
-`daemon` nor anything else fetches software. See
+If it finds nothing, `firekeeper serve` offers to download the server for you.
+It asks `[y/N]` first, only in an interactive terminal, and downloads nothing
+unless you answer `y`. On `y` it fetches the latest release from the public
+`firekeeper-server-releases` repository, checks it against the published
+checksums, installs it, and starts it. The server reads your license key from
+`--license FILE`, `FIREKEEPER_LICENSE`, `FIREKEEPER_LICENSE_FILE` or
+`~/.firekeeper/license.key`; without one it says how to get one and exits.
+Set `FIREKEEPER_NO_PROMPT=1` to never be asked. That prompt is the only place
+Firekeeper downloads a binary; plain `firekeeper` uploads nothing and starts no
+daemon, and neither `report`, `daemon` nor anything else fetches software. See
 [Installing the server from `serve`](docs/reference.md#installing-the-server-from-serve).
 
 The protocol is open. The reporter speaks the HTTP API in

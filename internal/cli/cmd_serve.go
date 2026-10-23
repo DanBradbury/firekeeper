@@ -64,6 +64,10 @@ var errServerNotFound = errors.New("firekeeper-server not found")
 //     the real install directory. The directory of the path as invoked is
 //     tried second.
 //  3. PATH.
+//  4. ~/.local/bin, where the install offer puts the server when the
+//     firekeeper directory is not writable. It is looked at even when it is not
+//     on PATH, so a server installed there is found by the next `firekeeper
+//     serve`.
 func resolveServer(l serverLookup) (string, error) {
 	suffix := ""
 	if runtime.GOOS == "windows" {
@@ -97,6 +101,11 @@ func resolveServer(l serverLookup) (string, error) {
 		return p, nil
 	} else if err != nil && !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, exec.ErrDot) {
 		return "", err
+	}
+	if home := strings.TrimSpace(l.getenv("HOME")); home != "" {
+		if p := filepath.Join(home, ".local", "bin", serverBinName+suffix); serverUsable(p) {
+			return p, nil
+		}
 	}
 	return "", errServerNotFound
 }
