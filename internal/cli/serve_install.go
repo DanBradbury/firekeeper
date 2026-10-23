@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -44,9 +45,17 @@ var defaultInstallEnv = installEnv{
 		return &serverinstall.Installer{Source: src, Log: log}
 	},
 	runBrew: func(brewPath string, stderr io.Writer) error {
+		// Quiet unless it fails: Homebrew's tap trust, Command Line Tools
+		// and cleanup notices are not useful here.
+		var buf bytes.Buffer
 		cmd := exec.Command(brewPath, "install", brewFormula)
-		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, stderr, stderr
-		return cmd.Run()
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, &buf, &buf
+		cmd.Env = append(os.Environ(), "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_INSTALL_CLEANUP=1")
+		if err := cmd.Run(); err != nil {
+			_, _ = stderr.Write(buf.Bytes())
+			return err
+		}
+		return nil
 	},
 }
 

@@ -9,6 +9,7 @@ package update
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -231,9 +232,18 @@ func Install(ctx context.Context, version, exe string, out, errOut io.Writer) er
 		return fmt.Errorf("invalid version %q", version)
 	}
 	if IsHomebrew(exe) {
+		// Homebrew is chatty (auto-update news, tap trust and Command Line
+		// Tools warnings, cleanup hints). Keep it quiet unless the upgrade
+		// fails, then show everything it said.
+		var buf bytes.Buffer
 		cmd := exec.CommandContext(ctx, "brew", "upgrade", brewFormula)
-		cmd.Stdout, cmd.Stderr = out, errOut
-		return cmd.Run()
+		cmd.Stdout, cmd.Stderr = &buf, &buf
+		cmd.Env = append(os.Environ(), "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_INSTALL_CLEANUP=1")
+		if err := cmd.Run(); err != nil {
+			_, _ = errOut.Write(buf.Bytes())
+			return err
+		}
+		return nil
 	}
 	script, err := fetchScript(ctx, fmt.Sprintf(scriptURLFmt, tag))
 	if err != nil {
