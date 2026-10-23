@@ -113,7 +113,7 @@ func setupInstall(t *testing.T, url, stdin string) *installSetup {
 		newInstaller: func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
 			return &serverinstall.Installer{Source: src, Log: log}
 		},
-		runBrew: func(string, io.Writer) error { t.Fatal("brew run unexpectedly"); return nil },
+		runBrew: func(string, string, io.Writer) error { t.Fatal("brew run unexpectedly"); return nil },
 	}
 	var argv []string
 	var path string
@@ -317,7 +317,7 @@ func TestInstallHomebrewBranch(t *testing.T) {
 		return "", exec.ErrNotFound
 	}
 	var ran []string
-	installOffer.runBrew = func(path string, _ io.Writer) error {
+	installOffer.runBrew = func(path, _ string, _ io.Writer) error {
 		ran = append(ran, path)
 		// brew "installs" the server into the PATH.
 		fakeBinary(t, brewDir, serverBinName)

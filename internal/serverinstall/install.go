@@ -108,6 +108,22 @@ func (in *Installer) getSmall(ctx context.Context, rawURL string) ([]byte, error
 	return b, nil
 }
 
+// Latest returns the tag of the latest release, such as "v1.4.0". It is one
+// small GET and downloads nothing else.
+func (in *Installer) Latest(ctx context.Context) (string, error) {
+	body, err := in.getSmall(ctx, in.Source.latestURL())
+	if err != nil {
+		return "", fmt.Errorf("look up latest release: %w", err)
+	}
+	var rel struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &rel); err != nil || !tagPattern.MatchString(rel.TagName) {
+		return "", errors.New("look up latest release: no usable tag_name in the response")
+	}
+	return rel.TagName, nil
+}
+
 // Install installs the latest release's server into dir (created if needed)
 // and returns the installed path. On any error nothing is left behind in dir.
 func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
@@ -128,17 +144,10 @@ func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
 	}
 
 	in.logf("Looking up the latest firekeeper-server release...")
-	body, err := in.getSmall(ctx, in.Source.latestURL())
+	tag, err := in.Latest(ctx)
 	if err != nil {
-		return "", fmt.Errorf("look up latest release: %w", err)
+		return "", err
 	}
-	var rel struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.Unmarshal(body, &rel); err != nil || !tagPattern.MatchString(rel.TagName) {
-		return "", errors.New("look up latest release: no usable tag_name in the response")
-	}
-	tag := rel.TagName
 	asset := fmt.Sprintf("%s_%s_%s_%s.tar.gz", BinaryName, strings.TrimPrefix(tag, "v"), osName, arch)
 
 	sums, err := in.getSmall(ctx, in.Source.downloadURL(tag, "checksums.txt"))
