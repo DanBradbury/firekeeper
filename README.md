@@ -136,7 +136,12 @@ unless you answer `y`. On `y` it fetches the latest release from the public
 checksums, installs it, and starts it. With no license key it starts the free
 local dashboard; for shared use it reads a key from `--license FILE`,
 `FIREKEEPER_LICENSE`, `FIREKEEPER_LICENSE_FILE` or `~/.firekeeper/license.key`.
-Set `FIREKEEPER_NO_PROMPT=1` to never be asked. That prompt is the only place
+When you already have the server, `firekeeper serve` checks for a newer
+release the way the client does for itself and offers `1) Update now`,
+`2) Not now` or `3) Skip this version`. An update that your license's update
+period does not cover is undone and the version you had is kept. Set
+`FIREKEEPER_NO_PROMPT=1` to never be asked about installing, and
+`FIREKEEPER_NO_UPDATE_CHECK=1` to stop the update check as well. That prompt is the only place
 Firekeeper downloads a binary; plain `firekeeper` uploads nothing and starts no
 daemon, and neither `report`, `daemon` nor anything else fetches software. See
 [Installing the server from `serve`](docs/reference.md#installing-the-server-from-serve).

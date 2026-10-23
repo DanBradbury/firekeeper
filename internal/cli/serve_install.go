@@ -32,7 +32,7 @@ type installEnv struct {
 	stdin        io.Reader
 	userHome     func() (string, error)
 	newInstaller func(src serverinstall.Source, log io.Writer) *serverinstall.Installer
-	runBrew      func(brewPath string, stderr io.Writer) error
+	runBrew      func(brewPath, verb string, stderr io.Writer) error // verb: install or upgrade
 }
 
 var defaultInstallEnv = installEnv{
@@ -44,11 +44,11 @@ var defaultInstallEnv = installEnv{
 	newInstaller: func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
 		return &serverinstall.Installer{Source: src, Log: log}
 	},
-	runBrew: func(brewPath string, stderr io.Writer) error {
+	runBrew: func(brewPath, verb string, stderr io.Writer) error {
 		// Quiet unless it fails: Homebrew's tap trust, Command Line Tools
 		// and cleanup notices are not useful here.
 		var buf bytes.Buffer
-		cmd := exec.Command(brewPath, "install", brewFormula)
+		cmd := exec.Command(brewPath, verb, brewFormula)
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, &buf, &buf
 		cmd.Env = append(os.Environ(), "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_INSTALL_CLEANUP=1")
 		if err := cmd.Run(); err != nil {
@@ -128,7 +128,7 @@ func offerBrew(brew string, stderr io.Writer) string {
 		fmt.Fprintf(stderr, "\nTo install it yourself: brew install %s\n", brewFormula)
 		return ""
 	}
-	if err := installOffer.runBrew(brew, stderr); err != nil {
+	if err := installOffer.runBrew(brew, "install", stderr); err != nil {
 		fmt.Fprintf(stderr, "firekeeper serve: brew install failed: %v\n", err)
 		return ""
 	}

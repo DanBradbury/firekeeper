@@ -122,6 +122,10 @@ func runServe(args []string, _, stderr io.Writer) int {
 		if path = offerInstall(stderr); path != "" {
 			err = nil
 		}
+	} else if err == nil && startsDashboard(args) {
+		// Found one: offer a newer release, if there is one (same switches as
+		// the install offer, plus FIREKEEPER_NO_UPDATE_CHECK).
+		path = offerServerUpdate(path, stderr)
 	}
 	if err != nil {
 		if errors.Is(err, errServerNotFound) {

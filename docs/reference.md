@@ -291,6 +291,41 @@ bakes the default in with `-ldflags "-X
 github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."`; the
 environment variable wins over it.
 
+#### Updating the server from `serve`
+
+When `serve` finds a server, it asks the release source for the latest version
+(one unauthenticated GET, 2 second timeout, nothing about you or your
+sessions), runs `firekeeper-server version`, and, if the release is newer,
+offers:
+
+```
+firekeeper-server update available: 0.4.0 -> 0.5.0
+  1) Update now
+  2) Not now
+  3) Skip this version
+Choose [2]:
+```
+
+Enter or anything unknown is "not now". `3` stops the offer for that release
+until a newer one appears (remembered in `~/.firekeeper/server-update.json`).
+`1` installs the same way as the first install (SHA-256 checked against
+`checksums.txt`, archive layout enforced) over the existing file, or runs
+`brew upgrade` when the server lives in a Homebrew Cellar. It then starts the
+new server.
+
+Before it replaces the file, it keeps a copy. After the install it runs the
+new server's `license --json`; if that says `not covered by this build` (the
+release is newer than the license's update period, so the server would refuse
+to start), the old file is put back and `serve` says so. If the directory is
+not writable, or the server is not named `firekeeper-server`, nothing is
+changed and `serve` continues with what it has.
+
+It never runs for `serve --help` or the operator commands (`token`,
+`account`, `admin`, `invite`, `prices`), when a build has no release source,
+when `FIREKEEPER_SERVER_BIN` names the server, in CI, when stdin or stderr is
+not a terminal, or when `FIREKEEPER_NO_PROMPT` or `FIREKEEPER_NO_UPDATE_CHECK`
+is set.
+
 #### Release layout contract
 
 For whoever publishes the server (task A6). The repository is the public,
