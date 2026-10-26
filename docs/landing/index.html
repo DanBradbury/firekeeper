@@ -187,6 +187,8 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 .tier ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
 .tier .btn { margin-top: auto; align-self: flex-start; }
 .tier .spacer { flex: 1; }
+.tier > a:not(.btn) { font-size: 14px; color: var(--muted); padding: 10px 0; }
+.fine { font-size: 14px; color: var(--muted); margin: 18px 0 0; }
 
 /* Table */
 .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
@@ -483,7 +485,7 @@ firekeeper daemon install</pre></div>
         <div class="price">$49 <small>one-time</small></div>
         <ul><li>A year of updates included, then $29 a year for updates</li><li><b>$29 for the first 100 buyers</b></li></ul>
         <div class="spacer"></div>
-        <a class="btn btn-ghost" href="/contact">Talk to us</a>
+        <a class="btn btn-primary" href="/buy/personal">Buy Personal</a>
       </div>
       <div class="mode tier">
         <span class="step">Team</span>
@@ -491,7 +493,8 @@ firekeeper daemon install</pre></div>
         <div class="price">$15 <small>per seat / month</small></div>
         <ul><li>$12 per seat a month, billed annually</li><li>3-seat minimum</li></ul>
         <div class="spacer"></div>
-        <a class="btn btn-primary" href="/contact">Talk to us</a>
+        <a class="btn btn-primary" href="/buy/team-annual">Buy Team, yearly</a>
+        <a href="/contact">Monthly billing? Talk to us</a>
       </div>
       <div class="mode tier">
         <span class="step">Enterprise</span>
@@ -502,6 +505,7 @@ firekeeper daemon install</pre></div>
         <a class="btn btn-ghost" href="/contact">Talk to us</a>
       </div>
     </div>
+    <p class="fine">Prices are in US dollars and exclude tax. Payment is handled by Stripe. After you buy, your license key is emailed to you within one business day.</p>
     <div class="callout"><strong>Design partners:</strong> run a free 60–90 day pilot, then pay half price for the first year. In return we ask for feedback, a case study, and your logo.</div>
   </div>
 </section>
@@ -545,7 +549,7 @@ firekeeper daemon install</pre></div>
 
 <footer>
   <div class="wrap">
-    <div>© 2026 Dan Bradbury. The Firekeeper client is an early-stage open source project, licensed under Apache 2.0. The dashboard server is a separate, commercial product and is not covered by that license.</div>
+    <div>© 2026 Lucky Daisy LLC. The Firekeeper client is an early-stage open source project, licensed under Apache 2.0. The dashboard server is a separate, commercial product and is not covered by that license.</div>
     <ul>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper/releases">Releases</a></li>
