@@ -511,8 +511,11 @@ type machine struct {
 }
 
 type ingestMeta struct {
-	SessionID      string     `json:"session_id"`
-	Provider       string     `json:"provider"`
+	SessionID string `json:"session_id"`
+	Provider  string `json:"provider"`
+	// Origin is "cloud" for imported hosted sessions. Empty is omitted, which
+	// servers read as a local session.
+	Origin         string     `json:"origin,omitempty"`
 	CWD            string     `json:"cwd"`
 	Project        string     `json:"project"`
 	Branch         string     `json:"branch"`
@@ -572,6 +575,7 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 	return ingestMeta{
 		SessionID:      meta.ID,
 		Provider:       meta.Provider,
+		Origin:         meta.Origin,
 		CWD:            clean(meta.CWD),
 		Project:        meta.Project,
 		Branch:         clean(session.FirstNonEmpty(meta.Branch, branch)),

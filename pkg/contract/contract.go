@@ -189,6 +189,8 @@ func ValidateEvent(data []byte) error {
 var (
 	validStates = []string{"ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"}
 	validFiles  = []string{"git", "tool_calls"}
+	// validOrigins are the meta.origin values: where the session ran.
+	validOrigins = []string{"local", "cloud"}
 )
 
 // ValidateBatch checks a POST /v1/ingest request body: the machine, each
@@ -257,6 +259,11 @@ func ValidateBatch(data []byte) error {
 				}
 			default:
 				add("%s.meta.%s: want a string or null", p, key)
+			}
+		}
+		if o, present := meta["origin"]; present && o != nil {
+			if s, ok := o.(string); !ok || (s != "" && !contains(validOrigins, s)) {
+				add("%s.meta.origin: not a known origin", p)
 			}
 		}
 		source, _ := meta["files_source"].(string)

@@ -63,6 +63,13 @@ None sends session data, and none goes to me:
 - **Codex usage** starts your own `codex app-server` for a moment and asks it
   for your rate limits. Codex contacts OpenAI under your account, governed by
   OpenAI's privacy policy.
+- **Claude Code on the web**: only when you run `firekeeper backfill
+  --claude-cloud`, Firekeeper reads your Claude Code login from the macOS
+  keychain and `~/.claude.json` and requests your cloud sessions from
+  `api.anthropic.com`, an undocumented API governed by Anthropic's terms and
+  privacy policy. The token stays in memory and is never stored, logged, or
+  uploaded. The sessions are cached unredacted in `~/.firekeeper/cloud/claude/`
+  (mode `0600`) and then uploaded as in section 1.4.
 - **Copilot plan details**: if a GitHub token is available, Firekeeper sends
   it to GitHub's API (or `GITHUB_API_URL`) to read your Copilot plan. This is
   governed by GitHub's privacy statement. The token is not stored or logged.

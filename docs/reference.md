@@ -496,6 +496,7 @@ that is still running keeps the state discovery reports for it.
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Import this provider's sessions. Repeatable. `codex`, `copilot`, and `claude` can be backfilled. |
 | `--all` | Import all supported providers found locally, for this pass only. |
+| `--claude-cloud` | Import Claude Code on the web sessions instead of local ones. See [Cloud sessions](#claude-code-on-the-web-cloud-sessions). Not with `--all` or `--provider`. |
 | `--since DURATION` | Only import transcripts modified within the duration, for example `720h`. |
 | `--after YYYY-MM-DD` | Only import transcripts modified after this local date. Use `--since` or `--after`, not both. |
 | `--limit N` | Import at most N sessions, newest first. Run again to continue. |
@@ -511,6 +512,47 @@ learn the directory, and nothing more of an excluded transcript is read.
 Claude Code also reads at most 64 KiB to learn the directory; unknown directories
 are excluded. Historical Claude metadata uses the first available branch and
 model in that head, with file modification time as last activity.
+
+#### Claude Code on the web (cloud sessions)
+
+Sessions you ran on claude.ai/code have no files on your machine, so
+`--all` cannot see them. `--claude-cloud` imports them:
+
+```sh
+firekeeper backfill --claude-cloud --dry-run    # download, then print the plan
+firekeeper backfill --claude-cloud              # print the plan, ask, upload
+```
+
+How it works, and what you should know first:
+
+- **It downloads before it plans.** It signs in with your own Claude Code
+  login (macOS only: the keychain item Claude Code created, plus the
+  organization id in `~/.claude.json`) and makes read-only requests to
+  `api.anthropic.com` for your session list and each session's events. Even
+  with `--dry-run` it downloads, because the plan needs the events; nothing
+  goes to the dashboard until you confirm. Run `claude` and sign in first if it
+  says there is no login.
+- **It uses an undocumented API.** That is the internal API behind the web
+  app. It can change or stop working without notice; when it does, backfill
+  stops with an error rather than guessing. Check that Anthropic's terms allow
+  this use of your account.
+- **Your login stays local.** The token is held in memory for the run and sent
+  only to `api.anthropic.com`. It is never logged, saved, or uploaded.
+- **A local cache.** Sessions are written, unredacted like any transcript on
+  disk, to `~/.firekeeper/cloud/claude/` (mode `0600`), not to `~/.claude`.
+  Redaction happens as it does for every upload. A rerun downloads a session
+  again only when it changed, and uploads only its new events. Delete the
+  folder to reclaim space; the next run downloads again, and the server drops
+  events it already has.
+- **What is imported.** Prompts, replies, tool calls and results, and
+  sub-agent messages (shown as meta). Session plumbing (control messages,
+  rate limits, environment logs) is dropped. The dashboard shows the cloud
+  session id, its title, model, and branch. The API does not report a
+  working directory, so the project is the session's GitHub repository and
+  the directory is the virtual path `/claude-cloud/<owner>/<repo>` (just
+  `/claude-cloud` for a session with no repository). `--since`, `--after`, and `--limit` work as above;
+  `.firekeeper-ignore` and `exclude` match local paths, so they do not apply
+  to cloud sessions.
 
 ### Linking a machine
 
@@ -705,5 +747,6 @@ Files Firekeeper reads and writes outside the provider data it only reads:
 | --- | --- | --- |
 | `~/.firekeeper/machine-id` | any command that identifies the machine | this machine's id |
 | `~/.firekeeper/state.json`, `state.lock` | `report`, `backfill`, `daemon` | per-file read offsets and their lock |
+| `~/.firekeeper/cloud/claude/` | `backfill --claude-cloud` | cached Claude Code on the web sessions (mode `0600`) |
 | `~/.firekeeper/config.toml` | you; `login` and `logout` edit `server` and `token` | reporting configuration |
 | `~/.firekeeper/daemon.log`, `daemon.lock` | `daemon` | log and single-instance lock |

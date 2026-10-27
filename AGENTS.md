@@ -85,6 +85,8 @@ firekeeper/
 │   │   ├── Aliases of the public pkg/event types; no session import
 │   │   ├── claude/, codex/, copilot/, cursor/, kimi/, opencode/, gemini/: per-provider
 │   │   │   transcript parsers
+│   │   ├── claudecloud/: Claude Code on the web sessions: API client, cache sync,
+│   │   │   and a Source over the cache; used only by `backfill --claude-cloud`
 │   │   ├── reader/: reader registry, provider lookup, and enumeration. reader
 │   │   │   and the provider packages import internal/session; the transcript
 │   │   │   package itself must not
@@ -137,7 +139,7 @@ Provider rules:
 - Use bounded operations and actionable, sanitized errors.
 - Add parser tests for malformed, missing, partial, and evolving provider data.
 - Use temporary directories and fixtures in tests. Do not depend on developer account data or write into real home directories.
-- Avoid undocumented network endpoints, credential extraction, billing-page scraping, or secret persistence.
+- Avoid undocumented network endpoints, credential extraction, billing-page scraping, or secret persistence. The one owner-approved exception is `internal/transcript/claudecloud`, reached only by `firekeeper backfill --claude-cloud`: it reads the user's own Claude Code login (macOS keychain item `Claude Code-credentials` and the organization id in `~/.claude.json`) and calls the undocumented Claude Code on the web API on `api.anthropic.com` (read-only GETs) to import cloud sessions. Rules for that package: the token lives in memory for the run and is never logged, printed, cached, written or uploaded (`Credentials` prints a placeholder); it is sent only to the API host and redirects are not followed; errors carry status codes, never response bodies; session ids are validated before they become file names; the cache is `~/.firekeeper/cloud/claude/` (mode `0600`), never `~/.claude`; nothing else (dashboard, daemon, `report`, plain `backfill`) may call it. The API can change without notice, so a changed shape must fail with a clear error, not a guess. Findings are in `internal/transcript/claudecloud/NOTES.md`.
 - Codex usage may launch authenticated `codex app-server --listen stdio://` for a short-lived request; do not turn it into a persistent server requirement.
 - Copilot usage currently represents local CLI history from `session-store.db`. GitHub does not expose equivalent real-time individual allowance, remaining quota, and reset metrics through a supported API. Do not label local history as account-wide quota.
 

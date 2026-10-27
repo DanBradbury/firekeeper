@@ -40,9 +40,9 @@ var validStates = map[string]bool{"ACTIVE": true, "WAITING": true, "NEEDS_INPUT"
 
 // Session is the stored metadata of one uploaded session.
 type Session struct {
-	MachineID, ID, Provider, CWD, Project, Branch, Commit, Model, State, Title string
-	FilesSource                                                                string
-	StartedAt, LastActivityAt                                                  *time.Time
+	MachineID, ID, Provider, Origin, CWD, Project, Branch, Commit, Model, State, Title string
+	FilesSource                                                                        string
+	StartedAt, LastActivityAt                                                          *time.Time
 }
 
 // File is one changed file of a session.
@@ -285,6 +285,7 @@ type metaBody struct {
 	StartedAt      *time.Time `json:"started_at"`
 	LastActivityAt *time.Time `json:"last_activity_at"`
 	FilesSource    string     `json:"files_source"`
+	Origin         string     `json:"origin"`
 	Files          []string   `json:"files"`
 }
 
@@ -416,6 +417,7 @@ func mergeMeta(dst *Session, m metaBody) {
 	set(&dst.Model, m.Model)
 	set(&dst.State, m.State)
 	set(&dst.Title, m.Title)
+	set(&dst.Origin, m.Origin)
 	if dst.Commit == "" {
 		dst.Commit = m.Commit
 	}
