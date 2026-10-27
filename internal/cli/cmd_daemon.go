@@ -16,6 +16,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/daemon"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 )
 
 // daemonRun is replaced in tests so daemon never takes the real lock.
@@ -86,6 +87,10 @@ func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []stri
 		fmt.Fprintf(stderr, "%s: --interval must be at least %s\n", name, daemon.MinInterval)
 		return 2, false
 	}
+	if c.ClaudeCloud && c.ClaudeCloudInterval != 0 && c.ClaudeCloudInterval < claudecloud.MinPollInterval {
+		fmt.Fprintf(stderr, "%s: claude_cloud.interval must be at least %s\n", name, claudecloud.MinPollInterval)
+		return 2, false
+	}
 	if len(c.Providers) == 0 && !c.TelemetryEnabled {
 		fmt.Fprintf(stderr, "%s: no --provider given (or providers in the config file); the daemon uploads nothing without one\n", name)
 		return 2, false
@@ -136,6 +141,10 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 		Telemetry: daemon.TelemetryConfig{
 			Enabled: flags.cfg.TelemetryEnabled,
 			Port:    flags.cfg.TelemetryPort,
+		},
+		ClaudeCloud: daemon.ClaudeCloudConfig{
+			Enabled:  flags.cfg.ClaudeCloud,
+			Interval: flags.cfg.ClaudeCloudInterval,
 		},
 	}
 	if !*quiet {

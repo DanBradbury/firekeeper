@@ -28,6 +28,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
+	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 )
 
 const (
@@ -80,6 +81,11 @@ type Config struct {
 	// listens, and it still uploads nothing.
 	Telemetry TelemetryConfig
 
+	// ClaudeCloud, when enabled, also imports Claude Code on the web
+	// sessions on its own, slower schedule. Off unless the config file
+	// turns it on.
+	ClaudeCloud ClaudeCloudConfig
+
 	// RunOnce, Heartbeat, Clock, Rand, and Listen replace the real
 	// implementations in tests. Nil means reporter.RunOnce,
 	// reporter.Heartbeat, the system clock, math/rand/v2.Float64, and
@@ -99,6 +105,21 @@ type TelemetryConfig struct {
 	Path    string
 }
 
+// ClaudeCloudConfig is the opt-in Claude Code on the web poller.
+type ClaudeCloudConfig struct {
+	Enabled bool
+	// Interval is the time between cloud passes. Zero means
+	// claudecloud.DefaultPollInterval.
+	Interval time.Duration
+	// Poller replaces the real poller in tests.
+	Poller CloudPoller
+}
+
+// CloudPoller runs a cloud pass when one is due.
+type CloudPoller interface {
+	Poll(context.Context) claudecloud.PollResult
+}
+
 // Run reports every Interval until ctx is cancelled. Cancelling ctx is a
 // graceful stop: the batch in flight finishes and its offset is saved, no
 // new batch starts, and Run returns nil. Run returns an error only when it
@@ -109,6 +130,9 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	if cfg.Interval < MinInterval {
 		return fmt.Errorf("interval must be at least %s", MinInterval)
+	}
+	if cfg.ClaudeCloud.Enabled && cfg.ClaudeCloud.Interval != 0 && cfg.ClaudeCloud.Interval < claudecloud.MinPollInterval {
+		return fmt.Errorf("claude_cloud.interval must be at least %s", claudecloud.MinPollInterval)
 	}
 	if !cfg.Reporter.Uploading() && !cfg.Telemetry.Enabled {
 		return ErrNoProviders
@@ -156,6 +180,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	d := &daemon{cfg: cfg, log: log.New(w, "", log.LstdFlags)}
+	d.cloud = d.newCloudPoller()
 	listenDone := d.startTelemetry(ctx, w)
 	if cfg.Reporter.Uploading() {
 		d.loop(ctx)
@@ -211,6 +236,39 @@ type daemon struct {
 	// scanAfter opens the next pass's scan window. Zero until the first
 	// pass sets it from Reporter.ScanLookback.
 	scanAfter time.Time
+	// cloud is the Claude Code on the web poller, nil when it is off.
+	cloud CloudPoller
+}
+
+// newCloudPoller returns the cloud poller when it is enabled and can run.
+// A configuration problem is logged and written to the status file for the
+// dashboard; the rest of the daemon runs as usual.
+func (d *daemon) newCloudPoller() CloudPoller {
+	cc := d.cfg.ClaudeCloud
+	if !cc.Enabled {
+		return nil
+	}
+	if cc.Poller != nil {
+		return cc.Poller
+	}
+	statusPath := filepath.Join(d.cfg.Dir, claudecloud.StatusFile)
+	p, err := claudecloud.NewPoller(claudecloud.PollerConfig{
+		Reporter:   d.cfg.Reporter,
+		Interval:   cc.Interval,
+		Lookback:   d.cfg.Reporter.ScanLookback,
+		Dir:        filepath.Join(d.cfg.Dir, "cloud", "claude"),
+		StatusPath: statusPath,
+		Logf:       d.log.Printf,
+		Now:        d.now,
+	})
+	if err != nil {
+		d.log.Printf("claude cloud sync is off: %v", err)
+		now := d.now()
+		_ = claudecloud.WriteStatus(statusPath, claudecloud.Status{LastAttempt: now, Warning: err.Error()})
+		return nil
+	}
+	d.log.Printf("claude cloud sync: on, every %s, with your Claude Code login (read-only)", p.Interval())
+	return p
 }
 
 func (d *daemon) now() time.Time {
@@ -237,6 +295,9 @@ func (d *daemon) loop(ctx context.Context) {
 	failures := 0
 	for {
 		err := d.cycle(ctx)
+		if d.cloud != nil && ctx.Err() == nil {
+			d.cloud.Poll(ctx)
+		}
 		if ctx.Err() != nil {
 			d.log.Printf("stopped")
 			return
