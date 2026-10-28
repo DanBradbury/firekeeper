@@ -409,7 +409,7 @@ func (m model) View() string {
 		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")
 	}
 	help, status := m.usageFooter()
-	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), fitLine(help, m.width), fitLine(status, m.width)}, "\n")
+	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), help, status}, "\n")
 }
 
 func padText(value string, width int) string {

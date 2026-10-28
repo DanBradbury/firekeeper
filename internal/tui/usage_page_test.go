@@ -22,3 +22,20 @@ func TestUsageFitStatKeepsNameAndFloatsValueRight(t *testing.T) {
 		}
 	}
 }
+
+func TestUsageFooterMatchesProcessesFooterStyle(t *testing.T) {
+	m := model{width: 100, height: 30, activeTab: usageTab}
+	usageHelp, usageStatus := m.usageFooter()
+	processHelp, processStatus := m.processFooter()
+	for name, line := range map[string]string{"usage help": usageHelp, "usage status": usageStatus} {
+		if got := ansi.StringWidth(line); got != m.width {
+			t.Errorf("%s width = %d, want %d", name, got, m.width)
+		}
+	}
+	if !strings.Contains(usageHelp, dashPaint("tab ", dashBlue, true)) {
+		t.Errorf("usage help keys are not painted like the Processes footer: %q", usageHelp)
+	}
+	if len(usageHelp) == 0 || len(processHelp) == 0 || len(usageStatus) == 0 || len(processStatus) == 0 {
+		t.Fatal("empty footer")
+	}
+}
