@@ -553,61 +553,68 @@ func formatCommaInt(value int64) string {
 }
 
 func (m model) usageFooter() (string, string) {
-	help := "  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+	keys := []footerKey{{"←/→", "provider"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}
 	if m.usageSessionCount() > 0 {
-		help = "  ↑/↓ session  •  Enter chat  •  ←/→ provider  •  r refresh  •  Tab switch  •  q quit"
+		keys = append([]footerKey{{"↑↓", "session"}, {"enter", "chat"}}, keys...)
 	}
+	help := renderFooterKeys(keys, m.width)
+	status := m.usageStatusText()
+	return help, dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
+}
+
+// usageStatusText is the Usage tab's status line for the selected provider.
+func (m model) usageStatusText() string {
 	switch m.usageProvider {
 	case copilotProvider:
 		if m.copilotUsageLoading {
-			return help, "  reading local Copilot CLI usage…"
+			return "  reading local Copilot CLI usage…"
 		}
 		if m.copilotUsageErr != "" {
-			return help, "  Copilot usage refresh failed: " + m.copilotUsageErr
+			return "  Copilot usage refresh failed: " + m.copilotUsageErr
 		}
 		if m.copilotHistoryErr != "" {
-			return help, "  Copilot session history unavailable: " + m.copilotHistoryErr
+			return "  Copilot session history unavailable: " + m.copilotHistoryErr
 		}
 		if m.copilotUsageRefreshedAt.IsZero() {
-			return help, "  Copilot usage not loaded"
+			return "  Copilot usage not loaded"
 		}
-		return help, "  Copilot refreshed " + m.copilotUsageRefreshedAt.Format("15:04:05")
+		return "  Copilot refreshed " + m.copilotUsageRefreshedAt.Format("15:04:05")
 	case kimiProvider:
 		if m.kimiUsageLoading {
-			return help, "  reading local Kimi Code usage…"
+			return "  reading local Kimi Code usage…"
 		}
 		if m.kimiUsageErr != "" {
-			return help, "  Kimi usage refresh failed: " + m.kimiUsageErr
+			return "  Kimi usage refresh failed: " + m.kimiUsageErr
 		}
 		if m.kimiUsageRefreshedAt.IsZero() {
-			return help, "  Kimi usage not loaded"
+			return "  Kimi usage not loaded"
 		}
-		return help, "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
+		return "  Kimi refreshed " + m.kimiUsageRefreshedAt.Format("15:04:05")
 	case claudeProvider:
 		if m.claudeUsageLoading {
-			return help, "  reading local Claude Code usage…"
+			return "  reading local Claude Code usage…"
 		}
 		if m.claudeUsageErr != "" {
-			return help, "  Claude usage refresh failed: " + m.claudeUsageErr
+			return "  Claude usage refresh failed: " + m.claudeUsageErr
 		}
 		if m.claudeUsageRefreshedAt.IsZero() {
-			return help, "  Claude usage not loaded"
+			return "  Claude usage not loaded"
 		}
-		return help, "  Claude refreshed " + m.claudeUsageRefreshedAt.Format("15:04:05")
+		return "  Claude refreshed " + m.claudeUsageRefreshedAt.Format("15:04:05")
 	default:
 		if m.codexUsageLoading {
-			return help, "  fetching Codex quotas and usage…"
+			return "  fetching Codex quotas and usage…"
 		}
 		if m.codexUsageErr != "" {
-			return help, "  Codex usage refresh failed: " + m.codexUsageErr
+			return "  Codex usage refresh failed: " + m.codexUsageErr
 		}
 		if m.codexHistoryErr != "" {
-			return help, "  Codex session history unavailable: " + m.codexHistoryErr
+			return "  Codex session history unavailable: " + m.codexHistoryErr
 		}
 		if m.codexUsageRefreshedAt.IsZero() {
-			return help, "  Codex usage not loaded"
+			return "  Codex usage not loaded"
 		}
-		return help, "  Codex refreshed " + m.codexUsageRefreshedAt.Format("15:04:05")
+		return "  Codex refreshed " + m.codexUsageRefreshedAt.Format("15:04:05")
 	}
 }
 

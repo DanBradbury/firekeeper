@@ -595,15 +595,23 @@ func (m model) dashHeaderLine() string {
 	return left + dashPaint(strings.Repeat(" ", space), usageTextColor, false) + right
 }
 
-func (m model) processFooter() (string, string) {
-	keys := []struct{ key, action string }{
-		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
-	}
+// footerKey is one key and its action in a footer help line.
+type footerKey struct{ key, action string }
+
+// renderFooterKeys paints a footer help line shared by the Processes and Usage
+// tabs, filled to width with the panel background.
+func renderFooterKeys(keys []footerKey, width int) string {
 	help := dashPaint(" ", usageTextColor, false)
 	for _, key := range keys {
 		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+"  ", usageTextColor, false)
 	}
-	help = dashFit(help, m.width, usagePanelColor)
+	return dashFit(help, width, usagePanelColor)
+}
+
+func (m model) processFooter() (string, string) {
+	help := renderFooterKeys([]footerKey{
+		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
+	}, m.width)
 	status := dashFit(dashPaint("  "+m.processStatusText(), usageMutedColor, false), m.width, usagePanelColor)
 	return help, status
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // usage_page.go renders every provider's Usage tab with the same panels as
@@ -215,7 +216,11 @@ func (m model) usageCardRow(page usagePage, height int) []string {
 	for index, card := range cards {
 		width := remaining / (count - index)
 		remaining -= width
-		box := dashBox(card.Title, card.Lines(height-2), width, height, card.Accent)
+		body := card.Lines(height - 2)
+		for line := range body {
+			body[line] = usageFitStat(body[line], width-4)
+		}
+		box := dashBox(card.Title, body, width, height, card.Accent)
 		for row := range rows {
 			rows[row] += box[row]
 		}
@@ -491,7 +496,28 @@ func usageStat(name, value, color string) string {
 	if color == "" {
 		color = usageBrightColor
 	}
-	return dashPaint(dashCell(name, 9, false), usageMutedColor, false) + dashPaint(value, color, true)
+	return dashPaint(name, usageMutedColor, false) + usageStatGap + dashPaint(value, color, true)
+}
+
+// usageStatGap separates a stat's name from its value until the card width is
+// known; usageFitStat then floats the value to the right edge.
+const usageStatGap = "\x1f"
+
+// usageFitStat expands the gap in a usageStat line so the name stays whole and
+// the value sits flush right. When the row is too narrow the value is
+// truncated instead of the name.
+func usageFitStat(line string, inner int) string {
+	name, value, ok := strings.Cut(line, usageStatGap)
+	if !ok {
+		return line
+	}
+	nameWidth := ansi.StringWidth(name)
+	valueWidth := ansi.StringWidth(value)
+	if nameWidth+1+valueWidth > inner {
+		value = ansi.Truncate(value, max(inner-nameWidth-1, 0), "…")
+		valueWidth = ansi.StringWidth(value)
+	}
+	return name + strings.Repeat(" ", max(inner-nameWidth-valueWidth, 1)) + value
 }
 
 // usageNote is a muted explanatory line, such as where to find quota.
