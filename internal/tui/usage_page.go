@@ -517,7 +517,7 @@ func usageFitStat(line string, inner int) string {
 		value = ansi.Truncate(value, max(inner-nameWidth-1, 0), "…")
 		valueWidth = ansi.StringWidth(value)
 	}
-	return name + strings.Repeat(" ", max(inner-nameWidth-valueWidth, 1)) + value
+	return name + dashPaint(strings.Repeat(" ", max(inner-nameWidth-valueWidth, 1)), usageTextColor, false) + value
 }
 
 // usageNote is a muted explanatory line, such as where to find quota.

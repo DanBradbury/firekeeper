@@ -39,3 +39,11 @@ func TestUsageFooterMatchesProcessesFooterStyle(t *testing.T) {
 		t.Fatal("empty footer")
 	}
 }
+
+func TestUsageFitStatPaintsGapWithPanelBackground(t *testing.T) {
+	got := usageFitStat(usageStat("Output", "374.9K", ""), 30)
+	gap := dashPaint(strings.Repeat(" ", 30-len("Output")-len("374.9K")), usageTextColor, false)
+	if !strings.Contains(got, gap) {
+		t.Fatalf("gap between name and value is not painted: %q", got)
+	}
+}
