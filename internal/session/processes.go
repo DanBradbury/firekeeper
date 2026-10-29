@@ -116,6 +116,9 @@ func (d *discoverer) classifyProcess(command string) string {
 		// Firekeeper's own subcommands name harnesses in their flags, such
 		// as daemon --provider copilot, but are never agent runtimes.
 		return ""
+	case isMicrosoftTeamsCommand(lower):
+		// Teams helpers name Microsoft 365 Copilot hosts in their flags.
+		return ""
 	case d.isClaudeCodeCommand(command):
 		// Checked first: Claude Code command lines can name other
 		// harnesses in resumed transcript paths.

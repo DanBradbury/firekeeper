@@ -30,6 +30,16 @@ func isCopilotSDKCommand(lower string) bool {
 	return strings.Contains(filepath.ToSlash(lower), "/github-copilot-sdk/")
 }
 
+// isMicrosoftTeamsCommand reports whether the lowercased command runs from the
+// Microsoft Teams app bundle or its WebView helpers. Their flags carry
+// Microsoft 365 Copilot URLs (such as copilot.teams.cloud.microsoft), which are
+// not the Copilot CLI. The bundle name contains a space, so the whole command
+// line is searched.
+func isMicrosoftTeamsCommand(lower string) bool {
+	lower = filepath.ToSlash(lower)
+	return strings.Contains(lower, "/microsoft teams") || strings.Contains(lower, "/msteams")
+}
+
 func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for groupIndex := range groups {
