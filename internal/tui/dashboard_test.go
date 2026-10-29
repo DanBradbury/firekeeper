@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -71,6 +72,29 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 		"1.2M", "019fb33c", "└─ main · /workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
 		"Sessions 2", "1 active", "1 input",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("dashboard missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestDashboardShowsSummaryEstimateSeparate(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 160, 44
+	m.processGroups[0].sessions[0].agentSummary = &session.AgentSummaryEstimate{
+		Calls: 5, Tokens: 31000, CacheRead: 31000, IntervalSeconds: 30,
+		Source: session.AgentSummarySourceTranscript,
+		Label:  "~5 hidden summary calls, est. 31000 tokens",
+	}
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{
+		"1.2M", "900.0K",
+		"~5 hidden summary calls, est. 31.0K tokens",
+		"estimate only, not in the measured total",
+		"server may set 30-240s",
+		"~5 hidden, est. 31.0K",
+		"est. only · 30s (30-240s)",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)

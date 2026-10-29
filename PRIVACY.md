@@ -37,7 +37,10 @@ section 1.3.
   agents' local session files and databases (for example under `~/.codex`,
   `~/.copilot`, `~/.claude`, and `~/.kimi-code`, or the directories named by
   `CODEX_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`, and `KIMI_CODE_HOME`).
-  These are read-only.
+  These are read-only. For Claude Code, that includes subagent transcripts
+  under a session's `subagents/` directory. Firekeeper reads their timestamps
+  and token counts to estimate hidden status-line calls. It does not keep the
+  transcript text from those files.
   Sessions in repositories containing a `.firekeeper-ignore` file, or matching
   `exclude` in the config, are never read.
 - **Writes**, under `~/.firekeeper/`: `config.toml` (server address and, after
@@ -73,7 +76,10 @@ None sends session data, and none goes to me:
 to the server you configure. For each session they send:
 
 - **metadata:** provider, session id, working directory, project name, Git
-  branch, model, state, title, timestamps, event count, and token totals;
+  branch, model, state, title, timestamps, event count, and token totals.
+  A Claude Code session may also include `agent_summary_estimate`, a labeled
+  estimate of hidden status-line calls (a call count and a token estimate,
+  not transcript text). It is not added to the token totals.
 - **every transcript event:** your prompts, the assistant's replies, tool
   calls and their output (which can include source code, file contents, and
   command output), and each event's original record;

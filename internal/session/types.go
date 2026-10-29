@@ -105,6 +105,10 @@ type Info struct {
 	// transcript event convention: Input excludes cached input, and cache
 	// reads and cache writes are counted apart. It is zero when unknown.
 	Tokens TokenBreakdown
+	// AgentSummary estimates Claude Code agent_summary calls that are not
+	// written to the transcript. It is nil when there is nothing to report
+	// and is never included in Tokens or TokensUsed.
+	AgentSummary *AgentSummaryEstimate
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,

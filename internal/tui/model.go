@@ -58,18 +58,19 @@ type processInfo struct {
 }
 
 type sessionInfo struct {
-	id          string
-	name        string
-	state       sessionState
-	cwd         string
-	model       string
-	source      string
-	repository  string
-	gitBranch   string
-	rolloutPath string
-	updatedAt   time.Time
-	tokensUsed  int64
-	tokens      tokenBreakdown
+	id           string
+	name         string
+	state        sessionState
+	cwd          string
+	model        string
+	source       string
+	repository   string
+	gitBranch    string
+	rolloutPath  string
+	updatedAt    time.Time
+	tokensUsed   int64
+	tokens       tokenBreakdown
+	agentSummary *session.AgentSummaryEstimate
 }
 
 type tokenBreakdown = session.TokenBreakdown

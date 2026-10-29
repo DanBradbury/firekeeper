@@ -590,5 +590,11 @@ func mergeLive(meta, live session.Meta) session.Meta {
 	if meta.StartedAt == nil {
 		meta.StartedAt = live.StartedAt
 	}
+	// A running Claude session just measured its summary estimate, including
+	// a debug-file count. Overlay that, and clear a stale historical estimate
+	// when the live pass found nothing to report.
+	if live.Provider == "claude" || live.AgentSummary != nil {
+		meta.AgentSummary = live.AgentSummary
+	}
 	return meta
 }

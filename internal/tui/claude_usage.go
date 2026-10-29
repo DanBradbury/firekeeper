@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -50,6 +51,9 @@ type claudeHistoricalSession struct {
 	CacheCreation  int64
 	OutputTokens   int64
 	LifetimeTokens int64
+	// Estimate is the hidden agent_summary guess. It is not part of
+	// LifetimeTokens or the usage totals.
+	Estimate *session.AgentSummaryEstimate
 }
 
 type claudeUsageSnapshot struct {
@@ -185,7 +189,14 @@ func readClaudeUsageFile(path string, summary *claudeUsageSummary, models, daily
 	session.WorkDir = sanitizeProcessCommand(session.WorkDir)
 	session.GitBranch = sanitizeProcessCommand(session.GitBranch)
 	session.Model = sanitizeProcessCommand(session.Model)
+	session.Estimate = claudeAgentSummary(path, session.UpdatedAt)
 	return session, true
+}
+
+// claudeAgentSummary is package-level so it can name the session package.
+// readClaudeUsageFile's session variable would shadow that import.
+func claudeAgentSummary(path string, now time.Time) *session.AgentSummaryEstimate {
+	return session.EstimateClaudeAgentSummary(path, now, session.ClaudeSummaryInterval(), "")
 }
 
 func trackClaudeUsageLine(line []byte, session *claudeHistoricalSession, summary *claudeUsageSummary, models, daily map[string]int64, seen map[string]bool) {

@@ -527,6 +527,10 @@ type ingestMeta struct {
 	// Empty leaves the server's list as it is.
 	FilesSource string   `json:"files_source,omitempty"`
 	Files       []string `json:"files,omitempty"`
+	// AgentSummary estimates Claude Code agent_summary calls that are not in
+	// the transcript. It is omitted when there is nothing to report and is
+	// not part of any measured token total.
+	AgentSummary *session.AgentSummaryEstimate `json:"agent_summary_estimate,omitempty"`
 
 	// gitFilesDone marks that addGitFiles already ran for this pass.
 	gitFilesDone bool
@@ -581,6 +585,7 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		Title:          clean(meta.Title),
 		StartedAt:      meta.StartedAt,
 		LastActivityAt: meta.LastActivityAt,
+		AgentSummary:   meta.AgentSummary,
 		commitRaw:      commit,
 	}
 }

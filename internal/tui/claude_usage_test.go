@@ -82,6 +82,59 @@ func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
 	}
 }
 
+func TestFetchClaudeUsageKeepsSummaryEstimateSeparate(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	const id = "11111111-1111-1111-1111-111111111111"
+	writeClaudeTranscript(t, root, "-work-repo", id, time.Date(2026, 10, 29, 13, 0, 0, 0, time.UTC),
+		`{"type":"assistant","timestamp":"2026-10-29T12:00:00Z","cwd":"/work/repo","message":{"id":"msg_main","model":"claude-test","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}}`,
+	)
+	sub := filepath.Join(root, "projects", "-work-repo", id, "subagents")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Join([]string{
+		`{"type":"user","timestamp":"2026-10-29T12:00:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
+		`{"type":"assistant","timestamp":"2026-10-29T12:00:10Z","message":{"id":"msg_sub","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":900,"cache_creation_input_tokens":0}}}`,
+		`{"type":"user","timestamp":"2026-10-29T12:01:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := fetchClaudeUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Summary.LifetimeTokens != 135 {
+		t.Fatalf("measured total = %d, want 135", snapshot.Summary.LifetimeTokens)
+	}
+	if len(snapshot.History) != 1 {
+		t.Fatalf("history len = %d", len(snapshot.History))
+	}
+	est := snapshot.History[0].Estimate
+	calls, tokens := int64(0), int64(0)
+	if est != nil {
+		calls, tokens = est.Calls, est.Tokens
+	}
+	if snapshot.History[0].LifetimeTokens != 135 || est == nil || calls != 2 || tokens != 2000 {
+		t.Fatalf("history tokens=%d estimate calls=%d tokens=%d", snapshot.History[0].LifetimeTokens, calls, tokens)
+	}
+	if strings.Contains(snapshot.History[0].Estimate.Label, "synthetic-prompt-marker") {
+		t.Fatal("estimate label retained transcript text")
+	}
+	m := NewModel()
+	m.width, m.height = 140, 40
+	m.usageProvider = claudeProvider
+	m.claudeUsage = snapshot
+	view := ansi.Strip(m.viewUsagePage(m.height - chromeRows))
+	if !strings.Contains(view, "135") || !strings.Contains(view, "~2 hidden summary calls, est. 2.0K tokens") {
+		t.Fatalf("usage view missing the separate estimate:\n%s", view)
+	}
+	if strings.Contains(view, "synthetic-prompt-marker") {
+		t.Fatal("usage view showed transcript text")
+	}
+}
+
 func TestFetchClaudeUsageNeverExposesTranscriptText(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", root)

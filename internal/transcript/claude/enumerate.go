@@ -19,7 +19,9 @@ import (
 
 // Enumerate lists historical top-level session transcripts. Project directory
 // names are lossy encodings, so cwd is read from a bounded transcript head,
-// never guessed from the directory name. Separate subagent files are omitted.
+// never guessed from the directory name. Separate subagent files are not
+// sessions. Their timestamps feed AgentSummary, a labeled estimate of hidden
+// agent_summary calls, which is never added to the measured token totals.
 func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -79,6 +81,10 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		meta.UpdatedAt = c.mtime
 		meta.Project = reader.ProjectName(meta.CWD)
 		meta.GitBranch = meta.Branch
+		// History has no process command, so there is no --debug-file. now is
+		// the transcript's modification time: a subagent meta that still says
+		// "running" is not projected past the file.
+		meta.AgentSummary = session.EstimateClaudeAgentSummary(c.path, c.mtime, session.ClaudeSummaryInterval(), "")
 		if opts.Skip != nil && opts.Skip(meta) {
 			continue
 		}

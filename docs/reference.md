@@ -56,7 +56,10 @@ Copilot report only cached input, which shows as cache read, so their cache
 write stays 0. The breakdown comes from Claude Code transcripts, Codex rollout
 `token_count` events, and Copilot `model.model_call_success` events, read from
 the tail of each file, so very long sessions can be undercounted. Other
-harnesses show the total only. Below them, the sessions table lists one runtime per row with
+harnesses show the total only. A Claude Code session with subagents also shows
+a separate estimate of hidden status-line calls; it is not part of the total.
+See [Claude Code hidden summary calls](#claude-code-hidden-summary-calls).
+Below them, the sessions table lists one runtime per row with
 its provider, PID, project, short session id, title, state, model, tokens, and
 uptime, and a second line with the branch and working directory. A detail
 panel at the bottom shows the selected runtime's session metadata and process
@@ -131,8 +134,74 @@ history. Claude Code repeats a response's usage on every content block line,
 so each message ID is counted once, including messages copied into a resumed
 session. Requests Claude Code does not write to the transcript, such as title
 generation, are not counted, so totals can be slightly below what Claude Code
-reports. Plan limits and reset times are not stored locally; use Claude Code's
-`/usage`. Firekeeper does not read credentials or call Anthropic endpoints.
+reports. Hidden subagent status-line calls are estimated separately and are
+not added to these totals; the selected session's detail line shows the
+estimate when there is one. Plan limits and reset times are not stored
+locally; use Claude Code's `/usage`. Firekeeper does not read credentials or
+call Anthropic endpoints.
+
+#### Claude Code hidden summary calls
+
+About every 30 seconds, Claude Code sends each running subagent's transcript
+to a model and asks for a 3–5 word status line (`agent_summary`). Those
+requests are not written under `~/.claude/projects`, so a sum of the
+transcript undercounts usage. Firekeeper estimates them from
+`<session>/subagents/agent-*.jsonl` and the matching `.meta.json`. The
+estimate is labeled (`~N hidden summary calls, est. X tokens` on the session
+detail, and a shorter form in the token panel) and is never added to the
+measured total. `firekeeper snapshot --json` includes it as
+`agent_summary_estimate`, omitted when there is nothing to report. An opt-in
+upload sends the same object on session metadata; it is not part of `input`,
+`output`, or `cache`.
+
+Assumptions, chosen to match a measured ~2.5 minute subagent that produced 5
+summary forks at the default period:
+
+- Runtime starts at the earlier of the first transcript timestamp and a usable
+  meta start. It ends at the later of the meta end and the last transcript
+  timestamp when the meta says the agent has finished (`completed`, `failed`,
+  `killed`, and similar). A running status extends the end to the current
+  time on the live dashboard, or to the transcript's modification time when
+  reading history. With no usable meta, or with meta that is not JSON, the
+  window is only the first and last transcript timestamps, so a subagent that
+  is quiet between writes is estimated through its last saved message.
+- The first call is one full interval after the start, then one call per
+  interval. A trailing partial interval does not count. A call exactly at the
+  end time does. The count is `floor(runtime / interval)`.
+- Tokens for a call are the context size at that moment:
+  `input_tokens + cache_read_input_tokens + cache_creation_input_tokens` on
+  the latest assistant message at or before the call. Usage repeated on later
+  lines of the same message id counts once. The whole amount is recorded as
+  cache read. Measurements of these calls find about 98% cache re-read; the
+  short status line and the small uncached tail are not modeled.
+- Overlapping subagents each have their own timer. The session estimate is
+  the sum.
+
+The interval is a named constant, 30s. Claude's server may set it anywhere
+from 30s to 240s, and the token panel says so. Override Firekeeper's
+assumption with `FIREKEEPER_CLAUDE_SUMMARY_INTERVAL`, a Go duration such as
+`45s` or `2m`. Values outside 30s–240s are clamped, and an unparseable value
+keeps 30s. It is not a `config.toml` key. `daemon install` copies the
+variable into the service definition when it is set.
+
+If that Claude process was started with `--debug-file`, Firekeeper counts
+`[AgentSummary] Forking for summary` lines for the session's agents instead
+of the interval, and still estimates tokens from the context size at each
+logged fork. A debug log that names the session's agents and contains no such
+line replaces the estimate with nothing, because the real count is zero. A
+debug log that never mentions the session leaves the interval estimate in
+place.
+
+This is an estimate. It is high when Claude skips a timer because the
+transcript did not change, which older builds did while a subagent sat at a
+permission prompt, and low when the server interval is longer than the one
+Firekeeper assumed. It does not know about the cheaper `short` mode added in
+Claude Code 2.1.310, which is off by default.
+
+Firekeeper does not ship a hook that turns these calls off. The measurements
+are described in the [Flamerix gist](https://gist.github.com/flamerix-ai/c3905705cc4205e5de3011fa2e74efce).
+That hook changes the Claude client, and its author notes a possible conflict
+with the service terms.
 
 Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
@@ -386,9 +455,12 @@ Other limits to know about:
   that, for example while the daemon was stopped for days, waits for a
   `backfill`. With `--live-only` or `scan_ended = false` they see only
   sessions running at the time of a pass.
-- Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
+- Claude Code subagent transcripts, Kimi Code subagent logs, OpenCode subagent
   sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
-  not imported.
+  not imported as events. A Claude Code session can still carry
+  `agent_summary_estimate`, a labeled estimate of hidden status-line calls
+  derived from its subagent files. That object is not part of the measured
+  token totals. See [Claude Code hidden summary calls](#claude-code-hidden-summary-calls).
 - A Cursor CLI session whose workspace directory no longer exists is not
   uploaded: Cursor's transcripts do not record the directory, so Firekeeper
   finds it on disk, and without it the exclusion rules cannot be checked.
@@ -477,9 +549,12 @@ and Cursor CLI from their local data directories or executables on `PATH`, honor
 overrides. It allows those providers for this pass, replacing any configured allowlist
 without changing the config file. Use either `--all` or `--provider`, not
 both. After `login`, the saved server and token are used automatically.
-Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
+Claude Code subagent transcripts, Kimi Code subagent logs, OpenCode subagent
 sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
-not imported. Cursor's editor writes its Agents window sessions to the same
+not imported as events. A Claude Code session can still carry
+`agent_summary_estimate` on its metadata; see
+[Claude Code hidden summary calls](#claude-code-hidden-summary-calls).
+Cursor's editor writes its Agents window sessions to the same
 transcript folders, so `backfill` imports those too.
 
 Sessions upload newest first, so the dashboard is useful early, with one
@@ -627,9 +702,9 @@ reinstalling Firekeeper, or to change flags, run `install` again; it
 replaces the definition and restarts the service. `install` copies `PATH`,
 `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`,
 `XDG_DATA_HOME`, `OPENCODE_DB`, `GEMINI_CLI_HOME`, `CURSOR_CONFIG_DIR`,
-`XDG_CONFIG_HOME`, and `FIREKEEPER_CONFIG` from your shell into the definition
-when they are set. It refuses to install a temporary `go run` build. Nothing
-here needs or uses `sudo`.
+`XDG_CONFIG_HOME`, `FIREKEEPER_CONFIG`, and `FIREKEEPER_CLAUDE_SUMMARY_INTERVAL`
+from your shell into the definition when they are set. It refuses to install a
+temporary `go run` build. Nothing here needs or uses `sudo`.
 
 - macOS: writes `~/Library/LaunchAgents/dev.firekeeper.daemon.plist` and
   loads it with `launchctl bootstrap gui/$UID`. launchd restarts the daemon

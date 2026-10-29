@@ -186,7 +186,7 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 			missing++
 			continue
 		}
-		info, err := d.readClaudeTranscriptMetadata(path)
+		info, err := d.readClaudeTranscriptMetadata(path, d.claudeDebugFileFromGroup(groups[index]))
 		if err != nil {
 			missing++
 			continue
@@ -357,7 +357,7 @@ type claudeTranscriptMetadata struct {
 	Tokens        TokenBreakdown
 }
 
-func (d *discoverer) readClaudeTranscriptMetadata(path string) (Info, error) {
+func (d *discoverer) readClaudeTranscriptMetadata(path, debugFile string) (Info, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return Info{}, errors.New("open Claude Code transcript")
@@ -391,19 +391,47 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (Info, error) {
 	}
 	updated := d.newestTime(meta.UpdatedAt, info.ModTime())
 	return Info{
-		ID:          id,
-		Name:        d.emptyFallback(d.sanitizeProcessCommand(meta.Title), "Claude Code"),
-		State:       meta.State,
-		CWD:         d.sanitizeProcessCommand(meta.CWD),
-		Model:       d.sanitizeProcessCommand(meta.Model),
-		Source:      d.emptyFallback(d.sanitizeProcessCommand(meta.Entrypoint), "Claude Code"),
-		GitBranch:   d.sanitizeProcessCommand(meta.GitBranch),
-		RolloutPath: path,
-		StartedAt:   meta.StartedAt,
-		UpdatedAt:   updated,
-		TokensUsed:  meta.TokensUsed,
-		Tokens:      meta.Tokens,
+		ID:           id,
+		Name:         d.emptyFallback(d.sanitizeProcessCommand(meta.Title), "Claude Code"),
+		State:        meta.State,
+		CWD:          d.sanitizeProcessCommand(meta.CWD),
+		Model:        d.sanitizeProcessCommand(meta.Model),
+		Source:       d.emptyFallback(d.sanitizeProcessCommand(meta.Entrypoint), "Claude Code"),
+		GitBranch:    d.sanitizeProcessCommand(meta.GitBranch),
+		RolloutPath:  path,
+		StartedAt:    meta.StartedAt,
+		UpdatedAt:    updated,
+		TokensUsed:   meta.TokensUsed,
+		Tokens:       meta.Tokens,
+		AgentSummary: EstimateClaudeAgentSummary(path, time.Now(), ClaudeSummaryInterval(), debugFile),
 	}, nil
+}
+
+// claudeDebugFileFromGroup returns a Claude --debug-file path from the
+// runtime's command line, or "" when the process was not started with one.
+func (d *discoverer) claudeDebugFileFromGroup(group ProcessGroup) string {
+	commands := []string{group.Root.Command}
+	for _, process := range group.Processes {
+		commands = append(commands, process.Command)
+	}
+	for _, command := range commands {
+		if path := claudeDebugFileFlag(d.claudeCodeArgs(command)); path != "" {
+			return path
+		}
+	}
+	return ""
+}
+
+func claudeDebugFileFlag(args []string) string {
+	for index, field := range args {
+		if strings.HasPrefix(field, "--debug-file=") {
+			return strings.Trim(strings.TrimPrefix(field, "--debug-file="), `"'`)
+		}
+		if field == "--debug-file" && index+1 < len(args) {
+			return strings.Trim(args[index+1], `"'`)
+		}
+	}
+	return ""
 }
 
 // scanClaudeTranscript reads metadata and the latest observable state from

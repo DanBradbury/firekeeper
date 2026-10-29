@@ -628,6 +628,35 @@ func TestRunOnceRejectsBadConfig(t *testing.T) {
 	}
 }
 
+func TestSessionMetaKeepsAgentSummarySeparate(t *testing.T) {
+	est := &session.AgentSummaryEstimate{
+		Calls: 5, Tokens: 31000, CacheRead: 31000, IntervalSeconds: 30,
+		Source: session.AgentSummarySourceTranscript,
+		Label:  "~5 hidden summary calls, est. 31000 tokens",
+	}
+	got := (&run{}).sessionMeta(session.Meta{
+		ID: "s1", Provider: "claude", State: session.SessionStateWaiting, AgentSummary: est,
+	}, &SessionResult{})
+	if got.AgentSummary == nil || got.AgentSummary.Calls != 5 || got.AgentSummary.Tokens != 31000 || got.AgentSummary.CacheRead != 31000 {
+		t.Fatal("ingest metadata dropped the summary estimate")
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	summary, _ := body["agent_summary_estimate"].(map[string]any)
+	if summary == nil || summary["tokens"] != float64(31000) || summary["label"] == "" {
+		t.Fatal("ingest JSON omitted the separate estimate")
+	}
+	if _, ok := body["input"]; ok {
+		t.Fatal("ingest metadata gained a measured input field")
+	}
+}
+
 func TestDiscoveryWarningsDoNotStopThePass(t *testing.T) {
 	f := newFixture(t)
 	f.append(t, 0, 1)

@@ -66,6 +66,10 @@ type Meta struct {
 	Input          int64        `json:"input"`
 	Output         int64        `json:"output"`
 	Cache          int64        `json:"cache"`
+	// AgentSummary estimates Claude Code agent_summary calls that are not in
+	// the transcript. It is omitted when there is nothing to report and is
+	// never included in Input, Output, or Cache.
+	AgentSummary *AgentSummaryEstimate `json:"agent_summary_estimate,omitempty"`
 }
 
 // Warning reports partial enrichment failures. Discover returns usable metadata
@@ -163,7 +167,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				}
 				projects[cwd] = project
 			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, Runtime: g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, AgentSummary: s.AgentSummary, Runtime: g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

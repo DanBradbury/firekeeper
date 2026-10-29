@@ -76,6 +76,41 @@ func TestEnumerateHistory(t *testing.T) {
 	}
 }
 
+func TestEnumerateAttachesSummaryEstimate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	dir := filepath.Join(home, ".claude", "projects", "-encoded")
+	head := "{\"cwd\":\"/work/repo\",\"timestamp\":\"2026-10-29T12:00:00Z\",\"message\":{\"model\":\"claude-test\"}}\n"
+	writeHistorical(t, dir, fixtureID, head, time.Date(2026, 10, 29, 13, 0, 0, 0, time.UTC))
+	sub := filepath.Join(dir, fixtureID, "subagents")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Join([]string{
+		`{"type":"user","timestamp":"2026-10-29T12:00:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
+		`{"type":"assistant","timestamp":"2026-10-29T12:00:10Z","message":{"id":"msg_sub","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":900,"cache_creation_input_tokens":0}}}`,
+		`{"type":"user","timestamp":"2026-10-29T12:01:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metas, err := (&Source{Home: home}).Enumerate(context.Background(), reader.EnumerateOptions{})
+	if err != nil || len(metas) != 1 {
+		t.Fatalf("count = %d, error = %v", len(metas), err)
+	}
+	est := metas[0].AgentSummary
+	if est == nil || est.Calls != 2 || est.Tokens != 2000 || est.CacheRead != 2000 || metas[0].Input != 0 || metas[0].EventCount != 0 {
+		calls, tokens := int64(0), int64(0)
+		if est != nil {
+			calls, tokens = est.Calls, est.Tokens
+		}
+		t.Fatalf("estimate calls=%d tokens=%d measured input=%d events=%d", calls, tokens, metas[0].Input, metas[0].EventCount)
+	}
+	if strings.Contains(est.Label, "synthetic-prompt-marker") {
+		t.Fatal("estimate label retained transcript text")
+	}
+}
+
 func TestEnumeratePartialAndMissing(t *testing.T) {
 	home := t.TempDir()
 	source := &Source{ConfigDir: home}
