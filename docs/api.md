@@ -33,7 +33,7 @@ Every error is a JSON object with a standard HTTP status:
 | Status | `code` | When |
 | --- | --- | --- |
 | 400 | `bad_request` | Malformed JSON. |
-| 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, or state, or an event whose `machine_id`/`session_id` does not match its batch. |
+| 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, state, or origin, or an event whose `machine_id`/`session_id` does not match its batch. |
 | 401 | `unauthorized` | Missing, malformed, expired or revoked credentials. |
 | 403 | `forbidden` | The token is bound to a different machine, or its scope does not permit the request. |
 | 404 | `link_invalid` | A link code that is unknown, expired, or already used. |
@@ -171,7 +171,7 @@ transaction.
         "session_id": "0199-abc", "provider": "codex", "cwd": "/repo", "project": "repo",
         "branch": "main", "commit": "4f5ef2f…", "model": "gpt-5", "state": "ACTIVE", "title": "Fix parser",
         "started_at": "2026-10-07T12:00:00Z", "last_activity_at": "2026-10-07T12:05:00Z",
-        "files_source": "git", "files": ["/repo/src/main.go", "/repo/src/gen.go"]
+        "origin": "local", "files_source": "git", "files": ["/repo/src/main.go", "/repo/src/gen.go"]
       },
       "events": [ { "provider": "codex", "seq": 0, "role": "user", "text": "...", "tokens": {"input": 0, "output": 0, "cache": 0}, "raw": {} } ]
     }
@@ -191,6 +191,12 @@ transaction.
   (the commit checked out when the session started; optional) keep their
   first value. `last_activity_at` only moves forward. An empty `state` keeps the
   stored state, or `UNKNOWN` for a new session.
+- Origin (optional): `origin` says where the session ran, `local` on the
+  reporting machine or `cloud` on a hosted service (for example Claude Code on
+  the web). An empty string, JSON `null`, or a missing `origin` keeps the
+  stored value, or `local` for a new session. Any other value is rejected with
+  400. A server that does not know the field ignores it. `origin` is session
+  metadata, not a property of the event in `docs/event.schema.json`.
 - Ingest also counts as a heartbeat for the machine.
 - Files: a server may derive a session's changed files from the
   file-changing tool calls in newly stored events. `TouchedFiles` in

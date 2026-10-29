@@ -1,0 +1,15 @@
+{
+  "machine": {
+    "id": "m1"
+  },
+  "sessions": [
+    {
+      "meta": {
+        "session_id": "session_01abc",
+        "provider": "claude",
+        "origin": 1
+      },
+      "events": []
+    }
+  ]
+}

@@ -191,10 +191,42 @@ var (
 	validFiles  = []string{"git", "tool_calls"}
 )
 
+// Origin says where a session ran. It is optional on ingest session metadata
+// (sessions[].meta.origin), not a field of the transcript event.
+//
+// The empty origin is unset. ValidateBatch accepts it, along with a missing
+// field and JSON null. A server keeps the stored origin in that case, and
+// records local when the session is new. Any other value is rejected.
+type Origin string
+
+const (
+	// OriginLocal is a session that ran on the reporting machine.
+	OriginLocal Origin = "local"
+	// OriginCloud is a session that ran on a hosted service.
+	OriginCloud Origin = "cloud"
+)
+
+// Origins lists every origin ingest accepts, in documentation order.
+func Origins() []Origin {
+	return []Origin{OriginLocal, OriginCloud}
+}
+
+// Valid reports whether o is local or cloud. The empty origin is unset, not
+// a member of the set.
+func (o Origin) Valid() bool {
+	switch o {
+	case OriginLocal, OriginCloud:
+		return true
+	default:
+		return false
+	}
+}
+
 // ValidateBatch checks a POST /v1/ingest request body: the machine, each
 // session's metadata and every event (with ValidateEvent), that every event
-// carries its batch's machine id and its session's id, and the 500-event
-// limit. It does not apply the 5 MiB body limit or any per-account limit.
+// carries its batch's machine id and its session's id, the session origin
+// when one is set, and the 500-event limit. An empty, null, or absent origin
+// is allowed. It does not apply the 5 MiB body limit or any per-account limit.
 // Like ValidateEvent, its errors never contain values from the body.
 func ValidateBatch(data []byte) error {
 	v, err := decodeJSON(data)
@@ -257,6 +289,14 @@ func ValidateBatch(data []byte) error {
 				}
 			default:
 				add("%s.meta.%s: want a string or null", p, key)
+			}
+		}
+		// Absent, empty, and null keep the stored origin (local for a new
+		// session). A non-string or an unknown string is rejected.
+		if raw, present := meta["origin"]; present && raw != nil {
+			s, ok := raw.(string)
+			if !ok || (s != "" && !Origin(s).Valid()) {
+				add("%s.meta.origin: not a known origin", p)
 			}
 		}
 		source, _ := meta["files_source"].(string)

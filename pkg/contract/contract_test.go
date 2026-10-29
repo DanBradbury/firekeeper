@@ -144,6 +144,77 @@ func TestBatchSamples(t *testing.T) {
 	}
 }
 
+func TestSessionOrigin(t *testing.T) {
+	got := Origins()
+	want := []Origin{OriginLocal, OriginCloud}
+	if len(got) != len(want) {
+		t.Fatalf("Origins() = %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] || !got[i].Valid() {
+			t.Fatalf("Origins()[%d] = %q, valid %v", i, got[i], got[i].Valid())
+		}
+	}
+	for _, bad := range []Origin{"", "mars", "LOCAL", "local "} {
+		if bad.Valid() {
+			t.Errorf("%q reported valid", bad)
+		}
+	}
+
+	// Clients that predate origin omit it. Empty and null mean the same
+	// thing: leave the stored value, or local for a session the server has
+	// not seen. ingest.request is the full golden batch and has no origin.
+	if err := ValidateBatch(mustFixture(t, "ingest.request")); err != nil {
+		t.Errorf("ingest.request without origin: %v", err)
+	}
+	for _, extra := range []string{
+		"",
+		`"origin":""`,
+		`"origin":null`,
+		`"origin":"local"`,
+		`"origin":"cloud"`,
+	} {
+		if err := ValidateBatch(originBatch(extra)); err != nil {
+			t.Errorf("origin %s: %v", extra, err)
+		}
+	}
+	for _, extra := range []string{
+		`"origin":"mars"`,
+		`"origin":"LOCAL"`,
+		`"origin":"local "`,
+		`"origin":1`,
+		`"origin":true`,
+		`"origin":{}`,
+		`"origin":["cloud"]`,
+	} {
+		err := ValidateBatch(originBatch(extra))
+		if err == nil || !strings.Contains(err.Error(), "meta.origin") || strings.Contains(err.Error(), "mars") {
+			t.Errorf("origin %s: %v", extra, err)
+		}
+	}
+	for _, name := range []string{
+		"batch.valid.cloud_origin",
+		"batch.valid.local_origin",
+		"batch.valid.empty_origin",
+		"batch.valid.null_origin",
+		"batch.invalid.unknown_origin",
+		"batch.invalid.origin_type",
+	} {
+		if Fixture(name) == nil {
+			t.Errorf("missing fixture %s", name)
+		}
+	}
+}
+
+func originBatch(extra string) []byte {
+	meta := `{"session_id":"s","provider":"codex"`
+	if extra != "" {
+		meta += "," + extra
+	}
+	meta += "}"
+	return []byte(`{"machine":{"id":"m1"},"sessions":[{"meta":` + meta + `,"events":[]}]}`)
+}
+
 func TestTooManyEvents(t *testing.T) {
 	var e map[string]any
 	_ = json.Unmarshal(mustFixture(t, "event.valid.user"), &e)
