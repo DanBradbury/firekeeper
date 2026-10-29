@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -50,6 +51,9 @@ type claudeHistoricalSession struct {
 	CacheCreation  int64
 	OutputTokens   int64
 	LifetimeTokens int64
+	// UndercountWarning is set when the session has subagent transcripts.
+	// It is not part of LifetimeTokens.
+	UndercountWarning string
 }
 
 type claudeUsageSnapshot struct {
@@ -185,7 +189,14 @@ func readClaudeUsageFile(path string, summary *claudeUsageSummary, models, daily
 	session.WorkDir = sanitizeProcessCommand(session.WorkDir)
 	session.GitBranch = sanitizeProcessCommand(session.GitBranch)
 	session.Model = sanitizeProcessCommand(session.Model)
+	session.UndercountWarning = claudeUndercountWarning(path)
 	return session, true
+}
+
+// claudeUndercountWarning is package-level so it can name the session package.
+// readClaudeUsageFile's session variable would shadow that import.
+func claudeUndercountWarning(path string) string {
+	return session.ClaudeUndercountWarningFor(path)
 }
 
 func trackClaudeUsageLine(line []byte, session *claudeHistoricalSession, summary *claudeUsageSummary, models, daily map[string]int64, seen map[string]bool) {

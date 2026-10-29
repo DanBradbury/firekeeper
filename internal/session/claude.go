@@ -391,18 +391,19 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (Info, error) {
 	}
 	updated := d.newestTime(meta.UpdatedAt, info.ModTime())
 	return Info{
-		ID:          id,
-		Name:        d.emptyFallback(d.sanitizeProcessCommand(meta.Title), "Claude Code"),
-		State:       meta.State,
-		CWD:         d.sanitizeProcessCommand(meta.CWD),
-		Model:       d.sanitizeProcessCommand(meta.Model),
-		Source:      d.emptyFallback(d.sanitizeProcessCommand(meta.Entrypoint), "Claude Code"),
-		GitBranch:   d.sanitizeProcessCommand(meta.GitBranch),
-		RolloutPath: path,
-		StartedAt:   meta.StartedAt,
-		UpdatedAt:   updated,
-		TokensUsed:  meta.TokensUsed,
-		Tokens:      meta.Tokens,
+		ID:                id,
+		Name:              d.emptyFallback(d.sanitizeProcessCommand(meta.Title), "Claude Code"),
+		State:             meta.State,
+		CWD:               d.sanitizeProcessCommand(meta.CWD),
+		Model:             d.sanitizeProcessCommand(meta.Model),
+		Source:            d.emptyFallback(d.sanitizeProcessCommand(meta.Entrypoint), "Claude Code"),
+		GitBranch:         d.sanitizeProcessCommand(meta.GitBranch),
+		RolloutPath:       path,
+		StartedAt:         meta.StartedAt,
+		UpdatedAt:         updated,
+		TokensUsed:        meta.TokensUsed,
+		Tokens:            meta.Tokens,
+		UndercountWarning: ClaudeUndercountWarningFor(path),
 	}, nil
 }
 

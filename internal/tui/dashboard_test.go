@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -75,6 +76,21 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
+	}
+}
+
+func TestDashboardShowsSubagentUndercountWarning(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 160, 44
+	m.processGroups[0].sessions[0].undercountWarning = session.ClaudeUndercountWarning
+	view := ansi.Strip(m.View())
+	for _, expected := range []string{"1.2M", "900.0K", session.ClaudeUndercountWarning} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("dashboard missing %q:\n%s", expected, view)
+		}
+	}
+	if strings.Contains(view, "est.") || strings.Contains(view, "hidden summary calls, est") {
+		t.Fatalf("dashboard still shows an estimate:\n%s", view)
 	}
 }
 

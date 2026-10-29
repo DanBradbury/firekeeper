@@ -29,10 +29,13 @@ const (
 	// dashSummaryMinRows is the content height needed before the summary
 	// panels appear; dashDetailMinRows is what must remain below them before
 	// the detail panel appears.
-	dashSummaryRows    = 7
+	// dashSummaryRows fits the token breakdown plus the one-line subagent
+	// undercount warning. dashDetailMaxRows fits that warning under the
+	// session metadata without clipping the first process line.
+	dashSummaryRows    = 8
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
-	dashDetailMaxRows  = 10
+	dashDetailMaxRows  = 11
 )
 
 // dashLayout holds the row budget for each panel of the Processes tab.
@@ -359,6 +362,11 @@ func dashGroupDetail(group processGroup) []string {
 			dashPaint("tokens ", usageMutedColor, false)+
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 				dashTokenBreakdownText(session.tokens),
+		)
+		if session.undercountWarning != "" {
+			lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
+		}
+		lines = append(lines,
 			label("updated", formatSessionTime(session.updatedAt))+
 				label("tty", displayTTY(group.root.tty))+
 				label("up", emptyFallback(group.root.elapsed, "—")),
@@ -785,7 +793,8 @@ func containsString(values []string, value string) bool {
 }
 
 // sessionTokenTotal prefers the provider's token breakdown and falls back to
-// the aggregate the provider reports when no breakdown is available.
+// the aggregate the provider reports when no breakdown is available. The
+// Claude agent_summary estimate is not included.
 func sessionTokenTotal(session sessionInfo) int64 {
 	if total := session.tokens.Total(); total > 0 {
 		return total
@@ -835,32 +844,36 @@ func (m model) dashTokenLines(width int) []string {
 	}
 	tokens := session.tokens
 	if tokens.Total() == 0 {
-		return append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
+		lines = append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
 			dashPaint("for this session.", usageMutedColor, false))
-	}
-	const labelWidth = 12
-	barWidth := max(width-labelWidth-8, 1)
-	for _, row := range []struct {
-		label string
-		value int64
-		color string
-	}{
-		{"Input", tokens.Input, dashBlue},
-		{"Output", tokens.Output, dashOrange},
-		{"Cache read", tokens.CacheRead, dashPurple},
-		{"Cache write", tokens.CacheWrite, dashTeal},
-	} {
-		filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
-		if row.value > 0 {
-			filled = max(filled, 1)
+	} else {
+		const labelWidth = 12
+		barWidth := max(width-labelWidth-8, 1)
+		for _, row := range []struct {
+			label string
+			value int64
+			color string
+		}{
+			{"Input", tokens.Input, dashBlue},
+			{"Output", tokens.Output, dashOrange},
+			{"Cache read", tokens.CacheRead, dashPurple},
+			{"Cache write", tokens.CacheWrite, dashTeal},
+		} {
+			filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
+			if row.value > 0 {
+				filled = max(filled, 1)
+			}
+			filled = min(filled, barWidth)
+			lines = append(lines,
+				dashPaint(dashCell(row.label, labelWidth, false), usageMutedColor, false)+
+					dashPaint(strings.Repeat("━", filled), row.color, true)+
+					dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
+					dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),
+			)
 		}
-		filled = min(filled, barWidth)
-		lines = append(lines,
-			dashPaint(dashCell(row.label, labelWidth, false), usageMutedColor, false)+
-				dashPaint(strings.Repeat("━", filled), row.color, true)+
-				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
-				dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),
-		)
+	}
+	if session.undercountWarning != "" {
+		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
 	return lines
 }

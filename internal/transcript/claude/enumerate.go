@@ -19,7 +19,8 @@ import (
 
 // Enumerate lists historical top-level session transcripts. Project directory
 // names are lossy encodings, so cwd is read from a bounded transcript head,
-// never guessed from the directory name. Separate subagent files are omitted.
+// never guessed from the directory name. Separate subagent files are not
+// sessions and are not imported.
 func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([]session.Meta, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

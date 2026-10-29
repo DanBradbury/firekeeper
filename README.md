@@ -77,6 +77,11 @@ Press `?` for every key.
 | Gemini CLI | Yes | Yes |
 | Cursor CLI | Yes | Yes |
 
+A Claude Code session that has subagents warns that its token total is likely
+low: background summary calls are not written to the transcript. The warning
+has no count. See the
+[reference](docs/reference.md#claude-code-subagent-undercount).
+
 States describe the latest event Firekeeper can see, not ground truth, and
 agent CLIs can change their on-disk formats between releases. The
 [reference](docs/reference.md#supported-providers) lists exactly what is read

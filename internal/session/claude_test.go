@@ -186,6 +186,13 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	sub := filepath.Join(strings.TrimSuffix(explicit, ".jsonl"), "subagents")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	opts := Options{Home: home, ClaudeHome: claudeDir}
 	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -252,6 +259,12 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		if m.StartedAt == nil || !m.StartedAt.Equal(time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)) || m.RolloutPath == "" {
 			t.Errorf("pid %d: started %v path set %v", tt.pid, m.StartedAt, m.RolloutPath != "")
 		}
+	}
+	if byPID[50].UndercountWarning != ClaudeUndercountWarning || byPID[50].TokensUsed != 10 {
+		t.Fatalf("warning = %q measured = %d", byPID[50].UndercountWarning, byPID[50].TokensUsed)
+	}
+	if byPID[60].UndercountWarning != "" || byPID[70].UndercountWarning != "" {
+		t.Fatal("session without subagents reported an undercount warning")
 	}
 }
 

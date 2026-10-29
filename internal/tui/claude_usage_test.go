@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -67,7 +68,7 @@ func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
 			first = session
 		}
 	}
-	if first.Title != "Fix the build" || first.WorkDir != "/work/repo" || first.GitBranch != "main" || first.Model != "claude-opus-5-5" || first.LifetimeTokens != 141 {
+	if first.Title != "Fix the build" || first.WorkDir != "/work/repo" || first.GitBranch != "main" || first.Model != "claude-opus-5-5" || first.LifetimeTokens != 141 || first.UndercountWarning != "" {
 		t.Fatalf("session = %#v", first)
 	}
 	day := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC).Local().Format("2006-01-02")
@@ -79,6 +80,40 @@ func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
 	}
 	if dayTokens != 138 {
 		t.Fatalf("daily = %#v, want 138 tokens on %s", snapshot.Daily, day)
+	}
+}
+
+func TestFetchClaudeUsageWarnsWhenSubagentsExist(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", root)
+	const id = "11111111-1111-1111-1111-111111111111"
+	writeClaudeTranscript(t, root, "-work-repo", id, time.Date(2026, 10, 29, 13, 0, 0, 0, time.UTC),
+		`{"type":"assistant","timestamp":"2026-10-29T12:00:00Z","cwd":"/work/repo","message":{"id":"msg_main","model":"claude-test","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}}`,
+	)
+	sub := filepath.Join(root, "projects", "-work-repo", id, "subagents")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := fetchClaudeUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Summary.LifetimeTokens != 135 || len(snapshot.History) != 1 || snapshot.History[0].LifetimeTokens != 135 {
+		t.Fatalf("measured totals changed: %#v", snapshot.Summary)
+	}
+	if snapshot.History[0].UndercountWarning != session.ClaudeUndercountWarning {
+		t.Fatalf("warning = %q", snapshot.History[0].UndercountWarning)
+	}
+	m := NewModel()
+	m.width, m.height = 160, 40
+	m.usageProvider = claudeProvider
+	m.claudeUsage = snapshot
+	view := ansi.Strip(m.viewUsagePage(m.height - chromeRows))
+	if !strings.Contains(view, "135") || !strings.Contains(view, "Has subagents:") {
+		t.Fatalf("usage view missing the undercount warning:\n%s", view)
 	}
 }
 

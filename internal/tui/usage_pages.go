@@ -191,13 +191,17 @@ func (m model) claudePage() usagePage {
 
 	sessions := make([]usageSession, 0, len(snapshot.History))
 	for _, item := range snapshot.History {
+		details := []usageField{
+			{Name: "Input", Value: formatTokenCount(item.InputTokens) + " · cache read " + formatTokenCount(item.CacheRead)},
+			{Name: "Output", Value: formatTokenCount(item.OutputTokens) + " · cache write " + formatTokenCount(item.CacheCreation)},
+		}
+		if item.UndercountWarning != "" {
+			details = append(details, usageField{Name: "Note", Value: item.UndercountWarning, Color: dashYellow})
+		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
 			Model: item.Model, Tokens: item.LifetimeTokens, UpdatedAt: item.UpdatedAt,
-			Details: []usageField{
-				{Name: "Input", Value: formatTokenCount(item.InputTokens) + " · cache read " + formatTokenCount(item.CacheRead)},
-				{Name: "Output", Value: formatTokenCount(item.OutputTokens) + " · cache write " + formatTokenCount(item.CacheCreation)},
-			},
+			Details: details,
 		})
 	}
 
