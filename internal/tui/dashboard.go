@@ -630,6 +630,14 @@ func (m model) processFooter() (string, string) {
 }
 
 func (m model) processStatusText() string {
+	text := m.processStatusBody()
+	if m.statusNotice != "" {
+		text += " • " + m.statusNotice
+	}
+	return text
+}
+
+func (m model) processStatusBody() string {
 	if m.processErr != "" {
 		return "process scan failed: " + m.processErr
 	}

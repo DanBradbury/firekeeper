@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -86,6 +87,7 @@ type processResultMsg struct {
 	groups          []processGroup
 	refreshed       time.Time
 	metadataWarning string
+	notice          string
 	err             error
 }
 
@@ -106,6 +108,7 @@ type model struct {
 	expandedGroups          map[int]bool
 	processErr              string
 	processMetadataWarning  string
+	statusNotice            string
 	terminalStatus          string
 	refreshedAt             time.Time
 	codexUsage              codexUsageSnapshot
@@ -278,6 +281,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
+			m.statusNotice = msg.notice
 			m.ensureSelectedProcessVisible()
 		}
 
@@ -530,7 +534,13 @@ func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
 func refreshProcesses() tea.Cmd {
 	return func() tea.Msg {
 		result := processResultMsg{refreshed: time.Now()}
-		metas, err := session.Discover(context.Background(), session.Options{})
+		interval := session.ClaudeAgentSummaryInterval
+		if c, err := config.Load(config.Options{}); err != nil {
+			result.notice = err.Error()
+		} else if c.ClaudeSummaryInterval > 0 {
+			interval = c.ClaudeSummaryInterval
+		}
+		metas, err := session.Discover(context.Background(), session.Options{ClaudeSummaryInterval: interval})
 		var warning *session.Warning
 		if errors.As(err, &warning) {
 			result.metadataWarning = warning.Error()

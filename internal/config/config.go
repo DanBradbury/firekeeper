@@ -4,8 +4,10 @@
 //
 // Precedence, highest first: flags, environment, file, defaults. The
 // environment supplies FIREKEEPER_SERVER, FIREKEEPER_TOKEN,
-// FIREKEEPER_PROVIDERS (comma-separated), and FIREKEEPER_INTERVAL; the other
-// settings come only from the file.
+// FIREKEEPER_PROVIDERS (comma-separated), FIREKEEPER_INTERVAL, and
+// FIREKEEPER_CLAUDE_SUMMARY_INTERVAL. The other settings come only from the
+// file. claude_summary_interval has no flag; its environment variable wins
+// over the file, and both must be from 30s to 240s.
 //
 // The file never enables uploading on its own terms beyond what it says:
 // with no providers listed anywhere, the reporter still uploads nothing.
@@ -23,6 +25,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
 
@@ -53,6 +56,11 @@ type Config struct {
 	// Exclude holds directory globs (starting with "/" or "~", "~"
 	// expanded) and Git remote patterns (anything else). See Excluded.
 	Exclude []string
+	// ClaudeSummaryInterval is how often a Claude Code subagent's hidden
+	// status-line call is estimated. Default 30s. The file key is
+	// claude_summary_interval; FIREKEEPER_CLAUDE_SUMMARY_INTERVAL wins.
+	// Values must be from 30s to 240s.
+	ClaudeSummaryInterval time.Duration
 
 	// Path is the config file read, or "" when none was.
 	Path string
@@ -67,14 +75,16 @@ var serverOnly = map[string]bool{"prices": true, "repo_url_template": true, "tru
 
 // file is the TOML layout.
 type file struct {
-	Server       *string                  `toml:"server"`
-	Token        *string                  `toml:"token"`
-	Providers    []string                 `toml:"providers"`
-	Interval     *string                  `toml:"interval"`
-	ScanEnded    *bool                    `toml:"scan_ended"`
-	ScanLookback *string                  `toml:"scan_lookback"`
-	Redact       struct{ Paths []string } `toml:"redact"`
-	Exclude      []string                 `toml:"exclude"`
+	Server    *string  `toml:"server"`
+	Token     *string  `toml:"token"`
+	Providers []string `toml:"providers"`
+	Interval  *string  `toml:"interval"`
+	// ClaudeSummaryInterval is claude_summary_interval.
+	ClaudeSummaryInterval *string                  `toml:"claude_summary_interval"`
+	ScanEnded             *bool                    `toml:"scan_ended"`
+	ScanLookback          *string                  `toml:"scan_lookback"`
+	Redact                struct{ Paths []string } `toml:"redact"`
+	Exclude               []string                 `toml:"exclude"`
 
 	// Settings that only the separate dashboard server reads. They are
 	// accepted so one config file can serve both programs, and ignored here.
@@ -130,8 +140,11 @@ func Load(opts Options) (Config, error) {
 	c := opts.Defaults
 	c.Providers = append([]transcript.Provider(nil), c.Providers...)
 	c.Sources = map[string]string{}
-	for _, k := range []string{"server", "token", "providers", "interval"} {
+	for _, k := range []string{"server", "token", "providers", "interval", "claude_summary_interval"} {
 		c.Sources[k] = "default"
+	}
+	if c.ClaudeSummaryInterval <= 0 {
+		c.ClaudeSummaryInterval = session.ClaudeAgentSummaryInterval
 	}
 
 	path, explicit := strings.TrimSpace(getenv(EnvConfig)), true
@@ -166,6 +179,13 @@ func Load(opts Options) (Config, error) {
 			return Config{}, fmt.Errorf("config: %s %q is not a positive duration", EnvInterval, v)
 		}
 		c.Interval, c.Sources["interval"] = d, "env"
+	}
+	if v := strings.TrimSpace(getenv(session.EnvClaudeSummaryInterval)); v != "" {
+		d, err := session.ParseClaudeSummaryInterval(v)
+		if err != nil {
+			return Config{}, fmt.Errorf("config: %s: %w", session.EnvClaudeSummaryInterval, err)
+		}
+		c.ClaudeSummaryInterval, c.Sources["claude_summary_interval"] = d, "env"
 	}
 	return c, nil
 }
@@ -215,6 +235,13 @@ func (c *Config) readFile(path, home string) error {
 			return fmt.Errorf("config: %s: interval %q is not a positive duration such as \"30s\"", path, *f.Interval)
 		}
 		c.Interval, c.Sources["interval"] = d, "file"
+	}
+	if f.ClaudeSummaryInterval != nil {
+		d, err := session.ParseClaudeSummaryInterval(*f.ClaudeSummaryInterval)
+		if err != nil {
+			return fmt.Errorf("config: %s: claude_summary_interval: %w", path, err)
+		}
+		c.ClaudeSummaryInterval, c.Sources["claude_summary_interval"] = d, "file"
 	}
 	if f.ScanEnded != nil {
 		c.ScanEnded, c.Sources["scan_ended"] = *f.ScanEnded, "file"

@@ -94,6 +94,9 @@ type Config struct {
 	// and its offset is saved, then RunOnce returns with Summary.Stopped
 	// set. Cancelling ctx instead aborts the request in flight.
 	Stop <-chan struct{}
+	// ClaudeSummaryInterval is the resolved agent_summary period. Zero
+	// means 30s, or FIREKEEPER_CLAUDE_SUMMARY_INTERVAL when that is set.
+	ClaudeSummaryInterval time.Duration
 
 	// Discover, Sources, ScanEnumerators, Client, and Now replace the real
 	// implementations in tests. Nil means session.Discover, reader.For,
@@ -168,7 +171,7 @@ func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
-	metas, err := r.discover(ctx, session.Options{Home: cfg.Home})
+	metas, err := r.discover(ctx, session.Options{Home: cfg.Home, ClaudeSummaryInterval: cfg.ClaudeSummaryInterval})
 	var warning *session.Warning
 	if err != nil && !errors.As(err, &warning) {
 		return Summary{}, fmt.Errorf("discover sessions: %w", err)
@@ -629,6 +632,12 @@ func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, event
 	m.ID = machineID
 	data, err := r.postJSON(ctx, "/v1/ingest", "upload", ingestRequest{Machine: m, Sessions: []ingestSession{{Meta: meta, Events: events}}})
 	if err != nil {
+		// The estimate stays on the request. A server that rejects the field
+		// fails this session; the read offset is not moved, so the session
+		// is uploaded intact once the server is updated.
+		if meta.AgentSummary != nil && estimateUnsupported(err) {
+			return 0, &ServerUpdateError{}
+		}
 		return 0, err
 	}
 	var ok ingestResponse
@@ -668,6 +677,7 @@ func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte
 		var e errorResponse
 		if json.Unmarshal(data, &e) == nil {
 			statusErr.Code = e.Code
+			statusErr.Message = e.Error
 		}
 		return nil, statusErr
 	}
@@ -675,11 +685,56 @@ func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte
 }
 
 // StatusError is a non-200 reply from the server. It carries the status and
-// the JSON error code, never the body.
+// the JSON error code. Message is the server's error text, used only to
+// recognize a rejected field; Error does not include it.
 type StatusError struct {
-	What   string
-	Status int
-	Code   string
+	What    string
+	Status  int
+	Code    string
+	Message string
+}
+
+// ServerUpdateError means the server rejected agent_summary_estimate.
+// The session was not stored and its local read offset was not advanced.
+type ServerUpdateError struct{}
+
+func (e *ServerUpdateError) Error() string {
+	return "server does not accept agent_summary_estimate; this session was not uploaded and remains on disk. Update the server by running `firekeeper serve` and choosing \"1) Update now\", then run this again"
+}
+
+// IsServerUpdate reports whether err is a ServerUpdateError.
+func IsServerUpdate(err error) bool {
+	var target *ServerUpdateError
+	return errors.As(err, &target)
+}
+
+// AnyServerUpdate reports whether any session failed because the server
+// does not accept agent_summary_estimate.
+func AnyServerUpdate(sessions []SessionResult) bool {
+	for _, s := range sessions {
+		if IsServerUpdate(s.Err) {
+			return true
+		}
+	}
+	return false
+}
+
+// estimateUnsupported reports whether err is a client error that names the
+// new metadata field, or rejects it as an unknown or extra field. Other
+// invalid requests stay ordinary upload errors.
+func estimateUnsupported(err error) bool {
+	var status *StatusError
+	if !errors.As(err, &status) || status.Status < 400 || status.Status >= 500 {
+		return false
+	}
+	msg := strings.ToLower(status.Message)
+	if strings.Contains(msg, "agent_summary_estimate") {
+		return true
+	}
+	if strings.Contains(msg, "additional propert") {
+		return true
+	}
+	return strings.Contains(msg, "unknown field") || strings.Contains(msg, "unsupported field") || strings.Contains(msg, "unexpected field")
 }
 
 func (e *StatusError) Error() string {

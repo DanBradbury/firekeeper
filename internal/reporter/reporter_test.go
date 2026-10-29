@@ -657,6 +657,80 @@ func TestSessionMetaKeepsAgentSummarySeparate(t *testing.T) {
 	}
 }
 
+func TestServerRejectingSummaryEstimateKeepsTheSession(t *testing.T) {
+	f := newFixture(t)
+	f.meta.AgentSummary = &session.AgentSummaryEstimate{
+		Calls: 5, Tokens: 31000, CacheRead: 31000, IntervalSeconds: 30,
+		Source: session.AgentSummarySourceTranscript,
+		Label:  "~5 hidden summary calls, est. 31000 tokens",
+	}
+	f.append(t, 0, 2)
+	ts := newTestServer(t)
+	var sawField, stripped atomic.Bool
+	ts.intercept = func(n int, w http.ResponseWriter, r *http.Request, _ http.Handler) bool {
+		body, _ := io.ReadAll(r.Body)
+		var req ingestRequest
+		if err := json.Unmarshal(body, &req); err != nil || len(req.Sessions) != 1 {
+			t.Errorf("ingest body: %v", err)
+			return false
+		}
+		if req.Sessions[0].Meta.AgentSummary == nil {
+			stripped.Store(true)
+		} else {
+			sawField.Store(true)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"unknown field agent_summary_estimate","code":"invalid_request"}`))
+		return true
+	}
+	var out bytes.Buffer
+	cfg := f.config(ts.URL)
+	cfg.Out = &out
+	got := runOnce(t, cfg)
+	if !IsServerUpdate(got.Err) || !strings.Contains(got.Err.Error(), "firekeeper serve") || !strings.Contains(got.Err.Error(), "1) Update now") {
+		t.Fatalf("err = %v", got.Err)
+	}
+	if strings.Contains(got.Err.Error(), "message 0") || strings.Contains(out.String(), "message 0") {
+		t.Fatal("error included transcript text")
+	}
+	if !sawField.Load() || stripped.Load() {
+		t.Fatal("client stripped agent_summary_estimate before sending")
+	}
+	if ts.requests != 1 {
+		t.Fatalf("client retried the upload %d times", ts.requests)
+	}
+	if len(ts.stored(t)) != 0 {
+		t.Fatal("rejected upload was stored")
+	}
+	if st := f.state(t); st.Offset != 0 || st.LastSeq != 0 {
+		t.Fatalf("read position advanced to offset %d seq %d", st.Offset, st.LastSeq)
+	}
+	if !strings.Contains(out.String(), "remains on disk") {
+		t.Fatalf("status line = %q", out.String())
+	}
+
+	// A different invalid request is not reported as a server update.
+	ts.intercept = func(n int, w http.ResponseWriter, r *http.Request, _ http.Handler) bool {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"state is not valid","code":"invalid_request"}`))
+		return true
+	}
+	other := runOnce(t, cfg)
+	if IsServerUpdate(other.Err) || other.Err == nil {
+		t.Fatalf("unrelated rejection = %v", other.Err)
+	}
+
+	ts.intercept = nil
+	again := runOnce(t, cfg)
+	if again.Err != nil || again.Events != 2 {
+		t.Fatalf("retry after the server accepts the field = %+v", again)
+	}
+	assertSeqs(t, ts.stored(t), 2)
+}
+
 func TestDiscoveryWarningsDoNotStopThePass(t *testing.T) {
 	f := newFixture(t)
 	f.append(t, 0, 1)

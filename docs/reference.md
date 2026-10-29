@@ -154,8 +154,10 @@ measured total. `firekeeper snapshot --json` includes it as
 upload sends the same object on session metadata; it is not part of `input`,
 `output`, or `cache`.
 
-Assumptions, chosen to match a measured ~2.5 minute subagent that produced 5
-summary forks at the default period:
+Assumptions. On a Mac running Claude Code 2.1.308, one subagent of about
+160 seconds produced 5 summary forks, and the first fork was about 30
+seconds after the subagent started. That is `floor(runtime / interval)` with
+the first tick one interval in:
 
 - Runtime starts at the earlier of the first transcript timestamp and a usable
   meta start. It ends at the later of the meta end and the last transcript
@@ -177,12 +179,13 @@ summary forks at the default period:
 - Overlapping subagents each have their own timer. The session estimate is
   the sum.
 
-The interval is a named constant, 30s. Claude's server may set it anywhere
-from 30s to 240s, and the token panel says so. Override Firekeeper's
-assumption with `FIREKEEPER_CLAUDE_SUMMARY_INTERVAL`, a Go duration such as
-`45s` or `2m`. Values outside 30s–240s are clamped, and an unparseable value
-keeps 30s. It is not a `config.toml` key. `daemon install` copies the
-variable into the service definition when it is set.
+The interval Firekeeper assumes is 30s, the `claude_summary_interval` key in
+`config.toml`. Claude's server may set the real timer anywhere from 30s to
+240s, and the token panel says so. The key must be inside that range; `30s`
+and `240s` are accepted, `10s` and `5m` are not. `FIREKEEPER_CLAUDE_SUMMARY_INTERVAL`
+overrides the file with the same rule (a Go duration such as `45s` or `2m`).
+`daemon install` copies that variable into the service definition when it is
+set. The daemon also reads the config file each time it starts.
 
 If that Claude process was started with `--debug-file`, Firekeeper counts
 `[AgentSummary] Forking for summary` lines for the session's agents instead
@@ -461,6 +464,11 @@ Other limits to know about:
   `agent_summary_estimate`, a labeled estimate of hidden status-line calls
   derived from its subagent files. That object is not part of the measured
   token totals. See [Claude Code hidden summary calls](#claude-code-hidden-summary-calls).
+  A server that rejects the field does not receive the session: `report`,
+  `backfill`, and the daemon log say to update it with `firekeeper serve`
+  (choose `1) Update now`). The read offset stays put, so the same session
+  uploads after the server is updated. Firekeeper does not drop the estimate
+  to make an old server accept the rest.
 - A Cursor CLI session whose workspace directory no longer exists is not
   uploaded: Cursor's transcripts do not record the directory, so Firekeeper
   finds it on disk, and without it the exclusion rules cannot be checked.
@@ -737,7 +745,9 @@ service file. The daemon reads the ingest token from the config file, where
 `$FIREKEEPER_CONFIG` names (a missing file named that way is an error).
 Precedence is flags, then environment (`FIREKEEPER_SERVER`,
 `FIREKEEPER_TOKEN`, `FIREKEEPER_PROVIDERS` as a comma list,
-`FIREKEEPER_INTERVAL`), then the file, then defaults. The file is optional;
+`FIREKEEPER_INTERVAL`, and `FIREKEEPER_CLAUDE_SUMMARY_INTERVAL`), then the
+file, then defaults. `claude_summary_interval` has no flag; the environment
+variable wins over the file. The file is optional;
 unknown keys are an error, so a typo cannot silently drop an exclusion. It
 holds a token, so keep it private (`chmod 600`).
 
@@ -746,6 +756,7 @@ server = "https://dash.example.com"
 token = "fk_..."                 # ingest token
 providers = ["codex", "claude"]  # upload allowlist; empty uploads nothing
 interval = "30s"                 # daemon only
+claude_summary_interval = "30s"  # hidden Claude status-line estimate; 30s to 240s
 scan_ended = true                # report and daemon: also upload ended sessions found on disk
 scan_lookback = "24h"            # how far back that first looks
 exclude = [

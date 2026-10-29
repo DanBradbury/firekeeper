@@ -356,7 +356,8 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 		byProvider[provider] = pp
 		order = append(order, provider)
 		metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{
-			ModifiedAfter: cutoff,
+			ModifiedAfter:         cutoff,
+			ClaudeSummaryInterval: r.cfg.ClaudeSummaryInterval,
 			Skip: func(meta session.Meta) bool {
 				reason := r.skipReason(meta)
 				if reason == "" {

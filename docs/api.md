@@ -206,10 +206,13 @@ transaction.
   `calls` is the estimated number of hidden summary calls. `tokens` and
   `cache_read` are the same number: the estimate books the whole context as
   cache read. `interval_seconds` is the period Firekeeper assumed (30 by
-  default; Claude's server may use 30–240). `source` is `transcript` or
+  default; Claude's server may use 30–240).   `source` is `transcript` or
   `debug` (the count came from a Claude `--debug-file`). `label` is the
   sentence for a UI. See the
-  [reference](reference.md#claude-code-hidden-summary-calls).
+  [reference](reference.md#claude-code-hidden-summary-calls). A server that
+  does not accept this object should reject the request. The client keeps
+  the session locally and tells the operator to update the server with
+  `firekeeper serve`. It does not resend the session without the object.
 - Metadata: empty strings keep the stored values. `started_at` and `commit`
   (the commit checked out when the session started; optional) keep their
   first value. `last_activity_at` only moves forward. An empty `state` keeps the

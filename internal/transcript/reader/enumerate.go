@@ -26,6 +26,10 @@ type EnumerateOptions struct {
 	// after the transcript head has been read for it. It is called at most
 	// once per session. Nil keeps every session.
 	Skip func(session.Meta) bool
+	// ClaudeSummaryInterval is the agent_summary period for Claude sessions.
+	// Zero means 30s, or FIREKEEPER_CLAUDE_SUMMARY_INTERVAL when that is set.
+	// The reporter passes the value resolved from config.
+	ClaudeSummaryInterval time.Duration
 }
 
 // Enumerator lists every session with a transcript on disk, including

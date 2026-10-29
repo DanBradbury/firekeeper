@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -196,7 +197,11 @@ func readClaudeUsageFile(path string, summary *claudeUsageSummary, models, daily
 // claudeAgentSummary is package-level so it can name the session package.
 // readClaudeUsageFile's session variable would shadow that import.
 func claudeAgentSummary(path string, now time.Time) *session.AgentSummaryEstimate {
-	return session.EstimateClaudeAgentSummary(path, now, session.ClaudeSummaryInterval(), "")
+	interval := session.ClaudeAgentSummaryInterval
+	if c, err := config.Load(config.Options{}); err == nil && c.ClaudeSummaryInterval > 0 {
+		interval = c.ClaudeSummaryInterval
+	}
+	return session.EstimateClaudeAgentSummary(path, now, interval, "")
 }
 
 func trackClaudeUsageLine(line []byte, session *claudeHistoricalSession, summary *claudeUsageSummary, models, daily map[string]int64, seen map[string]bool) {

@@ -403,7 +403,7 @@ func (d *discoverer) readClaudeTranscriptMetadata(path, debugFile string) (Info,
 		UpdatedAt:    updated,
 		TokensUsed:   meta.TokensUsed,
 		Tokens:       meta.Tokens,
-		AgentSummary: EstimateClaudeAgentSummary(path, time.Now(), ClaudeSummaryInterval(), debugFile),
+		AgentSummary: EstimateClaudeAgentSummary(path, time.Now(), d.summaryInterval(), debugFile),
 	}, nil
 }
 
@@ -420,6 +420,21 @@ func (d *discoverer) claudeDebugFileFromGroup(group ProcessGroup) string {
 		}
 	}
 	return ""
+}
+
+// summaryInterval is the period for this discovery. An explicit option wins.
+// Otherwise the environment is used, and an invalid value falls back to 30s
+// so one bad setting does not drop session metadata. Config loading reports
+// that invalid value before discovery runs.
+func (d *discoverer) summaryInterval() time.Duration {
+	if d != nil && d.opts.ClaudeSummaryInterval > 0 {
+		return d.opts.ClaudeSummaryInterval
+	}
+	interval, err := ClaudeSummaryInterval()
+	if err != nil || interval <= 0 {
+		return ClaudeAgentSummaryInterval
+	}
+	return interval
 }
 
 func claudeDebugFileFlag(args []string) string {

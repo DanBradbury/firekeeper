@@ -225,25 +225,24 @@ func TestClaudeAgentSummaryIntervalOverride(t *testing.T) {
 	if est.IntervalSeconds != 45 {
 		t.Fatalf("interval seconds = %d", est.IntervalSeconds)
 	}
-
-	tests := []struct {
-		env  string
-		want time.Duration
-	}{
-		{"10s", ClaudeAgentSummaryIntervalMin},
-		{"45s", 45 * time.Second},
-		{"5m", ClaudeAgentSummaryIntervalMax},
-		{"nope", ClaudeAgentSummaryInterval},
-		{"0s", ClaudeAgentSummaryInterval},
-		{"-1s", ClaudeAgentSummaryInterval},
+	if _, err := ParseClaudeSummaryInterval("10s"); err == nil {
+		t.Fatal("accepted 10s")
 	}
-	for _, tt := range tests {
-		t.Run(tt.env, func(t *testing.T) {
-			t.Setenv(EnvClaudeSummaryInterval, tt.env)
-			if got := ClaudeSummaryInterval(); got != tt.want {
-				t.Fatalf("ClaudeSummaryInterval(%q) = %s, want %s", tt.env, got, tt.want)
-			}
-		})
+	if _, err := ParseClaudeSummaryInterval("5m"); err == nil {
+		t.Fatal("accepted 5m")
+	}
+	got, err := ParseClaudeSummaryInterval("45s")
+	if err != nil || got != 45*time.Second {
+		t.Fatalf("ParseClaudeSummaryInterval(45s) = %s, %v", got, err)
+	}
+	t.Setenv(EnvClaudeSummaryInterval, "45s")
+	got, err = ClaudeSummaryInterval()
+	if err != nil || got != 45*time.Second {
+		t.Fatalf("env interval = %s, %v", got, err)
+	}
+	t.Setenv(EnvClaudeSummaryInterval, "10s")
+	if _, err := ClaudeSummaryInterval(); err == nil {
+		t.Fatal("env 10s was accepted")
 	}
 }
 

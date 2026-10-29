@@ -102,6 +102,16 @@ func TestDashboardShowsSummaryEstimateSeparate(t *testing.T) {
 	}
 }
 
+func TestDashboardStatusShowsConfigNotice(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 200, 24
+	m.statusNotice = `config: claude_summary_interval: "10s" is outside 30s-240s`
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, `outside 30s-240s`) {
+		t.Fatalf("status notice missing:\n%s", view)
+	}
+}
+
 func TestDashboardDropsColumnsAndPanelsWhenNarrow(t *testing.T) {
 	m := dashboardTestModel()
 	m.width, m.height = 60, 20

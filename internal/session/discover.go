@@ -32,7 +32,12 @@ type Options struct {
 	// CursorDir overrides the Cursor CLI data directory, which defaults to
 	// CURSOR_CONFIG_DIR or ~/.cursor.
 	CursorDir string
-	Run       func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// ClaudeSummaryInterval is the agent_summary period used while reading
+	// Claude sessions. Zero means the 30s default, or
+	// FIREKEEPER_CLAUDE_SUMMARY_INTERVAL when that variable is set and valid.
+	// Callers that loaded config pass the resolved value so the file is honored.
+	ClaudeSummaryInterval time.Duration
+	Run                   func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 // Meta describes one observable session. Runtimes without metadata have an

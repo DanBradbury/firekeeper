@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -18,9 +19,10 @@ import (
 // unless overridden, is 30s. The requests are not written to the session
 // transcript, so measured token totals miss them.
 //
-// Assumptions, from a measured ~2.5 minute subagent that produced 5 summary
-// forks at the default period (see the Flamerix gist linked from the
-// reference):
+// Assumptions. On Dan's Mac (Claude Code 2.1.308, one subagent, about 160s)
+// the first fork was about 30s after the subagent started, and there were 5
+// forks. That is floor(runtime / interval) with the first tick one interval
+// in, not at the start (see the Flamerix gist linked from the reference):
 //
 //   - The first timer fires one full interval after the subagent starts, not
 //     at the start. A trailing partial interval does not fire. A tick exactly
@@ -52,9 +54,9 @@ const (
 	ClaudeAgentSummaryIntervalMin = 30 * time.Second
 	ClaudeAgentSummaryIntervalMax = 240 * time.Second
 
-	// EnvClaudeSummaryInterval overrides the assumed period. The value is a
-	// Go duration with a unit ("45s", "2m"). Values outside 30s–240s are
-	// clamped. An empty or unparseable value keeps the 30s default.
+	// EnvClaudeSummaryInterval overrides claude_summary_interval in
+	// config.toml. The value is a Go duration with a unit ("45s", "2m")
+	// and must be from 30s to 240s. Config loading rejects anything else.
 	EnvClaudeSummaryInterval = "FIREKEEPER_CLAUDE_SUMMARY_INTERVAL"
 
 	AgentSummarySourceTranscript = "transcript"
@@ -83,24 +85,31 @@ type AgentSummaryEstimate struct {
 	Label string `json:"label"`
 }
 
-// ClaudeSummaryInterval returns the period used to estimate summary calls,
-// honoring EnvClaudeSummaryInterval and the 30s–240s clamp.
-func ClaudeSummaryInterval() time.Duration {
-	raw := strings.TrimSpace(os.Getenv(EnvClaudeSummaryInterval))
-	if raw == "" {
-		return ClaudeAgentSummaryInterval
-	}
+// ParseClaudeSummaryInterval parses a summary period. raw must be a Go
+// duration from 30s to 240s inclusive. The error names the problem and the
+// duration text, never transcript contents.
+func ParseClaudeSummaryInterval(raw string) (time.Duration, error) {
+	raw = strings.TrimSpace(raw)
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		return ClaudeAgentSummaryInterval
+		return 0, fmt.Errorf("%q is not a positive duration such as \"30s\"", raw)
 	}
-	if d < ClaudeAgentSummaryIntervalMin {
-		return ClaudeAgentSummaryIntervalMin
+	if d < ClaudeAgentSummaryIntervalMin || d > ClaudeAgentSummaryIntervalMax {
+		return 0, fmt.Errorf("%q is outside 30s-240s", raw)
 	}
-	if d > ClaudeAgentSummaryIntervalMax {
-		return ClaudeAgentSummaryIntervalMax
+	return d, nil
+}
+
+// ClaudeSummaryInterval is the period from EnvClaudeSummaryInterval, or 30s
+// when that variable is unset. Callers that loaded config pass
+// Config.ClaudeSummaryInterval instead, so the file and the environment are
+// applied in one place. An invalid environment value is returned as an error.
+func ClaudeSummaryInterval() (time.Duration, error) {
+	raw := strings.TrimSpace(os.Getenv(EnvClaudeSummaryInterval))
+	if raw == "" {
+		return ClaudeAgentSummaryInterval, nil
 	}
-	return d
+	return ParseClaudeSummaryInterval(raw)
 }
 
 // EstimateClaudeAgentSummary estimates hidden agent_summary calls for the

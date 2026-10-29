@@ -84,7 +84,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		// History has no process command, so there is no --debug-file. now is
 		// the transcript's modification time: a subagent meta that still says
 		// "running" is not projected past the file.
-		meta.AgentSummary = session.EstimateClaudeAgentSummary(c.path, c.mtime, session.ClaudeSummaryInterval(), "")
+		meta.AgentSummary = session.EstimateClaudeAgentSummary(c.path, c.mtime, summaryInterval(opts), "")
 		if opts.Skip != nil && opts.Skip(meta) {
 			continue
 		}
@@ -95,6 +95,18 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		return metas, &session.Warning{Message: fmt.Sprintf("claude: skipped %d empty, unreadable, or corrupt transcript(s)", bad)}
 	}
 	return metas, nil
+}
+
+// summaryInterval prefers the period the caller resolved from config.
+func summaryInterval(opts reader.EnumerateOptions) time.Duration {
+	if opts.ClaudeSummaryInterval > 0 {
+		return opts.ClaudeSummaryInterval
+	}
+	interval, err := session.ClaudeSummaryInterval()
+	if err != nil || interval <= 0 {
+		return session.ClaudeAgentSummaryInterval
+	}
+	return interval
 }
 
 // readSessionHead decodes metadata only, retaining no conversation text.
