@@ -6,7 +6,9 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/x/ansi v0.10.1
+	go.opentelemetry.io/proto/otlp v1.11.1
 	golang.org/x/term v0.46.0
+	google.golang.org/protobuf v1.36.12
 )
 
 require (

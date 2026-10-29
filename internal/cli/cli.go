@@ -28,6 +28,8 @@ var subcommands = []subcommand{
 	{"whoami", "print the server, account and machine the stored token belongs to", runWhoami},
 	{"config", "print the merged reporting configuration (show)", runConfig},
 	{"daemon", "upload continuously (--provider required); install, uninstall, status, logs", runDaemon},
+	{"otel-listen", "experimental: record local Claude Code OTLP usage on 127.0.0.1", runOtelListen},
+	{"otel-reconcile", "experimental: compare an otel-listen file with transcript totals", runOtelReconcile},
 	{"version", "print the version, commit and build date (also --version)", runVersion},
 }
 
@@ -54,7 +56,7 @@ func PrintUsage(fs *flag.FlagSet) {
 	out := fs.Output()
 	fmt.Fprintf(out, "Usage:\n  firekeeper\n  firekeeper <command> [args]\n\nCommands:\n")
 	for _, cmd := range subcommands {
-		fmt.Fprintf(out, "  %-10s %s\n", cmd.name, cmd.summary)
+		fmt.Fprintf(out, "  %-16s %s\n", cmd.name, cmd.summary)
 	}
 }
 
