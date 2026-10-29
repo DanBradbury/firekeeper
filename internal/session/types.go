@@ -105,6 +105,9 @@ type Info struct {
 	// transcript event convention: Input excludes cached input, and cache
 	// reads and cache writes are counted apart. It is zero when unknown.
 	Tokens TokenBreakdown
+	// UndercountWarning is set for a Claude Code session that has subagent
+	// transcripts. It is not included in Tokens or TokensUsed.
+	UndercountWarning string
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,

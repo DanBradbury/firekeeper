@@ -6,17 +6,18 @@ import (
 	"strings"
 )
 
-// ClaudeUndercountWarning is shown when a Claude Code session has subagent
-// transcripts and Firekeeper has no local telemetry for it. The background
-// summary calls are not in those files, so a transcript-only total can be low.
+// ClaudeUndercountWarning is shown for a Claude Code session that has
+// subagent transcripts. Claude Code sends background agent_summary calls
+// that are not written to the transcript, so measured token totals can be
+// low. The text has no counts. Exact accounting is investigated separately.
 const ClaudeUndercountWarning = "Has subagents: Claude Code makes background summary calls that aren't logged, so token totals are likely undercounted."
 
 // ClaudeUndercountWarningFor returns ClaudeUndercountWarning when
 // transcriptPath has at least one <session>/subagents/agent-*.jsonl file.
-// It does not read file contents.
+// It does not read file contents, and it returns "" when there are none.
 func ClaudeUndercountWarningFor(transcriptPath string) string {
 	dir := strings.TrimSuffix(transcriptPath, ".jsonl")
-	if dir == transcriptPath || dir == "" {
+	if dir == transcriptPath {
 		return ""
 	}
 	matches, err := filepath.Glob(filepath.Join(dir, "subagents", "agent-*.jsonl"))

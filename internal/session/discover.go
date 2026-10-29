@@ -66,6 +66,10 @@ type Meta struct {
 	Input          int64        `json:"input"`
 	Output         int64        `json:"output"`
 	Cache          int64        `json:"cache"`
+	// UndercountWarning is set for a Claude Code session with subagent
+	// transcripts. It is omitted otherwise and is not part of the token totals.
+	// It is local snapshot metadata; upload does not send it.
+	UndercountWarning string `json:"undercount_warning,omitempty"`
 }
 
 // Warning reports partial enrichment failures. Discover returns usable metadata
@@ -163,7 +167,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				}
 				projects[cwd] = project
 			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, Runtime: g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, Runtime: g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

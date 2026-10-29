@@ -29,10 +29,15 @@ const (
 	// dashSummaryMinRows is the content height needed before the summary
 	// panels appear; dashDetailMinRows is what must remain below them before
 	// the detail panel appears.
-	dashSummaryRows    = 7
+	// dashSummaryRows fits the token breakdown plus one extra line: the
+	// subagent undercount warning, or the telemetry background-call line.
+	// dashDetailMaxRows fits that line and one more (the enable hint, or
+	// the transcripts figure) under the session metadata without clipping
+	// the first process line.
+	dashSummaryRows    = 8
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
-	dashDetailMaxRows  = 13
+	dashDetailMaxRows  = 12
 )
 
 // dashLayout holds the row budget for each panel of the Processes tab.
@@ -360,7 +365,7 @@ func dashGroupDetail(group processGroup) []string {
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 				dashTokenBreakdownText(session.tokens),
 		)
-		if session.telemetryOn && session.telemetryLine != "" {
+		if session.telemetryLine != "" {
 			lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
 			lines = append(lines, dashPaint("transcripts ", usageMutedColor, false)+dashPaint(formatTokenCount(session.transcriptTokens), usageTextColor, false))
 		} else if session.undercountWarning != "" {
@@ -795,8 +800,10 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-// sessionTokenTotal prefers the provider's token breakdown and falls back to
-// the aggregate the provider reports when no breakdown is available.
+// sessionTokenTotal prefers an exact telemetry total when this session has
+// one, then the provider's token breakdown, then the aggregate the provider
+// reports. Measured transcript totals are not replaced unless telemetry
+// has been recorded.
 func sessionTokenTotal(session sessionInfo) int64 {
 	if session.exactTokens > 0 {
 		return session.exactTokens
@@ -849,32 +856,38 @@ func (m model) dashTokenLines(width int) []string {
 	}
 	tokens := session.tokens
 	if tokens.Total() == 0 {
-		return append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
+		lines = append(lines, dashPaint("No input/output/cache breakdown", usageMutedColor, false),
 			dashPaint("for this session.", usageMutedColor, false))
-	}
-	const labelWidth = 12
-	barWidth := max(width-labelWidth-8, 1)
-	for _, row := range []struct {
-		label string
-		value int64
-		color string
-	}{
-		{"Input", tokens.Input, dashBlue},
-		{"Output", tokens.Output, dashOrange},
-		{"Cache read", tokens.CacheRead, dashPurple},
-		{"Cache write", tokens.CacheWrite, dashTeal},
-	} {
-		filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
-		if row.value > 0 {
-			filled = max(filled, 1)
+	} else {
+		const labelWidth = 12
+		barWidth := max(width-labelWidth-8, 1)
+		for _, row := range []struct {
+			label string
+			value int64
+			color string
+		}{
+			{"Input", tokens.Input, dashBlue},
+			{"Output", tokens.Output, dashOrange},
+			{"Cache read", tokens.CacheRead, dashPurple},
+			{"Cache write", tokens.CacheWrite, dashTeal},
+		} {
+			filled := int(float64(barWidth)*float64(row.value)/float64(tokens.Total()) + 0.5)
+			if row.value > 0 {
+				filled = max(filled, 1)
+			}
+			filled = min(filled, barWidth)
+			lines = append(lines,
+				dashPaint(dashCell(row.label, labelWidth, false), usageMutedColor, false)+
+					dashPaint(strings.Repeat("━", filled), row.color, true)+
+					dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
+					dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),
+			)
 		}
-		filled = min(filled, barWidth)
-		lines = append(lines,
-			dashPaint(dashCell(row.label, labelWidth, false), usageMutedColor, false)+
-				dashPaint(strings.Repeat("━", filled), row.color, true)+
-				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
-				dashPaint(fmt.Sprintf(" %7s", formatTokenCount(row.value)), row.color, true),
-		)
+	}
+	if session.telemetryLine != "" {
+		lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+	} else if session.undercountWarning != "" {
+		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
 	return lines
 }

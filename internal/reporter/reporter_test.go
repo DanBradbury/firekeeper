@@ -628,6 +628,20 @@ func TestRunOnceRejectsBadConfig(t *testing.T) {
 	}
 }
 
+func TestIngestOmitsUndercountWarning(t *testing.T) {
+	got := (&run{}).sessionMeta(session.Meta{
+		ID: "s1", Provider: "claude", State: session.SessionStateWaiting,
+		UndercountWarning: session.ClaudeUndercountWarning,
+	}, &SessionResult{})
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "undercount_warning") || strings.Contains(string(raw), "agent_summary") || strings.Contains(string(raw), "subagents") {
+		t.Fatalf("ingest metadata included the local warning: %s", raw)
+	}
+}
+
 func TestDiscoveryWarningsDoNotStopThePass(t *testing.T) {
 	f := newFixture(t)
 	f.append(t, 0, 1)

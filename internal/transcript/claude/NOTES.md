@@ -160,11 +160,14 @@ unsupported.
 
 ## Known gaps
 
-- **Subagent transcripts in separate files are not read.** Some Claude Code
-  versions write subagent transcripts beside the session, under
-  `<session>/subagents/`. None existed locally to confirm the layout or shape. Reading them under the parent's `session_id` would collide with the
-  parent's `seq` values, so `Locate` skips them. Supporting them needs a seq
+- **Subagent transcripts in separate files are not imported as events.** Some
+  Claude Code versions write them beside the session, under
+  `<session>/subagents/agent-*.jsonl`, with a sibling `.meta.json`. Reading
+  them under the parent's `session_id` would collide with the parent's `seq`
+  values, so `Locate` skips them. Supporting them as events needs a seq
   scheme or a separate session id per subagent, which is a contract decision.
+  Discovery only checks that `agent-*.jsonl` files exist, so it can warn that
+  measured token totals are likely low. It does not read those files.
 - **Long project paths.** Claude Code may shorten very long encoded directory
   names. Discovery's working-directory fallback then finds nothing; explicit
   ids and `Locate`'s search across all project directories still work.

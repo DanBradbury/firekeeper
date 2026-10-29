@@ -56,7 +56,11 @@ Copilot report only cached input, which shows as cache read, so their cache
 write stays 0. The breakdown comes from Claude Code transcripts, Codex rollout
 `token_count` events, and Copilot `model.model_call_success` events, read from
 the tail of each file, so very long sessions can be undercounted. Other
-harnesses show the total only. Below them, the sessions table lists one runtime per row with
+harnesses show the total only. A Claude Code session that has subagent
+files warns that its measured total is likely low, because background
+summary calls are not in the transcript. See [Claude Code subagent
+undercount](#claude-code-subagent-undercount). Below them, the sessions
+table lists one runtime per row with
 its provider, PID, project, short session id, title, state, model, tokens, and
 uptime, and a second line with the branch and working directory. A detail
 panel at the bottom shows the selected runtime's session metadata and process
@@ -131,8 +135,22 @@ history. Claude Code repeats a response's usage on every content block line,
 so each message ID is counted once, including messages copied into a resumed
 session. Requests Claude Code does not write to the transcript, such as title
 generation, are not counted, so totals can be slightly below what Claude Code
-reports. Plan limits and reset times are not stored locally; use Claude Code's
-`/usage`. Firekeeper does not read credentials or call Anthropic endpoints.
+reports. Plan limits and reset times are not stored locally; use Claude
+Code's `/usage`. Firekeeper does not read credentials or call Anthropic
+endpoints.
+
+#### Claude Code subagent undercount
+
+Claude Code asks a model for a short status line for each running subagent.
+Those `agent_summary` calls are not written to the transcript, so a session
+that has files under `<session>/subagents/agent-*.jsonl` is likely
+undercounted. Firekeeper does not estimate the missing tokens. It shows a
+warning on the dashboard and sets `undercount_warning` on
+`firekeeper snapshot --json`. Measured totals are unchanged, and the warning
+is not uploaded. Why the calls exist is described in the
+[Flamerix gist](https://gist.github.com/flamerix-ai/c3905705cc4205e5de3011fa2e74efce);
+Firekeeper does not ship that hook. Exact accounting is being investigated
+in [issue #21](https://github.com/DanBradbury/firekeeper/issues/21).
 
 Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
@@ -400,9 +418,10 @@ Other limits to know about:
   that, for example while the daemon was stopped for days, waits for a
   `backfill`. With `--live-only` or `scan_ended = false` they see only
   sessions running at the time of a pass.
-- Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
+- Claude Code subagent transcripts, Kimi Code subagent logs, OpenCode subagent
   sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
-  not imported.
+  not imported. The local undercount warning for Claude Code subagents is not
+  uploaded. See [Claude Code subagent undercount](#claude-code-subagent-undercount).
 - A Cursor CLI session whose workspace directory no longer exists is not
   uploaded: Cursor's transcripts do not record the directory, so Firekeeper
   finds it on disk, and without it the exclusion rules cannot be checked.
@@ -491,7 +510,7 @@ and Cursor CLI from their local data directories or executables on `PATH`, honor
 overrides. It allows those providers for this pass, replacing any configured allowlist
 without changing the config file. Use either `--all` or `--provider`, not
 both. After `login`, the saved server and token are used automatically.
-Claude Code subagent files, Kimi Code subagent logs, OpenCode subagent
+Claude Code subagent transcripts, Kimi Code subagent logs, OpenCode subagent
 sessions, Gemini CLI subagent logs, and Cursor CLI subagent transcripts are
 not imported. Cursor's editor writes its Agents window sessions to the same
 transcript folders, so `backfill` imports those too.

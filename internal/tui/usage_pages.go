@@ -202,6 +202,8 @@ func (m model) claudePage() usagePage {
 			if line := backgroundCallLine(sup); line != "" {
 				details = append(details, usageField{Name: "Background", Value: line})
 			}
+		} else if item.UndercountWarning != "" {
+			details = append(details, usageField{Name: "Note", Value: item.UndercountWarning, Color: dashYellow})
 		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
