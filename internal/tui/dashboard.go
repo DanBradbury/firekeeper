@@ -5,9 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/version"
@@ -31,13 +29,13 @@ const (
 	// dashSummaryMinRows is the content height needed before the summary
 	// panels appear; dashDetailMinRows is what must remain below them before
 	// the detail panel appears.
-	// dashSummaryRows fits the token breakdown plus the two-line hidden
-	// summary estimate. dashDetailMaxRows fits that estimate under the
+	// dashSummaryRows fits the token breakdown plus the one-line subagent
+	// undercount warning. dashDetailMaxRows fits that warning under the
 	// session metadata without clipping the first process line.
-	dashSummaryRows    = 9
+	dashSummaryRows    = 8
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
-	dashDetailMaxRows  = 12
+	dashDetailMaxRows  = 11
 )
 
 // dashLayout holds the row budget for each panel of the Processes tab.
@@ -365,11 +363,8 @@ func dashGroupDetail(group processGroup) []string {
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 				dashTokenBreakdownText(session.tokens),
 		)
-		if text := dashAgentSummaryLabel(session.agentSummary, false); text != "" {
-			lines = append(lines,
-				dashPaint(text, dashYellow, false),
-				dashPaint(dashAgentSummaryDetailNote(session.agentSummary), usageMutedColor, false),
-			)
+		if session.undercountWarning != "" {
+			lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 		}
 		lines = append(lines,
 			label("updated", formatSessionTime(session.updatedAt))+
@@ -630,14 +625,6 @@ func (m model) processFooter() (string, string) {
 }
 
 func (m model) processStatusText() string {
-	text := m.processStatusBody()
-	if m.statusNotice != "" {
-		text += " • " + m.statusNotice
-	}
-	return text
-}
-
-func (m model) processStatusBody() string {
 	if m.processErr != "" {
 		return "process scan failed: " + m.processErr
 	}
@@ -885,56 +872,8 @@ func (m model) dashTokenLines(width int) []string {
 			)
 		}
 	}
-	if text := dashAgentSummaryLabel(session.agentSummary, true); text != "" {
-		lines = append(lines,
-			dashPaint(text, dashYellow, false),
-			dashPaint(dashAgentSummaryNote(session.agentSummary), usageMutedColor, false),
-		)
+	if session.undercountWarning != "" {
+		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
 	return lines
-}
-
-// dashAgentSummaryLabel is the visible sentence for a hidden summary
-// estimate. compact fits the token panel; the long form is the detail line.
-// Neither amount is part of the measured total.
-func dashAgentSummaryLabel(est *session.AgentSummaryEstimate, compact bool) string {
-	if est == nil || est.Calls <= 0 {
-		return ""
-	}
-	calls := strconv.FormatInt(est.Calls, 10)
-	tokens := formatTokenCount(est.Tokens)
-	if compact {
-		if est.Source == session.AgentSummarySourceDebug {
-			return calls + " hidden (debug), est. " + tokens
-		}
-		return "~" + calls + " hidden, est. " + tokens
-	}
-	if est.Source == session.AgentSummarySourceDebug {
-		return calls + " hidden summary calls (debug log), est. " + tokens + " tokens"
-	}
-	return "~" + calls + " hidden summary calls, est. " + tokens + " tokens"
-}
-
-func dashAgentSummaryNote(est *session.AgentSummaryEstimate) string {
-	return fmt.Sprintf("est. only · %ds (%d-%ds)", summaryIntervalSeconds(est), summaryIntervalMinSeconds(), summaryIntervalMaxSeconds())
-}
-
-func dashAgentSummaryDetailNote(est *session.AgentSummaryEstimate) string {
-	return fmt.Sprintf("estimate only, not in the measured total · every %ds (server may set %d-%ds)",
-		summaryIntervalSeconds(est), summaryIntervalMinSeconds(), summaryIntervalMaxSeconds())
-}
-
-func summaryIntervalSeconds(est *session.AgentSummaryEstimate) int {
-	if est != nil && est.IntervalSeconds > 0 {
-		return est.IntervalSeconds
-	}
-	return summaryIntervalMinSeconds()
-}
-
-func summaryIntervalMinSeconds() int {
-	return int(session.ClaudeAgentSummaryIntervalMin / time.Second)
-}
-
-func summaryIntervalMaxSeconds() int {
-	return int(session.ClaudeAgentSummaryIntervalMax / time.Second)
 }

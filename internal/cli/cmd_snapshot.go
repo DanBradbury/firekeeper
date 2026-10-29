@@ -33,12 +33,7 @@ func runSnapshot(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	c, err := loadConfig(configFlags{})
-	if err != nil {
-		fmt.Fprintf(stderr, "firekeeper snapshot: %v\n", err)
-		return 1
-	}
-	metas, err := discoverSessions(context.Background(), session.Options{ClaudeSummaryInterval: c.ClaudeSummaryInterval})
+	metas, err := discoverSessions(context.Background(), session.Options{})
 	var warning *session.Warning
 	if err != nil && !errors.As(err, &warning) {
 		fmt.Fprintf(stderr, "firekeeper snapshot: %v\n", err)

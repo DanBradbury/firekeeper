@@ -32,12 +32,7 @@ type Options struct {
 	// CursorDir overrides the Cursor CLI data directory, which defaults to
 	// CURSOR_CONFIG_DIR or ~/.cursor.
 	CursorDir string
-	// ClaudeSummaryInterval is the agent_summary period used while reading
-	// Claude sessions. Zero means the 30s default, or
-	// FIREKEEPER_CLAUDE_SUMMARY_INTERVAL when that variable is set and valid.
-	// Callers that loaded config pass the resolved value so the file is honored.
-	ClaudeSummaryInterval time.Duration
-	Run                   func(ctx context.Context, name string, args ...string) ([]byte, error)
+	Run       func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
 // Meta describes one observable session. Runtimes without metadata have an
@@ -71,10 +66,10 @@ type Meta struct {
 	Input          int64        `json:"input"`
 	Output         int64        `json:"output"`
 	Cache          int64        `json:"cache"`
-	// AgentSummary estimates Claude Code agent_summary calls that are not in
-	// the transcript. It is omitted when there is nothing to report and is
-	// never included in Input, Output, or Cache.
-	AgentSummary *AgentSummaryEstimate `json:"agent_summary_estimate,omitempty"`
+	// UndercountWarning is set for a Claude Code session with subagent
+	// transcripts. It is omitted otherwise and is not part of the token totals.
+	// It is local snapshot metadata; upload does not send it.
+	UndercountWarning string `json:"undercount_warning,omitempty"`
 }
 
 // Warning reports partial enrichment failures. Discover returns usable metadata
@@ -172,7 +167,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				}
 				projects[cwd] = project
 			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, AgentSummary: s.AgentSummary, Runtime: g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, Runtime: g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 	testConfigHome = dir
 	configHome = func() (string, error) { return testConfigHome, nil }
 	isolateServerLookup()
-	for _, k := range []string{config.EnvConfig, config.EnvServer, config.EnvToken, config.EnvProviders, config.EnvInterval, "FIREKEEPER_CLAUDE_SUMMARY_INTERVAL"} {
+	for _, k := range []string{config.EnvConfig, config.EnvServer, config.EnvToken, config.EnvProviders, config.EnvInterval} {
 		os.Unsetenv(k)
 	}
 	code := m.Run()
@@ -126,7 +126,6 @@ scan_lookback = "6h"
 		`interval = "45s"  # env`,
 		`server = "` + reporter.DefaultServer + `"  # default`,
 		`scan_ended = true  # default`,
-		`claude_summary_interval = "30s"  # default`,
 		`scan_lookback = "6h0m0s"  # file`,
 	} {
 		if !strings.Contains(out, want) {

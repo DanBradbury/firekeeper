@@ -356,8 +356,7 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 		byProvider[provider] = pp
 		order = append(order, provider)
 		metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{
-			ModifiedAfter:         cutoff,
-			ClaudeSummaryInterval: r.cfg.ClaudeSummaryInterval,
+			ModifiedAfter: cutoff,
 			Skip: func(meta session.Meta) bool {
 				reason := r.skipReason(meta)
 				if reason == "" {
@@ -590,12 +589,6 @@ func mergeLive(meta, live session.Meta) session.Meta {
 	fill(&meta.Title, live.Title)
 	if meta.StartedAt == nil {
 		meta.StartedAt = live.StartedAt
-	}
-	// A running Claude session just measured its summary estimate, including
-	// a debug-file count. Overlay that, and clear a stale historical estimate
-	// when the live pass found nothing to report.
-	if live.Provider == "claude" || live.AgentSummary != nil {
-		meta.AgentSummary = live.AgentSummary
 	}
 	return meta
 }

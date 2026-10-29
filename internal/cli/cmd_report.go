@@ -87,9 +87,6 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "firekeeper report: %v\n", err)
 		return 1
 	}
-	if reporter.AnyServerUpdate(summary.Sessions) {
-		fmt.Fprintln(stderr, "firekeeper report: "+(&reporter.ServerUpdateError{}).Error())
-	}
 	if summary.Failed() {
 		return 1
 	}

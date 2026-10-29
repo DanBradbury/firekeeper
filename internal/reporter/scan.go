@@ -114,8 +114,7 @@ func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) 
 			continue
 		}
 		metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{
-			ModifiedAfter:         after,
-			ClaudeSummaryInterval: r.cfg.ClaudeSummaryInterval,
+			ModifiedAfter: after,
 			Skip: func(meta session.Meta) bool {
 				if live[scanKey(provider, meta.ID)] {
 					return true

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
 
@@ -52,32 +51,32 @@ interval = "1m"
 		sources   map[string]string
 	}{
 		{name: "defaults only", server: "http://default", interval: 15 * time.Second, providers: []transcript.Provider{},
-			sources: map[string]string{"server": "default", "token": "default", "providers": "default", "interval": "default", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "default", "token": "default", "providers": "default", "interval": "default"}},
 		{name: "file over defaults", file: fileBody, server: "http://file", token: "file-token",
 			providers: []transcript.Provider{codex}, interval: time.Minute,
-			sources: map[string]string{"server": "file", "token": "file", "providers": "file", "interval": "file", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "file", "token": "file", "providers": "file", "interval": "file"}},
 		{name: "env over file", file: fileBody,
 			env:    map[string]string{EnvServer: "http://env", EnvToken: "env-token", EnvProviders: "claude, copilot", EnvInterval: "2m"},
 			server: "http://env", token: "env-token", providers: []transcript.Provider{claude, copilot}, interval: 2 * time.Minute,
-			sources: map[string]string{"server": "env", "token": "env", "providers": "env", "interval": "env", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "env", "token": "env", "providers": "env", "interval": "env"}},
 		{name: "flags over env", file: fileBody,
 			env:    map[string]string{EnvServer: "http://env", EnvToken: "env-token", EnvProviders: "claude", EnvInterval: "2m"},
 			flags:  Overrides{Server: ptr("http://flag"), Token: ptr("flag-token"), Providers: []transcript.Provider{copilot}, Interval: ptr(3 * time.Minute)},
 			server: "http://flag", token: "flag-token", providers: []transcript.Provider{copilot}, interval: 3 * time.Minute,
-			sources: map[string]string{"server": "flag", "token": "flag", "providers": "flag", "interval": "flag", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "flag", "token": "flag", "providers": "flag", "interval": "flag"}},
 		{name: "mixed layers", file: fileBody,
 			env:    map[string]string{EnvToken: "env-token"},
 			flags:  Overrides{Interval: ptr(5 * time.Second)},
 			server: "http://file", token: "env-token", providers: []transcript.Provider{codex}, interval: 5 * time.Second,
-			sources: map[string]string{"server": "file", "token": "env", "providers": "file", "interval": "flag", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "file", "token": "env", "providers": "file", "interval": "flag"}},
 		{name: "empty env and flags do not override", file: fileBody,
 			env:    map[string]string{EnvServer: "  ", EnvProviders: ""},
 			flags:  Overrides{Providers: nil},
 			server: "http://file", token: "file-token", providers: []transcript.Provider{codex}, interval: time.Minute,
-			sources: map[string]string{"server": "file", "token": "file", "providers": "file", "interval": "file", "claude_summary_interval": "default"}},
+			sources: map[string]string{"server": "file", "token": "file", "providers": "file", "interval": "file"}},
 		{name: "file can list no providers", file: `providers = []`, server: "http://default", interval: 15 * time.Second,
 			providers: []transcript.Provider{},
-			sources:   map[string]string{"server": "default", "token": "default", "providers": "file", "interval": "default", "claude_summary_interval": "default"}},
+			sources:   map[string]string{"server": "default", "token": "default", "providers": "file", "interval": "default"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -154,9 +153,6 @@ func TestLoadErrors(t *testing.T) {
 		{"unknown key", "servr = \"x\"\n[redact]\npath = []", "unknown keys: redact.path, servr"},
 		{"bad provider", `providers = ["codex", "gpt"]`, `unknown provider "gpt"`},
 		{"bad interval", `interval = "soon"`, "not a positive duration"},
-		{"summary interval too small", `claude_summary_interval = "10s"`, "outside 30s-240s"},
-		{"summary interval too large", `claude_summary_interval = "5m"`, "outside 30s-240s"},
-		{"summary interval not a duration", `claude_summary_interval = "soon"`, "not a positive duration"},
 		{"bad scan lookback", `scan_lookback = "a while"`, "scan_lookback \"a while\" is not a positive duration"},
 		{"negative scan lookback", `scan_lookback = "-1h"`, "not a positive duration"},
 		{"scan_ended as text", `scan_ended = "no"`, "scan_ended"},
@@ -273,58 +269,6 @@ func TestExcluded(t *testing.T) {
 				t.Fatalf("Excluded = (%q, %v), want %q", got, ok, tt.want)
 			}
 		})
-	}
-}
-
-func TestClaudeSummaryInterval(t *testing.T) {
-	home := t.TempDir()
-	load := func(body string, envMap map[string]string) (Config, error) {
-		t.Helper()
-		if body != "" {
-			writeConfig(t, home, body)
-		} else if err := os.Remove(DefaultPath(home)); err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		return Load(Options{Home: home, Getenv: env(envMap)})
-	}
-	c, err := load("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.ClaudeSummaryInterval != 30*time.Second || c.Sources["claude_summary_interval"] != "default" {
-		t.Fatalf("default = %s from %s", c.ClaudeSummaryInterval, c.Sources["claude_summary_interval"])
-	}
-	c, err = load(`claude_summary_interval = "2m"`, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.ClaudeSummaryInterval != 2*time.Minute || c.Sources["claude_summary_interval"] != "file" {
-		t.Fatalf("file = %s from %s", c.ClaudeSummaryInterval, c.Sources["claude_summary_interval"])
-	}
-	c, err = load(`claude_summary_interval = "2m"`, map[string]string{session.EnvClaudeSummaryInterval: "45s"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c.ClaudeSummaryInterval != 45*time.Second || c.Sources["claude_summary_interval"] != "env" {
-		t.Fatalf("env = %s from %s", c.ClaudeSummaryInterval, c.Sources["claude_summary_interval"])
-	}
-	for _, raw := range []string{"10s", "5m", "4m1s", "0s", "-1s", "soon"} {
-		if _, err := load("", map[string]string{session.EnvClaudeSummaryInterval: raw}); err == nil || !strings.Contains(err.Error(), session.EnvClaudeSummaryInterval) {
-			t.Fatalf("env %q err = %v", raw, err)
-		}
-		if _, err := load("claude_summary_interval = \""+raw+"\"\n", nil); err == nil || !strings.Contains(err.Error(), "claude_summary_interval") {
-			t.Fatalf("file %q err = %v", raw, err)
-		}
-	}
-	// Bounds themselves are accepted.
-	for _, raw := range []string{"30s", "240s", "4m"} {
-		c, err = load("", map[string]string{session.EnvClaudeSummaryInterval: raw})
-		if err != nil {
-			t.Fatalf("env %q: %v", raw, err)
-		}
-		if c.ClaudeSummaryInterval < 30*time.Second || c.ClaudeSummaryInterval > 240*time.Second {
-			t.Fatalf("env %q = %s", raw, c.ClaudeSummaryInterval)
-		}
 	}
 }
 

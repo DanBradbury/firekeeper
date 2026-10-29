@@ -79,36 +79,18 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	}
 }
 
-func TestDashboardShowsSummaryEstimateSeparate(t *testing.T) {
+func TestDashboardShowsSubagentUndercountWarning(t *testing.T) {
 	m := dashboardTestModel()
 	m.width, m.height = 160, 44
-	m.processGroups[0].sessions[0].agentSummary = &session.AgentSummaryEstimate{
-		Calls: 5, Tokens: 31000, CacheRead: 31000, IntervalSeconds: 30,
-		Source: session.AgentSummarySourceTranscript,
-		Label:  "~5 hidden summary calls, est. 31000 tokens",
-	}
+	m.processGroups[0].sessions[0].undercountWarning = session.ClaudeUndercountWarning
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{
-		"1.2M", "900.0K",
-		"~5 hidden summary calls, est. 31.0K tokens",
-		"estimate only, not in the measured total",
-		"server may set 30-240s",
-		"~5 hidden, est. 31.0K",
-		"est. only · 30s (30-240s)",
-	} {
+	for _, expected := range []string{"1.2M", "900.0K", session.ClaudeUndercountWarning} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
 	}
-}
-
-func TestDashboardStatusShowsConfigNotice(t *testing.T) {
-	m := dashboardTestModel()
-	m.width, m.height = 200, 24
-	m.statusNotice = `config: claude_summary_interval: "10s" is outside 30s-240s`
-	view := ansi.Strip(m.View())
-	if !strings.Contains(view, `outside 30s-240s`) {
-		t.Fatalf("status notice missing:\n%s", view)
+	if strings.Contains(view, "est.") || strings.Contains(view, "hidden summary calls, est") {
+		t.Fatalf("dashboard still shows an estimate:\n%s", view)
 	}
 }
 

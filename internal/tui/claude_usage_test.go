@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -67,7 +68,7 @@ func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
 			first = session
 		}
 	}
-	if first.Title != "Fix the build" || first.WorkDir != "/work/repo" || first.GitBranch != "main" || first.Model != "claude-opus-5-5" || first.LifetimeTokens != 141 {
+	if first.Title != "Fix the build" || first.WorkDir != "/work/repo" || first.GitBranch != "main" || first.Model != "claude-opus-5-5" || first.LifetimeTokens != 141 || first.UndercountWarning != "" {
 		t.Fatalf("session = %#v", first)
 	}
 	day := time.Date(2026, 10, 1, 10, 0, 0, 0, time.UTC).Local().Format("2006-01-02")
@@ -82,7 +83,7 @@ func TestFetchClaudeUsageCountsEachMessageOnce(t *testing.T) {
 	}
 }
 
-func TestFetchClaudeUsageKeepsSummaryEstimateSeparate(t *testing.T) {
+func TestFetchClaudeUsageWarnsWhenSubagentsExist(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", root)
 	const id = "11111111-1111-1111-1111-111111111111"
@@ -93,45 +94,26 @@ func TestFetchClaudeUsageKeepsSummaryEstimateSeparate(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	body := strings.Join([]string{
-		`{"type":"user","timestamp":"2026-10-29T12:00:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
-		`{"type":"assistant","timestamp":"2026-10-29T12:00:10Z","message":{"id":"msg_sub","usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":900,"cache_creation_input_tokens":0}}}`,
-		`{"type":"user","timestamp":"2026-10-29T12:01:00Z","message":{"role":"user","content":"synthetic-prompt-marker"}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := fetchClaudeUsage()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Summary.LifetimeTokens != 135 {
-		t.Fatalf("measured total = %d, want 135", snapshot.Summary.LifetimeTokens)
+	if snapshot.Summary.LifetimeTokens != 135 || len(snapshot.History) != 1 || snapshot.History[0].LifetimeTokens != 135 {
+		t.Fatalf("measured totals changed: %#v", snapshot.Summary)
 	}
-	if len(snapshot.History) != 1 {
-		t.Fatalf("history len = %d", len(snapshot.History))
-	}
-	est := snapshot.History[0].Estimate
-	calls, tokens := int64(0), int64(0)
-	if est != nil {
-		calls, tokens = est.Calls, est.Tokens
-	}
-	if snapshot.History[0].LifetimeTokens != 135 || est == nil || calls != 2 || tokens != 2000 {
-		t.Fatalf("history tokens=%d estimate calls=%d tokens=%d", snapshot.History[0].LifetimeTokens, calls, tokens)
-	}
-	if strings.Contains(snapshot.History[0].Estimate.Label, "synthetic-prompt-marker") {
-		t.Fatal("estimate label retained transcript text")
+	if snapshot.History[0].UndercountWarning != session.ClaudeUndercountWarning {
+		t.Fatalf("warning = %q", snapshot.History[0].UndercountWarning)
 	}
 	m := NewModel()
-	m.width, m.height = 140, 40
+	m.width, m.height = 160, 40
 	m.usageProvider = claudeProvider
 	m.claudeUsage = snapshot
 	view := ansi.Strip(m.viewUsagePage(m.height - chromeRows))
-	if !strings.Contains(view, "135") || !strings.Contains(view, "~2 hidden summary calls, est. 2.0K tokens") {
-		t.Fatalf("usage view missing the separate estimate:\n%s", view)
-	}
-	if strings.Contains(view, "synthetic-prompt-marker") {
-		t.Fatal("usage view showed transcript text")
+	if !strings.Contains(view, "135") || !strings.Contains(view, "Has subagents:") {
+		t.Fatalf("usage view missing the undercount warning:\n%s", view)
 	}
 }
 

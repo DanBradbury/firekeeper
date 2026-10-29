@@ -195,8 +195,8 @@ func (m model) claudePage() usagePage {
 			{Name: "Input", Value: formatTokenCount(item.InputTokens) + " · cache read " + formatTokenCount(item.CacheRead)},
 			{Name: "Output", Value: formatTokenCount(item.OutputTokens) + " · cache write " + formatTokenCount(item.CacheCreation)},
 		}
-		if text := dashAgentSummaryLabel(item.Estimate, false); text != "" {
-			details = append(details, usageField{Name: "Estimate", Value: text, Color: dashYellow})
+		if item.UndercountWarning != "" {
+			details = append(details, usageField{Name: "Note", Value: item.UndercountWarning, Color: dashYellow})
 		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,

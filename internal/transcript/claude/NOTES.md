@@ -166,10 +166,8 @@ unsupported.
   them under the parent's `session_id` would collide with the parent's `seq`
   values, so `Locate` skips them. Supporting them as events needs a seq
   scheme or a separate session id per subagent, which is a contract decision.
-  `EstimateClaudeAgentSummary` does read those files, but only for timestamps
-  and assistant `usage` counts, to estimate hidden `agent_summary` calls. It
-  does not keep transcript text, and the estimate is not added to measured
-  token totals.
+  Discovery only checks that `agent-*.jsonl` files exist, so it can warn that
+  measured token totals are likely low. It does not read those files.
 - **Long project paths.** Claude Code may shorten very long encoded directory
   names. Discovery's working-directory fallback then finds nothing; explicit
   ids and `Locate`'s search across all project directories still work.

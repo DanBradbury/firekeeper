@@ -25,7 +25,7 @@ func fromProcessInfo(v session.ProcessInfo) processInfo {
 }
 
 func fromSessionInfo(v session.Info) sessionInfo {
-	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed, tokens: v.Tokens, agentSummary: v.AgentSummary}
+	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed, tokens: v.Tokens, undercountWarning: v.UndercountWarning}
 }
 
 func fromProcessGroup(v session.ProcessGroup) processGroup {

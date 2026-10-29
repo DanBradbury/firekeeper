@@ -186,14 +186,11 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeSummaryAgent(t, explicit, "alpha", alphaBody(t), alphaMeta(summaryT0.Add(150*time.Second)))
-	debug := filepath.Join(home, "claude.debug")
-	if err := os.WriteFile(debug, []byte(
-		summaryT0.Add(30*time.Second).Format(time.RFC3339)+" [AgentSummary] Timer fired for agent alpha\n"+
-			summaryT0.Add(30*time.Second).Format(time.RFC3339)+" [AgentSummary] Forking for summary, 4 messages in context\n"+
-			summaryT0.Add(70*time.Second).Format(time.RFC3339)+" [AgentSummary] Timer fired for agent alpha\n"+
-			summaryT0.Add(70*time.Second).Format(time.RFC3339)+" [AgentSummary] Forking for summary, 8 messages in context\n",
-	), 0o600); err != nil {
+	sub := filepath.Join(strings.TrimSuffix(explicit, ".jsonl"), "subagents")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "agent-alpha.jsonl"), []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,7 +199,7 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		switch name {
 		case "ps":
 			return []byte(strings.Join([]string{
-				"50 1 pts/0 00:01 claude --session-id " + claudeIDA + " --debug-file " + filepath.Join(home, "claude.debug"),
+				"50 1 pts/0 00:01 claude --session-id " + claudeIDA,
 				"60 1 pts/1 00:02 claude",
 				"70 1 pts/2 00:03 /usr/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe --continue",
 				"71 70 pts/2 00:03 /usr/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe --continue",
@@ -263,16 +260,11 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 			t.Errorf("pid %d: started %v path set %v", tt.pid, m.StartedAt, m.RolloutPath != "")
 		}
 	}
-	est := byPID[50].AgentSummary
-	if est == nil || est.Calls != 2 || est.Tokens != 5000 || est.CacheRead != 5000 || est.Source != AgentSummarySourceDebug || byPID[50].TokensUsed != 10 {
-		calls, tokens, source := int64(0), int64(0), ""
-		if est != nil {
-			calls, tokens, source = est.Calls, est.Tokens, est.Source
-		}
-		t.Fatalf("debug summary calls=%d tokens=%d source=%s measured=%d", calls, tokens, source, byPID[50].TokensUsed)
+	if byPID[50].UndercountWarning != ClaudeUndercountWarning || byPID[50].TokensUsed != 10 {
+		t.Fatalf("warning = %q measured = %d", byPID[50].UndercountWarning, byPID[50].TokensUsed)
 	}
-	if byPID[60].AgentSummary != nil || byPID[70].AgentSummary != nil {
-		t.Fatal("session without subagents reported a summary estimate")
+	if byPID[60].UndercountWarning != "" || byPID[70].UndercountWarning != "" {
+		t.Fatal("session without subagents reported an undercount warning")
 	}
 }
 
@@ -297,7 +289,7 @@ func TestReadClaudeTranscriptMetadataLargeFile(t *testing.T) {
 	filler := claudeLine(t, map[string]any{"type": "attachment", "attachment": map[string]any{"pad": strings.Repeat("x", 1<<20)}})
 	tail := claudeAssistant(t, "tool_use", claudeToolUse("q", "AskUserQuestion"))
 	fixtureFile(t, path, head+strings.Repeat(filler, int(ClaudeTranscriptTailBytes>>20)+1)+tail)
-	info, err := (&discoverer{}).readClaudeTranscriptMetadata(path, "")
+	info, err := (&discoverer{}).readClaudeTranscriptMetadata(path)
 	if err != nil {
 		t.Fatal(err)
 	}

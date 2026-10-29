@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -59,19 +58,19 @@ type processInfo struct {
 }
 
 type sessionInfo struct {
-	id           string
-	name         string
-	state        sessionState
-	cwd          string
-	model        string
-	source       string
-	repository   string
-	gitBranch    string
-	rolloutPath  string
-	updatedAt    time.Time
-	tokensUsed   int64
-	tokens       tokenBreakdown
-	agentSummary *session.AgentSummaryEstimate
+	id                string
+	name              string
+	state             sessionState
+	cwd               string
+	model             string
+	source            string
+	repository        string
+	gitBranch         string
+	rolloutPath       string
+	updatedAt         time.Time
+	tokensUsed        int64
+	tokens            tokenBreakdown
+	undercountWarning string
 }
 
 type tokenBreakdown = session.TokenBreakdown
@@ -87,7 +86,6 @@ type processResultMsg struct {
 	groups          []processGroup
 	refreshed       time.Time
 	metadataWarning string
-	notice          string
 	err             error
 }
 
@@ -108,7 +106,6 @@ type model struct {
 	expandedGroups          map[int]bool
 	processErr              string
 	processMetadataWarning  string
-	statusNotice            string
 	terminalStatus          string
 	refreshedAt             time.Time
 	codexUsage              codexUsageSnapshot
@@ -281,7 +278,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
-			m.statusNotice = msg.notice
 			m.ensureSelectedProcessVisible()
 		}
 
@@ -534,13 +530,7 @@ func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
 func refreshProcesses() tea.Cmd {
 	return func() tea.Msg {
 		result := processResultMsg{refreshed: time.Now()}
-		interval := session.ClaudeAgentSummaryInterval
-		if c, err := config.Load(config.Options{}); err != nil {
-			result.notice = err.Error()
-		} else if c.ClaudeSummaryInterval > 0 {
-			interval = c.ClaudeSummaryInterval
-		}
-		metas, err := session.Discover(context.Background(), session.Options{ClaudeSummaryInterval: interval})
+		metas, err := session.Discover(context.Background(), session.Options{})
 		var warning *session.Warning
 		if errors.As(err, &warning) {
 			result.metadataWarning = warning.Error()

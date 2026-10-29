@@ -141,9 +141,6 @@ func runBackfill(args []string, stdout, stderr io.Writer) int {
 		events += s.Events
 	}
 	fmt.Fprintf(stdout, "backfill: uploaded %d events from %d %s\n", events, len(result.Sessions), plural(len(result.Sessions), "session", "sessions"))
-	if reporter.AnyServerUpdate(result.Sessions) {
-		fmt.Fprintln(stderr, "firekeeper backfill: "+(&reporter.ServerUpdateError{}).Error())
-	}
 	if result.Failed() {
 		return 1
 	}

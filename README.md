@@ -77,12 +77,10 @@ Press `?` for every key.
 | Gemini CLI | Yes | Yes |
 | Cursor CLI | Yes | Yes |
 
-Claude Code asks a model for a short status line for each running subagent
-about every 30 seconds. Those calls are not written to the transcript, so the
-measured token total misses them. Firekeeper shows a separate estimate
-(`~N hidden summary calls, est. X tokens`) and does not add it to that total.
-The [reference](docs/reference.md#claude-code-hidden-summary-calls) describes
-how the estimate is made.
+A Claude Code session that has subagents warns that its token total is likely
+low: background summary calls are not written to the transcript. The warning
+has no count. See the
+[reference](docs/reference.md#claude-code-subagent-undercount).
 
 States describe the latest event Firekeeper can see, not ground truth, and
 agent CLIs can change their on-disk formats between releases. The

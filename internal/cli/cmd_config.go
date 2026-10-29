@@ -38,7 +38,6 @@ func applyReporterConfig(cfg *reporter.Config, c config.Config) {
 	cfg.RedactPaths = c.RedactPaths
 	cfg.ScanEnded = c.ScanEnded
 	cfg.ScanLookback = c.ScanLookback
-	cfg.ClaudeSummaryInterval = c.ClaudeSummaryInterval
 	cfg.Version = version.Version
 }
 
@@ -136,7 +135,6 @@ func writeConfig(w io.Writer, c config.Config) {
 	}
 	fmt.Fprintf(w, "providers = %s%s\n", tomlList(names), src("providers"))
 	fmt.Fprintf(w, "interval = %q%s\n", c.Interval.String(), src("interval"))
-	fmt.Fprintf(w, "claude_summary_interval = %q%s\n", c.ClaudeSummaryInterval.String(), src("claude_summary_interval"))
 	fmt.Fprintf(w, "scan_ended = %t%s\n", c.ScanEnded, src("scan_ended"))
 	fmt.Fprintf(w, "scan_lookback = %q%s\n", c.ScanLookback.String(), src("scan_lookback"))
 	fmt.Fprintf(w, "exclude = %s\n", tomlList(c.Exclude))
