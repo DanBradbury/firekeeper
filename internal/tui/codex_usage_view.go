@@ -94,9 +94,11 @@ func (m model) codexLimitLines(rows int, now time.Time) []string {
 
 func codexLimitLine(name string, window codexQuotaWindow, now time.Time) string {
 	title := quotaWindowTitle(name, window.WindowDurationMin)
-	return dashPaint(dashCell(title, 10, false), usageTextColor, false) +
-		dashPaint(fmt.Sprintf("%4.0f%% ", window.UsedPercent), usagePercentColor(window.UsedPercent), true) +
-		dashPaint(codexResetText(window.ResetsAt, now), usageMutedColor, false)
+	return usageSplit(
+		dashPaint(title, usageTextColor, false),
+		dashPaint(fmt.Sprintf("%.0f%% ", window.UsedPercent), usagePercentColor(window.UsedPercent), true)+
+			dashPaint(codexResetText(window.ResetsAt, now), usageMutedColor, false),
+	)
 }
 
 func usagePercentColor(percent float64) string {
@@ -119,16 +121,13 @@ func (m model) codexLifetimeLines() []string {
 		}
 	}
 	summary := m.codexUsage.Summary
-	stat := func(name, value string) string {
-		return dashPaint(dashCell(name, 8, false), usageMutedColor, false) + dashPaint(value, usageBrightColor, true)
-	}
+	stat := func(name, value string) string { return usageStat(name, value, "") }
 	var lines []string
 	if plan != "" {
 		lines = append(lines, stat("Plan", plan))
 	}
 	if summary.LifetimeTokens != nil {
-		lines = append(lines, dashPaint(dashCell("Tokens", 8, false), usageMutedColor, false)+
-			dashPaint(formatTokenCount(*summary.LifetimeTokens), dashYellow, true))
+		lines = append(lines, usageStat("Tokens", formatTokenCount(*summary.LifetimeTokens), dashYellow))
 	}
 	if summary.PeakDailyTokens != nil {
 		lines = append(lines, stat("Peak day", formatTokenCount(*summary.PeakDailyTokens)))

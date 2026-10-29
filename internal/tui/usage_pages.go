@@ -103,9 +103,11 @@ func copilotPlanLines(snapshot copilotUsageSnapshot) []string {
 		percent = plan.UsedCredits / plan.TotalCredits * 100
 	}
 	lines = append(lines,
-		dashPaint(dashCell("AI credits", 10, false), usageTextColor, false)+
-			dashPaint(fmt.Sprintf("%3.0f%% ", percent), usagePercentColor(percent), true)+
-			dashPaint(formatAICredits(plan.UsedCredits)+" / "+formatAICredits(plan.TotalCredits), usageMutedColor, false),
+		usageSplit(
+			dashPaint("AI credits", usageTextColor, false),
+			dashPaint(fmt.Sprintf("%.0f%% ", percent), usagePercentColor(percent), true)+
+				dashPaint(formatAICredits(plan.UsedCredits)+" / "+formatAICredits(plan.TotalCredits), usageMutedColor, false),
+		),
 	)
 	if !plan.ResetAt.IsZero() {
 		lines = append(lines, usageNote(codexResetText(plan.ResetAt.Unix(), time.Now())))
