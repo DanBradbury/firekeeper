@@ -32,7 +32,7 @@ const (
 	dashSummaryRows    = 7
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
-	dashDetailMaxRows  = 10
+	dashDetailMaxRows  = 13
 )
 
 // dashLayout holds the row budget for each panel of the Processes tab.
@@ -359,6 +359,17 @@ func dashGroupDetail(group processGroup) []string {
 			dashPaint("tokens ", usageMutedColor, false)+
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 				dashTokenBreakdownText(session.tokens),
+		)
+		if session.telemetryOn && session.telemetryLine != "" {
+			lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+			lines = append(lines, dashPaint("transcripts ", usageMutedColor, false)+dashPaint(formatTokenCount(session.transcriptTokens), usageTextColor, false))
+		} else if session.undercountWarning != "" {
+			lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
+		}
+		if session.telemetryHint {
+			lines = append(lines, dashPaint("firekeeper telemetry enable gets exact totals", usageMutedColor, false))
+		}
+		lines = append(lines,
 			label("updated", formatSessionTime(session.updatedAt))+
 				label("tty", displayTTY(group.root.tty))+
 				label("up", emptyFallback(group.root.elapsed, "—")),
@@ -787,6 +798,9 @@ func containsString(values []string, value string) bool {
 // sessionTokenTotal prefers the provider's token breakdown and falls back to
 // the aggregate the provider reports when no breakdown is available.
 func sessionTokenTotal(session sessionInfo) int64 {
+	if session.exactTokens > 0 {
+		return session.exactTokens
+	}
 	if total := session.tokens.Total(); total > 0 {
 		return total
 	}

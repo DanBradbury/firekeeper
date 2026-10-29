@@ -62,8 +62,10 @@ func TestReconcileGapAndTranscript(t *testing.T) {
 		"agent_summary: 1205 tokens, 1 request",
 		"repl_main_thread: 100 tokens, 1 request",
 		"compact: 1 tokens, 1 request",
-		"transcript: 110 tokens, 2 messages",
-		"gap telemetry-transcript: 1196",
+		"transcript: 110 tokens, 2 messages, 0 subagent files",
+		"gap telemetry-transcript: 1206",
+		"untranscribed agent_summary: 1205 tokens",
+		"untranscribed compact: 1 tokens",
 		"modelUsage: 375 tokens",
 		"gap telemetry-modelUsage: 931",
 		"agent_summary requests: 1",
@@ -72,6 +74,71 @@ func TestReconcileGapAndTranscript(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q\n%s", want, text)
 		}
+	}
+}
+
+func TestReconcileCountsSubagentsAndLeavesHiddenSources(t *testing.T) {
+	// Same shape as the Mac run: subagent tokens are on disk, and the gap
+	// is only agent_summary, prompt_suggestion, and generate_session_title.
+	dir := t.TempDir()
+	project := filepath.Join(dir, "projects", "-work")
+	sessionDir := filepath.Join(project, testSession)
+	if err := os.MkdirAll(filepath.Join(sessionDir, "subagents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	main := strings.Join([]string{
+		`{"type":"assistant","requestId":"req_main","message":{"id":"msg_main","model":"claude-haiku","usage":{"input_tokens":80,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+		`{"type":"assistant","requestId":"req_main","message":{"id":"msg_main","model":"claude-haiku","usage":{"input_tokens":80,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+		`{"type":"cost-state","modelUsage":{"claude-haiku":{"inputTokens":371,"outputTokens":0,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}}}`,
+		"",
+	}, "\n")
+	sub := strings.Join([]string{
+		`{"type":"assistant","requestId":"req_main","message":{"id":"msg_main","model":"claude-haiku","usage":{"input_tokens":9999,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+		`{"type":"assistant","requestId":"req_sub","message":{"id":"msg_sub","model":"claude-haiku","content":"SECRET_TRANSCRIPT","usage":{"input_tokens":150,"output_tokens":30,"cache_read_input_tokens":20,"cache_creation_input_tokens":0}}}`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(project, testSession+".jsonl"), []byte(main), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "subagents", "agent-1.jsonl"), []byte(sub), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	records := []Request{
+		{SessionID: testSession, QuerySource: "repl_main_thread", InputTokens: 80, OutputTokens: 20, RequestID: "req_main"},
+		{SessionID: testSession, QuerySource: "agent:builtin:general-purpose", InputTokens: 150, OutputTokens: 30, CacheReadTokens: 20, RequestID: "req_sub"},
+		{SessionID: testSession, QuerySource: "agent_summary", InputTokens: 40, OutputTokens: 5, RequestID: "req_sum"},
+		{SessionID: testSession, QuerySource: "prompt_suggestion", InputTokens: 20, OutputTokens: 4, RequestID: "req_prompt"},
+		{SessionID: testSession, QuerySource: "generate_session_title", InputTokens: 1, OutputTokens: 1, RequestID: "req_title"},
+	}
+	var out bytes.Buffer
+	if err := WriteReconcile(&out, records, func(id string) (SessionUsage, error) {
+		return LoadTranscript(id, dir)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Contains(text, "SECRET_TRANSCRIPT") {
+		t.Fatalf("leaked transcript text:\n%s", text)
+	}
+	// main 100 + subagent 200 = 300. Hidden 45+24+2 = 71. modelUsage 385.
+	for _, want := range []string{
+		"telemetry: 371 tokens, 5 requests",
+		"transcript: 300 tokens, 2 messages, 1 subagent files",
+		"gap telemetry-transcript: 71",
+		"untranscribed agent_summary: 45 tokens",
+		"untranscribed prompt_suggestion: 24 tokens",
+		"untranscribed generate_session_title: 2 tokens",
+		"modelUsage: 371 tokens",
+		"gap telemetry-modelUsage: 0",
+		"agent_summary requests: 1",
+		"other non-main requests: 3",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "untranscribed agent:builtin") {
+		t.Fatalf("subagent source was treated as untranscribed:\n%s", text)
 	}
 }
 
@@ -100,11 +167,10 @@ func TestTranscriptSkipsOversizedLine(t *testing.T) {
 	var usage SessionUsage
 	var model SessionUsage
 	var found bool
-	seen := map[string]bool{}
 	for {
 		line, err := readCappedLine(reader, 512)
 		if len(line) > 0 {
-			trackTranscriptLine(line, &usage, &model, &found, seen)
+			trackTranscriptLine(line, &usage, &model, &found)
 		}
 		if err != nil {
 			break

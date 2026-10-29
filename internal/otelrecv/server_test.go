@@ -17,7 +17,7 @@ import (
 
 func TestHandlerRecordsAPIRequestAndDropsPrompt(t *testing.T) {
 	var file bytes.Buffer
-	journal := newJournal(&nopSync{&file})
+	journal := newJournal(&nopSync{&file}, nil)
 	var stderr bytes.Buffer
 	srv := httptest.NewServer(newHandler(journal, &stderr))
 	t.Cleanup(srv.Close)
@@ -132,7 +132,7 @@ func TestLoopbackHostPort(t *testing.T) {
 
 func TestRejectedPayloadDoesNotEchoBody(t *testing.T) {
 	var stderr bytes.Buffer
-	journal := newJournal(&nopSync{&bytes.Buffer{}})
+	journal := newJournal(&nopSync{&bytes.Buffer{}}, nil)
 	req := httptest.NewRequest(http.MethodPost, "/v1/logs", strings.NewReader(`{"prompt":"`+testSecret))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()

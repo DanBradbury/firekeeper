@@ -72,19 +72,21 @@ func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []stri
 			fmt.Fprintf(stderr, "%s: %v\n", name, err)
 			return 2, false
 		}
-		if len(providers) == 0 {
+		if len(providers) == 0 && !c.TelemetryEnabled {
 			fmt.Fprintf(stderr, "%s: no supported providers detected; install Codex, Copilot, or Claude Code, or specify --provider NAME\n", name)
 			return 2, false
 		}
-		c.Providers = providers
-		c.Sources["providers"] = "detected"
+		if len(providers) > 0 {
+			c.Providers = providers
+			c.Sources["providers"] = "detected"
+		}
 	}
 	f.cfg = c
 	if c.Interval < daemon.MinInterval {
 		fmt.Fprintf(stderr, "%s: --interval must be at least %s\n", name, daemon.MinInterval)
 		return 2, false
 	}
-	if len(c.Providers) == 0 {
+	if len(c.Providers) == 0 && !c.TelemetryEnabled {
 		fmt.Fprintf(stderr, "%s: no --provider given (or providers in the config file); the daemon uploads nothing without one\n", name)
 		return 2, false
 	}
@@ -129,7 +131,13 @@ func runDaemon(args []string, stdout, stderr io.Writer) int {
 	if code, ok := parseDaemonFlags("firekeeper daemon", fs, flags, args, stderr); !ok {
 		return code
 	}
-	cfg := daemon.Config{Interval: flags.cfg.Interval}
+	cfg := daemon.Config{
+		Interval: flags.cfg.Interval,
+		Telemetry: daemon.TelemetryConfig{
+			Enabled: flags.cfg.TelemetryEnabled,
+			Port:    flags.cfg.TelemetryPort,
+		},
+	}
 	if !*quiet {
 		cfg.Out = stderr
 	}

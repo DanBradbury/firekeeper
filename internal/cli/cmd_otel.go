@@ -28,7 +28,7 @@ upload, and does not record prompt or transcript text.
 		fs.PrintDefaults()
 	}
 	port := fs.Int("port", otelrecv.DefaultPort, "TCP port on 127.0.0.1")
-	out := fs.String("out", "", "JSONL file to append (default ~/.firekeeper/otel.jsonl)")
+	out := fs.String("out", "", "JSONL file to append (default ~/.firekeeper/telemetry.jsonl)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0

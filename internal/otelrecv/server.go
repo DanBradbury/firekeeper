@@ -46,6 +46,8 @@ type Options struct {
 	// OnListen, when set, is called with the bound 127.0.0.1 address before
 	// the server accepts a connection.
 	OnListen func(addr string)
+	// Quiet skips the Claude Code environment banner. The daemon sets it.
+	Quiet bool
 }
 
 // Listen serves OTLP/HTTP on 127.0.0.1 until ctx is cancelled, then writes
@@ -73,7 +75,7 @@ func Listen(ctx context.Context, opt Options) error {
 	}
 	defer file.Close()
 
-	journal := newJournal(file)
+	journal := newJournal(file, existingKeys(opt.Path))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return errors.New("otel: listen on 127.0.0.1 failed")
@@ -93,7 +95,9 @@ func Listen(ctx context.Context, opt Options) error {
 	}
 	bound := ln.Addr().String()
 	fmt.Fprintf(opt.Stderr, "listening on %s\nappending to %s\n", bound, opt.Path)
-	writeSetup(opt.Stderr, bound)
+	if !opt.Quiet {
+		writeSetup(opt.Stderr, bound)
+	}
 	if opt.OnListen != nil {
 		opt.OnListen(bound)
 	}
@@ -122,13 +126,14 @@ func Listen(ctx context.Context, opt Options) error {
 	return nil
 }
 
-// DefaultPath is ~/.firekeeper/otel.jsonl, created when the listener starts.
+// DefaultPath is ~/.firekeeper/telemetry.jsonl, the store shared by
+// otel-listen and the daemon. It is created when a listener starts.
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", errors.New("otel: find home directory")
 	}
-	return filepath.Join(home, ".firekeeper", "otel.jsonl"), nil
+	return filepath.Join(home, ".firekeeper", "telemetry.jsonl"), nil
 }
 
 // LoopbackHostPort returns 127.0.0.1:port. Any other host is not representable
@@ -180,10 +185,25 @@ type journal struct {
 	recs []Request
 }
 
-func newJournal(file fileSyncer) *journal {
+func newJournal(file fileSyncer, seen map[string]struct{}) *journal {
+	if seen == nil {
+		seen = map[string]struct{}{}
+	}
 	enc := json.NewEncoder(file)
 	enc.SetEscapeHTML(false)
-	return &journal{file: file, enc: enc, seen: map[string]struct{}{}}
+	return &journal{file: file, enc: enc, seen: seen}
+}
+
+func existingKeys(path string) map[string]struct{} {
+	recs, _, err := ReadFile(path)
+	seen := map[string]struct{}{}
+	if err != nil {
+		return seen
+	}
+	for _, rec := range recs {
+		seen[rec.dedupeKey()] = struct{}{}
+	}
+	return seen
 }
 
 // add appends rec unless it repeats a request already written in this process.

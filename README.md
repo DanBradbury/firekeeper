@@ -95,7 +95,7 @@ for each one, and what each version needs.
   caught](docs/reference.md#what-is-uploaded-and-what-is-not-caught) says
   what it misses.
 - A repository containing a `.firekeeper-ignore` file is never read.
-- `firekeeper otel-listen` is an experimental local receiver for Claude Code's own OpenTelemetry export. It does not start with the dashboard, it binds to 127.0.0.1 only, and it does not upload. The [research note](docs/research/otel-telemetry.md) has the setup and the Mac test.
+- `firekeeper telemetry enable` opts this machine into a loopback listener for Claude Code's own usage export. It does not start with the dashboard, it binds to 127.0.0.1 only, and it does not upload. The [research note](docs/research/otel-telemetry.md) has the details.
 - Whoever runs the server you upload to can read what you send. With a server
   you run yourself, that is you.
 

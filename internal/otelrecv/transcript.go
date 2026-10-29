@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
@@ -15,9 +17,9 @@ import (
 
 // SessionUsage is Firekeeper's view of one Claude Code session on disk.
 // Transcript totals follow the transcript parser: each assistant message id
-// counts once, including sidechain lines in that file, and input excludes
-// cache. ModelUsage is the latest cost-state snapshot, which Claude writes
-// separately and which can include calls the transcript does not.
+// counts once, across the main session file and its
+// <session>/subagents/agent-*.jsonl files. Input excludes cache. ModelUsage
+// is the latest cost-state snapshot on the main file only.
 type SessionUsage struct {
 	Found           bool
 	Messages        int
@@ -30,6 +32,12 @@ type SessionUsage struct {
 	ModelOutput     int64
 	ModelCacheRead  int64
 	ModelCacheWrite int64
+	// SubagentFiles is how many agent-*.jsonl files were included.
+	SubagentFiles int
+	// RequestIDs are assistant-message request ids found in those files.
+	RequestIDs map[string]bool
+	// counted dedupes message ids across the main file and subagent files.
+	counted map[string]bool
 }
 
 // Total is the transcript-derived token total.
@@ -75,46 +83,89 @@ func LoadTranscript(sessionID, configDir string) (SessionUsage, error) {
 	if err != nil {
 		return SessionUsage{}, errors.New("transcript unreadable")
 	}
+	subs := subagentTranscripts(path)
+	for _, sub := range subs {
+		if err := scanTranscriptInto(sub, &usage, false); err != nil {
+			return SessionUsage{}, errors.New("transcript unreadable")
+		}
+	}
+	usage.SubagentFiles = len(subs)
 	usage.Found = true
 	return usage, nil
 }
 
+// subagentTranscripts lists <session>/subagents/agent-*.jsonl next to the
+// main transcript. It does not read file contents.
+func subagentTranscripts(main string) []string {
+	dir := strings.TrimSuffix(main, ".jsonl")
+	if dir == main {
+		return nil
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "subagents", "agent-*.jsonl"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err == nil && info.Mode().IsRegular() {
+			out = append(out, match)
+		}
+	}
+	return out
+}
+
 func scanTranscript(path string) (SessionUsage, error) {
+	var usage SessionUsage
+	if err := scanTranscriptInto(path, &usage, true); err != nil {
+		return SessionUsage{}, err
+	}
+	return usage, nil
+}
+
+// scanTranscriptInto adds one file to usage. countModel records cost-state
+// only for the main session file. Message ids are deduped across files.
+func scanTranscriptInto(path string, usage *SessionUsage, countModel bool) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return SessionUsage{}, err
+		return err
 	}
 	defer file.Close()
 	reader := bufio.NewReaderSize(file, 256<<10)
-	seen := map[string]bool{}
-	var usage SessionUsage
+	if usage.RequestIDs == nil {
+		usage.RequestIDs = map[string]bool{}
+	}
+	if usage.counted == nil {
+		usage.counted = map[string]bool{}
+	}
 	var modelFound bool
 	var model SessionUsage
 	for {
-		line, err := readCappedLine(reader, maxBody)
+		line, readErr := readCappedLine(reader, maxBody)
 		if len(line) > 0 {
-			trackTranscriptLine(line, &usage, &model, &modelFound, seen)
+			trackTranscriptLine(line, usage, &model, &modelFound)
 		}
-		if errors.Is(err, io.EOF) {
+		if errors.Is(readErr, io.EOF) {
 			break
 		}
-		if err != nil {
-			return SessionUsage{}, err
+		if readErr != nil {
+			return readErr
 		}
 	}
-	if modelFound {
+	if countModel && modelFound {
 		usage.ModelUsageFound = true
 		usage.ModelInput = model.ModelInput
 		usage.ModelOutput = model.ModelOutput
 		usage.ModelCacheRead = model.ModelCacheRead
 		usage.ModelCacheWrite = model.ModelCacheWrite
 	}
-	return usage, nil
+	return nil
 }
 
 type transcriptLine struct {
-	Type    string `json:"type"`
-	Message *struct {
+	Type      string `json:"type"`
+	RequestID string `json:"requestId"`
+	Message   *struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`
 		Usage *struct {
@@ -132,7 +183,7 @@ type transcriptLine struct {
 	} `json:"modelUsage"`
 }
 
-func trackTranscriptLine(line []byte, usage *SessionUsage, model *SessionUsage, modelFound *bool, seen map[string]bool) {
+func trackTranscriptLine(line []byte, usage *SessionUsage, model *SessionUsage, modelFound *bool) {
 	if !bytes.Contains(line, []byte(`"usage"`)) && !bytes.Contains(line, []byte(`"modelUsage"`)) {
 		return
 	}
@@ -146,10 +197,13 @@ func trackTranscriptLine(line []byte, usage *SessionUsage, model *SessionUsage, 
 			return
 		}
 		if rec.Message.ID != "" {
-			if seen[rec.Message.ID] {
+			if usage.counted == nil {
+				usage.counted = map[string]bool{}
+			}
+			if usage.counted[rec.Message.ID] {
 				return
 			}
-			seen[rec.Message.ID] = true
+			usage.counted[rec.Message.ID] = true
 		}
 		u := rec.Message.Usage
 		input, output := nonNeg(u.Input), nonNeg(u.Output)
@@ -159,6 +213,9 @@ func trackTranscriptLine(line []byte, usage *SessionUsage, model *SessionUsage, 
 		usage.Output += output
 		usage.CacheRead += cacheRead
 		usage.CacheWrite += cacheWrite
+		if rec.RequestID != "" && usage.RequestIDs != nil {
+			usage.RequestIDs[rec.RequestID] = true
+		}
 	case "cost-state":
 		if len(rec.ModelUsage) == 0 {
 			return

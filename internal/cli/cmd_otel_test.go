@@ -55,7 +55,7 @@ func TestOtelReconcileCommand(t *testing.T) {
 	if strings.Contains(text, "SECRET_TRANSCRIPT") || strings.Contains(text, "SECRET_OTEL_PROMPT") {
 		t.Fatalf("leaked text:\n%s", text)
 	}
-	if !strings.Contains(stdout.String(), "gap telemetry-transcript: 31") || !strings.Contains(stdout.String(), "agent_summary requests: 1") {
+	if !strings.Contains(stdout.String(), "gap telemetry-transcript: 42") || !strings.Contains(stdout.String(), "agent_summary requests: 1") {
 		t.Fatalf("stdout = %s", stdout.String())
 	}
 }

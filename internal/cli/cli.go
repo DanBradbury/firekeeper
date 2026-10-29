@@ -30,6 +30,7 @@ var subcommands = []subcommand{
 	{"daemon", "upload continuously (--provider required); install, uninstall, status, logs", runDaemon},
 	{"otel-listen", "experimental: record local Claude Code OTLP usage on 127.0.0.1", runOtelListen},
 	{"otel-reconcile", "experimental: compare an otel-listen file with transcript totals", runOtelReconcile},
+	{"telemetry", "opt-in Claude Code usage listener: enable, disable, status", runTelemetry},
 	{"version", "print the version, commit and build date (also --version)", runVersion},
 }
 

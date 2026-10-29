@@ -200,7 +200,7 @@ There is no config-file key yet. Proposed shape, not implemented:
 # absent means off. The dashboard must not start this.
 [otel]
 port = 4318                 # 127.0.0.1 only; any other host is refused
-out = "~/.firekeeper/otel.jsonl"
+out = "~/.firekeeper/telemetry.jsonl"
 ```
 
 No server URL belongs in that table. Uploading stays on `report` / `daemon`.
@@ -221,9 +221,14 @@ is a different cut of the same work, with pieces missing.
 - telemetry minus transcript
 - telemetry minus `modelUsage`, when a `cost-state` record exists
 
-The transcript file is the newest `projects/*/<session id>.jsonl` under
-`CLAUDE_CONFIG_DIR` (default `~/.claude`). Separate subagent files are not
-read, same as the transcript reader.
+The transcript side is the newest `projects/*/<session id>.jsonl` under
+`CLAUDE_CONFIG_DIR` (default `~/.claude`), plus
+`<session>/subagents/agent-*.jsonl`. Message ids are counted once across
+those files. A Mac run showed the subagent files hold the
+`agent:builtin:general-purpose` tokens, and that telemetry matches the
+main file's `modelUsage` exactly. After the subagent files are included,
+the gap is only the sources that are still not on disk:
+`agent_summary`, `prompt_suggestion`, and `generate_session_title`.
 
 The join key, when both sides have it, is telemetry `request_id` and the
 transcript's `requestId`. The monitoring doc says they match. This listener
@@ -291,7 +296,7 @@ there to test. It does not run until `otel-listen` is invoked. `report`,
 | Network | No outbound connection. Bind address is `127.0.0.1` only, checked again on the socket that came back from `listen`. |
 | Body | 8 MiB cap, compressed and uncompressed. Read and write timeouts. No pprof, no extra routes. `/v1/metrics` and `/v1/traces` are drained and acknowledged so a mis-set exporter does not retry forever; they are not parsed. |
 | What is stored | `ts`, `session_id`, `model`, `query_source`, the four token counts, `cost_usd`, `request_id`, `event_sequence`. Strings over 256 bytes or containing newlines are dropped. The log body is never copied. Parse errors are fixed sentences, not the payload. |
-| File | Appended JSONL, mode `0600`, default `~/.firekeeper/otel.jsonl`. |
+| File | Appended JSONL, mode `0600`, default `~/.firekeeper/telemetry.jsonl`. |
 | Who can connect | Any process on this machine that can connect to `127.0.0.1`. That is the whole attack surface of the open port. It cannot be pointed at another interface through this command, and it does not upload. |
 
 If `OTEL_LOG_RAW_API_BODIES` or the prompt switches are on, Claude Code will
@@ -306,10 +311,24 @@ firekeeper otel-listen [--port 4318] [--out file.jsonl]
 firekeeper otel-reconcile <file.jsonl>
 ```
 
-`otel-listen` appends JSONL and, on Ctrl-C, prints per session: tokens by
-`query_source`, the `agent_summary` request count, and the count of other
-non-main requests. `otel-reconcile` prints the gaps in section 3. Neither
-prints prompt or transcript text.
+`otel-listen` appends JSONL (default `~/.firekeeper/telemetry.jsonl`) and, on
+Ctrl-C, prints per session: tokens by `query_source`, the `agent_summary`
+request count, and the count of other non-main requests. `otel-reconcile`
+prints the transcript total, including subagent files, and a gap that is
+only the untranscribed sources. Neither prints prompt or transcript text.
+
+`firekeeper telemetry enable` writes the exporter variables into
+`~/.claude/settings.json` under `env` (honored for telemetry; a project
+settings file cannot turn it on) and sets `[telemetry] enabled = true` in
+the Firekeeper config. It keeps a `settings.json.firekeeper-backup` from
+the first change and does not touch other settings. `disable` removes only
+those env keys and turns the listener off. `status` reports whether the
+env is set, whether anything is accepting connections on `127.0.0.1`, and
+whether an event arrived in the last two minutes.
+
+The daemon serves that listener when `[telemetry] enabled` is true. It
+stays off otherwise. Uploads are unchanged: with no provider allowlisted,
+the daemon does not upload, and telemetry records are not sent to a server.
 
 ## Testing on a Mac
 

@@ -9,7 +9,7 @@ on how you use it:
 | How you use Firekeeper | Who receives your data |
 | --- | --- |
 | The terminal dashboard (`firekeeper`) | Nobody. It stays on your machine, apart from the update check and two provider lookups in section 1.3. |
-| `otel-listen` and `otel-reconcile` | Nobody. The listener accepts Claude Code's telemetry on 127.0.0.1 and writes usage counts to a file on this machine. It does not upload them. |
+| `telemetry`, `otel-listen`, and `otel-reconcile` | Nobody. The listener accepts Claude Code's telemetry on 127.0.0.1 and writes usage counts to a file on this machine. It does not upload them. |
 | Uploading to a server (`report`, `backfill`, `daemon`) | The operator of the server you configure, under their own privacy notice. The Software never sends session data anywhere else, and I receive nothing from it. |
 
 A dashboard server is separate software with its own terms and privacy notice.
@@ -48,12 +48,14 @@ section 1.3.
   does not contain transcript text.
 - On macOS, switching to a session's terminal uses AppleScript to ask
   Ghostty, Terminal.app, or iTerm2 which window holds it.
-- **Experimental `otel-listen`**, only while that command is running: it
-  listens on 127.0.0.1 and appends Claude Code `api_request` usage (time,
-  session id, model, query source, token counts, cost) to a local JSONL file,
-  mode `0600`. It does not record prompt or transcript text and it does not
-  upload the file. `otel-reconcile` reads that file and the local Claude
-  transcript for the same session ids.
+- **Opt-in `telemetry`**, only after `firekeeper telemetry enable`: the
+  daemon listens on 127.0.0.1 and appends Claude Code `api_request` usage
+  (time, session id, model, query source, token counts, cost) to
+  `~/.firekeeper/telemetry.jsonl`, mode `0600`. It does not record prompt or
+  transcript text and it does not upload the file. Enable writes the
+  exporter variables into `~/.claude/settings.json` and keeps a backup of
+  that file. `disable` removes those variables. `otel-listen` and
+  `otel-reconcile` use the same local file.
 
 ### 1.3 Network requests the terminal dashboard makes
 

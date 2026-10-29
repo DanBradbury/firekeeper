@@ -218,12 +218,17 @@ clients.
 
 ## Experimental: local OpenTelemetry receiver
 
-`firekeeper otel-listen` and `firekeeper otel-reconcile` are off unless you run
-them. The listener binds to `127.0.0.1` only, appends Claude Code
-`api_request` usage to a JSONL file, and does not upload it or record prompt
-text. `otel-reconcile` compares that file with transcript totals on this
-machine. See [docs/research/otel-telemetry.md](research/otel-telemetry.md),
-including the Mac test steps.
+`firekeeper telemetry enable` writes Claude Code's telemetry environment into
+`~/.claude/settings.json` and turns on a listener in the Firekeeper daemon.
+The listener binds to `127.0.0.1` only, appends `api_request` usage to
+`~/.firekeeper/telemetry.jsonl`, and does not upload it or record prompt
+text. It is off until you enable it. With telemetry for a session, the
+dashboard shows the exact total and a breakdown of background calls that
+are not in the transcripts. Without it, transcript totals stay as they are,
+a session with subagent files keeps the undercount warning, and the
+dashboard says that `firekeeper telemetry enable` gets exact totals.
+`otel-listen` and `otel-reconcile` are the same store, for a one-off capture.
+See [docs/research/otel-telemetry.md](research/otel-telemetry.md).
 
 ## Reporting
 

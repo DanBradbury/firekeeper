@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -58,18 +59,24 @@ type processInfo struct {
 }
 
 type sessionInfo struct {
-	id          string
-	name        string
-	state       sessionState
-	cwd         string
-	model       string
-	source      string
-	repository  string
-	gitBranch   string
-	rolloutPath string
-	updatedAt   time.Time
-	tokensUsed  int64
-	tokens      tokenBreakdown
+	id                string
+	name              string
+	state             sessionState
+	cwd               string
+	model             string
+	source            string
+	repository        string
+	gitBranch         string
+	rolloutPath       string
+	updatedAt         time.Time
+	tokensUsed        int64
+	tokens            tokenBreakdown
+	exactTokens       int64
+	transcriptTokens  int64
+	telemetryLine     string
+	telemetryOn       bool
+	undercountWarning string
+	telemetryHint     bool
 }
 
 type tokenBreakdown = session.TokenBreakdown
@@ -86,6 +93,7 @@ type processResultMsg struct {
 	refreshed       time.Time
 	metadataWarning string
 	err             error
+	telemetry       map[string]otelrecv.Supplement
 }
 
 type terminalSwitchResultMsg struct {
@@ -126,6 +134,7 @@ type model struct {
 	kimiUsageRefreshedAt    time.Time
 	kimiHistoryCursor       int
 	claudeUsage             claudeUsageSnapshot
+	telemetry               map[string]otelrecv.Supplement
 	claudeUsageErr          string
 	claudeUsageLoading      bool
 	claudeUsageRefreshedAt  time.Time
@@ -277,6 +286,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
+			m.telemetry = msg.telemetry
 			m.ensureSelectedProcessVisible()
 		}
 
@@ -542,6 +552,10 @@ func refreshProcesses() tea.Cmd {
 				seen[meta.Runtime.Root.PID] = true
 				result.groups = append(result.groups, fromProcessGroup(meta.Runtime))
 			}
+		}
+		if supplements, err := otelrecv.LoadSupplements(""); err == nil {
+			result.telemetry = supplements
+			result.groups = annotateClaudeTelemetry(result.groups, supplements)
 		}
 		return result
 	}
