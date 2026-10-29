@@ -191,16 +191,23 @@ func (m model) claudePage() usagePage {
 
 	sessions := make([]usageSession, 0, len(snapshot.History))
 	for _, item := range snapshot.History {
+		tokens := item.LifetimeTokens
 		details := []usageField{
 			{Name: "Input", Value: formatTokenCount(item.InputTokens) + " · cache read " + formatTokenCount(item.CacheRead)},
 			{Name: "Output", Value: formatTokenCount(item.OutputTokens) + " · cache write " + formatTokenCount(item.CacheCreation)},
 		}
-		if item.UndercountWarning != "" {
+		if sup, ok := m.telemetry[item.ID]; ok && sup.Covered {
+			tokens = sup.Exact
+			details = append(details, usageField{Name: "Transcripts", Value: formatTokenCount(sup.Transcript)})
+			if line := backgroundCallLine(sup); line != "" {
+				details = append(details, usageField{Name: "Background", Value: line})
+			}
+		} else if item.UndercountWarning != "" {
 			details = append(details, usageField{Name: "Note", Value: item.UndercountWarning, Color: dashYellow})
 		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
-			Model: item.Model, Tokens: item.LifetimeTokens, UpdatedAt: item.UpdatedAt,
+			Model: item.Model, Tokens: tokens, UpdatedAt: item.UpdatedAt,
 			Details: details,
 		})
 	}
@@ -214,11 +221,15 @@ func (m model) claudePage() usagePage {
 		Err:         m.claudeUsageErr,
 		Cards: []usageCard{
 			{"lifetime", dashYellow, func(rows int) []string {
-				return []string{
+				lines := []string{
 					usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
 					usageStat("Responses", fmt.Sprintf("%d", summary.Messages), ""),
 					usageStat("Tokens", formatTokenCount(summary.LifetimeTokens), dashYellow),
 				}
+				if len(m.telemetry) == 0 {
+					lines = append(lines, usageNote("firekeeper telemetry enable gets exact totals"))
+				}
+				return lines
 			}},
 			{"tokens", dashBlue, func(rows int) []string {
 				return []string{

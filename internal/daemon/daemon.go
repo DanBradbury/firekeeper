@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 )
 
@@ -74,13 +75,28 @@ type Config struct {
 	// Out, when set, also receives every log line.
 	Out io.Writer
 
-	// RunOnce, Heartbeat, Clock, and Rand replace the real implementations
-	// in tests. Nil means reporter.RunOnce, reporter.Heartbeat, the system
-	// clock, and math/rand/v2.Float64.
+	// Telemetry, when enabled, also serves the loopback OTLP listener.
+	// It is independent of uploading: with no providers the daemon only
+	// listens, and it still uploads nothing.
+	Telemetry TelemetryConfig
+
+	// RunOnce, Heartbeat, Clock, Rand, and Listen replace the real
+	// implementations in tests. Nil means reporter.RunOnce,
+	// reporter.Heartbeat, the system clock, math/rand/v2.Float64, and
+	// otelrecv.Listen.
 	RunOnce   func(context.Context, reporter.Config) (reporter.Summary, error)
 	Heartbeat func(context.Context, reporter.Config, reporter.Summary) error
 	Clock     Clock
 	Rand      func() float64
+	Listen    func(context.Context, otelrecv.Options) error
+}
+
+// TelemetryConfig is the opt-in loopback receiver. Enabled is false unless
+// the config file sets it.
+type TelemetryConfig struct {
+	Enabled bool
+	Port    int
+	Path    string
 }
 
 // Run reports every Interval until ctx is cancelled. Cancelling ctx is a
@@ -94,7 +110,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.Interval < MinInterval {
 		return fmt.Errorf("interval must be at least %s", MinInterval)
 	}
-	if !cfg.Reporter.Uploading() {
+	if !cfg.Reporter.Uploading() && !cfg.Telemetry.Enabled {
 		return ErrNoProviders
 	}
 	if cfg.RunOnce == nil {
@@ -140,8 +156,52 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	d := &daemon{cfg: cfg, log: log.New(w, "", log.LstdFlags)}
-	d.loop(ctx)
+	listenDone := d.startTelemetry(ctx, w)
+	if cfg.Reporter.Uploading() {
+		d.loop(ctx)
+	} else {
+		d.log.Printf("started: telemetry listener only, no upload providers")
+		<-ctx.Done()
+		d.log.Printf("stopped")
+	}
+	if listenDone != nil {
+		<-listenDone
+	}
 	return nil
+}
+
+func (d *daemon) startTelemetry(ctx context.Context, logOut io.Writer) <-chan struct{} {
+	if !d.cfg.Telemetry.Enabled {
+		return nil
+	}
+	listen := d.cfg.Listen
+	if listen == nil {
+		listen = otelrecv.Listen
+	}
+	port := d.cfg.Telemetry.Port
+	if port == 0 {
+		port = 4318
+	}
+	path := d.cfg.Telemetry.Path
+	if path == "" {
+		var err error
+		path, err = otelrecv.DefaultPath()
+		if err != nil {
+			d.log.Printf("telemetry listener: %v", err)
+			return nil
+		}
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		err := listen(ctx, otelrecv.Options{
+			Port: port, Path: path, Stdout: io.Discard, Stderr: logOut, Quiet: true,
+		})
+		if err != nil && ctx.Err() == nil {
+			d.log.Printf("telemetry listener: %v", err)
+		}
+	}()
+	return done
 }
 
 type daemon struct {

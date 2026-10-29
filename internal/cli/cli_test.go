@@ -95,7 +95,7 @@ func TestUsageListsSubcommands(t *testing.T) {
 	var out bytes.Buffer
 	fs.SetOutput(&out)
 	PrintUsage(fs)
-	for _, want := range []string{"snapshot", "export", "report", "backfill", "serve", "daemon"} {
+	for _, want := range []string{"snapshot", "export", "report", "backfill", "serve", "daemon", "otel-listen", "otel-reconcile", "telemetry"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("usage missing %q:\n%s", want, out.String())
 		}

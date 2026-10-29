@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -8,6 +10,8 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 )
 
 func dashboardTestModel() model {
@@ -220,5 +224,61 @@ func TestSessionTokenTotalPrefersBreakdown(t *testing.T) {
 	}
 	if got := sessionTokenTotal(sessionInfo{tokensUsed: 99, tokens: tokenBreakdown{Input: 1, Output: 2, CacheRead: 3, CacheWrite: 4}}); got != 10 {
 		t.Fatalf("breakdown total = %d", got)
+	}
+	if got := sessionTokenTotal(sessionInfo{exactTokens: 371, tokens: tokenBreakdown{Input: 1, Output: 2, CacheRead: 3, CacheWrite: 4}}); got != 371 {
+		t.Fatalf("exact total = %d", got)
+	}
+}
+
+func TestDashboardShowsTelemetryAndDropsUndercountWarning(t *testing.T) {
+	dir := t.TempDir()
+	id := "33333333-3333-4333-8333-333333333333"
+	path := filepath.Join(dir, id+".jsonl")
+	if err := os.MkdirAll(filepath.Join(dir, id, "subagents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id, "subagents", "agent-1.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	group := func() []processGroup {
+		return []processGroup{{
+			tool:      "Claude",
+			root:      processInfo{pid: 9, tty: "ttys009", elapsed: "00:10"},
+			processes: []processInfo{{pid: 9, ppid: 1, tty: "ttys009", elapsed: "00:10", command: "claude"}},
+			sessions: []sessionInfo{{
+				id: id, name: "Haiku sleeps", state: sessionStateActive, cwd: "/work",
+				rolloutPath: path, tokensUsed: 300,
+				tokens: tokenBreakdown{Input: 230, Output: 50, CacheRead: 20},
+			}},
+		}}
+	}
+	warned := annotateClaudeTelemetry(group(), nil)
+	if warned[0].sessions[0].undercountWarning == "" || !warned[0].sessions[0].telemetryHint {
+		t.Fatalf("without telemetry: %+v", warned[0].sessions[0])
+	}
+	sup := map[string]otelrecv.Supplement{id: {
+		Covered: true, Transcript: 300, Added: 71, Exact: 371,
+		BySource: map[string]int64{"agent_summary": 45, "prompt_suggestion": 24, "generate_session_title": 2},
+	}}
+	exact := annotateClaudeTelemetry(group(), sup)
+	session := exact[0].sessions[0]
+	if session.undercountWarning != "" || session.telemetryHint || session.exactTokens != 371 {
+		t.Fatalf("with telemetry: %+v", session)
+	}
+	if !strings.Contains(session.telemetryLine, "Background calls (not in transcripts):") || !strings.Contains(session.telemetryLine, "summaries") || !strings.Contains(session.telemetryLine, "prompt suggestions") || !strings.Contains(session.telemetryLine, "titles") {
+		t.Fatalf("line = %q", session.telemetryLine)
+	}
+	m := NewModel()
+	m.width, m.height = 160, 44
+	m.processGroups = exact
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "Background calls (not in transcripts):") || strings.Contains(view, "Has subagents:") {
+		t.Fatalf("detail view:\n%s", view)
+	}
+	if !strings.Contains(view, "transcripts") || !strings.Contains(view, "371") {
+		t.Fatalf("exact total missing:\n%s", view)
 	}
 }

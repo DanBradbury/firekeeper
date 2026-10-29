@@ -139,6 +139,7 @@ func writeConfig(w io.Writer, c config.Config) {
 	fmt.Fprintf(w, "scan_lookback = %q%s\n", c.ScanLookback.String(), src("scan_lookback"))
 	fmt.Fprintf(w, "exclude = %s\n", tomlList(c.Exclude))
 	fmt.Fprintf(w, "\n[redact]\npaths = %s\n", tomlList(c.RedactPaths))
+	fmt.Fprintf(w, "\n[telemetry]\nenabled = %t%s\nport = %d\n", c.TelemetryEnabled, src("telemetry"), c.TelemetryPort)
 }
 
 func tomlList(items []string) string {

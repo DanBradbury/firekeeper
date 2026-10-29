@@ -234,6 +234,20 @@ enrichment failures return usable runtime metadata with a warning.
 All monitoring stays local. Firekeeper does not proxy prompts or replace agent
 clients.
 
+## Experimental: local OpenTelemetry receiver
+
+`firekeeper telemetry enable` writes Claude Code's telemetry environment into
+`~/.claude/settings.json` and turns on a listener in the Firekeeper daemon.
+The listener binds to `127.0.0.1` only, appends `api_request` usage to
+`~/.firekeeper/telemetry.jsonl`, and does not upload it or record prompt
+text. It is off until you enable it. With telemetry for a session, the
+dashboard shows the exact total and a breakdown of background calls that
+are not in the transcripts. Without it, transcript totals stay as they are,
+a session with subagent files keeps the undercount warning, and the
+dashboard says that `firekeeper telemetry enable` gets exact totals.
+`otel-listen` and `otel-reconcile` are the same store, for a one-off capture.
+See [docs/research/otel-telemetry.md](research/otel-telemetry.md).
+
 ## Reporting
 
 Reporting is a set of explicit subcommands: `report`, `backfill`, `daemon`,

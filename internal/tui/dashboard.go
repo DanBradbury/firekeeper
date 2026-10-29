@@ -29,13 +29,15 @@ const (
 	// dashSummaryMinRows is the content height needed before the summary
 	// panels appear; dashDetailMinRows is what must remain below them before
 	// the detail panel appears.
-	// dashSummaryRows fits the token breakdown plus the one-line subagent
-	// undercount warning. dashDetailMaxRows fits that warning under the
-	// session metadata without clipping the first process line.
+	// dashSummaryRows fits the token breakdown plus one extra line: the
+	// subagent undercount warning, or the telemetry background-call line.
+	// dashDetailMaxRows fits that line and one more (the enable hint, or
+	// the transcripts figure) under the session metadata without clipping
+	// the first process line.
 	dashSummaryRows    = 8
 	dashSummaryMinRows = 18
 	dashDetailMinRows  = 16
-	dashDetailMaxRows  = 11
+	dashDetailMaxRows  = 12
 )
 
 // dashLayout holds the row budget for each panel of the Processes tab.
@@ -363,8 +365,14 @@ func dashGroupDetail(group processGroup) []string {
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 				dashTokenBreakdownText(session.tokens),
 		)
-		if session.undercountWarning != "" {
+		if session.telemetryLine != "" {
+			lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+			lines = append(lines, dashPaint("transcripts ", usageMutedColor, false)+dashPaint(formatTokenCount(session.transcriptTokens), usageTextColor, false))
+		} else if session.undercountWarning != "" {
 			lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
+		}
+		if session.telemetryHint {
+			lines = append(lines, dashPaint("firekeeper telemetry enable gets exact totals", usageMutedColor, false))
 		}
 		lines = append(lines,
 			label("updated", formatSessionTime(session.updatedAt))+
@@ -792,10 +800,14 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-// sessionTokenTotal prefers the provider's token breakdown and falls back to
-// the aggregate the provider reports when no breakdown is available. The
-// Claude agent_summary estimate is not included.
+// sessionTokenTotal prefers an exact telemetry total when this session has
+// one, then the provider's token breakdown, then the aggregate the provider
+// reports. Measured transcript totals are not replaced unless telemetry
+// has been recorded.
 func sessionTokenTotal(session sessionInfo) int64 {
+	if session.exactTokens > 0 {
+		return session.exactTokens
+	}
 	if total := session.tokens.Total(); total > 0 {
 		return total
 	}
@@ -872,7 +884,9 @@ func (m model) dashTokenLines(width int) []string {
 			)
 		}
 	}
-	if session.undercountWarning != "" {
+	if session.telemetryLine != "" {
+		lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+	} else if session.undercountWarning != "" {
 		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
 	return lines

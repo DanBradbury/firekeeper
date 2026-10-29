@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
 )
@@ -425,5 +426,45 @@ func TestScanCountsAreLoggedWithoutPaths(t *testing.T) {
 		if !strings.Contains(log, want) {
 			t.Errorf("log does not contain %q:\n%s", want, log)
 		}
+	}
+}
+
+func TestRunListensWithoutUploadingWhenTelemetryIsEnabled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	called := make(chan otelrecv.Options, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(ctx, Config{
+			Dir:       t.TempDir(),
+			Telemetry: TelemetryConfig{Enabled: true, Port: 4318, Path: filepath.Join(t.TempDir(), "telemetry.jsonl")},
+			Listen: func(ctx context.Context, opt otelrecv.Options) error {
+				called <- opt
+				<-ctx.Done()
+				return nil
+			},
+			RunOnce: func(context.Context, reporter.Config) (reporter.Summary, error) {
+				t.Error("upload ran with no providers")
+				return reporter.Summary{}, nil
+			},
+		})
+	}()
+	select {
+	case opt := <-called:
+		if !opt.Quiet || opt.Port != 4318 {
+			t.Fatalf("listen options = %+v", opt)
+		}
+	case err := <-done:
+		t.Fatalf("daemon stopped before listening: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("listener was not started")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("daemon did not stop")
 	}
 }

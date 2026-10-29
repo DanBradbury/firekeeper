@@ -53,6 +53,12 @@ type Config struct {
 	// Exclude holds directory globs (starting with "/" or "~", "~"
 	// expanded) and Git remote patterns (anything else). See Excluded.
 	Exclude []string
+	// TelemetryEnabled turns on the daemon's loopback OTLP listener.
+	// It does not upload. The default is off.
+	TelemetryEnabled bool
+	// TelemetryPort is the listener port on 127.0.0.1. Zero means
+	// DefaultTelemetryPort until a file sets it.
+	TelemetryPort int
 
 	// Path is the config file read, or "" when none was.
 	Path string
@@ -75,6 +81,10 @@ type file struct {
 	ScanLookback *string                  `toml:"scan_lookback"`
 	Redact       struct{ Paths []string } `toml:"redact"`
 	Exclude      []string                 `toml:"exclude"`
+	Telemetry    *struct {
+		Enabled *bool `toml:"enabled"`
+		Port    *int  `toml:"port"`
+	} `toml:"telemetry"`
 
 	// Settings that only the separate dashboard server reads. They are
 	// accepted so one config file can serve both programs, and ignored here.
@@ -105,6 +115,9 @@ type Overrides struct {
 	ScanEnded *bool
 }
 
+// DefaultTelemetryPort is the OTLP/HTTP port on 127.0.0.1.
+const DefaultTelemetryPort = 4318
+
 // DefaultPath returns home/.firekeeper/config.toml.
 func DefaultPath(home string) string {
 	return filepath.Join(home, ".firekeeper", "config.toml")
@@ -129,6 +142,9 @@ func Load(opts Options) (Config, error) {
 	}
 	c := opts.Defaults
 	c.Providers = append([]transcript.Provider(nil), c.Providers...)
+	if c.TelemetryPort == 0 {
+		c.TelemetryPort = DefaultTelemetryPort
+	}
 	c.Sources = map[string]string{}
 	for _, k := range []string{"server", "token", "providers", "interval"} {
 		c.Sources[k] = "default"
@@ -251,6 +267,20 @@ func (c *Config) readFile(path, home string) error {
 			return fmt.Errorf("config: %s: exclude remote pattern %q is malformed", path, e)
 		}
 		c.Exclude = append(c.Exclude, e)
+	}
+	if f.Telemetry != nil {
+		if f.Telemetry.Enabled != nil {
+			c.TelemetryEnabled, c.Sources["telemetry"] = *f.Telemetry.Enabled, "file"
+		}
+		if f.Telemetry.Port != nil {
+			if *f.Telemetry.Port < 0 || *f.Telemetry.Port > 65535 {
+				return fmt.Errorf("config: %s: telemetry.port %d is outside 0-65535", path, *f.Telemetry.Port)
+			}
+			c.TelemetryPort = *f.Telemetry.Port
+			if c.Sources["telemetry"] == "" {
+				c.Sources["telemetry"] = "file"
+			}
+		}
 	}
 	return nil
 }
