@@ -22,6 +22,7 @@ func TestClassifyCopilot(t *testing.T) {
 		{"/Applications/GitHub Copilot.app/Contents/Resources/copilot --server", ""},
 		{"node /Applications/Copilot.app/Contents/Resources/app/index.js", ""},
 		{"/Library/Caches/github-copilot-sdk/cli/1.0.0/copilot --stdio", ""},
+		{"/Applications/Microsoft Teams.app/Contents/Helpers/Microsoft Teams WebView.app/Contents/MacOS/Microsoft Teams WebView --embedded-browser-webview=1 --isolate-origins=https://copilot.teams.cloud.microsoft,https://m365copilotapp.svc.cloud.microsoft --user-data-dir=/Users/test/Library/Containers/com.microsoft.teams2/Data/Library/Application Support/Microsoft/MSTeams/EBWebView", ""},
 	}
 	for _, tt := range tests {
 		if got := d.classifyProcess(tt.command); got != tt.want {
