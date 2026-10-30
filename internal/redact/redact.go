@@ -122,43 +122,23 @@ func redactString(s string, opts Options, counts Counts) string {
 	}
 	s = redactAssignments(s, counts)
 	for _, p := range opts.Paths {
-		for _, form := range pathForms(p) {
-			s = redactPrefix(s, form, Marker(KindPath), KindPath, counts)
-		}
+		s = redactPath(s, p, false, Marker(KindPath), KindPath, counts)
 		if tilde, ok := homeForm(p, opts.HomeDir); ok {
-			s = redactPrefix(s, tilde, Marker(KindPath), KindPath, counts)
-			// A Windows path is also written with slashes once its home
-			// directory has become "~".
-			if slashed := strings.ReplaceAll(tilde, `\`, "/"); slashed != tilde {
-				s = redactPrefix(s, slashed, Marker(KindPath), KindPath, counts)
-			}
+			s = redactPath(s, tilde, isWindowsDrivePath(opts.HomeDir), Marker(KindPath), KindPath, counts)
 		}
 	}
-	for _, form := range pathForms(opts.HomeDir) {
-		s = redactHome(s, form, counts)
-	}
-	return s
+	return redactPath(s, opts.HomeDir, false, "~", KindHomeDir, counts)
 }
 
-// pathForms returns the spellings of p to look for. A Windows drive path is
-// written in several ways by the programs that record it: with backslashes or
-// slashes, with either case of the drive letter, and as /c/Users/... by Git
-// Bash and MSYS. Any other path has one form.
-func pathForms(p string) []string {
-	if len(p) < 3 || p[1] != ':' || (p[2] != '\\' && p[2] != '/') || !isASCIILetter(p[0]) {
-		return []string{p}
+// redactPath replaces p wherever it appears as a whole path prefix. A
+// Windows drive path, and with tilde set the "~\..." form of a path below a
+// Windows home, is matched in all its spellings (see windows.go); any other
+// path is matched exactly.
+func redactPath(s, p string, tilde bool, replacement string, kind Kind, counts Counts) string {
+	if w := windowsPathFor(p, tilde); w != nil {
+		return w.redact(s, replacement, kind, counts)
 	}
-	rest := p[2:]
-	slashed := strings.ReplaceAll(rest, `\`, "/")
-	var forms []string
-	for _, drive := range []string{strings.ToUpper(p[:1]), strings.ToLower(p[:1])} {
-		forms = append(forms, drive+":"+rest)
-		if slashed != rest {
-			forms = append(forms, drive+":"+slashed)
-		}
-		forms = append(forms, "/"+drive+slashed)
-	}
-	return forms
+	return redactPrefix(s, p, replacement, kind, counts)
 }
 
 func isASCIILetter(b byte) bool { return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') }
@@ -371,17 +351,15 @@ func isValueEnd(c byte) bool {
 	return false
 }
 
-// redactHome rewrites home to "~" where it is a whole path prefix: not
-// preceded by a path-name byte and followed by a separator or a non-path
-// byte.
-func redactHome(s, home string, counts Counts) string {
-	return redactPrefix(s, home, "~", KindHomeDir, counts)
-}
-
-// homeForm returns p with a leading home directory written as "~".
+// homeForm returns p with a leading home directory written as "~". A
+// Windows home is compared without regard to case or separator.
 func homeForm(p, home string) (string, bool) {
 	p, home = strings.TrimRight(p, `/\`), strings.TrimRight(home, `/\`)
-	if home == "" || !strings.HasPrefix(p, home) || len(p) <= len(home) || (p[len(home)] != '/' && p[len(home)] != '\\') {
+	hasPrefix := strings.HasPrefix(p, home)
+	if isWindowsDrivePath(home) && len(p) >= len(home) {
+		hasPrefix = strings.EqualFold(strings.ReplaceAll(p[:len(home)], "/", `\`), strings.ReplaceAll(home, "/", `\`))
+	}
+	if home == "" || !hasPrefix || len(p) <= len(home) || (p[len(home)] != '/' && p[len(home)] != '\\') {
 		return "", false
 	}
 	return "~" + p[len(home):], true

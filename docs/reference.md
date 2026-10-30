@@ -64,8 +64,15 @@ What differs from macOS and Linux:
 - **File permissions.** Windows has no `0600` mode bits. `config.toml`, which
   may hold a dashboard token, and `state.json` rely on the default permissions
   of your profile folder, which admit you, administrators, and SYSTEM.
-- **Redaction** treats `C:\Users\you`, `C:/Users/you`, and `/c/Users/you` as
-  your home directory, with either case of the drive letter.
+- **Redaction** matches your home directory and `redact.paths` the way
+  Windows does, ignoring case and either separator: `C:\Users\you`,
+  `c:\users\YOU`, `C:/Users/you`, `/c/Users/you`, `file:///c%3A/Users/you`,
+  `\\localhost\c$\Users\you`, escaped backslashes (`C:\\Users\\you`, as
+  in JSON text inside a tool call), and an 8.3 short name such as
+  `C:\Users\YOURNA~1`.
+- **`exclude` directory globs ignore case** on Windows, and either separator
+  matches, so `C:\Users\you\clients` also excludes a session in
+  `c:/users/you/Clients/acme`.
 - **Agents inside WSL** run on the Linux side, so Firekeeper for Windows does
   not see them. Install the Linux build inside WSL to monitor those.
 - **The binaries are not code-signed.** `install.ps1` downloads without
