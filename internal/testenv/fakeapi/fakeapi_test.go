@@ -175,3 +175,81 @@ func TestIngestSamples(t *testing.T) {
 	}
 	wantError(t, "batch.malformed", post(contract.Fixture("batch.malformed")), "bad_request")
 }
+
+// TestSessionOrigin locks the origin rule of docs/api.md, the same one the
+// server's TestIngestOriginPendingContract checks: a new session is local,
+// an omitted, empty or null origin keeps the stored value, a named origin
+// replaces it, and an unknown one is a 400 that stores nothing.
+func TestSessionOrigin(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	post := func(session, extra string) *httptest.ResponseRecorder {
+		t.Helper()
+		meta := `{"session_id":"` + session + `","provider":"claude"`
+		if extra != "" {
+			meta += "," + extra
+		}
+		body := `{"machine":{"id":"m1"},"sessions":[{"meta":` + meta + `},"events":[]}]}`
+		return call(t, h, "POST", "/v1/ingest", "", []byte(body))
+	}
+	origin := func(session string) string {
+		t.Helper()
+		sess, ok := api.Session("m1", session)
+		if !ok {
+			t.Fatalf("session %s not stored", session)
+		}
+		// The test-only session read returns the same value.
+		var got map[string]any
+		rec := call(t, h, "GET", "/v1/sessions/m1:"+session, "", nil)
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["origin"] != sess.Origin {
+			t.Fatalf("GET session %s: origin %v, stored %q (%v)", session, got["origin"], sess.Origin, err)
+		}
+		return sess.Origin
+	}
+	ok := func(session, extra string) {
+		t.Helper()
+		if rec := post(session, extra); rec.Code != http.StatusOK {
+			t.Fatalf("%s %s: %d %s", session, extra, rec.Code, rec.Body)
+		}
+	}
+
+	// New sessions default to local whether origin is omitted, empty or null.
+	for i, extra := range []string{"", `"origin":""`, `"origin":null`} {
+		id := "new" + string(rune('a'+i))
+		ok(id, extra)
+		if got := origin(id); got != "local" {
+			t.Errorf("new session with %q: origin %q, want local", extra, got)
+		}
+	}
+
+	// A stored cloud survives later batches that carry no origin.
+	ok("web", `"origin":"cloud"`)
+	for _, extra := range []string{"", `"origin":""`, `"origin":null`} {
+		ok("web", extra)
+		if got := origin("web"); got != "cloud" {
+			t.Fatalf("after %q: origin %q, want cloud kept", extra, got)
+		}
+	}
+	// A named origin replaces it.
+	ok("web", `"origin":"local"`)
+	if got := origin("web"); got != "local" {
+		t.Fatalf("after local: origin %q", got)
+	}
+	ok("web", `"origin":"cloud"`)
+
+	// An unknown origin is invalid_request, never echoed, and stores nothing.
+	for _, extra := range []string{`"origin":"mars"`, `"origin":"LOCAL"`, `"origin":1`, `"origin":["cloud"]`} {
+		rec := post("bad", extra)
+		wantError(t, extra, rec, "invalid_request")
+		if strings.Contains(rec.Body.String()+rec.Header().Get("X-Fakeapi-Detail"), "mars") {
+			t.Errorf("%s: rejected value echoed", extra)
+		}
+		if _, found := api.Session("m1", "bad"); found {
+			t.Fatalf("%s: rejected batch stored a session", extra)
+		}
+		wantError(t, extra+" on a stored session", post("web", extra), "invalid_request")
+		if got := origin("web"); got != "cloud" {
+			t.Fatalf("%s: stored origin changed to %q", extra, got)
+		}
+	}
+}
