@@ -66,10 +66,13 @@ What differs from macOS and Linux:
   of your profile folder, which admit you, administrators, and SYSTEM.
 - **Redaction** matches your home directory and `redact.paths` the way
   Windows does, ignoring case and either separator: `C:\Users\you`,
-  `c:\users\YOU`, `C:/Users/you`, `/c/Users/you`, `file:///c%3A/Users/you`,
-  `\\localhost\c$\Users\you`, escaped backslashes (`C:\\Users\\you`, as
-  in JSON text inside a tool call), and an 8.3 short name such as
-  `C:\Users\YOURNA~1`.
+  `c:\users\YOU`, `C:/Users/you`, `/c/Users/you`, WSL's `/mnt/c/Users/you`,
+  `file:///c%3A/Users/you` and other percent-encoded text
+  (`C%3A%5CUsers%5Cyou`), `\\localhost\c$\Users\you` and its long-path form
+  `\\?\UNC\localhost\c$\Users\you`, escaped backslashes
+  (`C:\\Users\\you`, as in JSON text inside a tool call), and an 8.3 short
+  name such as `C:\Users\YOURNA~1`, including the hashed kind (`YO1F2B~1`)
+  and the real short name Windows reports for the path.
 - **`exclude` directory globs ignore case** on Windows, and either separator
   matches, so `C:\Users\you\clients` also excludes a session in
   `c:/users/you/Clients/acme`.

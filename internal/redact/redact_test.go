@@ -492,14 +492,112 @@ func TestShortNameStem(t *testing.T) {
 		"me":            "",
 		"Dan":           "",
 		"notes.txt":     "",
-		"DanBradbury":   `DanBra~[0-9]{1,6}`,
-		"Program Files": `Progra~[0-9]{1,6}`,
-		"dan.bradbury":  `dan~[0-9]{1,6}(?:\.bra)?`,
-		"a+b c":         `a_bc~[0-9]{1,6}`,
+		"DanBradbury":   `(?:DanBra~[0-9]{1,6}|Da[0-9a-f]{4}~[0-9])`,
+		"Program Files": `(?:Progra~[0-9]{1,6}|Pr[0-9a-f]{4}~[0-9])`,
+		"dan.bradbury":  `(?:dan~[0-9]{1,6}|da[0-9a-f]{4}~[0-9])(?:\.bra)?`,
+		"a+b c":         `(?:a_bc~[0-9]{1,6}|a_[0-9a-f]{4}~[0-9])`,
 		"Jürgen Müller": "",
 	} {
-		if got := shortNameStem(in); got != want {
+		got, hints := shortNameStem(in)
+		if got != want {
 			t.Errorf("shortNameStem(%q) = %q, want %q", in, got, want)
 		}
+		if (got == "") != (len(hints) == 0) {
+			t.Errorf("shortNameStem(%q) hints %q", in, hints)
+		}
+	}
+}
+
+// SEC-26-5 (#31): the spellings the first Windows fix missed. Each must
+// become "~" (or a marker) with nothing of the username left, on every OS.
+func TestHomeDirWindowsResidualSpellings(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\DanBradbury`}
+	tests := []struct{ name, in, want string }{
+		{"wsl", `cd /mnt/c/Users/DanBradbury/src`, `cd ~/src`},
+		{"wsl upper drive", `ls /mnt/C/users/danbradbury`, `ls ~`},
+		{"cygwin", `cd /cygdrive/c/Users/DanBradbury/src`, `cd ~/src`},
+		{"long path unc admin share", `\\?\UNC\localhost\c$\Users\DanBradbury\src`, `~\src`},
+		{"long path unc lower", `\\?\unc\LOCALHOST\C$\users\danbradbury`, `~`},
+		{"long path unc escaped", `\\\\?\\UNC\\localhost\\c$\\Users\\DanBradbury\\x`, `~\\x`},
+		{"long path drive", `\\?\C:\Users\DanBradbury\src`, `\\?\~\src`},
+		{"percent-encoded", `?path=C%3A%5CUsers%5CDanBradbury%5Csrc`, `?path=~%5Csrc`},
+		{"percent-encoded lower", `?p=c%3a%5cusers%5cdanbradbury`, `?p=~`},
+		{"percent-encoded slashes", `?p=C%3A%2FUsers%2FDanBradbury%2Fsrc`, `?p=~%2Fsrc`},
+		{"percent-encoded admin share", `%5C%5Clocalhost%5Cc%24%5CUsers%5CDanBradbury`, `~`},
+		{"hashed short name", `C:\Users\DA1F2B~1\AppData`, `~\AppData`},
+		{"hashed short name lower", `c:/users/da09ab~3/x`, `~/x`},
+		{"full stop after home", `The repo lives in C:\Users\DanBradbury.`, `The repo lives in ~.`},
+		{"ellipsis after home", `cd C:\Users\DanBradbury...`, `cd ~...`},
+		{"dot then space", `C:\Users\DanBradbury. Next`, `~. Next`},
+		{"dotted longer name kept", `C:\Users\DanBradbury.old\x`, `C:\Users\DanBradbury.old\x`},
+		{"other user hashed", `C:\Users\XY1F2B~1\x`, `C:\Users\XY1F2B~1\x`},
+		{"mnt inside a longer name", `/xmnt/c/Users/DanBradbury`, `/xmnt/c/Users/DanBradbury`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _ := String(tt.in, opts)
+			if got != tt.want {
+				t.Fatalf("String(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+			if again, counts := String(got, opts); again != got || counts.Total() != 0 {
+				t.Errorf("not idempotent: %q -> %q", got, again)
+			}
+		})
+	}
+}
+
+// A home that ends a sentence is still a whole path; one that continues
+// into a dotted name is not (SEC-26-5, #31). Unix homes too.
+func TestHomeDirBeforeFullStop(t *testing.T) {
+	opts := Options{HomeDir: "/Users/me"}
+	for in, want := range map[string]string{
+		"cd /Users/me.":        "cd ~.",
+		"cd /Users/me... then": "cd ~... then",
+		"/Users/me.old/x":      "/Users/me.old/x",
+		"/Users/me..x":         "/Users/me..x",
+		`"/Users/me."`:         `"~."`,
+	} {
+		if got, _ := String(in, opts); got != want {
+			t.Errorf("String(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// A username with a space or non-ASCII letters, percent-encoded in a file
+// URI or a query string.
+func TestHomeDirWindowsPercentEncodedNames(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\Dan Smith`}
+	for in, want := range map[string]string{
+		`file:///C:/Users/Dan%20Smith/src`: `file:///~/src`,
+		`file:///c%3A/users/dan%20smith`:   `file:///~`,
+		`?cwd=C%3A%5CUsers%5CDan+Smith`:    `?cwd=~`,
+		`C:\Users\Dan Smith\x`:             `~\x`,
+		`C:\Users\Dan%20Smithers\x`:        `C:\Users\Dan%20Smithers\x`,
+	} {
+		if got, _ := String(in, opts); got != want {
+			t.Errorf("String(%q) = %q, want %q", in, got, want)
+		}
+	}
+	opts = Options{HomeDir: `C:\Users\Jürgen`}
+	if got, _ := String(`file:///C:/Users/J%C3%BCrgen/x and file:///C:/Users/J%c3%bcrgen`, opts); got != `file:///~/x and file:///~` {
+		t.Errorf("encoded non-ASCII name: %q", got)
+	}
+}
+
+// On Windows the real short name of a path is looked up, which covers the
+// hashed names no pattern can predict. Stand in for the lookup here.
+func TestHomeDirWindowsRealShortName(t *testing.T) {
+	saved := shortPathName
+	t.Cleanup(func() { shortPathName = saved })
+	shortPathName = func(p string) string {
+		if p == `C:\Users\Zelda Quartermaine` {
+			return `C:\Users\ZQ9A4C~2`
+		}
+		return ""
+	}
+	opts := Options{HomeDir: `C:\Users\Zelda Quartermaine`}
+	got, _ := String(`cd C:\Users\zq9a4c~2\src && dir c:/users/ZELDAQ~1`, opts)
+	if want := `cd ~\src && dir ~`; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
