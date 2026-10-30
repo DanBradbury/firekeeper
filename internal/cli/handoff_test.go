@@ -33,6 +33,7 @@ const (
 
 // runHelperProcess is called first by TestMain.
 func runHelperProcess() {
+	runFakeServerFromTrailer() // exits when this is a Windows serve-install fake
 	if os.Getenv(helperEnv) == "" {
 		return
 	}

@@ -398,10 +398,21 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 }
 
 // relTo makes a path relative to the session's working directory when it is
-// inside it, as docs/api.md describes for changed files.
+// inside it, as docs/api.md describes for changed files. Like the real
+// server, a path (or cwd) written only with backslashes, as a Windows
+// reporter sends it, is read with forward slashes, and the result uses
+// forward slashes.
 func relTo(cwd, p string) string {
+	p, cwd = forwardSlashes(p), forwardSlashes(cwd)
 	if cwd != "" && strings.HasPrefix(p, cwd+"/") {
 		return strings.TrimPrefix(p, cwd+"/")
+	}
+	return p
+}
+
+func forwardSlashes(p string) string {
+	if !strings.Contains(p, "/") && strings.Contains(p, `\`) {
+		return strings.ReplaceAll(p, `\`, "/")
 	}
 	return p
 }

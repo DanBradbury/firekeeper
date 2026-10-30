@@ -253,3 +253,16 @@ func TestSessionOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestRelToWindowsPaths(t *testing.T) {
+	for _, c := range []struct{ cwd, p, want string }{
+		{"~/src/demo", "~/src/demo/main.go", "main.go"},
+		{`~\src\demo`, `~\src\demo\gen\out.go`, "gen/out.go"},
+		{`~\src\demo`, "docs/new.md", "docs/new.md"},
+		{`~\src\demo`, `~\src\other\x.go`, "~/src/other/x.go"},
+	} {
+		if got := relTo(c.cwd, c.p); got != c.want {
+			t.Errorf("relTo(%q, %q) = %q, want %q", c.cwd, c.p, got, c.want)
+		}
+	}
+}
