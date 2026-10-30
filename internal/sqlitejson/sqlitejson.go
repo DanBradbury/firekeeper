@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 // busyTimeout bounds how long a locked database is retried, as the sqlite3
@@ -113,7 +113,28 @@ func queryError(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf("sqlitejson: query: %w", ctxErr)
 	}
+	if name := resultCodeName(err); name != "" {
+		return fmt.Errorf("sqlitejson: query failed (%s)", name)
+	}
 	return errors.New("sqlitejson: query failed")
+}
+
+// resultCodeName names the SQLite primary result code behind err, such as
+// SQLITE_BUSY. The code says why a query failed without the driver's message,
+// which can quote the SQL or the database path.
+func resultCodeName(err error) string {
+	var sqliteErr *sqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return ""
+	}
+	names := map[int]string{
+		1: "SQLITE_ERROR", 5: "SQLITE_BUSY", 6: "SQLITE_LOCKED", 8: "SQLITE_READONLY",
+		10: "SQLITE_IOERR", 11: "SQLITE_CORRUPT", 14: "SQLITE_CANTOPEN", 26: "SQLITE_NOTADB",
+	}
+	if name, ok := names[sqliteErr.Code()&0xff]; ok {
+		return name
+	}
+	return fmt.Sprintf("SQLITE_%d", sqliteErr.Code()&0xff)
 }
 
 // readOnlyDSN builds a file: URI that opens path read-only. SQLite reads
