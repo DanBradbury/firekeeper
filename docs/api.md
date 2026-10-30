@@ -197,6 +197,10 @@ transaction.
   stored value, or `local` for a new session. Any other value is rejected with
   400. A server that does not know the field ignores it. `origin` is session
   metadata, not a property of the event in `docs/event.schema.json`.
+- Metadata keys are case-sensitive. A key that differs from a field above only
+  in case (`Origin`, `STATE`) is rejected with 400, because some JSON decoders
+  match field names case-insensitively and would store a value that was never
+  checked. Other unknown keys are ignored.
 - Ingest also counts as a heartbeat for the machine.
 - Files: a server may derive a session's changed files from the
   file-changing tool calls in newly stored events. `TouchedFiles` in

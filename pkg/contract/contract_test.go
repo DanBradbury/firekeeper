@@ -192,6 +192,27 @@ func TestSessionOrigin(t *testing.T) {
 			t.Errorf("origin %s: %v", extra, err)
 		}
 	}
+	// Keys that differ from a documented field only in case are rejected,
+	// so a struct decoder that folds case never stores an unchecked value
+	// (SEC-24-1, #25). The error names the documented field, not the key.
+	for _, extra := range []string{
+		`"Origin":"mars"`,
+		`"Origin":"cloud"`,
+		`"origin":"cloud","Origin":"mars"`,
+		`"ORIGIN":"local"`,
+		`"State":"bogus"`,
+		`"Provider":"codex"`,
+		`"Files_Source":"git"`,
+	} {
+		err := ValidateBatch(originBatch(extra))
+		if err == nil || !strings.Contains(err.Error(), "only in case") || strings.Contains(err.Error(), "mars") || strings.Contains(err.Error(), "Origin") {
+			t.Errorf("case-variant key %s: %v", extra, err)
+		}
+	}
+	// Unknown keys that match nothing, even ignoring case, are still allowed.
+	if err := ValidateBatch(originBatch(`"x_extra":"1","origin_hint":"cloud"`)); err != nil {
+		t.Errorf("unknown keys: %v", err)
+	}
 	for _, name := range []string{
 		"batch.valid.cloud_origin",
 		"batch.valid.local_origin",

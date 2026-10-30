@@ -189,6 +189,12 @@ func ValidateEvent(data []byte) error {
 var (
 	validStates = []string{"ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"}
 	validFiles  = []string{"git", "tool_calls"}
+	// metaKeys are the documented sessions[].meta fields (docs/api.md).
+	metaKeys = []string{
+		"session_id", "provider", "cwd", "project", "branch", "commit", "model",
+		"state", "title", "started_at", "last_activity_at", "origin",
+		"files_source", "files",
+	}
 )
 
 // Origin says where a session ran. It is optional on ingest session metadata
@@ -267,6 +273,17 @@ func ValidateBatch(data []byte) error {
 		if !ok {
 			add("%s.meta: missing object", p)
 			continue
+		}
+		// Keys are case-sensitive. A key that differs from a documented one
+		// only in case is rejected: decoders that match field names
+		// case-insensitively, such as encoding/json into a struct, would
+		// otherwise store a value that was never validated ({"Origin":"mars"}).
+		for _, key := range sortedKeys(meta) {
+			for _, known := range metaKeys {
+				if key != known && strings.EqualFold(key, known) {
+					add("%s.meta.%s: a key differs from it only in case", p, known)
+				}
+			}
 		}
 		sessionID, _ := meta["session_id"].(string)
 		if sessionID == "" {
@@ -389,6 +406,15 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func joinProblems(problems []string) error {
