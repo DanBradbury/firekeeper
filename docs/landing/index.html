@@ -23,7 +23,7 @@
 <meta name="twitter:description" content="See what your AI coding agents are doing, live from your terminal. Works with Claude Code, Codex, Copilot CLI, Gemini CLI, Cursor, OpenCode, and Kimi.">
 <meta name="twitter:image" content="https://firekeeper.ai/og.png">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","url":"https://firekeeper.ai/","description":"Live terminal dashboard and redacted session reporter for AI coding agents: Claude Code, Codex, Copilot CLI, Cursor, Gemini, OpenCode, and Kimi.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","url":"https://firekeeper.ai/","description":"Live terminal dashboard and redacted session reporter for AI coding agents: Claude Code, Codex, Copilot CLI, Cursor, Gemini, OpenCode, and Kimi.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <style>
 :root {
@@ -283,7 +283,7 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
         <h3>Jump to the session</h3>
-        <p>Press <kbd>s</kbd> to focus the terminal holding a session. Supports Ghostty, Terminal.app, and iTerm2 on macOS.</p>
+        <p>Press <kbd>s</kbd> to focus the terminal holding a session. Supports Ghostty, Terminal.app, and iTerm2 on macOS. On Windows it raises the terminal window; you pick the tab.</p>
       </div>
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg></div>
@@ -308,13 +308,14 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
   <div class="wrap">
     <div class="section-head">
       <h2>Install in one line</h2>
-      <p>Prebuilt binaries for macOS (Apple Silicon and Intel) and Linux (amd64 and arm64). No Go toolchain needed.</p>
+      <p>Prebuilt binaries for macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and Windows 10 1809+ and 11 (amd64 and arm64). No Go toolchain needed.</p>
     </div>
 
-    <div class="tabs" role="tablist">
-      <button role="tab" aria-selected="true" aria-controls="p-brew" id="t-brew">Homebrew</button>
-      <button role="tab" aria-selected="false" aria-controls="p-curl" id="t-curl">Install script</button>
-      <button role="tab" aria-selected="false" aria-controls="p-go" id="t-go">From source</button>
+    <div class="tabs" role="tablist" aria-label="Install method">
+      <button type="button" role="tab" aria-selected="true" aria-controls="p-brew" id="t-brew">Homebrew</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-curl" id="t-curl" tabindex="-1">Install script</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-ps" id="t-ps" tabindex="-1">Windows (PowerShell)</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-go" id="t-go" tabindex="-1">From source</button>
     </div>
 
     <div class="panel active" id="p-brew" role="tabpanel" aria-labelledby="t-brew">
@@ -329,6 +330,13 @@ firekeeper</pre></div>
       <p>Installs to <code>~/.local/bin</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), never uses <code>sudo</code>, and verifies the download against the release's SHA-256 checksums. Pin a release with <code>sh -s -- --version vX.Y.Z</code>.</p>
     </div>
 
+    <div class="panel" id="p-ps" role="tabpanel" aria-labelledby="t-ps">
+      <div class="code"><button class="copy">Copy</button><pre>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+firekeeper</pre></div>
+      <p>Run in Windows PowerShell 5.1 or PowerShell 7. Installs <code>firekeeper.exe</code> to <code>%LOCALAPPDATA%\Programs\firekeeper</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), adds it to your user <code>PATH</code>, needs no administrator rights, and verifies the download against the release's SHA-256 checksums. Pin a release by running <code>$env:FIREKEEPER_VERSION = 'vX.Y.Z'</code> first. The binaries are not code-signed.</p>
+      <p>Windows is supported with limits and has had the least real-world use: <kbd>s</kbd> raises the terminal window but not the tab, and Codex runtimes are matched to threads by directory and time. See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#windows">what differs on Windows</a>.</p>
+    </div>
+
     <div class="panel" id="p-go" role="tabpanel" aria-labelledby="t-go">
       <div class="code"><button class="copy">Copy</button><pre>go install github.com/DanBradbury/firekeeper@latest
 firekeeper</pre></div>
@@ -339,6 +347,7 @@ firekeeper</pre></div>
       <div><strong>Verify</strong><code>firekeeper --version</code></div>
       <div><strong>See every command</strong><code>firekeeper --help</code></div>
       <div><strong>Uninstall</strong><code>firekeeper daemon uninstall</code>, then remove the binary</div>
+      <div><strong>On Windows</strong>The daemon runs as a Task Scheduler task. To uninstall, delete <code>%LOCALAPPDATA%\Programs\firekeeper</code> and remove it from your user <code>PATH</code></div>
     </div>
   </div>
 </section>
@@ -388,7 +397,7 @@ firekeeper</pre></div>
         </tbody>
       </table>
     </div>
-    <p class="note">States describe the latest event Firekeeper can see, not ground truth. Provider data formats can change between CLI releases, and adapters evolve with them. macOS is the main target; Linux is best effort.</p>
+    <p class="note">States describe the latest event Firekeeper can see, not ground truth. Provider data formats can change between CLI releases, and adapters evolve with them. macOS is the main target; Linux is best effort; Windows is supported with limits and has had the least real-world use.</p>
   </div>
 </section>
 
@@ -539,21 +548,37 @@ firekeeper daemon install</pre></div>
   function select(tab) {
     tabs.forEach(function (t) {
       t.setAttribute('aria-selected', String(t === tab));
+      t.tabIndex = t === tab ? 0 : -1;
       document.getElementById(t.getAttribute('aria-controls')).classList.toggle('active', t === tab);
     });
   }
-  tabs.forEach(function (tab) {
+  tabs.forEach(function (tab, i) {
     tab.addEventListener('click', function () { select(tab); });
+    // Arrow keys, Home, and End move between tabs (WAI-ARIA tabs pattern).
+    tab.addEventListener('keydown', function (e) {
+      var next = null;
+      if (e.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
+      else if (e.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
+      else if (e.key === 'Home') next = tabs[0];
+      else if (e.key === 'End') next = tabs[tabs.length - 1];
+      if (!next) return;
+      e.preventDefault();
+      select(next);
+      next.focus();
+    });
   });
 
   // Preselect the install tab for the visitor's OS: Homebrew on macOS,
-  // the install script on Linux. Anything else keeps the default.
+  // the install script on Linux, PowerShell on Windows. Anything else keeps
+  // the default.
   var platform = (navigator.userAgentData && navigator.userAgentData.platform) ||
     navigator.platform || navigator.userAgent || '';
   var ua = navigator.userAgent || '';
   var isMac = /mac/i.test(platform) && !/iphone|ipad|ipod/i.test(ua);
+  var isWindows = /win/i.test(platform) || /windows nt/i.test(ua);
   var isLinux = /linux|x11|cros/i.test(platform + ' ' + ua) && !/android/i.test(ua);
-  var preferred = isLinux && !isMac ? document.getElementById('t-curl') : null;
+  var preferred = isWindows && !isMac ? document.getElementById('t-ps') :
+    isLinux && !isMac ? document.getElementById('t-curl') : null;
   if (preferred) select(preferred);
 
   // Expand screenshots in an in-page lightbox; the link still opens the

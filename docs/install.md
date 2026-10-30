@@ -31,7 +31,8 @@ rights, verifies the download against the release's SHA-256 checksums like the
 shell script, and installs nothing if they do not match. Piping into `iex`
 cannot take parameters, so set `$env:FIREKEEPER_VERSION = 'vX.Y.Z'` first to pin
 a release, or save the script and run it with `-Version vX.Y.Z`,
-`-InstallDir DIR`, or `-NoPathUpdate`. Downloads made this way carry no
+`-InstallDir DIR`, or `-NoPathUpdate` (or set `FIREKEEPER_NO_MODIFY_PATH` to
+any value before piping). Downloads made this way carry no
 "downloaded from the internet" mark, so SmartScreen does not prompt; the
 binaries are not code-signed.
 
@@ -74,7 +75,9 @@ reports its version as `dev`. For development, use `go run .`. If
 ## Uninstall
 
 1. If you installed the daemon, remove the service first, while the binary
-   still exists: `firekeeper daemon uninstall`.
+   still exists: `firekeeper daemon uninstall`. This removes the launchd agent,
+   systemd user service, or, on Windows, the "Firekeeper Daemon" Task
+   Scheduler task.
 2. Remove the binary: `brew uninstall firekeeper`, or
    `rm ~/.local/bin/firekeeper` (or wherever you installed it). On Windows,
    delete `%LOCALAPPDATA%\Programs\firekeeper` and remove it from your user
@@ -88,4 +91,10 @@ revoked on the server. To delete all of it:
 
 ```sh
 rm -rf ~/.firekeeper
+```
+
+On Windows, in PowerShell:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.firekeeper"
 ```
