@@ -24,8 +24,8 @@ do not match. Pin a release with
 `curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh -s -- --version vX.Y.Z`.
 
 The PowerShell script installs `firekeeper.exe` to
-`%LOCALAPPDATA%\Programs\firekeeper` (set `FIREKEEPER_INSTALL_DIR` to change
-that), adds that directory to your user `PATH`, and updates the current
+`%LOCALAPPDATA%\Programs\firekeeper` (set `FIREKEEPER_INSTALL_DIR` to an
+absolute path to change that; a relative one is refused), adds that directory to your user `PATH`, and updates the current
 session's `PATH` so `firekeeper` works straight away. It needs no administrator
 rights, verifies the download against the release's SHA-256 checksums like the
 shell script, and installs nothing if they do not match. Piping into `iex`
