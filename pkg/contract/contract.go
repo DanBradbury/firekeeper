@@ -275,7 +275,8 @@ func ValidateBatch(data []byte) error {
 			continue
 		}
 		// Keys are case-sensitive. A key that differs from a documented one
-		// only in case is rejected: decoders that match field names
+		// only in case is rejected here (docs/api.md lets a server do the
+		// same, but does not require it): decoders that match field names
 		// case-insensitively, such as encoding/json into a struct, would
 		// otherwise store a value that was never validated ({"Origin":"mars"}).
 		for _, key := range sortedKeys(meta) {
