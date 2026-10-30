@@ -177,7 +177,8 @@ func TestRedactPathsApplied(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	line := strings.Replace(string(rollout), "message 0", "see "+secretDir+"/plan.md and ~/clients/acme/x", 1)
+	// The path goes into a JSON string, where backslashes are escapes.
+	line := strings.Replace(string(rollout), "message 0", "see "+strings.ReplaceAll(secretDir, `\`, `\\`)+"/plan.md and ~/clients/acme/x", 1)
 	if err := os.WriteFile(f.rollout, []byte(line), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -346,3 +346,160 @@ func TestRedactConfiguredPaths(t *testing.T) {
 		t.Fatalf("path count = %d", counts[KindPath])
 	}
 }
+
+func TestHomeDirWindowsSpellings(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`}
+	tests := []struct{ name, in, want string }{
+		{"backslashes", `see C:\Users\me\src\app.go`, `see ~\src\app.go`},
+		{"slashes", `see C:/Users/me/src/app.go`, `see ~/src/app.go`},
+		{"lowercase drive", `see c:\Users\me\src`, `see ~\src`},
+		{"lowercase drive slashes", `see c:/Users/me/src`, `see ~/src`},
+		{"git bash", `cd /c/Users/me/src && ls`, `cd ~/src && ls`},
+		{"git bash uppercase", `cd /C/Users/me/src`, `cd ~/src`},
+		{"other user", `C:\Users\meg\src`, `C:\Users\meg\src`},
+		{"other drive", `D:\Users\me\src`, `D:\Users\me\src`},
+		{"extended prefix", `\\?\C:\Users\me\src`, `\\?\~\src`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got, _ := String(tt.in, opts); got != tt.want {
+				t.Fatalf("String(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRedactedWindowsPathsInJSON(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`, Paths: []string{`C:\Users\me\clients\acme`}}
+	got, counts := JSON([]byte(`{"cwd":"C:\\Users\\me\\clients\\acme\\api","file":"C:/Users/me/notes.txt"}`), opts)
+	want := `{"cwd":"[REDACTED:path]\\api","file":"~/notes.txt"}`
+	if string(got) != want {
+		t.Fatalf("got %s\nwant %s", got, want)
+	}
+	if counts[KindPath] != 1 || counts[KindHomeDir] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+}
+
+// Only Windows drive paths get the many-spellings matcher; everything else,
+// Unix homes included, is matched exactly as before.
+func TestOtherPathsAreMatchedExactly(t *testing.T) {
+	for _, p := range []string{"", "/Users/me", "/home/Me", "relative/path", `\\server\share`, "C:", "1:\\x", `C:\`} {
+		if w := windowsPathFor(p, false); w != nil {
+			t.Errorf("windowsPathFor(%q) = %v", p, w.re)
+		}
+	}
+	opts := Options{HomeDir: "/Users/Me"}
+	if got, _ := String("/users/me/src /Users/Me/src", opts); got != "/users/me/src ~/src" {
+		t.Errorf("Unix home matched case-insensitively: %q", got)
+	}
+}
+
+// A Windows home becomes "~" before the rest of the path is looked at, and
+// transcripts spell what follows with either separator.
+func TestRedactPathsMatchTildeFormWithSlashes(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`, Paths: []string{`C:\Users\me\clients\acme`}}
+	got, _ := String(`see ~/clients/acme/x and ~\clients\acme\y`, opts)
+	if want := `see [REDACTED:path]/x and [REDACTED:path]\y`; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// SEC-26-2: every spelling of a Windows home seen in transcripts becomes
+// "~", and none of the username is left behind.
+func TestHomeDirWindowsCaseEscapesAndShortNames(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\DanBradbury`}
+	tests := []struct{ name, in, want string }{
+		{"lower case", `c:\users\danbradbury\src`, `~\src`},
+		{"upper case user", `C:\Users\DANBRADBURY\src`, `~\src`},
+		{"upper case users dir", `C:\USERS\DanBradbury\src`, `~\src`},
+		{"mixed separators", `C:/Users\DanBradbury\src`, `~\src`},
+		{"mixed separators 2", `C:\Users/danbradbury/src`, `~/src`},
+		{"doubled backslashes", `C:\\Users\\DanBradbury\\src`, `~\\src`},
+		{"quadrupled backslashes", `C:\\\\Users\\\\DanBradbury\\\\src`, `~\\\\src`},
+		{"escaped slashes", `C:\/Users\/DanBradbury\/src`, `~\/src`},
+		{"git bash lower", `/c/users/danbradbury/src`, `~/src`},
+		{"file uri", `file:///C:/Users/DanBradbury/src`, `file:///~/src`},
+		{"file uri encoded colon", `file:///c%3A/Users/DanBradbury/src`, `file:///~/src`},
+		{"admin share", `\\localhost\c$\Users\DanBradbury\src`, `~\src`},
+		{"admin share escaped", `\\\\localhost\\c$\\Users\\DanBradbury`, `~`},
+		{"short name", `C:\Users\DANBRA~1\AppData\Local\Temp`, `~\AppData\Local\Temp`},
+		{"short name lower", `c:\users\danbra~2\x`, `~\x`},
+		{"end of text", `cd C:\USERS\DANBRADBURY`, `cd ~`},
+		{"quoted", `"C:\\Users\\danbradbury"`, `"~"`},
+		{"other user", `C:\Users\DanBradburyJr\src`, `C:\Users\DanBradburyJr\src`},
+		{"other user short name", `C:\Users\OTHERU~1\src`, `C:\Users\OTHERU~1\src`},
+		{"other drive", `D:\Users\DanBradbury`, `D:\Users\DanBradbury`},
+		{"inside a longer name", `xC:\Users\DanBradbury`, `xC:\Users\DanBradbury`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, _ := String(tt.in, opts)
+			if got != tt.want {
+				t.Fatalf("String(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+			if again, counts := String(got, opts); again != got || counts.Total() != 0 {
+				t.Errorf("not idempotent: %q -> %q", got, again)
+			}
+		})
+	}
+}
+
+// Configured paths use the same matcher, in both their full and "~" forms.
+func TestRedactPathsWindowsCaseAndEscapes(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\me`, Paths: []string{`c:\users\ME\Clients\Acme`}}
+	in := `C:\Users\me\clients\acme\x C:\\USERS\\me\\CLIENTS\\ACME\\y ~/Clients/ACME/z ~\\clients\\acme C:\Users\me\clients\acmeco`
+	want := `[REDACTED:path]\x [REDACTED:path]\\y [REDACTED:path]/z [REDACTED:path] ~\clients\acmeco`
+	got, counts := String(in, opts)
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+	if counts[KindPath] != 4 || counts[KindHomeDir] != 1 {
+		t.Fatalf("counts = %v", counts)
+	}
+}
+
+// A Codex function_call keeps its arguments as JSON text, so a Windows path
+// there is still escaped after the event is decoded once.
+func TestRedactCodexFunctionCallWindowsWorkdir(t *testing.T) {
+	opts := Options{HomeDir: `C:\Users\DanBradbury`}
+	args, _ := json.Marshal(map[string]any{"command": []string{"powershell", "-c", "dir"}, "workdir": `c:\users\danbradbury\src\app`})
+	raw, _ := json.Marshal(map[string]any{"type": "function_call", "name": "shell", "arguments": string(args)})
+	got, counts := JSON(raw, opts)
+	if strings.Contains(strings.ToLower(string(got)), "danbradbury") {
+		t.Fatalf("username left in %s", got)
+	}
+	var decoded struct{ Arguments string }
+	if err := json.Unmarshal(got, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	var inner struct{ Workdir string }
+	if err := json.Unmarshal([]byte(decoded.Arguments), &inner); err != nil {
+		t.Fatalf("arguments no longer JSON: %v (%s)", err, decoded.Arguments)
+	}
+	if inner.Workdir != `~\src\app` || counts[KindHomeDir] != 1 {
+		t.Fatalf("workdir %q, counts %v", inner.Workdir, counts)
+	}
+	// A line cut short is not valid JSON and is redacted as text.
+	got, _ = JSON(raw[:len(raw)-5], opts)
+	if strings.Contains(strings.ToLower(string(got)), "danbradbury") {
+		t.Fatalf("username left in truncated line %s", got)
+	}
+}
+
+func TestShortNameStem(t *testing.T) {
+	for in, want := range map[string]string{
+		"me":            "",
+		"Dan":           "",
+		"notes.txt":     "",
+		"DanBradbury":   `DanBra~[0-9]{1,6}`,
+		"Program Files": `Progra~[0-9]{1,6}`,
+		"dan.bradbury":  `dan~[0-9]{1,6}(?:\.bra)?`,
+		"a+b c":         `a_bc~[0-9]{1,6}`,
+		"Jürgen Müller": "",
+	} {
+		if got := shortNameStem(in); got != want {
+			t.Errorf("shortNameStem(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

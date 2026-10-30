@@ -1,7 +1,6 @@
 package session
 
 import (
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -159,17 +158,65 @@ func (d *discoverer) sanitizeProcessCommand(command string) string {
 	}, command)
 }
 
-// isFirekeeperCommand reports whether command runs the firekeeper executable.
+// isFirekeeperCommand reports whether command runs the firekeeper executable,
+// directly or through the console host the Windows login service starts it
+// with (conhost.exe --headless firekeeper.exe daemon ...).
 func isFirekeeperCommand(command string) bool {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
+	if len(fields) > 0 && strings.EqualFold(baseName(fields[0]), "conhost.exe") {
+		// Drop the host and its flags as text, so a quoted executable path
+		// after them is still read as one field.
+		rest := strings.TrimSpace(command)
+		if strings.HasPrefix(rest, `"`) {
+			end := strings.IndexByte(rest[1:], '"')
+			rest = rest[end+2:]
+		} else if _, after, ok := strings.Cut(rest, " "); ok {
+			rest = after
+		} else {
+			rest = ""
+		}
+		rest = strings.TrimSpace(rest)
+		for strings.HasPrefix(rest, "--") {
+			_, after, _ := strings.Cut(rest, " ")
+			rest = strings.TrimSpace(after)
+		}
+		fields = commandFields(rest)
+	}
 	if len(fields) == 0 {
 		return false
 	}
-	switch strings.ToLower(filepath.Base(fields[0])) {
+	switch strings.ToLower(baseName(fields[0])) {
 	case "firekeeper", "firekeeper.exe":
 		return true
 	}
 	return false
+}
+
+// commandFields splits a process command line into fields. Windows quotes an
+// executable path that contains spaces, as in "C:\Program Files\nodejs\node.exe"
+// script.js, so a leading quoted path is one field, without its quotes. ps
+// output has no such quoting and splits on whitespace.
+func commandFields(command string) []string {
+	command = strings.TrimSpace(command)
+	if strings.HasPrefix(command, `"`) {
+		if end := strings.IndexByte(command[1:], '"'); end >= 0 {
+			return append([]string{command[1 : end+1]}, strings.Fields(command[end+2:])...)
+		}
+	}
+	return strings.Fields(command)
+}
+
+// baseName returns the last element of an executable or script path,
+// whichever of / and \ separates it. filepath.Base only knows the running
+// platform's separator, and process command lines come from either kind.
+func baseName(path string) string {
+	return path[strings.LastIndexAny(path, `/\`)+1:]
+}
+
+// slashPath converts Windows separators so a path can be matched against
+// slash-separated markers on any platform.
+func slashPath(path string) string {
+	return strings.ReplaceAll(path, `\`, "/")
 }
 
 // EmptyFallback returns fallback when value is the empty string.

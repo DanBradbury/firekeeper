@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -25,22 +23,13 @@ type fakeRelease struct {
 	requests *int
 }
 
-// newFakeRelease serves one release whose server is a shell script that
-// echoes its arguments. It counts every request.
+// newFakeRelease serves one release whose server echoes its arguments (see
+// fakeServerBody). It counts every request.
 func newFakeRelease(t *testing.T, sumOverride string) fakeRelease {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	body := "#!/bin/sh\necho \"fake-server: $*\"\nexit 0\n"
-	for _, e := range [][2]string{{"LICENSE", "lic"}, {"firekeeper-server", body}} {
-		tw.WriteHeader(&tar.Header{Name: e[0], Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(e[1]))})
-		tw.Write([]byte(e[1]))
-	}
-	tw.Close()
-	gz.Close()
+	archive, asset := serverArchive(t, "v1.0.0", fakeServerBody(t, fakeServerSpec{}))
+	buf := bytes.NewBuffer(archive)
 	sum := sha256.Sum256(buf.Bytes())
-	asset := "firekeeper-server_1.0.0_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
 	sums := hex.EncodeToString(sum[:]) + "  " + asset + "\n"
 	if sumOverride != "" {
 		sums = sumOverride
@@ -81,9 +70,6 @@ type installSetup struct {
 
 func setupInstall(t *testing.T, url, stdin string) *installSetup {
 	t.Helper()
-	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
-		t.Skip("installer supports darwin and linux")
-	}
 	s := &installSetup{
 		env:    map[string]string{"PATH": "/usr/bin"},
 		exeDir: resolvedTempDir(t),
@@ -194,7 +180,7 @@ func TestInstallDeclined(t *testing.T) {
 		if *rel.requests != 0 {
 			t.Errorf("%q: network used", answer)
 		}
-		if _, err := os.Stat(filepath.Join(s.exeDir, serverBinName)); err == nil {
+		if _, err := os.Stat(filepath.Join(s.exeDir, serverBinName+exeSuffix())); err == nil {
 			t.Errorf("%q: installed", answer)
 		}
 		assertMissingMessage(t, stderr.String())
@@ -210,7 +196,7 @@ func TestInstallYesHandsOff(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("%q: exit %d\n%s", answer, code, stderr.String())
 		}
-		want := filepath.Join(s.exeDir, serverBinName)
+		want := filepath.Join(s.exeDir, serverBinName+exeSuffix())
 		if *s.hPath != want {
 			t.Errorf("handoff path %q, want %q", *s.hPath, want)
 		}
@@ -228,7 +214,7 @@ func TestInstallYesHandsOff(t *testing.T) {
 }
 
 func TestInstallChecksumMismatchAborts(t *testing.T) {
-	rel := newFakeRelease(t, strings.Repeat("0", 64)+"  firekeeper-server_1.0.0_"+runtime.GOOS+"_"+runtime.GOARCH+".tar.gz\n")
+	rel := newFakeRelease(t, strings.Repeat("0", 64)+"  "+serverinstall.AssetName("v1.0.0", runtime.GOOS, runtime.GOARCH)+"\n")
 	s := setupInstall(t, rel.srv.URL, "y\n")
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 2 {
@@ -269,7 +255,7 @@ func TestInstallFallsBackToHomeLocalBin(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, stderr.String())
 	}
 	want := filepath.Join(s.home, ".local", "bin")
-	if *s.hPath != filepath.Join(want, serverBinName) {
+	if *s.hPath != filepath.Join(want, serverBinName+exeSuffix()) {
 		t.Errorf("installed at %q, want under %q", *s.hPath, want)
 	}
 	if !strings.Contains(stderr.String(), "install it to "+want+"?") || !strings.Contains(stderr.String(), "not on your PATH") {
@@ -287,15 +273,15 @@ func TestInstallFallbackNoHintWhenOnPath(t *testing.T) {
 	os.WriteFile(exe, []byte("x"), 0o755)
 	defaultLookup.executable = func() (string, error) { return exe, nil }
 	bin := filepath.Join(s.home, ".local", "bin")
-	s.env["PATH"] = "/usr/bin:" + bin
+	s.env["PATH"] = "/usr/bin" + string(os.PathListSeparator) + bin
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 0 {
 		t.Fatalf("exit %d\n%s", code, stderr.String())
 	}
-	if _, err := os.Stat(filepath.Join(cellar, serverBinName)); err == nil {
+	if _, err := os.Stat(filepath.Join(cellar, serverBinName+exeSuffix())); err == nil {
 		t.Error("wrote into the Homebrew directory")
 	}
-	if *s.hPath != filepath.Join(bin, serverBinName) || strings.Contains(stderr.String(), "not on your PATH") {
+	if *s.hPath != filepath.Join(bin, serverBinName+exeSuffix()) || strings.Contains(stderr.String(), "not on your PATH") {
 		t.Errorf("path %q\n%s", *s.hPath, stderr.String())
 	}
 }
@@ -366,13 +352,31 @@ func TestInstallUnsupportedPlatformMessage(t *testing.T) {
 	rel := newFakeRelease(t, "")
 	setupInstall(t, rel.srv.URL, "y\n")
 	installOffer.newInstaller = func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
+		return &serverinstall.Installer{Source: src, Log: log, GOOS: "freebsd", GOARCH: "amd64"}
+	}
+	var stderr bytes.Buffer
+	if code := runServe(nil, nil, &stderr); code != 2 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(stderr.String(), "no firekeeper-server build for freebsd/amd64") {
+		t.Errorf("%s", stderr.String())
+	}
+}
+
+// The fake release, like every server release before Windows builds, has no
+// Windows zip: on Windows the install fails with a clear message, not a crash.
+func TestInstallNoWindowsBuildMessage(t *testing.T) {
+	// A release with only a Linux build, like every server release so far.
+	rel := newFakeRelease(t, strings.Repeat("0", 64)+"  firekeeper-server_1.0.0_linux_amd64.tar.gz\n")
+	setupInstall(t, rel.srv.URL, "y\n")
+	installOffer.newInstaller = func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
 		return &serverinstall.Installer{Source: src, Log: log, GOOS: "windows", GOARCH: "amd64"}
 	}
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 2 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(stderr.String(), "no firekeeper-server build for windows/amd64") {
+	if !strings.Contains(stderr.String(), "no Windows server build available for v1.0.0") {
 		t.Errorf("%s", stderr.String())
 	}
 }

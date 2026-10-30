@@ -54,7 +54,7 @@ func TestOpenCodeDatabase(t *testing.T) {
 		"default":          {"", "", filepath.Join(home, ".local", "share", "opencode", "opencode.db")},
 		"xdg":              {data, "", filepath.Join(data, "opencode", "opencode.db")},
 		"relative xdg":     {"relative", "", filepath.Join(home, ".local", "share", "opencode", "opencode.db")},
-		"absolute db":      {data, "/elsewhere/oc.db", "/elsewhere/oc.db"},
+		"absolute db":      {data, filepath.Join(home, "elsewhere", "oc.db"), filepath.Join(home, "elsewhere", "oc.db")},
 		"relative db":      {data, "dev.db", filepath.Join(data, "opencode", "dev.db")},
 		"in-memory db":     {"", ":memory:", ""},
 		"whitespace value": {"", "  ", filepath.Join(home, ".local", "share", "opencode", "opencode.db")},

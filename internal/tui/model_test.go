@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -77,7 +78,9 @@ func TestProcessRefreshDropsUnidentifiedCodexGroups(t *testing.T) {
 		groups: []processGroup{
 			{
 				tool: "Codex",
-				root: processInfo{pid: 101, tty: "ttys001", command: "codex"},
+				// A helper, which is hidden on every platform; an unmatched
+				// interactive CLI is kept on Windows only.
+				root: processInfo{pid: 101, tty: "ttys001", command: "codex app-server --listen unix://"},
 			},
 			{
 				tool: "Codex",
@@ -499,5 +502,30 @@ func TestProcessRefreshDropsClosedCodexSession(t *testing.T) {
 	}
 	if len(m.processGroups) != 0 {
 		t.Fatalf("closed Codex session still listed: %d runtimes", len(m.processGroups))
+	}
+}
+
+func TestFilterUnidentifiedCodexGroupsOnWindows(t *testing.T) {
+	cli := processGroup{tool: "Codex", root: processInfo{pid: 1, command: `"C:\Program Files\nodejs\node.exe" C:\npm\node_modules\@openai\codex\bin\codex.js`}}
+	server := processGroup{tool: "Codex", root: processInfo{pid: 2, command: `C:\npm\node_modules\@openai\codex\vendor\codex.exe app-server --listen stdio://`}}
+	desktop := processGroup{tool: "Codex", root: processInfo{pid: 3, command: `"C:\Program Files\WindowsApps\OpenAI.Codex_1.0_x64\app\Codex.exe" --type=renderer`}}
+	matched := processGroup{tool: "Codex", root: processInfo{pid: 4, command: "codex"}, sessions: []sessionInfo{{id: "s"}}}
+	other := processGroup{tool: "Claude", root: processInfo{pid: 5, command: "claude"}}
+	groups := []processGroup{cli, server, desktop, matched, other}
+
+	pids := func(gs []processGroup) []int {
+		var out []int
+		for _, g := range gs {
+			out = append(out, g.root.pid)
+		}
+		return out
+	}
+	// Elsewhere an unmatched Codex runtime is a desktop helper and is hidden.
+	if got := pids(filterUnidentifiedCodexGroupsFor("darwin", groups)); !slices.Equal(got, []int{4, 5}) {
+		t.Errorf("darwin kept %v, want [4 5]", got)
+	}
+	// On Windows the interactive CLI stays even when no session matched.
+	if got := pids(filterUnidentifiedCodexGroupsFor("windows", groups)); !slices.Equal(got, []int{1, 4, 5}) {
+		t.Errorf("windows kept %v, want [1 4 5]", got)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -120,11 +121,11 @@ paths = ["~/clients", "/opt/private/"]
 	if c.Path != path {
 		t.Fatalf("path = %q", c.Path)
 	}
-	wantExclude := []string{filepath.Join(home, "clients", "*"), "/srv/secret", "github.com/acme"}
+	wantExclude := []string{filepath.Join(home, "clients", "*"), filepath.Clean("/srv/secret"), "github.com/acme"}
 	if !reflect.DeepEqual(c.Exclude, wantExclude) {
 		t.Fatalf("exclude = %q, want %q", c.Exclude, wantExclude)
 	}
-	wantRedact := []string{filepath.Join(home, "clients"), "/opt/private"}
+	wantRedact := []string{filepath.Join(home, "clients"), filepath.Clean("/opt/private")}
 	if !reflect.DeepEqual(c.RedactPaths, wantRedact) {
 		t.Fatalf("redact paths = %q", c.RedactPaths)
 	}
@@ -269,6 +270,30 @@ func TestExcluded(t *testing.T) {
 				t.Fatalf("Excluded = (%q, %v), want %q", got, ok, tt.want)
 			}
 		})
+	}
+}
+
+// SEC-26-3: directory globs ignore case where the file system does
+// (foldDirCase, set on Windows), and only there.
+func TestExcludedDirCase(t *testing.T) {
+	c := Config{Exclude: []string{"/Home/U/Clients/Acme", "/home/u/private/*"}}
+	dirs := [][]string{{"/home/u/clients/acme/api"}, {"/HOME/U/CLIENTS/ACME"}, {"/home/U/Private/x/y"}}
+	for _, fold := range []bool{false, true} {
+		saved := foldDirCase
+		foldDirCase = fold
+		for _, d := range dirs {
+			if _, ok := c.Excluded(d, nil); ok != fold {
+				t.Errorf("fold=%v: Excluded(%q) = %v", fold, d, ok)
+			}
+		}
+		// Exact spellings match either way.
+		if _, ok := c.Excluded([]string{"/Home/U/Clients/Acme/x"}, nil); !ok {
+			t.Errorf("fold=%v: exact spelling not excluded", fold)
+		}
+		foldDirCase = saved
+	}
+	if foldDirCase != (runtime.GOOS == "windows") {
+		t.Errorf("foldDirCase = %v on %s", foldDirCase, runtime.GOOS)
 	}
 }
 

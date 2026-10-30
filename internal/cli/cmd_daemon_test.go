@@ -443,6 +443,7 @@ func isolateDaemonConfig(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // the home directory on Windows
 	for _, key := range []string{"FIREKEEPER_CONFIG", "FIREKEEPER_PROVIDERS", "FIREKEEPER_SERVER", "FIREKEEPER_INTERVAL", "FIREKEEPER_TOKEN"} {
 		t.Setenv(key, "")
 	}

@@ -21,9 +21,12 @@ test:
 race:
     go test -race ./...
 
-# Run Go vet.
+# Run Go vet, for this platform and for the Windows and macOS files that
+# only those platforms compile.
 vet:
     go vet ./...
+    GOOS=windows go vet ./...
+    GOOS=darwin go vet ./...
 
 # Format Go sources.
 fmt:

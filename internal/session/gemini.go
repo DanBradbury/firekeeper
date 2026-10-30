@@ -53,14 +53,14 @@ func (d *discoverer) isGeminiCommand(command string) bool {
 // (bin/gemini, bundle/gemini.js, or a path inside @google/gemini-cli), and it
 // relaunches itself as a node child with extra node flags.
 func (d *discoverer) geminiArgs(command string) []string {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
 	if len(fields) == 0 {
 		return nil
 	}
-	if strings.Contains(filepath.ToSlash(fields[0]), ".app/Contents/") {
+	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
 		return nil
 	}
-	switch strings.ToLower(filepath.Base(fields[0])) {
+	switch strings.ToLower(baseName(fields[0])) {
 	case "gemini", "gemini.exe":
 		return append([]string{}, fields[1:]...)
 	case "node", "node.exe", "nodejs", "bun", "bun.exe":
@@ -78,11 +78,11 @@ func (d *discoverer) geminiArgs(command string) []string {
 }
 
 func isGeminiScript(path string) bool {
-	switch filepath.Base(path) {
+	switch baseName(path) {
 	case "gemini", "gemini.js", "gemini.mjs":
 		return true
 	}
-	return strings.Contains(filepath.ToSlash(path), "/@google/gemini-cli/")
+	return strings.Contains(slashPath(path), "/@google/gemini-cli/")
 }
 
 // geminiSessionIDFromCommand reads an explicit session id from --session-id,

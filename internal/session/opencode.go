@@ -99,9 +99,9 @@ func (d *discoverer) openCodeDatabase() (string, error) {
 // openCodeArgs returns the arguments after the OpenCode executable, or nil
 // when command does not run it.
 func (d *discoverer) openCodeArgs(command string) []string {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
 	for i, field := range fields {
-		base := strings.ToLower(filepath.Base(field))
+		base := strings.ToLower(baseName(field))
 		if base == "opencode" || base == "opencode.exe" {
 			return append([]string{}, fields[i+1:]...)
 		}

@@ -38,15 +38,25 @@ or
 curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
 ```
 
-Both install a prebuilt binary, so you do not need a Go toolchain. Then run:
+or, on Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+```
+
+Each installs a prebuilt binary, so you do not need a Go toolchain. Then run:
 
 ```sh
 firekeeper
 ```
 
-Releases cover macOS (Apple Silicon and Intel) and Linux (amd64 and arm64).
-macOS is the main target; Linux is best effort. See [Install and
-uninstall](docs/install.md) for pinning a version, building from source, and
+Releases cover macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and
+Windows 10 1809+ and 11 (amd64 and arm64). macOS is the main target; Linux is
+best effort. Windows is supported with limits: the binaries are not
+code-signed, switching to a session raises its terminal window but not the
+tab, and Codex runtimes are matched to threads by directory and time because
+Windows cannot list open files. See [Windows](docs/reference.md#windows) for
+the full list, and [Install and uninstall](docs/install.md) for pinning a version, building from source, and
 removing Firekeeper.
 
 ## What you get
@@ -170,7 +180,7 @@ are the stable, importable pieces of that contract.
 ## Status
 
 Firekeeper is an early-stage project. macOS is the main target, Linux is best
-effort, and Windows has not been tried. Expect adapters and metadata handling
+effort, and Windows is supported but has had the least real-world use. Expect adapters and metadata handling
 to evolve as the agent CLIs change. Bug reports and requests for more agents
 are welcome as [issues](https://github.com/DanBradbury/firekeeper/issues).
 

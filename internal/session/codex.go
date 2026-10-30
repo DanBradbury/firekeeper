@@ -8,6 +8,7 @@ import (
 
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,6 +44,9 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	candidates := make(map[string]bool)
 	if len(unmatched) > 0 {
 		candidates = d.discoverHeldCodexThreads(groups)
+		if len(candidates) == 0 && !openFilesListable {
+			candidates = d.discoverRecentCodexThreads()
+		}
 		for id := range candidates {
 			threadIDs[id] = true
 		}
@@ -153,6 +157,47 @@ func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) map[string]
 	return held
 }
 
+// openFilesListable reports whether discovery can list the files a process
+// holds open. Windows cannot without extra tools, so Codex runtimes there are
+// matched to recently updated threads by working directory instead of to the
+// threads they hold. Tests replace it.
+var openFilesListable = runtime.GOOS != "windows"
+
+// recentCodexWindow is how recently a thread must have changed to be
+// considered held by a running runtime when open files cannot be listed.
+const recentCodexWindow = 24 * time.Hour
+
+// discoverRecentCodexThreads returns the ids of threads updated within
+// recentCodexWindow. It is the stand-in for discoverHeldCodexThreads where
+// open files are unavailable, so it can name a closed thread that shares a
+// working directory with a running one; state and recency still come from
+// the thread itself.
+func (d *discoverer) discoverRecentCodexThreads() map[string]bool {
+	recent := make(map[string]bool)
+	statePath, err := d.codexStatePath()
+	if err != nil {
+		return recent
+	}
+	cutoff := time.Now().Add(-recentCodexWindow).UnixMilli()
+	query := fmt.Sprintf(`SELECT id FROM threads WHERE COALESCE(updated_at_ms, updated_at * 1000) >= %d ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC LIMIT 100`, cutoff)
+	output, err := d.command("sqlite3", "-readonly", "-json", statePath, query).Output()
+	if err != nil || len(bytes.TrimSpace(output)) == 0 {
+		return recent
+	}
+	var rows []struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(output, &rows) != nil {
+		return recent
+	}
+	for _, row := range rows {
+		if d.validUUID(row.ID) {
+			recent[row.ID] = true
+		}
+	}
+	return recent
+}
+
 // matchCodexGroupsByCWD assigns each unmatched group the newest held,
 // unclaimed, non-subagent thread that shares its working directory.
 func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
@@ -172,7 +217,7 @@ func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates 
 		var best ThreadMetadataRow
 		for id := range candidates {
 			row, ok := metadata[id]
-			if !ok || claimed[id] || row.CWD != cwd || row.RolloutPath == "" || strings.HasPrefix(row.Source, "{") {
+			if !ok || claimed[id] || !sameDirectory(row.CWD, cwd) || row.RolloutPath == "" || strings.HasPrefix(row.Source, "{") {
 				continue
 			}
 			if best.ID == "" || row.UpdatedAtMS > best.UpdatedAtMS {
@@ -372,4 +417,24 @@ func ValidUUID(value string) bool { return standalone().validUUID(value) }
 // file name.
 func ThreadIDFromRolloutPath(path string) (string, bool) {
 	return standalone().threadIDFromRolloutPath(path)
+}
+
+// sameDirectory reports whether a and b name the same directory. Windows
+// paths differ in drive-letter case, separators, trailing separators and the
+// \\?\ prefix depending on which program wrote them; other paths compare
+// exactly.
+func sameDirectory(a, b string) bool {
+	if a == b {
+		return true
+	}
+	return normalizeDirectory(a) == normalizeDirectory(b)
+}
+
+func normalizeDirectory(path string) string {
+	path = strings.TrimPrefix(path, `\\?\`)
+	if len(path) < 2 || path[1] != ':' {
+		return path
+	}
+	path = strings.TrimRight(slashPath(path), "/")
+	return strings.ToLower(path)
 }

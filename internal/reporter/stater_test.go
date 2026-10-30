@@ -91,7 +91,11 @@ func TestStaterSourceIsReadByCursor(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return s.Files[rowPath]
+		abs, err := filepath.Abs(rowPath) // Windows adds the drive
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.Files[abs]
 	}
 	if pos := state(); pos.Offset != 4 || pos.Size != 4 || pos.LastSeq != 3 {
 		t.Fatalf("state = %+v, want offset and size 4, last seq 3", pos)

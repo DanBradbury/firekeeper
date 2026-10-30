@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -19,15 +17,14 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/serverinstall"
 )
 
-// serverScript is a fake firekeeper-server: it answers `version` and
-// `license --json` like the real one and echoes anything else.
-func serverScript(version, licenseJSON string) string {
-	return "#!/bin/sh\n" +
-		"case \"$1\" in\n" +
-		"  version) echo 'firekeeper-server " + version + " (commit abc, built 2026-10-23, linux/amd64)'; exit 0;;\n" +
-		"  license) echo '" + licenseJSON + "'; exit 3;;\n" +
-		"esac\n" +
-		"echo \"fake-server: $*\"\n"
+// serverScript is a fake firekeeper-server (see fakeServerBody): it answers
+// `version` and `license --json` like the real one and echoes anything else.
+func serverScript(t *testing.T, version, licenseJSON string) string {
+	t.Helper()
+	return fakeServerBody(t, fakeServerSpec{
+		Banner:  "firekeeper-server " + version + " (commit abc, built 2026-10-23, linux/amd64)",
+		License: licenseJSON,
+	})
 }
 
 type updateRelease struct {
@@ -40,17 +37,9 @@ type updateRelease struct {
 // latestFails is true the /latest lookup returns an error.
 func newUpdateRelease(t *testing.T, tag, script string, latestFails bool) updateRelease {
 	t.Helper()
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gz)
-	for _, e := range [][2]string{{"LICENSE", "lic"}, {"firekeeper-server", script}} {
-		tw.WriteHeader(&tar.Header{Name: e[0], Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(e[1]))})
-		tw.Write([]byte(e[1]))
-	}
-	tw.Close()
-	gz.Close()
+	archive, asset := serverArchive(t, tag, script)
+	buf := bytes.NewBuffer(archive)
 	sum := sha256.Sum256(buf.Bytes())
-	asset := "firekeeper-server_" + strings.TrimPrefix(tag, "v") + "_" + runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
 	n := 0
 	var paths []string
 	mux := http.NewServeMux()
@@ -82,8 +71,8 @@ func newUpdateRelease(t *testing.T, tag, script string, latestFails bool) update
 func setupUpdate(t *testing.T, rel updateRelease, installedVersion, stdin string) (*installSetup, string) {
 	t.Helper()
 	s := setupInstall(t, rel.srv.URL, stdin)
-	server := filepath.Join(s.exeDir, serverBinName)
-	if err := os.WriteFile(server, []byte(serverScript(installedVersion, "")), 0o755); err != nil {
+	server := filepath.Join(s.exeDir, serverBinName+exeSuffix())
+	if err := os.WriteFile(server, []byte(serverScript(t, installedVersion, "")), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return s, server
@@ -99,7 +88,7 @@ func readFile(t *testing.T, p string) string {
 }
 
 func TestUpdateAcceptedReplacesTheServerAndRunsIt(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	s, server := setupUpdate(t, rel, "0.4.0", "1\n")
 	var stderr bytes.Buffer
 	if code := runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr); code != 0 {
@@ -124,7 +113,7 @@ func TestUpdateAcceptedReplacesTheServerAndRunsIt(t *testing.T) {
 
 func TestUpdateDeclinedChangesNothing(t *testing.T) {
 	for _, answer := range []string{"2\n", "\n", "no\n", ""} {
-		rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+		rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 		s, server := setupUpdate(t, rel, "0.4.0", answer)
 		var stderr bytes.Buffer
 		if code := runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr); code != 0 {
@@ -143,7 +132,7 @@ func TestUpdateDeclinedChangesNothing(t *testing.T) {
 }
 
 func TestUpdateSkipIsRememberedUntilANewerRelease(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	s, _ := setupUpdate(t, rel, "0.4.0", "3\n")
 	var stderr bytes.Buffer
 	runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr)
@@ -161,7 +150,7 @@ func TestUpdateSkipIsRememberedUntilANewerRelease(t *testing.T) {
 		t.Errorf("state %+v", st)
 	}
 	// A newer release is offered again.
-	newer := newUpdateRelease(t, "v0.6.0", serverScript("0.6.0", ""), false)
+	newer := newUpdateRelease(t, "v0.6.0", serverScript(t, "0.6.0", ""), false)
 	s.env[serverinstall.EnvURL] = newer.srv.URL
 	installOffer.stdin = strings.NewReader("2\n")
 	stderr.Reset()
@@ -173,7 +162,7 @@ func TestUpdateSkipIsRememberedUntilANewerRelease(t *testing.T) {
 
 func TestUpdateNotOfferedWhenCurrent(t *testing.T) {
 	for _, installed := range []string{"0.5.0", "0.6.0", "dev"} {
-		rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+		rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 		_, _ = setupUpdate(t, rel, installed, "1\n")
 		var stderr bytes.Buffer
 		runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr)
@@ -194,7 +183,7 @@ func TestUpdateOffSwitches(t *testing.T) {
 		"explicit server path": {map[string]string{ServerBinEnv: "SERVER"}, true},
 		"not a terminal":       {nil, false},
 	} {
-		rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+		rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 		s, server := setupUpdate(t, rel, "0.4.0", "1\n")
 		s.tty = tc.tty
 		for k, v := range tc.env {
@@ -212,7 +201,7 @@ func TestUpdateOffSwitches(t *testing.T) {
 }
 
 func TestUpdateOffWhenNoReleaseSourceIsConfigured(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	s, _ := setupUpdate(t, rel, "0.4.0", "1\n")
 	delete(s.env, serverinstall.EnvURL)
 	var stderr bytes.Buffer
@@ -224,7 +213,7 @@ func TestUpdateOffWhenNoReleaseSourceIsConfigured(t *testing.T) {
 
 func TestUpdateSkippedForOperatorCommandsAndHelp(t *testing.T) {
 	for _, args := range [][]string{{"token", "list"}, {"account", "list"}, {"admin", "x"}, {"invite"}, {"prices"}, {"--help"}, {"-h"}} {
-		rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+		rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 		_, _ = setupUpdate(t, rel, "0.4.0", "1\n")
 		var stderr bytes.Buffer
 		runServe(args, nil, &stderr)
@@ -235,7 +224,7 @@ func TestUpdateSkippedForOperatorCommandsAndHelp(t *testing.T) {
 }
 
 func TestUpdateLookupFailureContinuesQuietly(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), true)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), true)
 	s, server := setupUpdate(t, rel, "0.4.0", "1\n")
 	var stderr bytes.Buffer
 	if code := runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr); code != 0 {
@@ -247,11 +236,11 @@ func TestUpdateLookupFailureContinuesQuietly(t *testing.T) {
 }
 
 func TestUpdateChecksumMismatchKeepsTheOldServer(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	// Serve a corrupted archive under the right name.
 	good := rel.srv.Config.Handler
 	rel.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".tar.gz") {
+		if strings.HasSuffix(r.URL.Path, ".tar.gz") || strings.HasSuffix(r.URL.Path, ".zip") {
 			w.Write([]byte("not the archive"))
 			return
 		}
@@ -274,7 +263,7 @@ func TestUpdateChecksumMismatchKeepsTheOldServer(t *testing.T) {
 // the update is undone.
 func TestUpdateNotCoveredByTheLicenseIsRolledBack(t *testing.T) {
 	notCovered := `{"status":"not covered by this build","updates_until":"2026-12-31"}`
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", notCovered), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", notCovered), false)
 	s, server := setupUpdate(t, rel, "0.4.0", "1\n")
 	var stderr bytes.Buffer
 	if code := runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr); code != 0 {
@@ -290,8 +279,9 @@ func TestUpdateNotCoveredByTheLicenseIsRolledBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.exeDir, ".firekeeper-server.previous")); err == nil {
 		t.Error("the backup was left behind")
 	}
+	// Windows has no execute bits; there the .exe name makes it runnable.
 	info, err := os.Stat(server)
-	if err != nil || info.Mode().Perm()&0o111 == 0 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
 		t.Errorf("restored file is not executable: %v %v", info, err)
 	}
 }
@@ -302,7 +292,7 @@ func TestUpdateCoveredOrKeylessIsKept(t *testing.T) {
 		"no key":  ``,
 		"garbage": `not json`,
 	} {
-		rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", licenseJSON), false)
+		rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", licenseJSON), false)
 		_, server := setupUpdate(t, rel, "0.4.0", "1\n")
 		var stderr bytes.Buffer
 		runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr)
@@ -316,7 +306,12 @@ func TestUpdateReadOnlyDirectoryIsLeftAlone(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root can write anywhere")
 	}
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	if runtime.GOOS == "windows" {
+		// Windows ignores the read-only attribute on directories, so chmod
+		// cannot make one unwritable; that needs an ACL change.
+		t.Skip("chmod cannot make a directory unwritable on Windows")
+	}
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	s, server := setupUpdate(t, rel, "0.4.0", "1\n")
 	if err := os.Chmod(s.exeDir, 0o555); err != nil {
 		t.Fatal(err)
@@ -330,12 +325,12 @@ func TestUpdateReadOnlyDirectoryIsLeftAlone(t *testing.T) {
 }
 
 func TestUpdateHomebrewUsesBrewUpgrade(t *testing.T) {
-	rel := newUpdateRelease(t, "v0.5.0", serverScript("0.5.0", ""), false)
+	rel := newUpdateRelease(t, "v0.5.0", serverScript(t, "0.5.0", ""), false)
 	s := setupInstall(t, rel.srv.URL, "1\n")
 	cellar := filepath.Join(t.TempDir(), "Cellar", "firekeeper-server", "0.4.0", "bin")
 	os.MkdirAll(cellar, 0o755)
-	server := filepath.Join(cellar, serverBinName)
-	os.WriteFile(server, []byte(serverScript("0.4.0", "")), 0o755)
+	server := filepath.Join(cellar, serverBinName+exeSuffix())
+	os.WriteFile(server, []byte(serverScript(t, "0.4.0", "")), 0o755)
 	brewDir := t.TempDir()
 	brew := fakeBinary(t, brewDir, "brew")
 	defaultLookup.lookPath = func(n string) (string, error) {
@@ -350,7 +345,7 @@ func TestUpdateHomebrewUsesBrewUpgrade(t *testing.T) {
 	var verbs []string
 	installOffer.runBrew = func(path, verb string, _ io.Writer) error {
 		verbs = append(verbs, verb)
-		return os.WriteFile(server, []byte(serverScript("0.5.0", "")), 0o755)
+		return os.WriteFile(server, []byte(serverScript(t, "0.5.0", "")), 0o755)
 	}
 	var stderr bytes.Buffer
 	if code := runServe([]string{"--listen", "127.0.0.1:0"}, nil, &stderr); code != 0 {

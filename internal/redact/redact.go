@@ -122,13 +122,26 @@ func redactString(s string, opts Options, counts Counts) string {
 	}
 	s = redactAssignments(s, counts)
 	for _, p := range opts.Paths {
-		s = redactPrefix(s, p, Marker(KindPath), KindPath, counts)
+		s = redactPath(s, p, false, Marker(KindPath), KindPath, counts)
 		if tilde, ok := homeForm(p, opts.HomeDir); ok {
-			s = redactPrefix(s, tilde, Marker(KindPath), KindPath, counts)
+			s = redactPath(s, tilde, isWindowsDrivePath(opts.HomeDir), Marker(KindPath), KindPath, counts)
 		}
 	}
-	return redactHome(s, opts.HomeDir, counts)
+	return redactPath(s, opts.HomeDir, false, "~", KindHomeDir, counts)
 }
+
+// redactPath replaces p wherever it appears as a whole path prefix. A
+// Windows drive path, and with tilde set the "~\..." form of a path below a
+// Windows home, is matched in all its spellings (see windows.go); any other
+// path is matched exactly.
+func redactPath(s, p string, tilde bool, replacement string, kind Kind, counts Counts) string {
+	if w := windowsPathFor(p, tilde); w != nil {
+		return w.redact(s, replacement, kind, counts)
+	}
+	return redactPrefix(s, p, replacement, kind, counts)
+}
+
+func isASCIILetter(b byte) bool { return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') }
 
 // detector replaces regular expression matches with a marker. hints are
 // literal substrings, at least one of which every match contains; they let
@@ -338,17 +351,15 @@ func isValueEnd(c byte) bool {
 	return false
 }
 
-// redactHome rewrites home to "~" where it is a whole path prefix: not
-// preceded by a path-name byte and followed by a separator or a non-path
-// byte.
-func redactHome(s, home string, counts Counts) string {
-	return redactPrefix(s, home, "~", KindHomeDir, counts)
-}
-
-// homeForm returns p with a leading home directory written as "~".
+// homeForm returns p with a leading home directory written as "~". A
+// Windows home is compared without regard to case or separator.
 func homeForm(p, home string) (string, bool) {
 	p, home = strings.TrimRight(p, `/\`), strings.TrimRight(home, `/\`)
-	if home == "" || !strings.HasPrefix(p, home) || len(p) <= len(home) || (p[len(home)] != '/' && p[len(home)] != '\\') {
+	hasPrefix := strings.HasPrefix(p, home)
+	if isWindowsDrivePath(home) && len(p) >= len(home) {
+		hasPrefix = strings.EqualFold(strings.ReplaceAll(p[:len(home)], "/", `\`), strings.ReplaceAll(home, "/", `\`))
+	}
+	if home == "" || !hasPrefix || len(p) <= len(home) || (p[len(home)] != '/' && p[len(home)] != '\\') {
 		return "", false
 	}
 	return "~" + p[len(home):], true

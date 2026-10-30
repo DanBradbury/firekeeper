@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/DanBradbury/firekeeper/internal/fsutil"
 	"io"
 	"os"
 	"time"
@@ -17,7 +18,7 @@ const tailWindow = 1 << 20
 // reported as os.ErrNotExist. It returns the offset just past what it
 // wrote, for Follow.
 func Tail(path string, n int, w io.Writer) (int64, error) {
-	f, err := os.Open(path)
+	f, err := fsutil.Open(path)
 	if err != nil {
 		return 0, fmt.Errorf("open daemon log: %w", cause(err))
 	}
@@ -66,7 +67,7 @@ func Tail(path string, n int, w io.Writer) (int64, error) {
 // is cancelled, polling every interval. When the daemon rotates the log it
 // finishes the old file and continues at the start of the new one.
 func Follow(ctx context.Context, path string, offset int64, interval time.Duration, w io.Writer) error {
-	f, err := os.Open(path)
+	f, err := fsutil.Open(path)
 	if err != nil {
 		return fmt.Errorf("open daemon log: %w", cause(err))
 	}
@@ -85,7 +86,7 @@ func Follow(ctx context.Context, path string, offset int64, interval time.Durati
 			if _, err := io.Copy(w, f); err != nil {
 				return err
 			}
-			next, err := os.Open(path)
+			next, err := fsutil.Open(path)
 			if err == nil {
 				f.Close()
 				f = next
