@@ -43,24 +43,41 @@ func (d *discoverer) isClaudeCodeCommand(command string) bool {
 	return true
 }
 
+// isClaudeDesktopWindows reports whether the command is the Claude desktop
+// app or one of its Electron helpers, which are not Claude Code sessions.
+// The app installs under AnthropicClaude (Squirrel) or WindowsApps (MSIX),
+// and its helper processes carry an Electron --type flag.
+func isClaudeDesktopWindows(fields []string) bool {
+	path := strings.ToLower(slashPath(fields[0]))
+	if strings.Contains(path, "/anthropicclaude/") || strings.Contains(path, "/windowsapps/") {
+		return true
+	}
+	for _, field := range fields[1:] {
+		if strings.HasPrefix(field, "--type=") {
+			return true
+		}
+	}
+	return false
+}
+
 // claudeCodeArgs returns the arguments after the Claude Code executable, or
 // nil when command is not Claude Code. Both the native binary and the npm
 // package run through node are recognized.
 func (d *discoverer) claudeCodeArgs(command string) []string {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
 	if len(fields) == 0 {
 		return nil
 	}
 	// The desktop app and its helpers live inside a .app bundle and are
 	// named "Claude"; the CLI binary is lowercase.
-	if strings.Contains(filepath.ToSlash(fields[0]), ".app/Contents/") {
+	if strings.Contains(slashPath(fields[0]), ".app/Contents/") || isClaudeDesktopWindows(fields) {
 		return nil
 	}
-	switch base := filepath.Base(fields[0]); base {
+	switch base := baseName(fields[0]); base {
 	case "claude", "claude.exe":
 		return append([]string{}, fields[1:]...)
 	case "node", "node.exe", "bun", "bun.exe":
-		if len(fields) > 1 && strings.Contains(filepath.ToSlash(fields[1]), "@anthropic-ai/claude-code/") {
+		if len(fields) > 1 && strings.Contains(slashPath(fields[1]), "@anthropic-ai/claude-code/") {
 			return append([]string{}, fields[2:]...)
 		}
 	}

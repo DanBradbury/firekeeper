@@ -469,10 +469,10 @@ func TestUploadedEventsAreRedacted(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if bytes.Contains(body, []byte(token)) || bytes.Contains(body, []byte(f.home)) {
+	if bytes.Contains(body, []byte(token)) || bytes.Contains(body, []byte(strings.ReplaceAll(f.home, `\`, `\\`))) {
 		t.Fatal("server stored unredacted event")
 	}
-	if !bytes.Contains(body, []byte("[REDACTED:github_token]")) || !bytes.Contains(body, []byte("~/src/demo")) {
+	if !bytes.Contains(body, []byte("[REDACTED:github_token]")) || !bytes.Contains(body, []byte(strings.ReplaceAll(filepath.FromSlash("~/src/demo"), `\`, `\\`))) {
 		t.Fatal("server events lack redaction markers")
 	}
 	resp, err = http.Get(fmt.Sprintf("%s/v1/sessions/%s:%s", ts.URL, testMachine, testSession))
@@ -485,7 +485,7 @@ func TestUploadedEventsAreRedacted(t *testing.T) {
 	}
 	json.NewDecoder(resp.Body).Decode(&meta)
 	resp.Body.Close()
-	if meta.CWD != "~/src/demo" || meta.State != "WAITING" {
+	if meta.CWD != filepath.FromSlash("~/src/demo") || meta.State != "WAITING" {
 		t.Fatalf("session meta = %+v", meta)
 	}
 }

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 )
 
 // Options configures discovery. Zero values use the local environment.
@@ -104,6 +106,14 @@ func (c commandOutput) Output() ([]byte, error) {
 	}
 	if c.d.opts.Run != nil {
 		return c.d.opts.Run(c.d.ctx, c.name, c.args...)
+	}
+	if out, handled, err := nativeCommand(c.name, c.args); handled {
+		return out, err
+	}
+	if c.name == "sqlite3" {
+		// Windows has no sqlite3 command line tool; sqlitejson reads the
+		// database in-process there and anywhere else it is missing.
+		return sqlitejson.Run(c.d.ctx, c.args...)
 	}
 	return exec.CommandContext(c.d.ctx, c.name, c.args...).Output()
 }

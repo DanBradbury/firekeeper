@@ -19,7 +19,8 @@ import (
 // projectDirName encodes a workspace path the way Cursor names its project
 // directories.
 func projectDirName(path string) string {
-	return strings.TrimLeft(strings.ReplaceAll(filepath.ToSlash(path), "/", "-"), "-")
+	// Cursor writes no colon in the name, which no directory could hold.
+	return strings.ReplaceAll(strings.TrimLeft(strings.ReplaceAll(filepath.ToSlash(path), "/", "-"), "-"), ":", "")
 }
 
 // writeChat creates a chat database holding meta as Cursor stores it:

@@ -42,7 +42,7 @@ func TestEnumerate(t *testing.T) {
 		if m.Provider != "gemini" || m.State != session.SessionStateEnded || m.Source != session.GeminiSource {
 			t.Errorf("%s: provider %q state %s source %q", tt.id, m.Provider, m.State, m.Source)
 		}
-		if m.CWD != tt.cwd || m.Project != tt.project || m.Title != tt.title || m.Name != tt.title || m.Model != tt.model {
+		if filepath.ToSlash(m.CWD) != tt.cwd || m.Project != tt.project || m.Title != tt.title || m.Name != tt.title || m.Model != tt.model {
 			t.Errorf("%s: cwd %q project %q title %q model %q", tt.id, m.CWD, m.Project, m.Title, m.Model)
 		}
 		if filepath.Clean(m.RolloutPath) != filepath.Clean(tt.path) {
@@ -62,7 +62,7 @@ func TestEnumerateOptions(t *testing.T) {
 	var skipped []string
 	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{Skip: func(m session.Meta) bool {
 		skipped = append(skipped, m.ID)
-		return m.CWD == "/work/legacy"
+		return filepath.ToSlash(m.CWD) == "/work/legacy"
 	}})
 	if err != nil {
 		t.Fatal(err)

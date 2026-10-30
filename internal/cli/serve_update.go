@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -176,8 +177,8 @@ func updateWithBrew(path string, stderr io.Writer) string {
 // undone and the old version kept.
 func updateInPlace(ctx context.Context, src serverinstall.Source, path, real, current string, stderr io.Writer) string {
 	dir := filepath.Dir(real)
-	if filepath.Base(real) != serverinstall.BinaryName {
-		fmt.Fprintf(stderr, "firekeeper serve: %s is not named %s, so it was not updated. Continuing with the current version.\n", real, serverinstall.BinaryName)
+	if name := serverinstall.ExecutableName(runtime.GOOS); filepath.Base(real) != name {
+		fmt.Fprintf(stderr, "firekeeper serve: %s is not named %s, so it was not updated. Continuing with the current version.\n", real, name)
 		return path
 	}
 	if !serverinstall.DirWritable(dir) {

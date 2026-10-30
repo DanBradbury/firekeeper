@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -83,10 +85,11 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 }
 
 // Service installs, removes, and inspects the daemon as a per-user login
-// service: a LaunchAgent on macOS and a systemd user unit on Linux. It
-// never needs or calls sudo.
+// service: a LaunchAgent on macOS, a systemd user unit on Linux, and a
+// Task Scheduler logon task on Windows. It never needs or calls sudo and
+// never asks for administrator rights.
 type Service struct {
-	// GOOS picks the service manager: "darwin" or "linux".
+	// GOOS picks the service manager: "darwin", "linux", or "windows".
 	GOOS string
 	// Home is the user's home directory.
 	Home string
@@ -96,9 +99,15 @@ type Service struct {
 	Executable string
 	// Args follow "daemon" on the service's command line.
 	Args []string
-	// Env holds the variables written into the service definition.
+	// Env holds the variables written into the service definition. A
+	// Windows task cannot carry any, so it runs with the user's own
+	// environment; Env there only locates the system directory.
 	Env map[string]string
-	// Runner runs launchctl and systemctl.
+	// User is the DOMAIN\name the Windows task runs as.
+	User string
+	// TaskName overrides the Windows task's name, TaskName by default.
+	TaskName string
+	// Runner runs launchctl, systemctl, and schtasks.
 	Runner Runner
 	// Out receives progress lines.
 	Out io.Writer
@@ -127,9 +136,16 @@ func NewService(args []string, out io.Writer) (*Service, error) {
 			env[key] = v
 		}
 	}
+	account := windowsAccount()
+	if goos == "windows" {
+		if root := os.Getenv("SystemRoot"); root != "" {
+			env["SystemRoot"] = root
+		}
+	}
 	return &Service{
 		GOOS:       goos,
 		Home:       home,
+		User:       account,
 		UID:        os.Getuid(),
 		Executable: exe,
 		Args:       args,
@@ -141,34 +157,48 @@ func NewService(args []string, out io.Writer) (*Service, error) {
 
 // Supported reports whether goos has a service manager Service knows.
 func Supported(goos string) bool {
-	return goos == "darwin" || goos == "linux"
+	return goos == "darwin" || goos == "linux" || goos == "windows"
 }
 
 // Path is the service definition file.
 func (s *Service) Path() string {
 	if s.GOOS == "darwin" {
-		return filepath.Join(s.Home, "Library", "LaunchAgents", LaunchdLabel+".plist")
+		return s.join(s.Home, "Library", "LaunchAgents", LaunchdLabel+".plist")
+	}
+	if s.GOOS == "windows" {
+		return s.taskFilePath()
 	}
 	config := s.Env["XDG_CONFIG_HOME"]
-	if !filepath.IsAbs(config) {
-		config = filepath.Join(s.Home, ".config")
+	if !isAbsolute(s.GOOS, config) {
+		config = s.join(s.Home, ".config")
 	}
-	return filepath.Join(config, "systemd", "user", SystemdUnit)
+	return s.join(config, "systemd", "user", SystemdUnit)
+}
+
+// join joins path elements the way the service's platform does: with the
+// host's separator on Windows, where the service really runs, and with
+// slashes otherwise, so a service for another platform (as tests build)
+// has the paths that platform would.
+func (s *Service) join(elem ...string) string {
+	if s.GOOS == "windows" {
+		return filepath.Join(elem...)
+	}
+	return path.Join(elem...)
 }
 
 // DataDir is ~/.firekeeper.
 func (s *Service) DataDir() string {
-	return filepath.Join(s.Home, ".firekeeper")
+	return s.join(s.Home, ".firekeeper")
 }
 
 // LogPath is the daemon's own log file.
 func (s *Service) LogPath() string {
-	return filepath.Join(s.DataDir(), "daemon.log")
+	return s.join(s.DataDir(), "daemon.log")
 }
 
 // StartupLogPath is where launchd writes the daemon's stdout and stderr.
 func (s *Service) StartupLogPath() string {
-	return filepath.Join(s.DataDir(), stderrLogName)
+	return s.join(s.DataDir(), stderrLogName)
 }
 
 // File returns the service definition Install would write.
@@ -176,8 +206,11 @@ func (s *Service) File() ([]byte, error) {
 	if err := s.check(); err != nil {
 		return nil, err
 	}
-	if s.GOOS == "darwin" {
+	switch s.GOOS {
+	case "darwin":
 		return launchdPlist(s), nil
+	case "windows":
+		return taskXML(s), nil
 	}
 	return systemdUnit(s), nil
 }
@@ -186,7 +219,7 @@ func (s *Service) check() error {
 	if !Supported(s.GOOS) {
 		return fmt.Errorf("installing the daemon as a service is not supported on %s", s.GOOS)
 	}
-	if !filepath.IsAbs(s.Executable) {
+	if !isAbsolute(s.GOOS, s.Executable) {
 		return errors.New("the firekeeper executable path is not absolute")
 	}
 	if transientExecutable(s.Executable) {
@@ -198,16 +231,39 @@ func (s *Service) check() error {
 // transientExecutable reports whether path looks like a go run build,
 // which is deleted when go run exits.
 func transientExecutable(path string) bool {
-	if strings.Contains(path, string(filepath.Separator)+"go-build") {
+	if strings.Contains(path, "/go-build") || strings.Contains(path, `\go-build`) {
 		return true
 	}
 	tmp := filepath.Clean(os.TempDir()) + string(filepath.Separator)
+	if goos == "windows" {
+		// Windows paths ignore case, and the temp directory is often
+		// spelled in its 8.3 form by one caller and in full by another.
+		return len(path) >= len(tmp) && strings.EqualFold(path[:len(tmp)], tmp)
+	}
 	return strings.HasPrefix(path, tmp)
+}
+
+// isAbsolute reports whether path is absolute on goos, which need not be the
+// platform running the code.
+func isAbsolute(goos, path string) bool {
+	if goos != "windows" {
+		// Not filepath.IsAbs, which answers for the platform running the
+		// code, not for goos.
+		return strings.HasPrefix(path, "/")
+	}
+	if strings.HasPrefix(path, `\\`) {
+		return true
+	}
+	return len(path) >= 3 && path[1] == ':' && (path[2] == '\\' || path[2] == '/') &&
+		(path[0]|0x20 >= 'a' && path[0]|0x20 <= 'z')
 }
 
 // Commands lists the service-manager commands Install runs after writing
 // the file, for a dry run.
 func (s *Service) Commands() [][]string {
+	if s.GOOS == "windows" {
+		return append([][]string{{"schtasks", "/End", "/TN", s.taskName()}}, s.taskCommands()...)
+	}
 	if s.GOOS == "darwin" {
 		return [][]string{
 			{"launchctl", "bootout", s.target()},
@@ -233,13 +289,19 @@ func (s *Service) Install(ctx context.Context) error {
 	if err := os.MkdirAll(s.DataDir(), 0o700); err != nil {
 		return fmt.Errorf("create data directory: %w", cause(err))
 	}
+	if s.GOOS == "windows" {
+		content = encodeUTF16(content)
+	}
 	if err := writeFileAtomic(s.Path(), content, 0o644); err != nil {
 		return err
 	}
 	s.printf("wrote %s\n", s.Path())
-	if s.GOOS == "darwin" {
+	switch s.GOOS {
+	case "darwin":
 		err = s.installLaunchd(ctx)
-	} else {
+	case "windows":
+		err = s.installTask(ctx)
+	default:
 		err = s.installSystemd(ctx)
 	}
 	if err != nil {
@@ -302,7 +364,13 @@ func (s *Service) Uninstall(ctx context.Context, purge bool) error {
 	_, statErr := os.Stat(s.Path())
 	fileExists := statErr == nil
 	removed := false
-	if s.GOOS == "darwin" {
+	if s.GOOS == "windows" {
+		registered, err := s.uninstallTask(ctx)
+		if err != nil {
+			return err
+		}
+		removed = registered
+	} else if s.GOOS == "darwin" {
 		if s.launchdLoaded(ctx) {
 			if err := s.run(ctx, "launchctl", "bootout", s.target()); err != nil {
 				return err
@@ -405,6 +473,9 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	var st Status
 	if _, err := os.Stat(s.Path()); err == nil {
 		st.Installed = true
+	}
+	if s.GOOS == "windows" {
+		return st, s.taskStatus(ctx, &st)
 	}
 	if s.GOOS == "darwin" {
 		out, err := s.Runner.Run(ctx, "launchctl", "print", s.target())
@@ -532,4 +603,23 @@ func firstLine(s string) string {
 	s = strings.TrimSpace(s)
 	line, _, _ := strings.Cut(s, "\n")
 	return strings.TrimSpace(line)
+}
+
+// windowsAccount is the DOMAIN\name the logon task is bound to. A logon
+// trigger names its user so that a standard account can register it; one
+// without a user fires for everyone and needs administrator rights.
+func windowsAccount() string {
+	if goos != "windows" {
+		return ""
+	}
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	if name := os.Getenv("USERNAME"); name != "" {
+		if domain := os.Getenv("USERDOMAIN"); domain != "" {
+			return domain + `\` + name
+		}
+		return name
+	}
+	return ""
 }

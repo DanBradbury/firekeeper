@@ -248,7 +248,7 @@ func (c *Config) readFile(path, home string) error {
 			continue
 		}
 		p = expand(p, home)
-		if !filepath.IsAbs(p) {
+		if !filepath.IsAbs(p) && !strings.HasPrefix(p, "/") {
 			return fmt.Errorf("config: %s: redact.paths entry %q must be absolute or start with ~", path, p)
 		}
 		c.RedactPaths = append(c.RedactPaths, filepath.Clean(p))
@@ -335,6 +335,9 @@ func expand(p, home string) string {
 		return home
 	}
 	if rest, ok := strings.CutPrefix(p, "~/"); ok {
+		return filepath.Join(home, rest)
+	}
+	if rest, ok := strings.CutPrefix(p, `~\`); ok && os.PathSeparator == '\\' {
 		return filepath.Join(home, rest)
 	}
 	return p

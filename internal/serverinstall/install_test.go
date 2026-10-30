@@ -2,20 +2,50 @@ package serverinstall
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-const fakeScript = "#!/bin/sh\necho \"$@\"\nexit 0\n"
+// fakeScript is the body of the fake server in test archives. Install runs
+// it with `version`, so it must be runnable on the host: a shell script on
+// Unix, and on Windows a copy of this test binary, which TestMain turns into
+// a fake server when it runs under an installer temp-file name.
+var fakeScript = "#!/bin/sh\necho \"$@\"\nexit 0\n"
+
+func TestMain(m *testing.M) {
+	if strings.HasPrefix(filepath.Base(os.Args[0]), ".firekeeper-server-") {
+		fmt.Println("firekeeper-server 1.0.0 (fake)")
+		os.Exit(0)
+	}
+	if runtime.GOOS == "windows" {
+		exe, err := os.Executable()
+		if err == nil {
+			var b []byte
+			if b, err = os.ReadFile(exe); err == nil {
+				fakeScript = string(b)
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "fake server:", err)
+			os.Exit(2)
+		}
+	}
+	os.Exit(m.Run())
+}
 
 type entry struct {
 	name, body string
@@ -50,6 +80,44 @@ func makeArchive(t *testing.T, entries ...entry) []byte {
 	return buf.Bytes()
 }
 
+// makeZip builds a Windows release archive. typeflag tar.TypeSymlink and
+// tar.TypeDir map to the zip mode bits for those.
+func makeZip(t *testing.T, entries ...entry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, e := range entries {
+		hdr := &zip.FileHeader{Name: e.name, Method: zip.Deflate}
+		switch e.typeflag {
+		case tar.TypeSymlink:
+			hdr.SetMode(fs.ModeSymlink | 0o777)
+		case tar.TypeDir:
+			hdr.SetMode(fs.ModeDir | 0o755)
+		default:
+			hdr.SetMode(0o755)
+		}
+		w, err := zw.CreateHeader(hdr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := e.body
+		if e.typeflag == tar.TypeSymlink {
+			body = e.link
+		}
+		if e.typeflag != tar.TypeDir {
+			w.Write([]byte(body))
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func goodZip(t *testing.T) []byte {
+	return makeZip(t, entry{name: "LICENSE", body: "license"}, entry{name: "firekeeper-server.exe", body: fakeScript})
+}
+
 func goodArchive(t *testing.T) []byte {
 	return makeArchive(t, entry{name: "LICENSE", body: "license"}, entry{name: "firekeeper-server", body: fakeScript})
 }
@@ -59,15 +127,27 @@ type release struct {
 	archive  []byte
 	checksum string // checksums.txt body; "" = computed from archive
 	noSums   bool
+	goos     string // "" = linux
+	goarch   string // "" = amd64
 }
 
 func serve(t *testing.T, r release) *Installer {
 	t.Helper()
-	osName, arch, err := Platform("linux", "amd64")
+	if r.goos == "" {
+		r.goos = "linux"
+	}
+	if r.goarch == "" {
+		r.goarch = "amd64"
+	}
+	osName, arch, err := Platform(r.goos, r.goarch)
 	if err != nil {
 		t.Fatal(err)
 	}
-	asset := "firekeeper-server_" + strings.TrimPrefix(r.tag, "v") + "_" + osName + "_" + arch + ".tar.gz"
+	ext := ".tar.gz"
+	if r.goos == "windows" {
+		ext = ".zip"
+	}
+	asset := "firekeeper-server_" + strings.TrimPrefix(r.tag, "v") + "_" + osName + "_" + arch + ext
 	sum := sha256.Sum256(r.archive)
 	sums := r.checksum
 	if sums == "" {
@@ -89,7 +169,7 @@ func serve(t *testing.T, r release) *Installer {
 	})
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
-	return &Installer{Source: Source{Base: srv.URL + "/rel"}, Client: srv.Client(), GOOS: "linux", GOARCH: "amd64"}
+	return &Installer{Source: Source{Base: srv.URL + "/rel"}, Client: srv.Client(), GOOS: r.goos, GOARCH: r.goarch}
 }
 
 func entries(t *testing.T, dir string) []string {
@@ -121,7 +201,7 @@ func TestInstallOK(t *testing.T) {
 		t.Errorf("path %q", p)
 	}
 	st, err := os.Stat(p)
-	if err != nil || st.Mode().Perm() != 0o755 {
+	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o755) {
 		t.Fatalf("stat %v %v", st, err)
 	}
 	if got := entries(t, dir); len(got) != 1 {
@@ -259,15 +339,17 @@ func TestBadTag(t *testing.T) {
 }
 
 func TestUnsupportedPlatform(t *testing.T) {
-	for _, p := range [][2]string{{"windows", "amd64"}, {"freebsd", "amd64"}, {"linux", "386"}, {"linux", "riscv64"}} {
+	for _, p := range [][2]string{{"windows", "386"}, {"freebsd", "amd64"}, {"linux", "386"}, {"linux", "riscv64"}} {
 		in := &Installer{Source: Source{Base: "https://example.invalid"}, GOOS: p[0], GOARCH: p[1]}
 		_, err := in.Install(context.Background(), t.TempDir())
 		if err == nil || !strings.Contains(err.Error(), "no firekeeper-server build for "+p[0]+"/"+p[1]) {
 			t.Errorf("%v: err = %v", p, err)
 		}
 	}
-	if _, _, err := Platform("darwin", "arm64"); err != nil {
-		t.Error(err)
+	for _, p := range [][2]string{{"darwin", "arm64"}, {"windows", "amd64"}, {"windows", "arm64"}} {
+		if _, _, err := Platform(p[0], p[1]); err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -383,7 +465,9 @@ func TestChooseDir(t *testing.T) {
 	if d, fb, err := ChooseDir(filepath.Join(writable, "firekeeper"), home); err != nil || fb || d != writable {
 		t.Errorf("writable: %v %v %v", d, fb, err)
 	}
-	if os.Getuid() != 0 { // root can write anywhere
+	// Root can write anywhere, and Windows ignores the read-only bit on
+	// directories.
+	if os.Getuid() != 0 && runtime.GOOS != "windows" {
 		ro := t.TempDir()
 		os.Chmod(ro, 0o555)
 		t.Cleanup(func() { os.Chmod(ro, 0o755) })
@@ -413,7 +497,145 @@ func TestIsHomebrewAndOnPath(t *testing.T) {
 			t.Errorf("IsHomebrew(%s) != %v", p, want)
 		}
 	}
-	if !OnPath("/a/b/", "/x:/a/b:/y") || OnPath("/a/c", "/x:/a/b") || OnPath("/a", "") {
+	sep := string(os.PathListSeparator)
+	if !OnPath("/a/b/", "/x"+sep+"/a/b"+sep+"/y") || OnPath("/a/c", "/x"+sep+"/a/b") || OnPath("/a", "") {
 		t.Error("OnPath")
+	}
+}
+
+func TestAssetAndExecutableNames(t *testing.T) {
+	for _, c := range []struct{ tag, goos, goarch, asset, exe string }{
+		{"v0.8.0", "linux", "amd64", "firekeeper-server_0.8.0_linux_amd64.tar.gz", "firekeeper-server"},
+		{"v0.8.0", "darwin", "arm64", "firekeeper-server_0.8.0_darwin_arm64.tar.gz", "firekeeper-server"},
+		{"v0.8.0", "windows", "amd64", "firekeeper-server_0.8.0_windows_amd64.zip", "firekeeper-server.exe"},
+		{"v0.8.0", "windows", "arm64", "firekeeper-server_0.8.0_windows_arm64.zip", "firekeeper-server.exe"},
+	} {
+		if got := AssetName(c.tag, c.goos, c.goarch); got != c.asset {
+			t.Errorf("AssetName(%s/%s) = %q, want %q", c.goos, c.goarch, got, c.asset)
+		}
+		if got := ExecutableName(c.goos); got != c.exe {
+			t.Errorf("ExecutableName(%s) = %q, want %q", c.goos, got, c.exe)
+		}
+	}
+}
+
+func TestWindowsZipInstall(t *testing.T) {
+	for _, arch := range []string{"amd64", "arm64"} {
+		t.Run(arch, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "bin")
+			in := serve(t, release{tag: "v0.8.0", archive: goodZip(t), goos: "windows", goarch: arch})
+			p, err := in.Install(context.Background(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p != filepath.Join(dir, "firekeeper-server.exe") {
+				t.Errorf("path %q", p)
+			}
+			b, err := os.ReadFile(p)
+			if err != nil || string(b) != fakeScript {
+				t.Errorf("installed body wrong (%d bytes, err %v)", len(b), err)
+			}
+			if got := entries(t, dir); len(got) != 1 {
+				t.Errorf("dir has %v, want only firekeeper-server.exe (no LICENSE, no temp files)", got)
+			}
+		})
+	}
+}
+
+func TestWindowsZipReplacesExisting(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "firekeeper-server.exe"), []byte("old"), 0o755)
+	in := serve(t, release{tag: "v0.8.0", archive: goodZip(t), goos: "windows"})
+	if _, err := in.Install(context.Background(), dir); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "firekeeper-server.exe"))
+	if string(b) != fakeScript {
+		t.Errorf("not replaced: %d bytes", len(b))
+	}
+}
+
+// A release from before Windows builds (v0.7.3 has only the darwin and linux
+// tar.gz archives) gives a clear error and installs nothing.
+func TestNoWindowsBuild(t *testing.T) {
+	sums := ""
+	for _, p := range []string{"darwin_amd64", "darwin_arm64", "linux_amd64", "linux_arm64"} {
+		sums += strings.Repeat("a", 64) + "  firekeeper-server_0.7.3_" + p + ".tar.gz\n"
+	}
+	for _, arch := range []string{"amd64", "arm64"} {
+		dir := t.TempDir()
+		in := serve(t, release{tag: "v0.7.3", archive: goodArchive(t), checksum: sums, goos: "windows", goarch: arch})
+		_, err := in.Install(context.Background(), dir)
+		if !errors.Is(err, ErrNoWindowsBuild) {
+			t.Fatalf("%s: err = %v, want ErrNoWindowsBuild", arch, err)
+		}
+		if want := "no Windows server build available for v0.7.3"; !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %q, want it to say %q", arch, err, want)
+		}
+		if got := entries(t, dir); len(got) != 0 {
+			t.Errorf("%s: left behind %v", arch, got)
+		}
+	}
+}
+
+func TestMaliciousZips(t *testing.T) {
+	exe := "firekeeper-server.exe"
+	cases := map[string][]entry{
+		"traversal":     {{name: "../" + exe, body: fakeScript}},
+		"backslash":     {{name: "..\\" + exe, body: fakeScript}},
+		"nested":        {{name: "sub/" + exe, body: fakeScript}},
+		"dot prefix":    {{name: "./" + exe, body: fakeScript}},
+		"absolute":      {{name: "/tmp/" + exe, body: fakeScript}},
+		"drive":         {{name: "C:/" + exe, body: fakeScript}},
+		"symlink":       {{name: exe, typeflag: tar.TypeSymlink, link: "C:/Windows/System32/cmd.exe"}},
+		"extra entry":   {{name: exe, body: fakeScript}, {name: "evil.ps1", body: "x"}},
+		"duplicate":     {{name: exe, body: fakeScript}, {name: exe, body: fakeScript}},
+		"directory":     {{name: exe + "/", typeflag: tar.TypeDir}},
+		"unix name":     {{name: "firekeeper-server", body: fakeScript}},
+		"no server":     {{name: "LICENSE", body: "x"}},
+		"empty":         {},
+		"license link":  {{name: "LICENSE", typeflag: tar.TypeSymlink, link: "C:/secret"}, {name: exe, body: fakeScript}},
+		"case mismatch": {{name: "FIREKEEPER-SERVER.EXE", body: fakeScript}},
+	}
+	for name, es := range cases {
+		t.Run(name, func(t *testing.T) {
+			outside := t.TempDir()
+			dir := filepath.Join(outside, "bin")
+			in := serve(t, release{tag: "v1.0.0", archive: makeZip(t, es...), goos: "windows"})
+			if _, err := in.Install(context.Background(), dir); err == nil {
+				t.Fatal("malicious archive accepted")
+			}
+			if got := entries(t, dir); len(got) != 0 {
+				t.Errorf("left behind %v", got)
+			}
+			if got := entries(t, outside); len(got) > 1 || (len(got) == 1 && got[0] != "bin") {
+				t.Errorf("wrote outside the install dir: %v", got)
+			}
+		})
+	}
+}
+
+func TestWindowsTarballRefused(t *testing.T) {
+	// The Windows asset name ends in .zip; a tar.gz served under it is not
+	// unpacked.
+	dir := t.TempDir()
+	in := serve(t, release{tag: "v1.0.0", archive: goodArchive(t), goos: "windows"})
+	if _, err := in.Install(context.Background(), dir); err == nil {
+		t.Fatal("tar.gz accepted as the Windows zip")
+	}
+	if got := entries(t, dir); len(got) != 0 {
+		t.Errorf("left behind %v", got)
+	}
+}
+
+func TestOversizedZipEntry(t *testing.T) {
+	dir := t.TempDir()
+	in := serve(t, release{tag: "v1.0.0", archive: makeZip(t, entry{name: "firekeeper-server.exe", body: strings.Repeat("x", 4096)}), goos: "windows"})
+	in.MaxEntry = 1024
+	if _, err := in.Install(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("err = %v", err)
+	}
+	if got := entries(t, dir); len(got) != 0 {
+		t.Errorf("left behind %v", got)
 	}
 }

@@ -162,7 +162,7 @@ func TestReportSendsGitContextAndFiles(t *testing.T) {
 	if se.Commit != hashA || se.Branch != "main" {
 		t.Fatalf("session git context = (%q, %q), want (main, %s)", se.Branch, se.Commit, hashA)
 	}
-	if se.CWD != "~/src/demo" {
+	if se.CWD != filepath.FromSlash("~/src/demo") {
 		t.Fatalf("cwd = %q, want it redacted", se.CWD)
 	}
 	files := srv.store.Files(testMachine, testSession)

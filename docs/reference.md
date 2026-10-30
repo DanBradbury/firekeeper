@@ -26,6 +26,64 @@ does not document that format, so it may change without notice. Cursor's
 transcripts record no timestamps or token counts, so Cursor sessions show
 neither.
 
+## Windows
+
+Windows 10 (1809 or newer) and Windows 11 are supported, on amd64 and arm64,
+from Windows PowerShell 5.1, PowerShell 7, Windows Terminal, or a classic
+console. Setup is the same as elsewhere: [install](install.md) with
+`install.ps1`, then run `firekeeper`; `firekeeper daemon install`,
+`firekeeper login`, and `firekeeper serve` work as described below. Nothing
+needs administrator rights, Git Bash, or WSL, and `sqlite3` does not have to be
+installed (Firekeeper reads provider databases itself when the command is
+missing). Git must be on `PATH` for project names and file links, as on every
+platform.
+
+What differs from macOS and Linux:
+
+- **Home directory.** `~` is `%USERPROFILE%`: provider data lives in
+  `%USERPROFILE%\.codex`, `.claude`, `.copilot`, and so on, and Firekeeper's own
+  files in `%USERPROFILE%\.firekeeper`. The same `CODEX_HOME`-style overrides
+  apply. In `config.toml`, paths may start with `~\` as well as `~/`; write
+  Windows paths in single quotes (`'C:\work\clients'`) or with forward slashes
+  so TOML does not read `\` as an escape.
+- **Process discovery** uses the Windows API instead of `ps` and `lsof`: a
+  Toolhelp process snapshot, with command lines and working directories read
+  from each process's environment block (`NtQueryInformationProcess` and
+  `ReadProcessMemory`, on your own processes only). An elevated program or
+  another user's is listed by name only. There is no TTY, so the TTY column
+  shows `—`.
+- **Open files cannot be listed**, which Codex discovery uses elsewhere to tell
+  which thread a runtime holds. On Windows a Codex runtime is matched to the
+  newest thread in its working directory that changed in the last 24 hours, so
+  a session you closed a moment ago in the same directory can be shown for a
+  runtime still open there. The other providers match by command line, logs,
+  or working directory first and behave the same; only Copilot CLI's last-resort
+  open-file match is unavailable.
+- **Terminal switching** raises the terminal window, not the tab; see
+  [Processes](#processes). Herdr pane focus is not attempted on Windows.
+- **File permissions.** Windows has no `0600` mode bits. `config.toml`, which
+  may hold a dashboard token, and `state.json` rely on the default permissions
+  of your profile folder, which admit you, administrators, and SYSTEM.
+- **Redaction** treats `C:\Users\you`, `C:/Users/you`, and `/c/Users/you` as
+  your home directory, with either case of the drive letter.
+- **Agents inside WSL** run on the Linux side, so Firekeeper for Windows does
+  not see them. Install the Linux build inside WSL to monitor those.
+- **The binaries are not code-signed.** `install.ps1` downloads without
+  SmartScreen's "downloaded from the internet" mark; a browser download of the
+  zip may trigger a prompt.
+- **Updates** re-run `install.ps1` for the new version (with `powershell`, or
+  `pwsh` when Windows PowerShell is missing) instead of `install.sh`.
+- **The login service** is a Task Scheduler task; see
+  [Running the daemon at login](#running-the-daemon-at-login).
+- **The dashboard server** for Windows is `firekeeper-server.exe`, from a
+  `.zip` release asset (see [Release layout contract](#release-layout-contract)).
+  Server releases published before Windows builds have no such asset, and
+  `serve` then stops with `no Windows server build available for <version>`.
+
+CI builds, vets, and tests Firekeeper on a Windows runner, including real
+Task Scheduler registration and the PowerShell installer, but Windows has had
+less everyday use than macOS. Please report what you find.
+
 ## Terminal dashboard
 
 Firekeeper opens on Processes. Press Tab to move between two text views:
@@ -100,6 +158,15 @@ working-directory match Firekeeper remembers the pane's stable ID for repeated
 switches. The initial match remains ambiguous when multiple Ghostty panes share
 the same working directory.
 
+On Windows, `s` raises the window that hosts the selected runtime: Firekeeper
+walks up from the runtime through the programs that started it until one owns a
+visible window, such as Windows Terminal, a classic console window, or an
+editor's integrated terminal. Windows has no TTY to match, and a Windows
+Terminal window does not let other programs choose its tabs, so with several
+tabs in one window you land in the right window and pick the tab yourself.
+Windows may refuse to bring a window forward when Firekeeper is not the
+foreground program.
+
 ### Usage
 
 | Key | Action |
@@ -165,7 +232,10 @@ account-wide quota.
 
 Firekeeper scans local processes every two seconds with `ps` and collapses
 related processes into runtime groups. The scan requests full command lines on
-macOS and Linux so long installation paths do not hide harness names. Sessions
+macOS and Linux so long installation paths do not hide harness names. Windows
+has neither `ps` nor `lsof`, so Firekeeper reads the process list, command
+lines, and working directories through the Windows API instead; see
+[Windows](#windows) for what that changes. Sessions
 that are not running are not discovered this way; past sessions reach the
 dashboard only through [`backfill`](#backfill).
 
@@ -189,8 +259,9 @@ dashboard only through [`backfill`](#backfill).
   session there. Several OpenCode runtimes in one directory, or one started
   with a directory argument from elsewhere, may be matched to the wrong
   session. `opencode serve` and the other helper subcommands are listed
-  without a session. The database is read with `sqlite3 -readonly`, never
-  modified, so `sqlite3` must be on `PATH`. `NEEDS INPUT` is never reported
+  without a session. The database is read, never modified, with
+  `sqlite3 -readonly` when `sqlite3` is on `PATH` and in-process otherwise.
+  `NEEDS INPUT` is never reported
   for OpenCode, because its permission prompts are not in the database.
 - **Gemini CLI:** recognizes `gemini` and the node process it relaunches as
   one runtime, and lists the `mcp`, `extensions`, `skills`, `hooks`, and
@@ -211,7 +282,7 @@ dashboard only through [`backfill`](#backfill).
   `~/.cursor/chats`, and picks the most recently written chat there. Several
   Cursor CLI runtimes in one directory may be matched to the wrong chat.
   Chat titles and models are read from each chat's `store.db` with
-  `sqlite3 -readonly`; without `sqlite3` the session still appears, untitled.
+  `sqlite3 -readonly` (or in-process when `sqlite3` is not installed).
   Nothing is modified. Approval prompts are not recorded, so a tool call
   waiting for approval shows as `ACTIVE`, and `NEEDS INPUT` is never reported.
 
@@ -296,7 +367,7 @@ firekeeper-server is not installed. Download it from <host> and install it to <d
 The default is no. Only `y` or `yes` proceeds; then Firekeeper looks up the
 latest release, downloads the archive for your OS and architecture, checks its
 SHA-256 against the release's `checksums.txt`, extracts only the
-`firekeeper-server` file, installs it atomically, runs `firekeeper-server
+`firekeeper-server` file (`firekeeper-server.exe` from the zip on Windows), installs it atomically, runs `firekeeper-server
 version` once, and hands over to it. Any failed check installs nothing. It
 never uses `sudo`.
 
@@ -349,7 +420,8 @@ Before it replaces the file, it keeps a copy. After the install it runs the
 new server's `license --json`; if that says `not covered by this build` (the
 release is newer than the license's update period, so the server would refuse
 to start), the old file is put back and `serve` says so. If the directory is
-not writable, or the server is not named `firekeeper-server`, nothing is
+not writable, or the server is not named `firekeeper-server`
+(`firekeeper-server.exe` on Windows), nothing is
 changed and `serve` continues with what it has.
 
 It never runs for `serve --help` or the operator commands (`token`,
@@ -372,8 +444,18 @@ binaries-only `DanBradbury/firekeeper-server-releases`.
     `amd64` or `arm64`. The archive holds exactly two regular files at its
     top level: `firekeeper-server` and `LICENSE`. Any other entry, a link, a
     nested or absolute path, or a duplicate makes the client reject it.
+  - `firekeeper-server_<version>_windows_<arch>.zip` for Windows, where
+    `<arch>` is `amd64` or `arm64` (for example
+    `firekeeper-server_0.8.0_windows_amd64.zip` and
+    `firekeeper-server_0.8.0_windows_arm64.zip`). The zip holds, at its top
+    level, the regular file `firekeeper-server.exe` and optionally `LICENSE`,
+    under the same rules as the tar.gz. GoReleaser produces this layout from
+    `binary: firekeeper-server` with a `format_overrides` entry of `zip` for
+    `windows`.
   - `checksums.txt` in `sha256sum` format (`<hex>  <asset>` per line), with a
     line for every archive. A missing line or a mismatch aborts the install.
+    On Windows a missing line for the zip means the release has no Windows
+    build, and the client says `no Windows server build available for <tag>`.
 - Size caps: 200 MB for the archive and for each entry.
 
 For a custom base URL `B` (the override or `-X` value, anything other than the
@@ -431,8 +513,8 @@ Other limits to know about:
 - The macOS terminal switch, and the launchd service, are macOS only. Linux is
   best effort: process discovery and the transcript readers use `ps`, `lsof`,
   and plain files, and the systemd user service has not been tested on real
-  hardware. Windows has not been tried; the daemon lock and the service
-  installer do not support it.
+  hardware. Windows has its own discovery, window switch, locks, and login
+  service; see [Windows](#windows) for what differs.
 
 ### Report
 
@@ -661,7 +743,8 @@ replaces the definition and restarts the service. `install` copies `PATH`,
 `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `CLAUDE_CONFIG_DIR`,
 `XDG_DATA_HOME`, `OPENCODE_DB`, `GEMINI_CLI_HOME`, `CURSOR_CONFIG_DIR`,
 `XDG_CONFIG_HOME`, and `FIREKEEPER_CONFIG` from your shell into the definition
-when they are set. It refuses to install a temporary `go run` build. Nothing
+when they are set (not on Windows, where a task has no environment of its own;
+see below). It refuses to install a temporary `go run` build. Nothing
 here needs or uses `sudo`.
 
 - macOS: writes `~/Library/LaunchAgents/dev.firekeeper.daemon.plist` and
@@ -669,6 +752,16 @@ here needs or uses `sudo`.
   if it exits with an error, at most every 30 seconds, but not after a
   clean stop. Errors from before the daemon opens its log, such as another
   daemon holding the lock, go to `~/.firekeeper/daemon.stderr.log`.
+- Windows: writes `~/.firekeeper/daemon-task.xml` and registers it with
+  `schtasks` as the per-user task "Firekeeper Daemon", which starts at your
+  logon, runs as you without elevation, and has no console window. Task
+  Scheduler restarts the daemon every minute if it exits with an error, but
+  not after a clean stop. The task cannot carry environment variables, so the
+  daemon gets your user environment as Windows hands it to logon programs:
+  variables you set persistently (`setx`, or System Properties) are seen, while
+  ones you only exported in a PowerShell session are not. Task Scheduler keeps
+  no output, so a failure before the daemon opens `daemon.log` is only visible
+  by running `firekeeper daemon` in a terminal with the same flags.
 - Linux (best effort, not yet tested on real hardware): writes
   `~/.config/systemd/user/firekeeper.service` (or under
   `$XDG_CONFIG_HOME`) and runs `systemctl --user daemon-reload`, `enable`,

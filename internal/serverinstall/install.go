@@ -2,6 +2,7 @@ package serverinstall
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -22,11 +23,19 @@ import (
 
 const (
 	defaultMaxDownload = 200 << 20 // archive size cap
-	defaultMaxEntry    = 200 << 20 // size cap per tar entry
+	defaultMaxEntry    = 200 << 20 // size cap per archive entry
 	maxSmall           = 1 << 20   // latest-release JSON and checksums.txt
 )
 
 var tagPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._+-]{0,63}$`)
+
+// ErrNoWindowsBuild means the latest release has no Windows archive: its
+// checksums.txt does not list firekeeper-server_<version>_windows_<arch>.zip.
+// Releases before Windows builds existed are like that.
+var ErrNoWindowsBuild = errors.New("no Windows server build available")
+
+// errNoChecksum means checksums.txt has no line for the asset.
+var errNoChecksum = errors.New("no checksum")
 
 // Installer downloads, verifies and installs one release.
 type Installer struct {
@@ -148,13 +157,16 @@ func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	asset := fmt.Sprintf("%s_%s_%s_%s.tar.gz", BinaryName, strings.TrimPrefix(tag, "v"), osName, arch)
+	asset := AssetName(tag, osName, arch)
 
 	sums, err := in.getSmall(ctx, in.Source.downloadURL(tag, "checksums.txt"))
 	if err != nil {
 		return "", fmt.Errorf("download checksums.txt: %w", err)
 	}
 	want, err := checksumFor(sums, asset)
+	if errors.Is(err, errNoChecksum) && osName == "windows" {
+		return "", fmt.Errorf("%w for %s", ErrNoWindowsBuild, tag)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -166,7 +178,7 @@ func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
 	defer os.RemoveAll(work)
 
 	in.logf("Downloading %s (%s)...", asset, tag)
-	archive := filepath.Join(work, "archive.tar.gz")
+	archive := filepath.Join(work, "archive")
 	got, err := in.download(ctx, in.Source.downloadURL(tag, asset), archive, maxDL)
 	if err != nil {
 		return "", fmt.Errorf("download %s: %w", asset, err)
@@ -179,7 +191,13 @@ func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
-	tmp, err := extractServer(archive, dir, maxEntry)
+	exeName := ExecutableName(osName)
+	var tmp string
+	if osName == "windows" {
+		tmp, err = extractServerZip(archive, dir, exeName, maxEntry)
+	} else {
+		tmp, err = extractServer(archive, dir, maxEntry)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -193,7 +211,7 @@ func (in *Installer) Install(ctx context.Context, dir string) (string, error) {
 	if err := sanityCheck(ctx, tmp); err != nil {
 		return "", err
 	}
-	final := filepath.Join(dir, BinaryName)
+	final := filepath.Join(dir, exeName)
 	if err := os.Rename(tmp, final); err != nil {
 		return "", err
 	}
@@ -255,7 +273,7 @@ func checksumFor(sums []byte, asset string) (string, error) {
 		found = h
 	}
 	if found == "" {
-		return "", fmt.Errorf("checksums.txt has no checksum for %s: refusing to install", asset)
+		return "", fmt.Errorf("checksums.txt has %w for %s: refusing to install", errNoChecksum, asset)
 	}
 	return found, nil
 }
@@ -333,6 +351,76 @@ func extractServer(archive, dir string, maxEntry int64) (tmpPath string, err err
 	}
 	if !seen[BinaryName] {
 		return tmpPath, errors.New("archive: no firekeeper-server in it")
+	}
+	return tmpPath, nil
+}
+
+// extractServerZip is extractServer for a Windows .zip archive. The same
+// rules apply: every entry must be a regular file named exactly exeName
+// (firekeeper-server.exe) or LICENSE, each at most once and at most maxEntry
+// bytes, or the whole archive fails. Only exeName is written, to a temp file
+// in dir whose path is returned. On error no temp file remains.
+func extractServerZip(archive, dir, exeName string, maxEntry int64) (tmpPath string, err error) {
+	zr, err := zip.OpenReader(archive)
+	if err != nil {
+		return "", fmt.Errorf("archive: %w", err)
+	}
+	defer zr.Close()
+
+	defer func() {
+		if err != nil && tmpPath != "" {
+			os.Remove(tmpPath)
+			tmpPath = ""
+		}
+	}()
+	seen := map[string]bool{}
+	for _, f := range zr.File {
+		if !f.Mode().IsRegular() {
+			return tmpPath, fmt.Errorf("archive: entry %q is not a regular file", f.Name)
+		}
+		if f.Name != exeName && f.Name != "LICENSE" {
+			return tmpPath, fmt.Errorf("archive: unexpected entry %q", f.Name)
+		}
+		if seen[f.Name] {
+			return tmpPath, fmt.Errorf("archive: duplicate entry %q", f.Name)
+		}
+		seen[f.Name] = true
+		if f.UncompressedSize64 > uint64(maxEntry) {
+			return tmpPath, fmt.Errorf("archive: entry %q is too large", f.Name)
+		}
+		if f.Name == "LICENSE" {
+			continue
+		}
+		rc, cerr := f.Open()
+		if cerr != nil {
+			return tmpPath, fmt.Errorf("archive: %w", cerr)
+		}
+		// Keep the .exe suffix so Windows runs the temp file for the
+		// version check.
+		out, cerr := os.CreateTemp(dir, ".firekeeper-server-*"+filepath.Ext(exeName))
+		if cerr != nil {
+			rc.Close()
+			return tmpPath, cerr
+		}
+		tmpPath = out.Name()
+		// The header size is not trusted: the copy itself is capped.
+		n, cerr := io.Copy(out, io.LimitReader(rc, maxEntry+1))
+		rc.Close()
+		if cerr == nil && n > maxEntry {
+			cerr = fmt.Errorf("archive: entry %q is too large", f.Name)
+		}
+		if cerr == nil {
+			cerr = out.Chmod(0o755)
+		}
+		if clerr := out.Close(); cerr == nil {
+			cerr = clerr
+		}
+		if cerr != nil {
+			return tmpPath, fmt.Errorf("archive: %w", cerr)
+		}
+	}
+	if !seen[exeName] {
+		return tmpPath, fmt.Errorf("archive: no %s in it", exeName)
 	}
 	return tmpPath, nil
 }

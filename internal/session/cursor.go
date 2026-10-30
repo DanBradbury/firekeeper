@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -54,14 +55,14 @@ func (d *discoverer) isCursorCommand(command string) bool {
 // name agent is too generic to match on its own, so only the launcher's
 // cursor-agent name and the versioned install directory are recognized.
 func (d *discoverer) cursorArgs(command string) []string {
-	fields := strings.Fields(command)
+	fields := commandFields(command)
 	if len(fields) == 0 {
 		return nil
 	}
-	if strings.Contains(filepath.ToSlash(fields[0]), ".app/Contents/") {
+	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
 		return nil
 	}
-	switch strings.ToLower(filepath.Base(fields[0])) {
+	switch strings.ToLower(baseName(fields[0])) {
 	case "cursor-agent", "cursor-agent.exe":
 		return append([]string{}, fields[1:]...)
 	case "node", "node.exe", "bun", "bun.exe", "sh", "bash", "zsh":
@@ -79,10 +80,10 @@ func (d *discoverer) cursorArgs(command string) []string {
 }
 
 func isCursorScript(path string) bool {
-	if filepath.Base(path) == "cursor-agent" {
+	if baseName(path) == "cursor-agent" {
 		return true
 	}
-	return strings.Contains(filepath.ToSlash(path), "/cursor-agent/versions/")
+	return strings.Contains(slashPath(path), "/cursor-agent/versions/")
 }
 
 // cursorSessionIDFromCommand reads the chat id from --resume. Bare --resume,
@@ -265,7 +266,26 @@ func CursorProjectDirs(dir, cwd string) []string {
 // filesystem from the root and accepts only a directory whose own key equals
 // the name's key; it never guesses a path that does not exist.
 func CursorWorkspace(projectDirName string) string {
-	return cursorWorkspaceFrom(string(filepath.Separator), projectDirName)
+	if runtime.GOOS != "windows" {
+		return cursorWorkspaceFrom(string(filepath.Separator), projectDirName)
+	}
+	// On Windows the name starts with the drive letter, as in
+	// c-Users-me-app, and the search starts at that drive's root.
+	key := CursorProjectKey(projectDirName)
+	for letter := 'a'; letter <= 'z'; letter++ {
+		rest, ok := strings.CutPrefix(key, string(letter)+"-")
+		if !ok {
+			continue
+		}
+		root := strings.ToUpper(string(letter)) + `:\`
+		if _, err := os.Stat(root); err != nil {
+			continue
+		}
+		if found := cursorWorkspaceFrom(root, rest); found != "" {
+			return found
+		}
+	}
+	return ""
 }
 
 func cursorWorkspaceFrom(root, projectDirName string) string {

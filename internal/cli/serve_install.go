@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"golang.org/x/term"
@@ -115,7 +116,11 @@ func offerInstall(stderr io.Writer) string {
 		return ""
 	}
 	if fallback && !serverinstall.OnPath(dir, l.getenv("PATH")) {
-		fmt.Fprintf(stderr, "Note: %s is not on your PATH. Add it, for example:\n  export PATH=\"%s:$PATH\"\n", dir, dir)
+		if runtime.GOOS == "windows" {
+			fmt.Fprintf(stderr, "Note: %s is not on your PATH. Add it, for example in PowerShell:\n  $env:Path = \"%s;$env:Path\"\n", dir, dir)
+		} else {
+			fmt.Fprintf(stderr, "Note: %s is not on your PATH. Add it, for example:\n  export PATH=\"%s:$PATH\"\n", dir, dir)
+		}
 	}
 	return path
 }

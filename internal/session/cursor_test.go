@@ -122,7 +122,8 @@ func TestCursorWorkspace(t *testing.T) {
 	}
 	// From the filesystem root, the real encoding of a temporary directory
 	// resolves.
-	name := strings.TrimLeft(strings.ReplaceAll(filepath.ToSlash(filepath.Join(root, "work", "my-app")), "/", "-"), "-")
+	// Cursor writes no colon in the name, which no directory could hold.
+	name := strings.ReplaceAll(strings.TrimLeft(strings.ReplaceAll(filepath.ToSlash(filepath.Join(root, "work", "my-app")), "/", "-"), "-"), ":", "")
 	if got := CursorWorkspace(name); got != filepath.Join(root, "work", "my-app") {
 		t.Errorf("CursorWorkspace(%q) = %q", name, got)
 	}

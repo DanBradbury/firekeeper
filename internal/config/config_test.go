@@ -120,11 +120,11 @@ paths = ["~/clients", "/opt/private/"]
 	if c.Path != path {
 		t.Fatalf("path = %q", c.Path)
 	}
-	wantExclude := []string{filepath.Join(home, "clients", "*"), "/srv/secret", "github.com/acme"}
+	wantExclude := []string{filepath.Join(home, "clients", "*"), filepath.Clean("/srv/secret"), "github.com/acme"}
 	if !reflect.DeepEqual(c.Exclude, wantExclude) {
 		t.Fatalf("exclude = %q, want %q", c.Exclude, wantExclude)
 	}
-	wantRedact := []string{filepath.Join(home, "clients"), "/opt/private"}
+	wantRedact := []string{filepath.Join(home, "clients"), filepath.Clean("/opt/private")}
 	if !reflect.DeepEqual(c.RedactPaths, wantRedact) {
 		t.Fatalf("redact paths = %q", c.RedactPaths)
 	}

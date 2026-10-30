@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/DanBradbury/firekeeper/internal/fsutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -38,7 +40,7 @@ func newFileState() FileState {
 // LoadState reads path. A missing file is an empty state.
 func LoadState(path string) (*State, error) {
 	state := &State{Files: map[string]FileState{}}
-	data, err := os.ReadFile(path)
+	data, err := fsutil.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
 	}
@@ -77,12 +79,28 @@ func (s *State) Save(path string) error {
 		os.Remove(tmp)
 		return fmt.Errorf("write reporter state: %w", cause(err))
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameReplacing(tmp, path); err != nil {
 		os.Remove(tmp)
 		return fmt.Errorf("write reporter state: %w", cause(err))
 	}
 	return nil
 }
+
+// renameReplacing renames tmp over path. Windows refuses to replace a file
+// that another process has open, which a virus scanner or indexer does for a
+// moment after every write, so it retries briefly before giving up.
+func renameReplacing(tmp, path string) error {
+	var err error
+	for attempt := 0; attempt < renameAttempts; attempt++ {
+		if err = os.Rename(tmp, path); err == nil || runtime.GOOS != "windows" {
+			return err
+		}
+		time.Sleep(time.Duration(attempt+1) * 10 * time.Millisecond)
+	}
+	return err
+}
+
+const renameAttempts = 8
 
 // cause drops the path from filesystem errors so messages stay free of
 // machine-specific locations.

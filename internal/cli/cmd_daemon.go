@@ -22,7 +22,7 @@ import (
 var daemonRun = daemon.Run
 
 // newService is replaced in tests so install and uninstall never touch the
-// real home directory or run launchctl or systemctl.
+// real home directory or run launchctl, systemctl, or schtasks.
 var newService = daemon.NewService
 
 // detectDaemonProviders is replaced in tests to avoid inspecting user data.
@@ -347,8 +347,14 @@ func runDaemonLogs(args []string, stdout, stderr io.Writer) int {
 // from before the daemon opened its log, such as a bad flag or the lock
 // being held.
 func printStartupLogHint(svc *daemon.Service, stderr io.Writer) {
-	if svc.GOOS == "linux" {
+	switch svc.GOOS {
+	case "linux":
 		fmt.Fprintf(stderr, "startup errors are in the user journal: journalctl --user -u %s\n", daemon.SystemdUnit)
+		return
+	case "windows":
+		// Task Scheduler keeps no output, so a failure before the log opens
+		// is only visible by running the daemon in a terminal.
+		fmt.Fprintln(stderr, "startup errors are not kept on Windows; run firekeeper daemon in a terminal with the same flags to see them")
 		return
 	}
 	if info, err := os.Stat(svc.StartupLogPath()); err == nil && info.Size() > 0 {

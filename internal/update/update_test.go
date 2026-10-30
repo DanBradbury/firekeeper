@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,5 +146,39 @@ func TestAvailableOfflineUsesCache(t *testing.T) {
 	srv.Close()
 	if v, ok := c.Available(context.Background()); !ok || v != "0.3.0" {
 		t.Fatalf("offline Available = %q, %v; want cached 0.3.0, true", v, ok)
+	}
+}
+
+func TestWindowsInstallArgs(t *testing.T) {
+	got := windowsInstallArgs(`C:\Temp\install.ps1`, "v1.2.3", `C:\Users\me\AppData\Local\Programs\firekeeper`)
+	want := []string{
+		"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+		"-File", `C:\Temp\install.ps1`,
+		"-Version", "v1.2.3",
+		"-InstallDir", `C:\Users\me\AppData\Local\Programs\firekeeper`,
+		"-NoPathUpdate",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("args = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("args = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestInstallOnWindowsValidatesVersionFirst(t *testing.T) {
+	old := goos
+	goos = "windows"
+	t.Cleanup(func() { goos = old })
+	if err := Install(context.Background(), "1.0; calc", `C:\bin\firekeeper.exe`, nil, nil); err == nil {
+		t.Fatal("a bad version reached the Windows installer")
+	}
+}
+
+func TestWindowsScriptURLNamesTheTag(t *testing.T) {
+	if got := fmt.Sprintf(windowsScriptURLFmt, "v1.2.3"); got != "https://raw.githubusercontent.com/DanBradbury/firekeeper/v1.2.3/install.ps1" {
+		t.Fatalf("url = %q", got)
 	}
 }

@@ -101,17 +101,24 @@ func writeGeminiLog(t *testing.T, path, id, cwd, summary string, extra ...map[st
 func TestGeminiProjectDirs(t *testing.T) {
 	runtime := t.TempDir()
 	tmp := filepath.Join(runtime, "tmp")
+	// Paths are the platform's own: Windows has no /work, and cleans it to
+	// \work.
+	demo, bad, other := filepath.FromSlash("/work/demo"), filepath.FromSlash("/work/bad"), filepath.FromSlash("/work/other")
+	registry, err := json.Marshal(map[string]any{"projects": map[string]string{demo: "demo", bad: "../escape"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	// The registry names the directory.
-	fixtureFile(t, filepath.Join(runtime, "projects.json"), `{"projects":{"/work/demo":"demo","/work/bad":"../escape"}}`)
-	if got, want := GeminiProjectDirs(runtime, "/work/demo/"), []string{filepath.Join(tmp, "demo"), filepath.Join(tmp, GeminiProjectHash("/work/demo"))}; !reflect.DeepEqual(got, want) {
+	fixtureFile(t, filepath.Join(runtime, "projects.json"), string(registry))
+	if got, want := GeminiProjectDirs(runtime, demo+string(filepath.Separator)), []string{filepath.Join(tmp, "demo"), filepath.Join(tmp, GeminiProjectHash(demo))}; !reflect.DeepEqual(got, want) {
 		t.Errorf("registry: %q, want %q", got, want)
 	}
-	if got, want := GeminiProjectDirs(runtime, "/work/bad"), []string{filepath.Join(tmp, GeminiProjectHash("/work/bad"))}; !reflect.DeepEqual(got, want) {
+	if got, want := GeminiProjectDirs(runtime, bad), []string{filepath.Join(tmp, GeminiProjectHash(bad))}; !reflect.DeepEqual(got, want) {
 		t.Errorf("invalid registry entry: %q, want %q", got, want)
 	}
 	// Without a registry entry, the .project_root marker does.
-	fixtureFile(t, filepath.Join(tmp, "other-1", ".project_root"), "/work/other\n")
-	if got := GeminiProjectDirs(runtime, "/work/other"); len(got) != 2 || got[0] != filepath.Join(tmp, "other-1") {
+	fixtureFile(t, filepath.Join(tmp, "other-1", ".project_root"), other+"\n")
+	if got := GeminiProjectDirs(runtime, other); len(got) != 2 || got[0] != filepath.Join(tmp, "other-1") {
 		t.Errorf("marker: %q", got)
 	}
 	if GeminiProjectDirs(runtime, "") != nil {
@@ -121,10 +128,10 @@ func TestGeminiProjectDirs(t *testing.T) {
 	for _, tt := range []struct {
 		dir, hash, want string
 	}{
-		{filepath.Join(tmp, "other-1"), "", "/work/other"},
-		{filepath.Join(tmp, "demo"), "", "/work/demo"},
-		{filepath.Join(tmp, GeminiProjectHash("/work/demo")), "", "/work/demo"},
-		{filepath.Join(tmp, "renamed"), GeminiProjectHash("/work/demo"), "/work/demo"},
+		{filepath.Join(tmp, "other-1"), "", other},
+		{filepath.Join(tmp, "demo"), "", demo},
+		{filepath.Join(tmp, GeminiProjectHash(demo)), "", demo},
+		{filepath.Join(tmp, "renamed"), GeminiProjectHash(demo), demo},
 		{filepath.Join(tmp, "unknown"), "feed", ""},
 	} {
 		if got := GeminiProjectRoot(runtime, tt.dir, tt.hash); got != tt.want {

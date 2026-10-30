@@ -25,7 +25,7 @@ func (c Config) Excluded(dirs, remotes []string) (string, bool) {
 	for _, e := range c.Exclude {
 		if isDirPattern(e) {
 			for _, d := range dirs {
-				if d != "" && matchAncestors(e, filepath.Clean(d), filepath.Dir) {
+				if d != "" && matchAncestors(filepath.Clean(e), filepath.Clean(d), filepath.Dir) {
 					return e, true
 				}
 			}

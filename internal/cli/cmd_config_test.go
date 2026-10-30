@@ -150,7 +150,7 @@ exclude = ["/srv/secret"]
 		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
 	}
 	r := cfg.Reporter
-	if cfg.Interval != 40*time.Second || r.Token != "fk_daemon_token_0123456789" || !slices.Equal(r.Providers, []transcript.Provider{transcript.ProviderCodex}) || !slices.Equal(r.Exclude, []string{"/srv/secret"}) {
+	if cfg.Interval != 40*time.Second || r.Token != "fk_daemon_token_0123456789" || !slices.Equal(r.Providers, []transcript.Provider{transcript.ProviderCodex}) || !slices.Equal(r.Exclude, []string{filepath.Clean("/srv/secret")}) {
 		t.Fatalf("config = %+v", *cfg)
 	}
 

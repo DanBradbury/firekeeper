@@ -366,13 +366,30 @@ func TestInstallUnsupportedPlatformMessage(t *testing.T) {
 	rel := newFakeRelease(t, "")
 	setupInstall(t, rel.srv.URL, "y\n")
 	installOffer.newInstaller = func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
+		return &serverinstall.Installer{Source: src, Log: log, GOOS: "freebsd", GOARCH: "amd64"}
+	}
+	var stderr bytes.Buffer
+	if code := runServe(nil, nil, &stderr); code != 2 {
+		t.Fatalf("exit %d", code)
+	}
+	if !strings.Contains(stderr.String(), "no firekeeper-server build for freebsd/amd64") {
+		t.Errorf("%s", stderr.String())
+	}
+}
+
+// The fake release, like every server release before Windows builds, has no
+// Windows zip: on Windows the install fails with a clear message, not a crash.
+func TestInstallNoWindowsBuildMessage(t *testing.T) {
+	rel := newFakeRelease(t, "")
+	setupInstall(t, rel.srv.URL, "y\n")
+	installOffer.newInstaller = func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
 		return &serverinstall.Installer{Source: src, Log: log, GOOS: "windows", GOARCH: "amd64"}
 	}
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 2 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(stderr.String(), "no firekeeper-server build for windows/amd64") {
+	if !strings.Contains(stderr.String(), "no Windows server build available for v1.0.0") {
 		t.Errorf("%s", stderr.String())
 	}
 }

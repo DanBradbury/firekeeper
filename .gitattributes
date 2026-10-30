@@ -1,0 +1,7 @@
+# Check files out with LF on every platform. Windows checkouts would
+# otherwise get CRLF, which changes the byte offsets and golden files the
+# tests compare against, and breaks shell scripts.
+* text=auto eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.golden text eol=lf

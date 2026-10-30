@@ -144,10 +144,10 @@ func TestResolvePath(t *testing.T) {
 			return ""
 		}
 	}
-	if p, _ := ResolvePath("/home/u", env("")); p != "/home/u/.firekeeper/config.toml" {
+	if p, _ := ResolvePath("/home/u", env("")); p != filepath.Join("/home/u", ".firekeeper", "config.toml") {
 		t.Fatalf("default = %q", p)
 	}
-	if p, _ := ResolvePath("/home/u", env("~/alt.toml")); p != "/home/u/alt.toml" {
+	if p, _ := ResolvePath("/home/u", env("~/alt.toml")); p != filepath.Join("/home/u", "alt.toml") {
 		t.Fatalf("env = %q", p)
 	}
 }

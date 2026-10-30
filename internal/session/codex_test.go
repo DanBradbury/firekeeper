@@ -25,10 +25,11 @@ func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
 		threadB = "01a10dae-2417-7fd1-b90a-9798256f74a6"
 		subID   = "01a131d1-68e6-76a1-9a85-536c8a00dc20"
 	)
-	rolloutB := filepath.Join(codexHome, "sessions", "rollout-2026-10-05T13-07-58-"+threadB+".jsonl")
+	// The paths go into JSON, where Windows backslashes need escaping.
+	rolloutB := jsonPath(filepath.Join(codexHome, "sessions", "rollout-2026-10-05T13-07-58-"+threadB+".jsonl"))
 	locks := filepath.Join(codexHome, "thread-writer-locks")
 	metadataJSON := `[
-	 {"id":"` + threadA + `","display_name":"a","cwd":"/work/a","updated_at_ms":10,"rollout_path":"` + filepath.Join(codexHome, "sessions", "rollout-x-"+threadA+".jsonl") + `"},
+	 {"id":"` + threadA + `","display_name":"a","cwd":"/work/a","updated_at_ms":10,"rollout_path":"` + jsonPath(filepath.Join(codexHome, "sessions", "rollout-x-"+threadA+".jsonl")) + `"},
 	 {"id":"` + threadB + `","display_name":"b","cwd":"/work/b","source":"vscode","updated_at_ms":20,"rollout_path":"` + rolloutB + `"},
 	 {"id":"` + subID + `","display_name":"sub","cwd":"/work/b","source":"{\"subagent\":{}}","updated_at_ms":99,"rollout_path":"` + rolloutB + `"}
 	]`
@@ -66,3 +67,6 @@ func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
 		}
 	}
 }
+
+// jsonPath escapes a path for use inside a JSON string.
+func jsonPath(path string) string { return strings.ReplaceAll(path, `\`, `\\`) }
