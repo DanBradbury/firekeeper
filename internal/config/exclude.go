@@ -2,8 +2,14 @@ package config
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// foldDirCase is whether directory globs ignore case: on Windows, whose file
+// systems do, a session's cwd need not be spelled like the config entry
+// (c:\users\dan for C:\Users\Dan). Elsewhere matching stays exact.
+var foldDirCase = runtime.GOOS == "windows"
 
 // isDirPattern reports whether an exclude entry is a directory glob rather
 // than a Git remote pattern.
@@ -20,12 +26,25 @@ func isDirPattern(e string) bool {
 // to "host/owner/repo" form (scheme, user, port, and ".git" dropped, and
 // "host:path" read as "host/path"); it too matches the remote or any
 // leading part of it, so "github.com/acme" excludes every acme repository.
-// Globs use filepath.Match syntax, where "*" stays within one segment.
+// Globs use filepath.Match syntax, where "*" stays within one segment. On
+// Windows directory globs ignore case, and filepath.Clean makes either
+// separator match.
 func (c Config) Excluded(dirs, remotes []string) (string, bool) {
 	for _, e := range c.Exclude {
 		if isDirPattern(e) {
+			pattern := filepath.Clean(e)
+			if foldDirCase {
+				pattern = strings.ToLower(pattern)
+			}
 			for _, d := range dirs {
-				if d != "" && matchAncestors(filepath.Clean(e), filepath.Clean(d), filepath.Dir) {
+				if d == "" {
+					continue
+				}
+				dir := filepath.Clean(d)
+				if foldDirCase {
+					dir = strings.ToLower(dir)
+				}
+				if matchAncestors(pattern, dir, filepath.Dir) {
 					return e, true
 				}
 			}
