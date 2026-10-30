@@ -140,5 +140,8 @@ rm -rf ~/.firekeeper
 On Windows, in PowerShell:
 
 ```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.firekeeper"
+Remove-Item -LiteralPath (Join-Path $HOME '.firekeeper') -Recurse -Force
 ```
+
+`-LiteralPath` keeps a profile path with `[` or `]` from being read as a
+wildcard pattern, and PowerShell always sets `$HOME`.
