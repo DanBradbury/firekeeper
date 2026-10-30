@@ -90,16 +90,58 @@ function Get-LatestTag([string]$ReleasesUrl) {
     return $tag
 }
 
+# New-Directory creates Path and any missing parents, taking the path
+# literally (New-Item has no -LiteralPath). An existing directory is fine.
+function New-Directory([string]$Path) {
+    [System.IO.Directory]::CreateDirectory($Path) | Out-Null
+}
+
+# Add-ToUserPath appends Dir to the user PATH in HKCU\Environment unless it is
+# already there, and returns whether it did. It reads and writes the raw value:
+# [Environment]::GetEnvironmentVariable would expand entries such as
+# %USERPROFILE%\bin and SetEnvironmentVariable would write them back as REG_SZ,
+# freezing them. The value keeps its kind (REG_EXPAND_SZ, as Windows creates
+# it, or REG_SZ); a new value is REG_EXPAND_SZ.
 function Add-ToUserPath([string]$Dir) {
-    $current = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $parts = @()
-    if ($current) { $parts = @($current.Split(';') | Where-Object { $_ }) }
-    $wanted = $Dir.TrimEnd('\')
-    foreach ($part in $parts) {
-        if ($part.TrimEnd('\') -ieq $wanted) { return $false }
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        $current = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+        $kind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+        if (($key.GetValueNames() -icontains 'Path') -and $key.GetValueKind('Path') -eq [Microsoft.Win32.RegistryValueKind]::String) {
+            $kind = [Microsoft.Win32.RegistryValueKind]::String
+        }
+        $parts = @($current.Split(';') | Where-Object { $_ })
+        $wanted = $Dir.TrimEnd('\')
+        foreach ($part in $parts) {
+            if ($part.TrimEnd('\') -ieq $wanted) { return $false }
+            if ([Environment]::ExpandEnvironmentVariables($part).TrimEnd('\') -ieq $wanted) { return $false }
+        }
+        $key.SetValue('Path', (($parts + $Dir) -join ';'), $kind)
     }
-    [Environment]::SetEnvironmentVariable('Path', (($parts + $Dir) -join ';'), 'User')
+    finally {
+        $key.Close()
+    }
+    Send-EnvironmentChange
     return $true
+}
+
+# Send-EnvironmentChange tells running programs, such as Explorer, that the
+# user environment changed, as SetEnvironmentVariable does, so terminals they
+# start next see the new PATH. It is best effort: without it, signing out and
+# back in does the same.
+function Send-EnvironmentChange {
+    try {
+        if (-not ('Firekeeper.Install.NativeMethods' -as [type])) {
+            Add-Type -Namespace Firekeeper.Install -Name NativeMethods -MemberDefinition @'
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+        }
+        $result = [UIntPtr]::Zero
+        # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG, 5 seconds.
+        [Firekeeper.Install.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null
+    }
+    catch { }
 }
 
 function Install-Firekeeper {
@@ -137,7 +179,7 @@ function Install-Firekeeper {
     $archive = "firekeeper_${ver}_windows_${arch}.zip"
 
     $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('firekeeper-install-' + [System.Guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $tmp | Out-Null
+    New-Directory $tmp
     try {
         Write-Host "Installing firekeeper $tag for windows/$arch"
         $zip = Join-Path $tmp $archive
@@ -163,7 +205,7 @@ function Install-Firekeeper {
         $exe = Join-Path $extracted 'firekeeper.exe'
         if (-not (Test-Path -LiteralPath $exe)) { Fail "could not extract firekeeper.exe from $archive" }
 
-        try { New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null }
+        try { New-Directory $InstallDir }
         catch { Fail "could not create $InstallDir; set FIREKEEPER_INSTALL_DIR to a writable directory" }
         $target = Join-Path $InstallDir 'firekeeper.exe'
         $staged = Join-Path $InstallDir '.firekeeper.new.exe'

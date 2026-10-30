@@ -5,16 +5,20 @@ Tests install.ps1 against a fake local release. No internet.
 
 Runs on Windows PowerShell 5.1 and PowerShell 7, on Windows (where CI runs it)
 and elsewhere. Checks that touch Windows itself, such as replacing a running
-program and editing the user PATH, run only on Windows; the PATH check also
-only in CI, since it changes the real user environment.
+program and editing the user PATH, run only on Windows; the PATH checks also
+only in CI, since they change the real user environment (and restore it).
 #>
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $installer = Join-Path (Split-Path -Parent $here) 'install.ps1'
+# New-Directory creates Path and its parents, taking the path literally
+# (New-Item has no -LiteralPath).
+function New-Directory([string]$Path) { [System.IO.Directory]::CreateDirectory($Path) | Out-Null }
+
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ('fk-test-' + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Path $work | Out-Null
+New-Directory $work
 
 $onWindows = ($PSVersionTable.PSEdition -ne 'Core') -or $IsWindows
 $powershell = (Get-Process -Id $PID).Path
@@ -55,9 +59,9 @@ function Run-Installer([hashtable]$Environment, [string[]]$Arguments = @()) {
 function New-Release([string]$Root, [string]$Tag, [string]$Content) {
     $ver = $Tag.TrimStart('v')
     $dir = Join-Path $Root "download/$Tag"
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    New-Directory $dir
     $stage = Join-Path $work ([guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Path $stage | Out-Null
+    New-Directory $stage
     [System.IO.File]::WriteAllText((Join-Path $stage 'firekeeper.exe'), $Content)
     [System.IO.File]::WriteAllText((Join-Path $stage 'README.md'), 'readme')
     $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'amd64' }
@@ -68,6 +72,30 @@ function New-Release([string]$Root, [string]$Tag, [string]$Content) {
     $other = '0' * 64
     Set-Content -LiteralPath (Join-Path $dir 'checksums.txt') -Value @("$hash  $name", "$other  firekeeper_${ver}_other_other.zip")
     return $zip
+}
+
+# The user PATH as stored in HKCU\Environment: the raw value, with %VAR%
+# references unexpanded, and its registry kind ($null kind when unset).
+function Get-RawUserPath {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        if (-not ($key.GetValueNames() -icontains 'Path')) { return @{ Value = $null; Kind = $null } }
+        return @{
+            Value = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+            Kind  = $key.GetValueKind('Path')
+        }
+    }
+    finally { $key.Close() }
+}
+
+# Set-RawUserPath writes (or, with a $null value, deletes) the user PATH as is.
+function Set-RawUserPath($Saved) {
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    try {
+        if ($null -eq $Saved.Value) { $key.DeleteValue('Path', $false) }
+        else { $key.SetValue('Path', $Saved.Value, $Saved.Kind) }
+    }
+    finally { $key.Close() }
 }
 
 function ToFileUrl([string]$Path) {
@@ -104,7 +132,7 @@ try {
     Check (($r.Code -ne 0) -and ($r.Output -match 'checksum mismatch') -and -not (Test-Path (Join-Path $dir 'firekeeper.exe'))) 'checksum mismatch aborts, nothing installed'
 
     # 4. A mismatch must not clobber an existing install.
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    New-Directory $dir
     [System.IO.File]::WriteAllText((Join-Path $dir 'firekeeper.exe'), 'old')
     Run-Installer @{ FIREKEEPER_RELEASES_URL = (ToFileUrl $bad); FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3') | Out-Null
     Check ((Get-Content -Raw (Join-Path $dir 'firekeeper.exe')) -eq 'old') 'mismatch leaves existing binary alone'
@@ -176,7 +204,7 @@ try {
     if ($onWindows) {
         # 10. A running firekeeper.exe can be upgraded: Windows renames, but will not overwrite, a running program.
         $dir = Join-Path $work 'bin9'
-        New-Item -ItemType Directory -Path $dir | Out-Null
+        New-Directory $dir
         $running = Join-Path $dir 'firekeeper.exe'
         Copy-Item (Join-Path $env:SystemRoot 'System32\ping.exe') $running
         $process = Start-Process -FilePath $running -ArgumentList '-t', '127.0.0.1' -PassThru -WindowStyle Hidden
@@ -192,20 +220,40 @@ try {
         $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3')
         Check (($r.Code -eq 0) -and -not (Test-Path (Join-Path $dir 'firekeeper.exe.old'))) 'leftover .old file is removed by the next install'
 
-        # 11. The install directory joins the user PATH once. This edits the
-        # real user environment, so it runs only in CI.
+        # 11-13 edit the real user PATH, so they run only in CI, and put back
+        # its raw value and kind afterwards, whatever happens.
         if ($env:CI) {
-            $originalPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            $originalPath = Get-RawUserPath
+            $expand = [Microsoft.Win32.RegistryValueKind]::ExpandString
             try {
+                # 11. The install directory joins the user PATH once.
                 $dir = Join-Path $work 'bin10'
                 $env10 = @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '' }
                 Run-Installer $env10 @('-Version', 'v1.2.3') | Out-Null
                 Run-Installer $env10 @('-Version', 'v1.2.3') | Out-Null
-                $entries = @(([Environment]::GetEnvironmentVariable('Path', 'User')) -split ';' | Where-Object { $_.TrimEnd('\') -ieq $dir.TrimEnd('\') })
+                $entries = @((Get-RawUserPath).Value -split ';' | Where-Object { $_.TrimEnd('\') -ieq $dir.TrimEnd('\') })
                 Check ($entries.Count -eq 1) "install directory is on the user PATH exactly once (found $($entries.Count))"
+
+                # 12. %VAR% entries survive unexpanded, and the value stays REG_EXPAND_SZ.
+                $seeded = '%USERPROFILE%\bin;C:\fk-test\literal'
+                Set-RawUserPath @{ Value = $seeded; Kind = $expand }
+                $dir = Join-Path $work 'bin11'
+                $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '' } @('-Version', 'v1.2.3')
+                $after = Get-RawUserPath
+                Check (($r.Code -eq 0) -and ($after.Value -ceq "$seeded;$dir")) "%VAR% PATH entries are kept unexpanded (got $($after.Value))"
+                Check ($after.Kind -eq $expand) "user PATH stays REG_EXPAND_SZ (got $($after.Kind))"
+
+                # 13. An entry that expands to the install directory counts as present.
+                $leaf = 'fk-test-' + [guid]::NewGuid().ToString('N')
+                $seeded = "%USERPROFILE%\$leaf"
+                Set-RawUserPath @{ Value = $seeded; Kind = $expand }
+                $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = (Join-Path $env:USERPROFILE $leaf); FIREKEEPER_NO_MODIFY_PATH = '' } @('-Version', 'v1.2.3')
+                $after = Get-RawUserPath
+                Check (($r.Code -eq 0) -and ($after.Value -ceq $seeded) -and ($after.Kind -eq $expand) -and ($r.Output -notmatch 'Added')) "an entry that expands to the install directory is not added again (got $($after.Value))"
+                Remove-Item -LiteralPath (Join-Path $env:USERPROFILE $leaf) -Recurse -Force -ErrorAction SilentlyContinue
             }
             finally {
-                [Environment]::SetEnvironmentVariable('Path', $originalPath, 'User')
+                Set-RawUserPath $originalPath
             }
         }
     }
