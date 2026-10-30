@@ -44,6 +44,9 @@ or, on Windows, in PowerShell:
 irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
 ```
 
+To read the script or check the zip's SHA-256 yourself before anything runs,
+see [Verify before you install](docs/install.md#verify-before-you-install-windows).
+
 Each installs a prebuilt binary, so you do not need a Go toolchain. Then run:
 
 ```sh

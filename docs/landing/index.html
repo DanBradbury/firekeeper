@@ -166,6 +166,10 @@ h3 { font-size: 17px; margin: 0 0 6px; }
 @media (max-width: 520px) { .code pre { padding: 44px 16px 16px; } }
 @media (pointer: coarse) { .copy { min-height: 44px; min-width: 44px; } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.verify { margin-top: 14px; font-size: 15px; color: var(--muted); }
+.verify summary { cursor: pointer; font-weight: 600; color: var(--text); }
+.verify > p { margin: 10px 0; }
+.verify .code { margin-top: 10px; }
 .install-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 24px; }
 .install-meta div { font-size: 14px; color: var(--muted); padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 .install-meta strong { display: block; color: var(--text); font-size: 14px; }
@@ -334,6 +338,15 @@ firekeeper</pre></div>
       <div class="code"><button class="copy">Copy</button><pre>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
 firekeeper</pre></div>
       <p>Run in Windows PowerShell 5.1 or PowerShell 7. Installs <code>firekeeper.exe</code> to <code>%LOCALAPPDATA%\Programs\firekeeper</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), adds it to your user <code>PATH</code>, needs no administrator rights, and verifies the download against the release's SHA-256 checksums. Pin a release by running <code>$env:FIREKEEPER_VERSION = 'vX.Y.Z'</code> first. The binaries are not code-signed.</p>
+      <details class="verify">
+        <summary>Verify first: read the script or check the zip yourself</summary>
+        <p>The one-liner runs the script on <code>main</code>, and its checksum check uses <code>checksums.txt</code> from the same release, which proves integrity, not authenticity. To read what you run first, pin the script to a <a href="https://github.com/DanBradbury/firekeeper/releases">release tag</a>:</p>
+        <div class="code"><button class="copy">Copy</button><pre>$v = 'v0.8.0'
+Invoke-WebRequest "https://raw.githubusercontent.com/DanBradbury/firekeeper/$v/install.ps1" -OutFile install.ps1 -UseBasicParsing
+notepad .\install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Version $v</pre></div>
+        <p><code>-ExecutionPolicy Bypass</code> applies to that one process; never <code>Set-ExecutionPolicy Unrestricted</code>. Or download <code>firekeeper_0.8.0_windows_amd64.zip</code> (or <code>_arm64</code>) and <code>checksums.txt</code> from the release and compare <code>(Get-FileHash -Algorithm SHA256 .\firekeeper_0.8.0_windows_amd64.zip).Hash</code> with its line before unzipping. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#verify-before-you-install-windows">Full steps</a>.</p>
+      </details>
       <p>Windows is supported with limits and has had the least real-world use: <kbd>s</kbd> raises the terminal window but not the tab, and Codex runtimes are matched to threads by directory and time. See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#windows">what differs on Windows</a>.</p>
     </div>
 
