@@ -240,7 +240,7 @@ func TestUpdateChecksumMismatchKeepsTheOldServer(t *testing.T) {
 	// Serve a corrupted archive under the right name.
 	good := rel.srv.Config.Handler
 	rel.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".tar.gz") {
+		if strings.HasSuffix(r.URL.Path, ".tar.gz") || strings.HasSuffix(r.URL.Path, ".zip") {
 			w.Write([]byte("not the archive"))
 			return
 		}
@@ -279,8 +279,9 @@ func TestUpdateNotCoveredByTheLicenseIsRolledBack(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.exeDir, ".firekeeper-server.previous")); err == nil {
 		t.Error("the backup was left behind")
 	}
+	// Windows has no execute bits; there the .exe name makes it runnable.
 	info, err := os.Stat(server)
-	if err != nil || info.Mode().Perm()&0o111 == 0 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
 		t.Errorf("restored file is not executable: %v %v", info, err)
 	}
 }

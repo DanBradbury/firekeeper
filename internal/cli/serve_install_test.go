@@ -366,7 +366,8 @@ func TestInstallUnsupportedPlatformMessage(t *testing.T) {
 // The fake release, like every server release before Windows builds, has no
 // Windows zip: on Windows the install fails with a clear message, not a crash.
 func TestInstallNoWindowsBuildMessage(t *testing.T) {
-	rel := newFakeRelease(t, "")
+	// A release with only a Linux build, like every server release so far.
+	rel := newFakeRelease(t, strings.Repeat("0", 64)+"  firekeeper-server_1.0.0_linux_amd64.tar.gz\n")
 	setupInstall(t, rel.srv.URL, "y\n")
 	installOffer.newInstaller = func(src serverinstall.Source, log io.Writer) *serverinstall.Installer {
 		return &serverinstall.Installer{Source: src, Log: log, GOOS: "windows", GOARCH: "amd64"}
