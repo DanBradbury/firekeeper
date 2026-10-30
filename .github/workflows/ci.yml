@@ -30,6 +30,10 @@ jobs:
         run: GOOS=darwin go vet ./...
       - name: go vet (windows)
         run: GOOS=windows go vet ./...
+      - name: modernc.org/libc matches what modernc.org/sqlite requires
+        run: |
+          sh scripts/test-check-sqlite-libc.sh
+          sh scripts/check-sqlite-libc.sh
       - name: install sqlite3 if missing
         run: command -v sqlite3 || { sudo apt-get update && sudo apt-get install -y sqlite3; }
       - name: go test -race, failing on skipped tests
