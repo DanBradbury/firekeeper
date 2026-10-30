@@ -41,8 +41,10 @@ var validStates = map[string]bool{"ACTIVE": true, "WAITING": true, "NEEDS_INPUT"
 // Session is the stored metadata of one uploaded session.
 type Session struct {
 	MachineID, ID, Provider, CWD, Project, Branch, Commit, Model, State, Title string
-	FilesSource                                                                string
-	StartedAt, LastActivityAt                                                  *time.Time
+	// Origin is where the session ran, "local" or "cloud" (contract.Origin).
+	// A new session is "local" until a batch names another origin.
+	FilesSource, Origin       string
+	StartedAt, LastActivityAt *time.Time
 }
 
 // File is one changed file of a session.
@@ -285,6 +287,7 @@ type metaBody struct {
 	StartedAt      *time.Time `json:"started_at"`
 	LastActivityAt *time.Time `json:"last_activity_at"`
 	FilesSource    string     `json:"files_source"`
+	Origin         string     `json:"origin"`
 	Files          []string   `json:"files"`
 }
 
@@ -366,7 +369,7 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 		st := s.sessions[k]
 		if st == nil {
 			st = &stored{events: map[int64]event.Event{}, tools: map[string]int{}}
-			st.meta = Session{MachineID: req.Machine.ID, ID: sess.Meta.SessionID, State: "UNKNOWN"}
+			st.meta = Session{MachineID: req.Machine.ID, ID: sess.Meta.SessionID, State: "UNKNOWN", Origin: string(contract.OriginLocal)}
 			s.sessions[k] = st
 		}
 		mergeMeta(&st.meta, sess.Meta)
@@ -416,6 +419,10 @@ func mergeMeta(dst *Session, m metaBody) {
 	set(&dst.Model, m.Model)
 	set(&dst.State, m.State)
 	set(&dst.Title, m.Title)
+	// ValidateBatch has already rejected an unknown origin. Empty (omitted,
+	// "" or null) keeps the stored value, so a later batch without origin
+	// never turns a cloud session back into a local one.
+	set(&dst.Origin, m.Origin)
 	if dst.Commit == "" {
 		dst.Commit = m.Commit
 	}
@@ -595,7 +602,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		"uid": machine + ":" + id, "machine_id": machine, "session_id": id, "provider": sess.Provider,
 		"cwd": sess.CWD, "project": sess.Project, "branch": sess.Branch, "commit": sess.Commit,
 		"model": sess.Model, "state": sess.State, "title": sess.Title,
-		"files_source": sess.FilesSource, "event_count": len(s.Events(machine, id)),
+		"files_source": sess.FilesSource, "origin": sess.Origin, "event_count": len(s.Events(machine, id)),
 	})
 }
 
