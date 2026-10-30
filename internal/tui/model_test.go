@@ -401,7 +401,14 @@ func TestTUIStartsOnProcessesAndCyclesOnlyTextViews(t *testing.T) {
 		t.Fatal("TUI must start on Processes")
 	}
 	for _, key := range []tea.KeyType{tea.KeyTab, tea.KeyShiftTab} {
+		m.codexUsageLoading, m.copilotUsageLoading, m.kimiUsageLoading, m.claudeUsageLoading = false, false, false, false
 		updated, cmd := m.Update(tea.KeyMsg{Type: key})
+		m = updated.(model)
+		if m.activeTab != overviewTab || cmd == nil || !m.codexUsageLoading || !m.claudeUsageLoading {
+			t.Fatal("switching to Overview must refresh every provider")
+		}
+		m.codexUsageLoading = false
+		updated, cmd = m.Update(tea.KeyMsg{Type: key})
 		m = updated.(model)
 		if m.activeTab != usageTab || cmd == nil || !m.codexUsageLoading {
 			t.Fatal("switching to Usage must request usage refresh")
@@ -416,7 +423,7 @@ func TestTUIStartsOnProcessesAndCyclesOnlyTextViews(t *testing.T) {
 
 func TestTextViewsFitTerminal(t *testing.T) {
 	for _, size := range [][2]int{{20, 6}, {80, 24}, {120, 40}} {
-		for _, active := range []tab{processesTab, usageTab} {
+		for _, active := range []tab{processesTab, overviewTab, usageTab} {
 			m := NewModel()
 			m.width, m.height = size[0], size[1]
 			m.activeTab = active

@@ -126,7 +126,7 @@ func TestDashboardSelectionScrollsWithinSessionsPanel(t *testing.T) {
 }
 
 func TestHelpOverlayTogglesAndListsHotkeys(t *testing.T) {
-	for _, active := range []tab{processesTab, usageTab} {
+	for _, active := range []tab{processesTab, overviewTab, usageTab} {
 		m := dashboardTestModel()
 		m.width, m.height = 100, 40
 		m.activeTab = active

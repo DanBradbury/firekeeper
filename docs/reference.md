@@ -96,9 +96,14 @@ less everyday use than macOS. Please report what you find.
 
 ## Terminal dashboard
 
-Firekeeper opens on Processes. Press Tab to move between two text views:
+Firekeeper opens on Processes. Press Tab to move between three text views:
 
 - **Processes** — running agent harnesses and their session details.
+- **Overview** — an at-a-glance panel per provider with data: quota meters and
+  reset countdowns where a supported source exists (Codex limits, Copilot AI
+  credits), plus tokens today, over the last 7 days, and lifetime. Claude Code
+  and Kimi expose no quota locally, so their panels show token totals and point
+  to `/usage`. `r` refreshes every provider. It reads the same sources as Usage.
 - **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage.
 
 Two lookups in the Usage tab leave the machine, and neither uploads session

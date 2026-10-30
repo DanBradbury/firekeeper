@@ -1,5 +1,5 @@
 // Package tui is the Firekeeper terminal dashboard: a Bubble Tea program with
-// Processes and Usage tabs that shows coding-agent runtimes found by
+// Processes, Overview and Usage tabs that show coding-agent runtimes found by
 // internal/session and lets the user switch to their terminals.
 package tui
 
@@ -34,6 +34,7 @@ type tab int
 
 const (
 	processesTab tab = iota
+	overviewTab
 	usageTab
 	tabCount
 )
@@ -184,6 +185,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activeTab == processesTab {
 				return m, refreshProcesses()
 			}
+			if m.activeTab == overviewTab {
+				return m, m.beginOverviewRefresh()
+			}
 			if m.activeTab == usageTab {
 				return m, m.beginUsageRefresh()
 			}
@@ -248,6 +252,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			if m.activeTab == processesTab {
 				return m, refreshProcesses()
+			}
+			if m.activeTab == overviewTab {
+				return m, m.beginOverviewRefresh()
 			}
 			if m.activeTab == usageTab {
 				return m, m.beginUsageRefresh()
@@ -418,6 +425,10 @@ func (m model) View() string {
 	if m.activeTab == processesTab {
 		help, status := m.processFooter()
 		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")
+	}
+	if m.activeTab == overviewTab {
+		help, status := m.overviewFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewOverview(contentRows), help, status}, "\n")
 	}
 	help, status := m.usageFooter()
 	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), help, status}, "\n")

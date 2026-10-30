@@ -20,7 +20,7 @@ type helpSection struct {
 
 var helpSections = []helpSection{
 	{"Global", []helpKey{
-		{"Tab / Shift+Tab", "Switch between Processes and Usage"},
+		{"Tab / Shift+Tab", "Switch between Processes, Overview and Usage"},
 		{"?", "Show or hide this help"},
 		{"q / Ctrl+C", "Quit"},
 	}},
@@ -39,6 +39,9 @@ var helpSections = []helpSection{
 		{"g / G", "Jump to the first or latest message"},
 		{"r", "Reload the transcript"},
 		{"Esc / c / q", "Back"},
+	}},
+	{"Overview", []helpKey{
+		{"r", "Refresh every provider"},
 	}},
 	{"Usage", []helpKey{
 		{"← → / h l", "Switch provider"},
