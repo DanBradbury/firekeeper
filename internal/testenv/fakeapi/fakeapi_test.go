@@ -238,7 +238,9 @@ func TestSessionOrigin(t *testing.T) {
 	ok("web", `"origin":"cloud"`)
 
 	// An unknown origin is invalid_request, never echoed, and stores nothing.
-	for _, extra := range []string{`"origin":"mars"`, `"origin":"LOCAL"`, `"origin":1`, `"origin":["cloud"]`} {
+	// Case-variant keys, which encoding/json would fold into Origin, are
+	// rejected the same way (SEC-24-1, #25).
+	for _, extra := range []string{`"origin":"mars"`, `"origin":"LOCAL"`, `"origin":1`, `"origin":["cloud"]`, `"Origin":"mars"`, `"origin":"cloud","Origin":"mars"`, `"ORIGIN":"local"`} {
 		rec := post("bad", extra)
 		wantError(t, extra, rec, "invalid_request")
 		if strings.Contains(rec.Body.String()+rec.Header().Get("X-Fakeapi-Detail"), "mars") {
@@ -250,6 +252,26 @@ func TestSessionOrigin(t *testing.T) {
 		wantError(t, extra+" on a stored session", post("web", extra), "invalid_request")
 		if got := origin("web"); got != "cloud" {
 			t.Fatalf("%s: stored origin changed to %q", extra, got)
+		}
+	}
+}
+
+// TestCheckDecodedMeta covers the second check fakeapi runs after
+// ValidateBatch: the decoded struct values themselves (SEC-24-1, #25).
+func TestCheckDecodedMeta(t *testing.T) {
+	good := metaBody{SessionID: "s", Provider: "codex"}
+	if err := checkDecodedMeta(good); err != nil {
+		t.Fatalf("valid meta: %v", err)
+	}
+	for name, m := range map[string]metaBody{
+		"provider":     {Provider: "mars"},
+		"state":        {Provider: "codex", State: "bogus"},
+		"origin":       {Provider: "codex", Origin: "mars"},
+		"files_source": {Provider: "codex", FilesSource: "mars"},
+	} {
+		err := checkDecodedMeta(m)
+		if err == nil || !strings.Contains(err.Error(), "meta."+name) || strings.Contains(err.Error(), "mars") {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }

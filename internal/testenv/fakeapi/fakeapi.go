@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -359,6 +360,15 @@ func (s *Server) ingest(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	// Check the decoded values too. encoding/json matches field names
+	// case-insensitively, so a check of the raw keys alone is not enough to
+	// trust what lands in metaBody (SEC-24-1, #25).
+	for _, sess := range req.Sessions {
+		if err := checkDecodedMeta(sess.Meta); err != nil {
+			fail(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -416,6 +426,22 @@ func forwardSlashes(p string) string {
 		return strings.ReplaceAll(p, `\`, "/")
 	}
 	return p
+}
+
+// checkDecodedMeta applies the enum rules of docs/api.md to the decoded
+// metadata. Its errors never contain values from the body.
+func checkDecodedMeta(m metaBody) error {
+	switch {
+	case !event.Provider(m.Provider).Valid():
+		return errors.New("meta.provider: not a known provider")
+	case m.State != "" && !slices.Contains([]string{"ACTIVE", "WAITING", "NEEDS_INPUT", "ENDED", "UNKNOWN"}, m.State):
+		return errors.New("meta.state: not a known state")
+	case m.Origin != "" && !contract.Origin(m.Origin).Valid():
+		return errors.New("meta.origin: not a known origin")
+	case m.FilesSource != "" && m.FilesSource != "git" && m.FilesSource != "tool_calls":
+		return errors.New("meta.files_source: not a known source")
+	}
+	return nil
 }
 
 func mergeMeta(dst *Session, m metaBody) {

@@ -154,6 +154,25 @@ try {
         Check (($r.Code -ne 0) -and ($r.Output -match 'invalid version') -and -not (Test-Path (Join-Path $work 'bin6'))) "invalid version rejected: $version"
     }
 
+    # 7a. A relative install directory is refused before anything is
+    # downloaded or created (SEC-26-4, #30): on the user PATH it would resolve
+    # against each program's current directory.
+    $rel = 'fk-rel-' + [guid]::NewGuid().ToString('N')
+    foreach ($relDir in @($rel, ".\$rel", "..\$rel", "\$rel", "C:$rel")) {
+        $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $relDir; FIREKEEPER_NO_MODIFY_PATH = '' } @('-Version', 'v1.2.3')
+        Check (($r.Code -ne 0) -and ($r.Output -match 'must be an absolute path') -and -not (Test-Path -LiteralPath $rel)) "relative FIREKEEPER_INSTALL_DIR rejected: $relDir"
+    }
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = ''; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3', '-InstallDir', $rel)
+    Check (($r.Code -ne 0) -and ($r.Output -match 'must be an absolute path') -and -not (Test-Path -LiteralPath $rel)) 'relative -InstallDir rejected'
+
+    # 7b. A releases URL that is not https (or file://, or http:// to this
+    # machine) is refused before any download (SEC-26-4, #30).
+    foreach ($url in @('http://example.invalid/releases', 'HTTP://github.com/DanBradbury/firekeeper/releases', 'ftp://example.invalid/releases', 'releases', '//example.invalid/releases', 'file://example.invalid/share/releases')) {
+        $dir = Join-Path $work 'bin-url'
+        $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $url; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3')
+        Check (($r.Code -ne 0) -and ($r.Output -match 'must use https://') -and -not (Test-Path -LiteralPath $dir)) "insecure FIREKEEPER_RELEASES_URL rejected: $url"
+    }
+
     # 8. Reinstalling replaces the binary and leaves no .old file when nothing runs it.
     $dir = Join-Path $work 'bin7'
     Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3') | Out-Null

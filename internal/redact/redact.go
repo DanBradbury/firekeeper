@@ -343,6 +343,23 @@ func isKeyByte(c byte) bool {
 	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || c == '_' || c == '-' || c == '.'
 }
 
+// continuesName reports whether a path that ends just before s[i] runs on
+// into a longer name there ("/Users/meg" for "/Users/me"). Dots that end a
+// sentence ("cd /Users/me." or "C:\Users\me...") do not, unless a name
+// character follows them ("/Users/me.old").
+func continuesName(s string, i int) bool {
+	if i >= len(s) || !isKeyByte(s[i]) {
+		return false
+	}
+	if s[i] != '.' {
+		return true
+	}
+	for i < len(s) && s[i] == '.' {
+		i++
+	}
+	return i < len(s) && isKeyByte(s[i])
+}
+
 func isValueEnd(c byte) bool {
 	switch c {
 	case ' ', '\t', '\n', '\r', '"', '\'', '`', '&', ';', '<', '>':
@@ -385,7 +402,7 @@ func redactPrefix(s, prefix, replacement string, kind Kind, counts Counts) strin
 		if start > 0 && isKeyByte(s[start-1]) {
 			continue
 		}
-		if end < len(s) && isKeyByte(s[end]) {
+		if continuesName(s, end) {
 			continue
 		}
 		b.WriteString(s[last:start])

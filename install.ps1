@@ -19,15 +19,16 @@ updated too.
 
 Environment:
   FIREKEEPER_VERSION       release to install, such as v0.1.0 (default: latest)
-  FIREKEEPER_INSTALL_DIR   install directory
+  FIREKEEPER_INSTALL_DIR   install directory (an absolute path)
   FIREKEEPER_NO_MODIFY_PATH  set to any value to leave PATH alone
-  FIREKEEPER_RELEASES_URL  release location (used by the tests)
+  FIREKEEPER_RELEASES_URL  release location (used by the tests): https://,
+                           file://, or http:// to this machine only
 
 .PARAMETER Version
 Release to install, such as v0.1.0. Defaults to the latest release.
 
 .PARAMETER InstallDir
-Directory for firekeeper.exe.
+Directory for firekeeper.exe, as an absolute path.
 
 .PARAMETER NoPathUpdate
 Do not add the install directory to the user's PATH.
@@ -144,6 +145,34 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     catch { }
 }
 
+# Test-ReleasesUrl allows https://, file:// on this machine (the tests' fake
+# release), and http:// only to this machine (the tests' redirect server).
+# Anything else would fetch the zip and checksums.txt in clear text, where the
+# checksum protects nothing. The scheme must be written out: .NET reads a bare
+# //host/share as a file share.
+function Test-ReleasesUrl([string]$Url) {
+    if ($Url -notmatch '^(https|http|file)://') { return $false }
+    $uri = $null
+    if (-not [System.Uri]::TryCreate($Url, [System.UriKind]::Absolute, [ref]$uri)) { return $false }
+    switch ($uri.Scheme) {
+        'https' { return $true }
+        'file' { return -not $uri.IsUnc }
+        'http' { return $uri.IsLoopback }
+        default { return $false }
+    }
+}
+
+# Test-AbsolutePath reports whether Path names one place regardless of the
+# current directory and drive: C:\dir or \\server\share on Windows, /dir
+# elsewhere. A relative directory on the user PATH would resolve against each
+# program's current directory, so it is refused, as are \dir and C:dir,
+# which depend on the current drive or its current directory.
+function Test-AbsolutePath([string]$Path) {
+    if (-not $Path) { return $false }
+    if ([System.IO.Path]::DirectorySeparatorChar -eq '/') { return $Path.StartsWith('/') }
+    return ($Path -match '^[A-Za-z]:[\\/]') -or ($Path -match '^[\\/]{2}[^\\/]')
+}
+
 function Install-Firekeeper {
     $releasesUrl = $env:FIREKEEPER_RELEASES_URL
     if (-not $releasesUrl) {
@@ -153,11 +182,17 @@ function Install-Firekeeper {
         }
     }
     $releasesUrl = $releasesUrl.TrimEnd('/')
+    if (-not (Test-ReleasesUrl $releasesUrl)) {
+        Fail 'FIREKEEPER_RELEASES_URL must use https:// (or file://, or http:// to this machine for tests); unset it to install from GitHub'
+    }
 
     if (-not $InstallDir) {
         $localAppData = [Environment]::GetFolderPath('LocalApplicationData')
         if (-not $localAppData) { Fail 'cannot work out the install directory: LOCALAPPDATA is not set; set FIREKEEPER_INSTALL_DIR' }
         $InstallDir = Join-Path $localAppData 'Programs\firekeeper'
+    }
+    if (-not (Test-AbsolutePath $InstallDir)) {
+        Fail "install directory must be an absolute path, such as C:\Tools\firekeeper (got $InstallDir); a relative one on PATH resolves against each program's current directory"
     }
 
     try {

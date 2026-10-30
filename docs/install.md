@@ -24,8 +24,8 @@ do not match. Pin a release with
 `curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh -s -- --version vX.Y.Z`.
 
 The PowerShell script installs `firekeeper.exe` to
-`%LOCALAPPDATA%\Programs\firekeeper` (set `FIREKEEPER_INSTALL_DIR` to change
-that), adds that directory to your user `PATH`, and updates the current
+`%LOCALAPPDATA%\Programs\firekeeper` (set `FIREKEEPER_INSTALL_DIR` to an
+absolute path to change that; a relative one is refused), adds that directory to your user `PATH`, and updates the current
 session's `PATH` so `firekeeper` works straight away. It needs no administrator
 rights, verifies the download against the release's SHA-256 checksums like the
 shell script, and installs nothing if they do not match. Piping into `iex`
@@ -35,6 +35,50 @@ a release, or save the script and run it with `-Version vX.Y.Z`,
 any value before piping). Downloads made this way carry no
 "downloaded from the internet" mark, so SmartScreen does not prompt; the
 binaries are not code-signed.
+
+### Verify before you install (Windows)
+
+The one-liner runs whatever `install.ps1` is on `main` at that moment, and its
+checksum check compares the zip with `checksums.txt` from the same GitHub
+release. That catches a corrupted download, not a compromised repository or
+release: a SHA-256 match proves integrity against the release, not who made
+it. To read what you run first, pin the script to a release tag. Pick the tag
+from the [releases page](https://github.com/DanBradbury/firekeeper/releases):
+
+```powershell
+$v = 'v0.8.0'
+Invoke-WebRequest "https://raw.githubusercontent.com/DanBradbury/firekeeper/$v/install.ps1" -OutFile install.ps1 -UseBasicParsing
+notepad .\install.ps1   # read it before running it
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Version $v
+```
+
+A saved script does not run under Windows' default execution policy, so
+`-ExecutionPolicy Bypass` applies to that one `powershell` process only. Do not
+change the machine or user policy (`Set-ExecutionPolicy Unrestricted`) for it.
+
+Or skip the script: download the zip and `checksums.txt` yourself, compare the
+hashes with `Get-FileHash`, and unzip only if they match.
+
+```powershell
+$v = 'v0.8.0'
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$zip = "firekeeper_$($v.TrimStart('v'))_windows_$arch.zip"
+$base = "https://github.com/DanBradbury/firekeeper/releases/download/$v"
+Invoke-WebRequest "$base/$zip" -OutFile $zip -UseBasicParsing
+Invoke-WebRequest "$base/checksums.txt" -OutFile checksums.txt -UseBasicParsing
+$want = ((Get-Content checksums.txt) -match "  $([regex]::Escape($zip))$" -split '\s+')[0]
+$got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+if (-not $want -or $got -ne $want) { throw "SHA-256 mismatch for $zip; do not use it" }
+Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $env:LOCALAPPDATA 'Programs\firekeeper') -Force
+```
+
+The release assets are `firekeeper_<version>_windows_amd64.zip`,
+`firekeeper_<version>_windows_arm64.zip`, and `checksums.txt` (for example
+`firekeeper_0.8.0_windows_amd64.zip`). The zip holds `firekeeper.exe` with
+its license files. Add `%LOCALAPPDATA%\Programs\firekeeper` to your user
+`PATH` yourself (Settings, "Edit environment variables for your account"). A zip
+downloaded in a browser is marked as from the internet, so Windows may show a
+SmartScreen prompt for the unsigned binary.
 
 Releases cover macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and
 Windows (amd64 and arm64, as `.zip` archives). macOS is the main target; Linux
@@ -96,5 +140,8 @@ rm -rf ~/.firekeeper
 On Windows, in PowerShell:
 
 ```powershell
-Remove-Item -Recurse -Force "$env:USERPROFILE\.firekeeper"
+Remove-Item -LiteralPath (Join-Path $HOME '.firekeeper') -Recurse -Force
 ```
+
+`-LiteralPath` keeps a profile path with `[` or `]` from being read as a
+wildcard pattern, and PowerShell always sets `$HOME`.
