@@ -15,10 +15,6 @@ import (
 const (
 	processQueryLimitedInformation = 0x1000
 	processVMRead                  = 0x0010
-
-	// maxRemoteString bounds a command line or directory read from another
-	// process. The Windows limit is 32,767 characters.
-	maxRemoteString = 64 << 10
 )
 
 // nativeCommand replaces ps and lsof with Win32 calls: Windows has neither,
@@ -145,12 +141,25 @@ func readRemote(handle windows.Handle, address uintptr, destination unsafe.Point
 }
 
 func readRemoteString(handle windows.Handle, s windows.NTUnicodeString) string {
-	if s.Length == 0 || s.Buffer == nil || int(s.Length) > maxRemoteString {
+	n, ok := remoteStringUnits(s)
+	if !ok {
 		return ""
 	}
-	buffer := make([]uint16, s.Length/2)
-	if !readRemote(handle, uintptr(unsafe.Pointer(s.Buffer)), unsafe.Pointer(&buffer[0]), uintptr(s.Length)) {
+	buffer := make([]uint16, n)
+	if !readRemote(handle, uintptr(unsafe.Pointer(s.Buffer)), unsafe.Pointer(&buffer[0]), uintptr(n)*2) {
 		return ""
 	}
 	return windows.UTF16ToString(buffer)
+}
+
+// remoteStringUnits returns how many UTF-16 units to read for s, a
+// UNICODE_STRING from another process's memory, which that process controls.
+// Length is a byte count: an empty, odd, or larger-than-MaximumLength one
+// means the structure is not what it should be, and nothing is read. Being
+// a uint16, Length is already bounded (32,767 units).
+func remoteStringUnits(s windows.NTUnicodeString) (int, bool) {
+	if s.Buffer == nil || s.Length == 0 || s.Length%2 != 0 || s.Length > s.MaximumLength {
+		return 0, false
+	}
+	return int(s.Length / 2), true
 }

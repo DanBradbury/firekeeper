@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // startSleeper runs a child that lives for a while, in dir.
@@ -104,5 +106,34 @@ func TestWindowsProcessCWD(t *testing.T) {
 func TestWindowsProcessCWDOfMissingProcess(t *testing.T) {
 	if got := windowsProcessCWD(0x7ffffff0); got != "" {
 		t.Fatalf("cwd of a missing process = %q", got)
+	}
+}
+
+// SEC-26-1: a UNICODE_STRING read from another process is only trusted when
+// its byte length is even, non-zero, and within MaximumLength.
+func TestRemoteStringUnitsRejectsBadLengths(t *testing.T) {
+	var buf [4]uint16
+	p := &buf[0]
+	tests := []struct {
+		length, max uint16
+		buffer      *uint16
+		want        int
+		ok          bool
+	}{
+		{8, 8, p, 4, true},
+		{2, 10, p, 1, true},
+		{65534, 65534, p, 32767, true},
+		{0, 8, p, 0, false},
+		{1, 8, p, 0, false},
+		{3, 8, p, 0, false},
+		{65535, 65535, p, 0, false},
+		{10, 8, p, 0, false},
+		{8, 8, nil, 0, false},
+	}
+	for _, tt := range tests {
+		got, ok := remoteStringUnits(windows.NTUnicodeString{Length: tt.length, MaximumLength: tt.max, Buffer: tt.buffer})
+		if got != tt.want || ok != tt.ok {
+			t.Errorf("Length %d, MaximumLength %d, buffer %v: got (%d, %v), want (%d, %v)", tt.length, tt.max, tt.buffer != nil, got, ok, tt.want, tt.ok)
+		}
 	}
 }
