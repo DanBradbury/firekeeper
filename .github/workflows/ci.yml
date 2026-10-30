@@ -111,6 +111,24 @@ jobs:
           for name in $tests; do
             grep -q -- "--- PASS: $name " windows-tests.log || { echo "$name did not run and pass" >&2; exit 1; }
           done
+      - name: real 8.3 short-name lookup must run, not skip
+        # Turn 8.3 names on for the volume holding RUNNER_TEMP only now, after
+        # the other tests, so TestRealWindowsShortPathLookup gets a directory
+        # with a real short name to redact instead of skipping.
+        shell: pwsh
+        run: |
+          $vol = Split-Path -Qualifier $env:RUNNER_TEMP
+          fsutil 8dot3name set $vol 0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          fsutil 8dot3name query $vol
+          go test -count=1 -v -run '^TestRealWindowsShortPathLookup$' ./internal/redact | Tee-Object -FilePath shortname-test.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Select-String -Quiet -SimpleMatch -Pattern '--- SKIP' -LiteralPath shortname-test.log) {
+            Write-Error 'TestRealWindowsShortPathLookup was skipped'; exit 1
+          }
+          if (-not (Select-String -Quiet -SimpleMatch -Pattern '--- PASS: TestRealWindowsShortPathLookup ' -LiteralPath shortname-test.log)) {
+            Write-Error 'TestRealWindowsShortPathLookup did not run and pass'; exit 1
+          }
       - name: installer test (PowerShell 7)
         shell: pwsh
         run: ./scripts/test-install.ps1
