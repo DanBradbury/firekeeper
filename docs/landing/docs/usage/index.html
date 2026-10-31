@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Understand usage | Firekeeper docs</title>
+<meta name="description" content="Use Firekeeper's Overview and Usage views to inspect local token history, provider limits, model breakdowns, and past conversations.">
+<link rel="canonical" href="https://firekeeper.ai/docs/usage/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/" aria-current="page">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Using Firekeeper</p>
+    <h1>Understand usage</h1>
+    <p class="lede">Use local history to understand your work. Use provider limits, where available, to understand your allowance. They are not the same measurement.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#overview">Overview</a><a href="#history">History</a><a href="#limits">Limits</a><a href="#network">Network access</a></nav>
+    <h2 id="overview">Get a quick overview</h2>
+    <p>From Processes, press <kbd>Tab</kbd> to open <strong>Overview</strong>. Provider panels summarize tokens today, over the last seven days, and lifetime in the available local history, alongside limits and reset countdowns when those can be fetched.</p>
+    <p>Press <kbd>r</kbd> to refresh every provider. Missing data does not mean zero usage, and a missing quota panel does not mean unlimited access.</p>
+    <h2 id="history">Explore models and past sessions</h2>
+    <p>Open <strong>Usage</strong> with <kbd>Tab</kbd>. Use <kbd>Left</kbd> / <kbd>Right</kbd> or <kbd>h</kbd> / <kbd>l</kbd> to choose Codex, Copilot, Kimi, or Claude. Press <kbd>r</kbd> to refresh the selected provider.</p>
+    <p>Daily bars and model totals help you see where tokens went. Where sessions are available, use <kbd>Up</kbd> / <kbd>Down</kbd> to select one and <kbd>Enter</kbd> to open its chat. Press <kbd>Esc</kbd> to return to Usage.</p>
+    <p>This history is read from the provider's local files or database. It does not require reporting, a server, or a running agent process. OpenCode, Gemini CLI, and Cursor CLI can appear in Processes and chat without having a Usage page.</p>
+    <h2 id="limits">Know what each source tells you</h2>
+    <div class="table-wrap" role="region" aria-label="Usage data by provider" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Provider</th><th scope="col">Local history</th><th scope="col">Limits</th></tr></thead>
+        <tbody>
+          <tr><td>Codex</td><td>Session database and rollout token events.</td><td>A short-lived authenticated Codex app-server request asks for limits.</td></tr>
+          <tr><td>Copilot CLI</td><td>Read-only <code>session-store.db</code> totals and model history.</td><td>Best-effort plan AI-credit allowance, remaining credits, and reset timing from GitHub.</td></tr>
+          <tr><td>Claude Code</td><td>Usage recorded in local transcripts.</td><td>Five-hour and weekly limits from Anthropic when a Claude Code sign-in is available. Enabled by default; can be disabled.</td></tr>
+          <tr><td>Kimi Code</td><td>Local <code>usage.record</code> events.</td><td>No quota lookup. Use Kimi Code's own <code>/usage</code>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout"><p><strong>Local tokens are not an account-wide bill.</strong> Other machines, missing provider records, and provider-side accounting can produce different totals. Copilot's local history is not its account quota; the plan lookup is separate.</p></div>
+    <h3>Why totals can look low</h3>
+    <p>Some live counters are read from file tails, so very long sessions can be undercounted. Claude Code does not record every background request in its transcripts. If a Claude session has subagent files, Firekeeper warns that its total is likely low; it does not invent an estimate for the missing tokens.</p>
+    <p>Cache read and cache write counts depend on the provider and its data format. Cursor transcripts contain no token counts or timestamps. A blank field is not evidence that the session used no tokens.</p>
+    <h2 id="network">What contacts the network?</h2>
+    <p>The terminal dashboard does not upload conversations. It is not completely offline, however:</p>
+    <ul>
+      <li><strong>Codex limits:</strong> Firekeeper starts a short-lived local <code>codex app-server</code> request using your existing Codex sign-in. No persistent server is required.</li>
+      <li><strong>Copilot plan details:</strong> when a GitHub token is available, Firekeeper asks GitHub for plan data. The endpoint is internal and may change or disappear.</li>
+      <li><strong>Claude limits:</strong> Firekeeper uses Claude Code's existing OAuth sign-in for Anthropic's undocumented usage endpoint. The token is not stored, logged, refreshed, or uploaded to a Firekeeper server. A failed lookup does not block local history.</li>
+      <li><strong>Release checks:</strong> release builds check GitHub for a newer Firekeeper version when launched interactively. Set <code>FIREKEEPER_NO_UPDATE_CHECK=1</code> to disable that check.</li>
+    </ul>
+    <p>To turn off Claude's limits lookup:</p>
+    <pre><code>firekeeper claude-limits disable</code></pre>
+    <p>Use <code>firekeeper claude-limits enable</code> to turn it back on, or <code>firekeeper claude-limits status</code> to inspect its status. On macOS, the first lookup may ask for Keychain access.</p>
+    <p>For exact data sources and configuration, see the <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#usage">usage reference</a> and <a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">privacy documentation</a>. Transcript reporting remains a <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">separate opt-in workflow</a>, with best-effort redaction.</p>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/how-to-work/"><small>Previous</small>&larr; How to work with Firekeeper</a><a href="/docs/keyboard/"><small>Next</small>Keyboard shortcuts &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/usage/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>
