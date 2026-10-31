@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,9 +61,10 @@ type claudeHistoricalSession struct {
 }
 
 type claudeUsageSnapshot struct {
-	// Limits are the 5-hour and weekly windows. They are fetched only when
-	// the user ran `firekeeper claude-limits enable`: LimitsOn says it is on,
-	// and LimitsErr why the windows are missing when it is.
+	// Limits are the 5-hour and weekly windows. They are fetched unless the
+	// user ran `firekeeper claude-limits disable`: LimitsOn says it is on, and
+	// LimitsErr why the windows are missing when it is (a missing sign-in is
+	// not an error).
 	Limits    claudelimits.Limits
 	LimitsOn  bool
 	LimitsErr string
@@ -118,7 +120,9 @@ func refreshClaudeUsage() tea.Cmd {
 		if err == nil {
 			limits, enabled, limitsErr := claudeLimitsSource()
 			snapshot.LimitsOn = enabled
-			if limitsErr != nil {
+			// No sign-in just means Claude Code is not logged in here: show
+			// nothing rather than an error on every machine without one.
+			if limitsErr != nil && !errors.Is(limitsErr, claudelimits.ErrNoToken) {
 				snapshot.LimitsErr = limitsErr.Error()
 			} else {
 				snapshot.Limits = limits

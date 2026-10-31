@@ -10,13 +10,16 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/config"
 )
 
+// newClaudeLimitsClient is a variable so tests never read a real Keychain.
+var newClaudeLimitsClient = func() claudelimits.Client { return claudelimits.Client{} }
+
 const claudeLimitsUsage = "Usage:\n  firekeeper claude-limits enable\n  firekeeper claude-limits disable\n  firekeeper claude-limits status"
 
-// runClaudeLimits turns on, turns off, or checks the dashboard's Claude limit
-// meters. Enabling lets the dashboard read the sign-in Claude Code already
-// stores on this machine and ask Anthropic's usage endpoint, the way Claude
-// Code's /usage does. Nothing is uploaded and nothing is written to Claude
-// Code's files.
+// runClaudeLimits turns off, turns back on, or checks the dashboard's Claude
+// limit meters. They are on by default: the dashboard reads the sign-in Claude
+// Code already stores on this machine and asks Anthropic's usage endpoint, the
+// way Claude Code's /usage does, and does nothing when there is no sign-in.
+// Nothing is uploaded and nothing is written to Claude Code's files.
 func runClaudeLimits(args []string, stdout, stderr io.Writer) int {
 	if len(args) != 1 {
 		fmt.Fprintln(stderr, claudeLimitsUsage)
@@ -38,7 +41,7 @@ func runClaudeLimits(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "firekeeper claude-limits: %v\n", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, "Claude limits are on. The dashboard will now read the Claude Code sign-in stored")
+		fmt.Fprintln(stdout, "Claude limits are on (this is the default). The dashboard reads the Claude Code sign-in stored")
 		fmt.Fprintln(stdout, "on this machine and ask Anthropic's usage endpoint for your 5-hour and weekly limits.")
 		fmt.Fprintln(stdout, "That endpoint is undocumented and may change. The token is used for that request")
 		fmt.Fprintln(stdout, "only: it is not stored, refreshed, logged, or uploaded. On macOS the Keychain may")
@@ -51,6 +54,7 @@ func runClaudeLimits(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		fmt.Fprintln(stdout, "Claude limits are off. Firekeeper will not read the Claude Code sign-in.")
+		fmt.Fprintln(stdout, "Turn them back on with: firekeeper claude-limits enable")
 		return 0
 	case "status":
 		return claudeLimitsStatus(stdout)
@@ -71,7 +75,7 @@ func claudeLimitsStatus(stdout io.Writer) int {
 		return 0
 	}
 	fmt.Fprintln(stdout, "Claude limits: on")
-	client := claudelimits.Client{}
+	client := newClaudeLimitsClient()
 	if !client.HasToken() {
 		fmt.Fprintf(stdout, "Sign-in: %v\n", claudelimits.ErrNoToken)
 		return 0

@@ -212,11 +212,25 @@ func TestRefreshClaudeUsageAttachesLimitsWithoutFailingOnLimitsError(t *testing.
 		t.Fatalf("limits not attached: %+v err %v", msg.snapshot, msg.err)
 	}
 	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
-		return claudelimits.Limits{}, true, claudelimits.ErrNoToken
+		return claudelimits.Limits{}, true, claudelimits.ErrTokenExpired
 	}
 	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
 	if msg.err != nil || msg.snapshot.LimitsErr == "" || msg.snapshot.Limits.Any() {
 		t.Fatalf("limits error must not fail the refresh: %+v err %v", msg.snapshot, msg.err)
+	}
+	// No Claude Code sign-in is not an error: nothing is shown for it.
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
+		return claudelimits.Limits{}, true, claudelimits.ErrNoToken
+	}
+	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
+	if msg.err != nil || !msg.snapshot.LimitsOn || msg.snapshot.LimitsErr != "" {
+		t.Fatalf("missing sign-in must be silent: %+v", msg.snapshot)
+	}
+	m := overviewTestModel(time.Now())
+	m.claudeUsage.LimitsOn, m.claudeUsage.LimitsErr = msg.snapshot.LimitsOn, msg.snapshot.LimitsErr
+	view := ansi.Strip(m.viewOverview(30))
+	if strings.Contains(view, "claude-limits enable") || strings.Contains(view, "Limits unavailable") {
+		t.Fatalf("overview nags on a machine without a sign-in:\n%s", view)
 	}
 	claudeLimitsSource = func() (claudelimits.Limits, bool, error) { return claudelimits.Limits{}, false, nil }
 	msg = refreshClaudeUsage()().(claudeUsageResultMsg)

@@ -60,8 +60,9 @@ type Config struct {
 	// DefaultTelemetryPort until a file sets it.
 	TelemetryPort int
 	// ClaudeLimits lets the dashboard read Claude Code's stored sign-in and
-	// ask Anthropic for the 5-hour and weekly limits. Off by default; set
-	// with `firekeeper claude-limits enable`.
+	// ask Anthropic for the 5-hour and weekly limits. On by default, and only
+	// does anything when a Claude Code sign-in exists; `firekeeper
+	// claude-limits disable` turns it off.
 	ClaudeLimits bool
 
 	// Path is the config file read, or "" when none was.
@@ -152,6 +153,7 @@ func Load(opts Options) (Config, error) {
 	if c.TelemetryPort == 0 {
 		c.TelemetryPort = DefaultTelemetryPort
 	}
+	c.ClaudeLimits = true
 	c.Sources = map[string]string{}
 	for _, k := range []string{"server", "token", "providers", "interval"} {
 		c.Sources[k] = "default"
