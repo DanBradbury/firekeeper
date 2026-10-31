@@ -28,11 +28,13 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 
 	// Register the transcript sources the reporter can read.
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/antigravity"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/cursor"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/gemini"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/grok"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/kimi"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
 )
@@ -730,13 +732,18 @@ func (r *run) redactOptions() redact.Options {
 // Config.Exclude, or when .firekeeper-ignore marks it. Only the repository's
 // own files (.git/config and markers) are read, never the transcript.
 func (r *run) skipReason(meta session.Meta) string {
+	return ExclusionReason(meta, r.cfg.Exclude)
+}
+
+// ExclusionReason checks local privacy rules without opening a transcript.
+func ExclusionReason(meta session.Meta, exclude []string) string {
 	if meta.CWD == "" {
 		return "working directory unknown"
 	}
 	if ignored(meta.CWD) {
 		return ".firekeeper-ignore"
 	}
-	if len(r.cfg.Exclude) == 0 {
+	if len(exclude) == 0 {
 		return ""
 	}
 	root, gitDir := findRepo(meta.CWD)
@@ -744,7 +751,7 @@ func (r *run) skipReason(meta session.Meta) string {
 	if gitDir != "" {
 		remotes = remoteURLs(gitDir)
 	}
-	if pattern, ok := (config.Config{Exclude: r.cfg.Exclude}).Excluded([]string{meta.CWD, root}, remotes); ok {
+	if pattern, ok := (config.Config{Exclude: exclude}).Excluded([]string{meta.CWD, root}, remotes); ok {
 		return "excluded by config: " + pattern
 	}
 	return ""

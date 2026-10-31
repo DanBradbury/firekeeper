@@ -15,18 +15,20 @@ import (
 type Provider string
 
 const (
-	ProviderCodex    Provider = "codex"
-	ProviderCopilot  Provider = "copilot"
-	ProviderKimi     Provider = "kimi"
-	ProviderClaude   Provider = "claude"
-	ProviderOpenCode Provider = "opencode"
-	ProviderGemini   Provider = "gemini"
-	ProviderCursor   Provider = "cursor"
+	ProviderCodex       Provider = "codex"
+	ProviderCopilot     Provider = "copilot"
+	ProviderKimi        Provider = "kimi"
+	ProviderClaude      Provider = "claude"
+	ProviderOpenCode    Provider = "opencode"
+	ProviderGemini      Provider = "gemini"
+	ProviderCursor      Provider = "cursor"
+	ProviderAntigravity Provider = "antigravity"
+	ProviderGrok        Provider = "grok"
 )
 
 // Providers lists every provider the event contract allows, in schema order.
 func Providers() []Provider {
-	return []Provider{ProviderCodex, ProviderCopilot, ProviderKimi, ProviderClaude, ProviderOpenCode, ProviderGemini, ProviderCursor}
+	return []Provider{ProviderCodex, ProviderCopilot, ProviderKimi, ProviderClaude, ProviderOpenCode, ProviderGemini, ProviderCursor, ProviderAntigravity, ProviderGrok}
 }
 
 // Valid reports whether p is a provider the event contract allows.

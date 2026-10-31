@@ -24,6 +24,47 @@ func fixtureFile(t *testing.T, path, contents string) {
 	}
 }
 
+func TestBatchAClassificationAndDiscovery(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GROK_HOME", filepath.Join(home, ".grok"))
+	t.Setenv("GEMINI_CLI_HOME", home)
+	cwd := filepath.Join(home, "repo")
+	id := grokTestIDA
+	grokTestLog(t, filepath.Join(home, ".grok"), cwd, id, grokTestUpdate(id, "agent_message_chunk"))
+	agyDir := filepath.Join(home, ".gemini", "antigravity-cli")
+	writeAntigravityFixture(t, agyDir, "agy-fixture", antigravityUserFixture+"\n")
+	opts := Options{Home: home, Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte("10 1 pts/0 00:01 grok --resume " + id + "\n20 1 pts/1 00:02 agy --conversation agy-fixture\n30 1 ? 00:01 grok wrap codex\n40 1 ? 00:01 agy mcp codex\n"), nil
+		case "lsof":
+			return []byte("p10\nn" + cwd + "\np20\nn" + cwd + "\n"), nil
+		case "git":
+			return []byte(cwd + "\n"), nil
+		default:
+			return nil, errors.New("unexpected tool")
+		}
+	}}
+	metas, err := Discover(context.Background(), opts)
+	if err != nil || len(metas) != 2 {
+		t.Fatalf("Batch A discovery or helper filtering failed: %v", err)
+	}
+	for _, meta := range metas {
+		switch meta.Provider {
+		case "grok":
+			if meta.ID != id || meta.State != SessionStateWaiting {
+				t.Fatal("Grok metadata lost")
+			}
+		case "antigravity":
+			if meta.ID != "agy-fixture" || meta.State != SessionStateActive {
+				t.Fatal("Antigravity metadata lost")
+			}
+		default:
+			t.Fatal("helper command classified as another provider")
+		}
+	}
+}
+
 func TestDiscoverFixtureTree(t *testing.T) {
 	home := t.TempDir()
 	project := filepath.Join(home, "project")

@@ -182,8 +182,8 @@ func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
 		t.Fatalf("result not applied: %#v", m.claudeUsage)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	if updated.(model).usageProvider != codexProvider {
-		t.Fatal("Right from Claude did not wrap to Codex")
+	if updated.(model).usageProvider != grokProvider {
+		t.Fatal("Right from Claude did not advance to Grok")
 	}
 }
 

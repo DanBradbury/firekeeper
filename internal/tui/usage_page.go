@@ -88,6 +88,8 @@ func (m model) usagePage() usagePage {
 		return m.kimiPage()
 	case claudeProvider:
 		return m.claudePage()
+	case grokProvider, antigravityProvider:
+		return m.localUsagePage()
 	default:
 		return m.codexPage()
 	}
@@ -102,6 +104,8 @@ func (m *model) usageCursorRef() *int {
 		return &m.kimiHistoryCursor
 	case claudeProvider:
 		return &m.claudeHistoryCursor
+	case grokProvider, antigravityProvider:
+		return &m.localUsage(m.usageProvider).Cursor
 	default:
 		return &m.codexHistoryCursor
 	}
@@ -115,6 +119,8 @@ func (m model) usageSessionCount() int {
 		return len(m.kimiUsage.History)
 	case claudeProvider:
 		return len(m.claudeUsage.History)
+	case grokProvider, antigravityProvider:
+		return len(m.localUsage(m.usageProvider).Snapshot.Sessions)
 	default:
 		return len(m.codexUsage.History)
 	}

@@ -133,7 +133,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	for _, p := range []struct {
 		name   string
 		enrich func([]ProcessGroup) error
-	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}, {"Gemini", d.enrichGeminiSessions}, {"Cursor", d.enrichCursorSessions}} {
+	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}, {"Gemini", d.enrichGeminiSessions}, {"Cursor", d.enrichCursorSessions}, {"Antigravity", d.enrichAntigravitySessions}, {"Grok", d.enrichGrokSessions}} {
 		if err := p.enrich(groups); err != nil {
 			warnings = append(warnings, p.name+": "+d.sanitizeProcessCommand(err.Error()))
 		}

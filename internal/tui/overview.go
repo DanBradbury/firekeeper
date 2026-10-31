@@ -60,7 +60,31 @@ func (m model) overviewProviders(now time.Time) []overviewProvider {
 		m.copilotOverview(now),
 		m.claudeOverview(now),
 		m.kimiOverview(now),
+		m.localOverview(grokProvider, now),
+		m.localOverview(antigravityProvider, now),
 	}
+}
+
+func (m model) localOverview(kind usageProvider, now time.Time) overviewProvider {
+	state := m.localUsage(kind)
+	name, _ := localUsageIdentity(kind)
+	snapshot := state.Snapshot
+	provider := overviewProvider{
+		Name: name, Accent: dashGreen, Loading: state.Loading, Err: state.Err,
+		HasData: len(snapshot.Sessions) > 0, Sessions: int64(len(snapshot.Sessions)),
+		Lifetime: snapshot.Input + snapshot.Output + snapshot.Cache,
+		Notes:    []string{"Local records, not account quota"},
+	}
+	var dates []string
+	var tokens []int64
+	for date, count := range snapshot.Daily {
+		dates, tokens = append(dates, date), append(tokens, count)
+	}
+	provider.Today, provider.Week = overviewRecentTokens(dates, tokens, now)
+	if len(dates) == 0 {
+		provider.Notes = append(provider.Notes, "No dated token records")
+	}
+	return provider
 }
 
 func (m model) codexOverview(now time.Time) overviewProvider {
@@ -363,6 +387,13 @@ func (m *model) beginOverviewRefresh() tea.Cmd {
 	if !m.kimiUsageLoading {
 		m.kimiUsageLoading = true
 		cmds = append(cmds, refreshKimiUsage())
+	}
+	for _, provider := range []usageProvider{grokProvider, antigravityProvider} {
+		state := m.localUsage(provider)
+		if !state.Loading {
+			state.Loading = true
+			cmds = append(cmds, refreshLocalUsage(provider))
+		}
 	}
 	return tea.Batch(cmds...)
 }

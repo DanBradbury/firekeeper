@@ -18,13 +18,15 @@ type (
 )
 
 const (
-	ProviderCodex    = event.ProviderCodex
-	ProviderCopilot  = event.ProviderCopilot
-	ProviderKimi     = event.ProviderKimi
-	ProviderClaude   = event.ProviderClaude
-	ProviderOpenCode = event.ProviderOpenCode
-	ProviderGemini   = event.ProviderGemini
-	ProviderCursor   = event.ProviderCursor
+	ProviderCodex       = event.ProviderCodex
+	ProviderCopilot     = event.ProviderCopilot
+	ProviderKimi        = event.ProviderKimi
+	ProviderClaude      = event.ProviderClaude
+	ProviderOpenCode    = event.ProviderOpenCode
+	ProviderGemini      = event.ProviderGemini
+	ProviderCursor      = event.ProviderCursor
+	ProviderAntigravity = event.ProviderAntigravity
+	ProviderGrok        = event.ProviderGrok
 
 	RoleUser       = event.RoleUser
 	RoleAssistant  = event.RoleAssistant

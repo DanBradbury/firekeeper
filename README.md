@@ -7,7 +7,8 @@
 
 Firekeeper is a keyboard-driven terminal dashboard for the coding agents
 running on your machine. It shows what Codex, GitHub Copilot CLI, Claude Code,
-Kimi Code, OpenCode, Gemini CLI, and Cursor CLI are doing right now: which
+Kimi Code, OpenCode, Gemini CLI, Cursor CLI, Antigravity CLI, and Grok Build
+are doing right now: which
 sessions are working or waiting for you, which model and project they use, and
 how many tokens they have spent.
 
@@ -92,6 +93,18 @@ Press `?` for every key.
 | OpenCode | Yes | Yes |
 | Gemini CLI | Yes | Yes |
 | Cursor CLI | Yes | Yes |
+| Google Antigravity CLI (`agy`) | Yes | Yes |
+| xAI Grok Build (`grok`) | Yes | Yes |
+
+Antigravity reads the CLI's JSONL history, not the Antigravity IDE. Grok means
+the official xAI Grok Build, not community tools with the same command name.
+Both have local token history where their usage records are available; neither
+exposes account quota here. Format and correlation limits are listed in the
+[reference](docs/reference.md#supported-providers).
+
+Provider expansion Batch A defers Factory Droid and Cognition Devin CLI:
+Droid's transcript message format and Devin's default passive local transcript
+store have not yet been verified. They are not claimed as supported.
 
 A Claude Code session that has subagents warns that its token total is likely
 low: background summary calls are not written to the transcript. The warning

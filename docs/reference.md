@@ -13,6 +13,8 @@ The full reference for the terminal dashboard, session reporting, the daemon and
 | OpenCode | Yes | Yes, from `session_v2` and `session_message` in `opencode.db` | No | Yes |
 | Gemini CLI | Yes | Yes, from session logs under `~/.gemini/tmp`; `NEEDS INPUT` is never shown | No | Yes, from the main session log |
 | Cursor CLI | Yes | Yes, from agent transcripts under `~/.cursor/projects` and chat titles in `~/.cursor/chats`; `NEEDS INPUT` is never shown | No | Yes, from the main agent transcript, without timestamps or token counts |
+| Google Antigravity CLI (`agy`) | Yes | Best effort from JSONL and its workspace resume cache; no `NEEDS INPUT` | Local SQLite generation history | Yes, from the main CLI JSONL |
+| xAI Grok Build (`grok`) | Yes | Best effort from ACP updates and summary metadata; no `NEEDS INPUT` | Local billing sidecar and dated turn history | Yes, from append-only ACP updates |
 
 States describe the latest event Firekeeper can see, not ground truth.
 Kimi Code support reads the session layout under `~/.kimi-code` (wire protocol
@@ -25,6 +27,37 @@ Cursor CLI support reads the agent transcripts `cursor-agent` writes; Cursor
 does not document that format, so it may change without notice. Cursor's
 transcripts record no timestamps or token counts, so Cursor sessions show
 neither.
+
+Antigravity reads `~/.gemini/antigravity-cli/brain/<id>/.system_generated/logs/transcript.jsonl`
+and `cache/last_conversations.json`. Its token history comes from
+`conversations/<id>.db` (`gen_metadata` protobuf rows), opened read-only.
+These on-disk formats are undocumented and can drift; the JSONL reader is based
+on [observed fixtures](https://github.com/jazzyalex/agent-sessions/tree/main/Resources/Fixtures/stage0/agents/antigravity),
+and usage on [observed protobuf fields](https://github.com/ayagmar/llm-usage-metrics/blob/master/packages/core/src/sources/antigravity/antigravity-row-parser.ts).
+Legacy markdown and `transcript_full.jsonl` duplicates are not read. When the
+CLI already truncated content, that limitation is marked in the normalized text;
+`raw` preserves what the CLI actually wrote, not an unavailable original.
+Usage databases over 4,096 rows, 8 MiB of payloads, or 64 KiB per row are rejected,
+not presented as complete totals. Reporting preserves JSONL records; it does
+not turn separate cumulative database totals into per-event tokens.
+
+Grok reads `GROK_HOME/sessions/<encoded-cwd>/<id>/updates.jsonl` (default
+`~/.grok`), plus bounded `summary.json` and `usage.json` sidecars. Paths and
+envelopes are verified against [Grok's public source](https://github.com/xai-org/grok-build/tree/main/crates/codegen/xai-grok-shell/src/session).
+Rebuilt `chat_history.jsonl` caches are not used, preserving stable line-index
+sequences across compaction. Turn-completion usage is counted once rather than
+counting overlapping response updates again. Reasoning is already included in
+output tokens, and cached input is separated from total input. Grok may mark
+usage incomplete; the Usage session detail shows that warning.
+
+Neither provider adds account quota requests, launch flags, hooks, or daemons.
+Missing records remain unknown. Sessions whose cwd cannot be established are
+not read by reporting or the new Usage pages because exclusions cannot be checked.
+The reporter's existing 4 MiB per-event upload limit still applies. A larger
+event returns an explicit error and leaves the cursor at that record for retry;
+Firekeeper does not drop it or shorten `raw` to pretend the upload succeeded.
+Factory Droid and Cognition Devin CLI are deferred from provider expansion
+Batch A until passive local message/store formats can be verified.
 
 ## Windows
 
@@ -106,7 +139,7 @@ Firekeeper opens on Processes. Press Tab to move between three text views:
   credits), plus tokens today, over the last 7 days, and lifetime. Claude Code
   and Kimi expose no quota locally, so their panels show token totals and point
   to `/usage`. `r` refreshes every provider. It reads the same sources as Usage.
-- **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage.
+- **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage, with local Antigravity and Grok session/turn token history.
 
 Two lookups in the Usage tab leave the machine, and neither uploads session
 data. Codex usage starts a short-lived `codex app-server` and asks it for your
@@ -155,7 +188,7 @@ narrowest table columns drop out first; Enter still expands details inline.
 #### Chat history
 
 Press `c` on a Claude Code, Codex, Copilot, Kimi Code, OpenCode, Gemini CLI,
-or Cursor CLI session to
+Cursor CLI, Antigravity CLI, or Grok Build session to
 read its conversation: your prompts and the assistant's replies, newest at the
 bottom. Tool calls, tool output, and context the harness injects (environment blocks,
 `AGENTS.md` instructions, slash-command wrappers) are left out. The transcript
@@ -188,7 +221,7 @@ foreground program.
 
 | Key | Action |
 | --- | --- |
-| Left / Right or `H` / `L` | Switch between Codex, Copilot, Kimi, and Claude |
+| Left / Right or `H` / `L` | Switch between Codex, Copilot, Kimi, Claude, Grok, and Antigravity |
 | `r` | Refresh selected provider |
 
 Press `Enter` on any supported provider to browse historical sessions. Use
@@ -319,10 +352,21 @@ dashboard only through [`backfill`](#backfill).
   Nothing is modified. Approval prompts are not recorded, so a tool call
   waiting for approval shows as `ACTIVE`, and `NEEDS INPUT` is never reported.
 
+- **Antigravity CLI:** recognizes `agy`/`agy.exe`, excludes account/configuration
+  helper commands, and uses an explicit `--conversation` id or an open primary
+  transcript first. Otherwise the workspace-keyed resume cache is matched to
+  the runtime cwd. It does not guess the newest global conversation for an
+  unrelated runtime.
+- **Grok Build:** recognizes `grok`/`grok.exe`, excludes helper commands, and uses
+  an explicit resume id or open primary log first. Otherwise newer unclaimed
+  logs in the same cwd are paired with newer runtime PIDs. Several runtimes
+  sharing a cwd remain ambiguous.
+
 `CODEX_HOME`, `KIMI_CODE_HOME`, `COPILOT_HOME`, `CLAUDE_CONFIG_DIR`,
 `OPENCODE_DB`, `XDG_DATA_HOME` (for OpenCode's
 `~/.local/share/opencode/opencode.db`), `GEMINI_CLI_HOME` (for Gemini
-CLI's `~/.gemini`), and `CURSOR_CONFIG_DIR` (for Cursor CLI's `~/.cursor`)
+CLI's `~/.gemini` and Antigravity CLI beneath it), `GROK_HOME` (for `~/.grok`),
+and `CURSOR_CONFIG_DIR` (for Cursor CLI's `~/.cursor`)
 overrides are honored. Provider events
 supply best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. Codex
 Desktop helper processes that cannot be matched to rollout metadata are not
@@ -621,7 +665,7 @@ no provider opt-in, or with `--dry-run`, it prints the plan and stops without
 opening a network connection.
 
 `--all` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode, Gemini CLI,
-and Cursor CLI from their local data directories or executables on `PATH`, honoring provider home
+Cursor CLI, Antigravity CLI, and Grok Build from their local data directories or executables on `PATH`, honoring provider home
 overrides. It allows those providers for this pass, replacing any configured allowlist
 without changing the config file. Use either `--all` or `--provider`, not
 both. After `login`, the saved server and token are used automatically.
@@ -754,7 +798,7 @@ firekeeper daemon uninstall
 
 With no provider flags, `$FIREKEEPER_PROVIDERS`, or configured allowlist,
 `daemon install` detects Codex, Copilot, Kimi Code, Claude Code, OpenCode,
-Gemini CLI, and Cursor CLI from their existing local data directories or CLI
+Gemini CLI, Cursor CLI, Antigravity CLI, and Grok Build from their existing local data directories or CLI
 executables on `PATH`, honoring `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`,
 `CLAUDE_CONFIG_DIR`, `XDG_DATA_HOME`, `GEMINI_CLI_HOME`, and
 `CURSOR_CONFIG_DIR`.
