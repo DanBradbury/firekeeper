@@ -394,7 +394,40 @@ func (d *discoverer) readCopilotStoredMetadata(home string, ids map[string]bool)
 	for index, id := range validIDs {
 		quoted[index] = "'" + id + "'"
 	}
+	path := filepath.Join(home, "session-store.db")
+	output, err := d.command("sqlite3", "-readonly", "-json", path, "PRAGMA table_info(assistant_usage_events)").Output()
+	if err != nil {
+		return nil, fmt.Errorf("read Copilot usage schema: %w", err)
+	}
+	var columns []struct {
+		Name string `json:"name"`
+	}
+	if len(bytes.TrimSpace(output)) > 0 {
+		if err := json.Unmarshal(output, &columns); err != nil {
+			return nil, fmt.Errorf("decode Copilot usage schema: %w", err)
+		}
+	}
+	cacheRead, cacheWrite := "0", "0"
+	for _, column := range columns {
+		switch column.Name {
+		case "cache_read_tokens":
+			cacheRead = "MAX(COALESCE(a.cache_read_tokens, 0), 0)"
+		case "cache_write_tokens":
+			cacheWrite = "MAX(COALESCE(a.cache_write_tokens, 0), 0)"
+		}
+	}
 	query := fmt.Sprintf(`
+		WITH usage AS (
+			SELECT
+				a.session_id,
+				SUM(MAX(COALESCE(a.input_tokens, 0), 0)) AS input_tokens,
+				SUM(MAX(COALESCE(a.output_tokens, 0), 0)) AS output_tokens,
+				SUM(%s) AS cache_read_tokens,
+				SUM(%s) AS cache_write_tokens
+			FROM assistant_usage_events a
+			WHERE a.session_id IN (%s)
+			GROUP BY a.session_id
+		)
 		SELECT
 			s.id,
 			COALESCE(s.cwd, '') AS cwd,
@@ -411,16 +444,16 @@ func (d *discoverer) readCopilotStoredMetadata(home string, ids map[string]bool)
 				ORDER BY a.id DESC
 				LIMIT 1
 			), '') AS model,
-			COALESCE((
-				SELECT SUM(COALESCE(a.input_tokens, 0) + COALESCE(a.output_tokens, 0))
-				FROM assistant_usage_events a
-				WHERE a.session_id = s.id
-			), 0) AS tokens_used
+			COALESCE(u.input_tokens, 0) + COALESCE(u.output_tokens, 0) AS tokens_used,
+			COALESCE(u.input_tokens, 0) AS input_tokens,
+			COALESCE(u.output_tokens, 0) AS output_tokens,
+			COALESCE(u.cache_read_tokens, 0) AS cache_read_tokens,
+			COALESCE(u.cache_write_tokens, 0) AS cache_write_tokens
 		FROM sessions s
+		LEFT JOIN usage u ON u.session_id = s.id
 		WHERE s.id IN (%s)
-	`, strings.Join(quoted, ","))
-	path := filepath.Join(home, "session-store.db")
-	output, err := d.command("sqlite3", "-readonly", "-json", path, query).Output()
+	`, cacheRead, cacheWrite, strings.Join(quoted, ","), strings.Join(quoted, ","))
+	output, err = d.command("sqlite3", "-readonly", "-json", path, query).Output()
 	if err != nil {
 		return nil, fmt.Errorf("read Copilot session store: %w", err)
 	}
@@ -469,6 +502,16 @@ func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMet
 	if tokens == 0 {
 		tokens = events.TokensUsed
 	}
+	breakdown := events.Tokens
+	if stored.InputTokens > 0 || stored.OutputTokens > 0 {
+		// Copilot's stored input total includes both cache reads and writes.
+		breakdown = TokenBreakdown{
+			Input:      max(stored.InputTokens-stored.CacheReadTokens-stored.CacheWriteTokens, 0),
+			Output:     stored.OutputTokens,
+			CacheRead:  stored.CacheReadTokens,
+			CacheWrite: stored.CacheWriteTokens,
+		}
+	}
 	return Info{
 		ID:          id,
 		Name:        d.sanitizeProcessCommand(name),
@@ -482,7 +525,7 @@ func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMet
 		StartedAt:   d.newestTime(workspace.CreatedAt, d.parseCopilotTime(stored.CreatedAt)),
 		UpdatedAt:   updatedAt,
 		TokensUsed:  tokens,
-		Tokens:      events.Tokens,
+		Tokens:      breakdown,
 	}, nil
 }
 
