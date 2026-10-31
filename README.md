@@ -182,6 +182,8 @@ are the stable, importable pieces of that contract.
 
 ## Documentation
 
+- [Usage guides](https://firekeeper.ai/docs/): quick start, everyday workflows,
+  usage data, keyboard shortcuts, and troubleshooting
 - [Install and uninstall](docs/install.md)
 - [Reference](docs/reference.md): terminal dashboard, reporting, the daemon,
   and configuration

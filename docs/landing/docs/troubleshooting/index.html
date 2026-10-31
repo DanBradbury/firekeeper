@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Troubleshooting | Firekeeper docs</title>
+<meta name="description" content="Resolve missing agent sessions, terminal-switching problems, unavailable usage limits, and incomplete conversations in Firekeeper.">
+<link rel="canonical" href="https://firekeeper.ai/docs/troubleshooting/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/" aria-current="page">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Using Firekeeper</p>
+    <h1>Troubleshooting</h1>
+    <p class="lede">Start with the symptom you can see. You should not need to relaunch agents through a wrapper or enable reporting to fix the local dashboard.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#missing-session">Missing session</a><a href="#wrong-session">Wrong details</a><a href="#switch">Terminal switching</a><a href="#usage">Usage</a><a href="#report">Report a problem</a></nav>
+    <h2 id="missing-session">My agent is not in Processes</h2>
+    <ol>
+      <li>Confirm that the agent is still running. Processes shows live runtimes, not every saved conversation. Check <a href="/docs/usage/#history">Usage</a> for supported providers' historical sessions.</li>
+      <li>Run Firekeeper on the same machine and as the same user as the agent. Windows Firekeeper does not see agents inside WSL; run the Linux build inside WSL instead.</li>
+      <li>Wait for the two-second poll or press <kbd>r</kbd>. Check any error or metadata warning shown by the dashboard.</li>
+      <li>If you use a custom provider data directory, launch Firekeeper with the same environment override as the agent.</li>
+    </ol>
+    <div class="table-wrap" role="region" aria-label="Provider data directory overrides" tabindex="0"><table>
+      <thead><tr><th scope="col">Provider</th><th scope="col">Environment override</th></tr></thead>
+      <tbody>
+        <tr><td>Codex</td><td><code>CODEX_HOME</code></td></tr>
+        <tr><td>Copilot CLI</td><td><code>COPILOT_HOME</code></td></tr>
+        <tr><td>Claude Code</td><td><code>CLAUDE_CONFIG_DIR</code></td></tr>
+        <tr><td>Kimi Code</td><td><code>KIMI_CODE_HOME</code></td></tr>
+        <tr><td>OpenCode</td><td><code>OPENCODE_DB</code>, or <code>XDG_DATA_HOME</code> for its default database location</td></tr>
+        <tr><td>Gemini CLI</td><td><code>GEMINI_CLI_HOME</code></td></tr>
+        <tr><td>Cursor CLI</td><td><code>CURSOR_CONFIG_DIR</code></td></tr>
+      </tbody>
+    </table></div>
+    <p>Provider formats can change. Check the <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#supported-providers">supported layouts</a>, especially if you run an older Kimi CLI or OpenCode version. Do not copy or modify provider databases to make discovery work.</p>
+    <h2 id="wrong-session">The runtime has missing or wrong details</h2>
+    <p>Finding a process and finding its conversation are separate steps. A runtime may be visible before Firekeeper can match metadata. Several agents of the same provider in one directory can also make directory-based matching ambiguous.</p>
+    <p>Check the session ID, directory, and the agent's own terminal before acting. Separate project worktrees can make directory-based matches less ambiguous, but are not required. On Windows, Codex matches use directory and recency because open-file discovery is unavailable.</p>
+    <p>Missing chat metadata is not repaired by enabling uploads. If the provider has not written a transcript yet, wait for a response and refresh.</p>
+    <h2 id="switch">Pressing s does not focus the right terminal</h2>
+    <p>On macOS, use Ghostty 1.3+, Terminal.app, or iTerm2. Check System Settings &gt; Privacy &amp; Security &gt; Automation if access was denied. A session without a controlling terminal cannot be selected this way.</p>
+    <p>Ghostty's first match can be ambiguous if several panes have the same working directory and its scripting API does not expose TTYs. On Windows, switching raises a window rather than a tab. Linux and SSH-to-local terminal switching are not supported. Use your terminal's controls in these cases.</p>
+    <h2 id="chat">Chat looks incomplete</h2>
+    <p>The chat view intentionally shows prompts and replies, not the full event stream. Tool output and injected context are omitted; only the latest 1,000 messages are kept. OpenCode replies appear when complete. Press <kbd>G</kbd> to follow the latest messages or <kbd>r</kbd> to reload.</p>
+    <p>Read the original agent terminal when you need tool output, approvals, or context that Firekeeper does not display.</p>
+    <h2 id="usage">Usage totals or limits are missing</h2>
+    <p>Live discovery and Usage have different provider coverage. Only Codex, Copilot, Kimi, and Claude have Usage pages. Token history is local and can be incomplete; it is not an authoritative billing record.</p>
+    <p>For Codex limits, confirm the Codex CLI is installed and signed in. For Claude, run <code>firekeeper claude-limits status</code>; if the sign-in has expired, open Claude Code to renew it. Firekeeper does not refresh credentials. Copilot plan details are best effort and can fail independently of local history.</p>
+    <p>See <a href="/docs/usage/#limits">the data-source guide</a> for missing cache counters, subagent undercount, and quota limitations.</p>
+    <h2 id="layout">Panels or columns disappeared</h2>
+    <p>The dashboard hides lower-priority columns and summary panels when the terminal is small. Enlarge the window, or select a runtime and press <kbd>Enter</kbd> for inline details when the bottom panel is hidden. This does not mean session data was deleted.</p>
+    <h2 id="report">Report a problem safely</h2>
+    <p>Get the installed version:</p>
+    <pre><code>firekeeper --version</code></pre>
+    <p><a href="https://github.com/DanBradbury/firekeeper/issues">Open an issue</a> with the Firekeeper version, operating system, terminal application, agent CLI version, expected behavior, and a short reproduction. Include the displayed error only after checking it for private information.</p>
+    <div class="callout"><p><strong>Keep provider data private.</strong> Do not attach real transcripts, session databases, credentials, full command lines, or unreviewed snapshots. Crop or redact screenshots that show project names, paths, prompts, or replies. A synthetic example is preferable.</p></div>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/keyboard/"><small>Previous</small>&larr; Keyboard shortcuts</a><a href="/docs/"><small>Back to</small>Documentation home &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/troubleshooting/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>
