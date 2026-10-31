@@ -291,8 +291,27 @@ func installWindows(ctx context.Context, tag, exe string, out, errOut io.Writer)
 		}
 	}
 	cmd := exec.CommandContext(ctx, shell, windowsInstallArgs(path, tag, filepath.Dir(exe))...)
+	cmd.Env = windowsInstallEnv(os.Environ())
 	cmd.Stdout, cmd.Stderr = out, errOut
 	return cmd.Run()
+}
+
+// windowsInstallEnv is the environment for the installer: parent without
+// PSModulePath, so the chosen PowerShell works out its own module paths.
+// PowerShell 7 sets PSModulePath to its own module directories, and Windows
+// PowerShell 5.1 started from such a session cannot load its built-in
+// modules from them (Get-FileHash then "is not recognized"). Windows
+// variable names ignore case, so any spelling is dropped.
+func windowsInstallEnv(parent []string) []string {
+	env := make([]string, 0, len(parent))
+	for _, kv := range parent {
+		name, _, _ := strings.Cut(kv, "=")
+		if strings.EqualFold(name, "PSModulePath") {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return env
 }
 
 // windowsInstallArgs are the PowerShell arguments that run the installer at

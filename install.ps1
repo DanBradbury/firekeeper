@@ -145,6 +145,33 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     catch { }
 }
 
+# The installer calls .NET directly instead of module cmdlets such as
+# Get-FileHash and Expand-Archive. PowerShell loads those from PSModulePath on
+# first use, and Windows PowerShell 5.1 started from PowerShell 7 inherits a
+# PSModulePath that points at 7's modules, which 5.1 cannot load: the cmdlet
+# is then "not recognized". Everything below uses only .NET and cmdlets built
+# into both editions.
+
+# Get-Sha256 returns the SHA-256 of the file at Path as lowercase hex.
+function Get-Sha256([string]$Path) {
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $bytes = $sha.ComputeHash($stream) } finally { $sha.Dispose() }
+    }
+    finally {
+        $stream.Dispose()
+    }
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+}
+
+# Expand-Zip extracts the zip at Path into Destination, which must not exist
+# yet. ZipFile refuses entries that would land outside Destination.
+function Expand-Zip([string]$Path, [string]$Destination) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($Path, $Destination)
+}
+
 # Test-ReleasesUrl allows https://, file:// on this machine (the tests' fake
 # release), and http:// only to this machine (the tests' redirect server).
 # Anything else would fetch the zip and checksums.txt in clear text, where the
@@ -225,20 +252,21 @@ function Install-Firekeeper {
         catch { Fail "could not download checksums.txt for $tag" }
 
         $want = $null
-        foreach ($line in Get-Content -LiteralPath $sums) {
+        foreach ($line in [System.IO.File]::ReadAllLines($sums)) {
             $fields = $line.Trim() -split '\s+'
             if ($fields.Count -ge 2 -and $fields[1].TrimStart('*') -eq $archive) { $want = $fields[0].ToLowerInvariant() }
         }
         if (-not $want) { Fail "checksums.txt has no entry for $archive" }
-        $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+        $got = Get-Sha256 $zip
         if ($got -ne $want) {
             Fail "checksum mismatch for $archive (expected $want, got $got); nothing was installed"
         }
 
         $extracted = Join-Path $tmp 'x'
-        Expand-Archive -LiteralPath $zip -DestinationPath $extracted -Force
+        try { Expand-Zip $zip $extracted }
+        catch { Fail "could not extract firekeeper.exe from $archive" }
         $exe = Join-Path $extracted 'firekeeper.exe'
-        if (-not (Test-Path -LiteralPath $exe)) { Fail "could not extract firekeeper.exe from $archive" }
+        if (-not [System.IO.File]::Exists($exe)) { Fail "could not extract firekeeper.exe from $archive" }
 
         try { New-Directory $InstallDir }
         catch { Fail "could not create $InstallDir; set FIREKEEPER_INSTALL_DIR to a writable directory" }

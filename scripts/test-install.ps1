@@ -22,6 +22,18 @@ New-Directory $work
 
 $onWindows = ($PSVersionTable.PSEdition -ne 'Core') -or $IsWindows
 $powershell = (Get-Process -Id $PID).Path
+# FIREKEEPER_TEST_INSTALLER_SHELL runs install.ps1 with another PowerShell
+# than this one, and FIREKEEPER_TEST_INSTALLER_PSMODULEPATH gives that shell
+# a PSModulePath. CI uses them to run Windows PowerShell 5.1 with PowerShell
+# 7's module paths, as when firekeeper updates itself from a pwsh session: 5.1
+# cannot autoload its own Get-FileHash or Expand-Archive there, so the
+# installer must not need them.
+$childModulePath = $null
+if ($env:FIREKEEPER_TEST_INSTALLER_SHELL) {
+    $powershell = $env:FIREKEEPER_TEST_INSTALLER_SHELL
+    $childModulePath = $env:FIREKEEPER_TEST_INSTALLER_PSMODULEPATH
+    Write-Host "running install.ps1 with $powershell, PSModulePath=$childModulePath"
+}
 $script:fails = 0
 $script:server = $null
 
@@ -33,6 +45,10 @@ function Check([bool]$Condition, [string]$Name) { if ($Condition) { Ok $Name } e
 # and environment variables behave as for a user. It returns the exit code
 # and the combined output.
 function Run-Installer([hashtable]$Environment, [string[]]$Arguments = @()) {
+    if ($null -ne $childModulePath) {
+        $Environment = $Environment.Clone()
+        $Environment['PSModulePath'] = $childModulePath
+    }
     $saved = @{}
     foreach ($key in $Environment.Keys) {
         $saved[$key] = [Environment]::GetEnvironmentVariable($key)
@@ -54,6 +70,17 @@ function Run-Installer([hashtable]$Environment, [string[]]$Arguments = @()) {
     }
 }
 
+# Get-Sha256 hashes a file the way install.ps1 does, without Get-FileHash.
+function Get-Sha256([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        try { $bytes = $sha.ComputeHash($stream) } finally { $sha.Dispose() }
+    }
+    finally { $stream.Dispose() }
+    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
+}
+
 # New-Release lays out DIR like GitHub's releases/download/<tag>/: a zip
 # holding firekeeper.exe, and checksums.txt.
 function New-Release([string]$Root, [string]$Tag, [string]$Content) {
@@ -68,7 +95,7 @@ function New-Release([string]$Root, [string]$Tag, [string]$Content) {
     $name = "firekeeper_${ver}_windows_${arch}.zip"
     $zip = Join-Path $dir $name
     Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
-    $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-Sha256 $zip
     $other = '0' * 64
     Set-Content -LiteralPath (Join-Path $dir 'checksums.txt') -Value @("$hash  $name", "$other  firekeeper_${ver}_other_other.zip")
     return $zip
@@ -106,6 +133,24 @@ function ToFileUrl([string]$Path) {
 }
 
 try {
+    # 0. The child shell setup reproduces the bug it guards against: with
+    # PowerShell 7's module paths, Windows PowerShell 5.1 cannot find
+    # Get-FileHash. Otherwise the run below would prove nothing.
+    if ($null -ne $childModulePath) {
+        $saved = $env:PSModulePath
+        $savedPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $env:PSModulePath = $childModulePath
+            $probe = & $powershell -NoProfile -NonInteractive -Command "if (Get-Command Get-FileHash -ErrorAction SilentlyContinue) { 'found' } else { 'missing' }" 2>&1 | ForEach-Object { "$_" }
+        }
+        finally {
+            $env:PSModulePath = $saved
+            $ErrorActionPreference = $savedPreference
+        }
+        Check (($probe -join ' ') -match 'missing') "child shell cannot see Get-FileHash, as in the bug (got $($probe -join ' '))"
+    }
+
     $releases = Join-Path $work 'releases'
     New-Release $releases 'v1.2.3' 'firekeeper 1.2.3' | Out-Null
     $base = ToFileUrl $releases
