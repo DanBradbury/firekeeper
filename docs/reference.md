@@ -848,8 +848,8 @@ repository's `.git/config` after both are reduced to `host/owner/repo`, so
 `git@github.com:acme/api.git` and `https://github.com/acme/api` both read as
 `github.com/acme/api`. `.firekeeper-ignore` still works as before. Keys that
 only the separate dashboard server reads (`prices`, `repo_url_template`,
-`trusted_proxies`) are accepted and ignored here, so one file can serve both
-programs.
+`trusted_proxies`, and the `[github]` table) are accepted and ignored here, so
+one file can serve both programs.
 
 `firekeeper config show` prints the merged configuration with the token
 masked and notes where each layered setting came from. `login` and `logout`

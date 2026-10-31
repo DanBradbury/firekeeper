@@ -73,8 +73,15 @@ type Config struct {
 }
 
 // serverOnly lists the top-level file keys that only the dashboard server
-// reads.
-var serverOnly = map[string]bool{"prices": true, "repo_url_template": true, "trusted_proxies": true}
+// (firekeeper-server) reads, so one config.toml can serve both programs.
+// Anything under these keys is ignored here; the server validates it. Keep
+// this in step with the server's own config file layout.
+var serverOnly = map[string]bool{
+	"prices":            true, // [prices."model"] per-model price overrides
+	"repo_url_template": true, // links changed files to their repository host
+	"trusted_proxies":   true, // reverse proxies `serve` trusts for X-Forwarded-For
+	"github":            true, // [github] GitHub App sign-in and PR sync settings
+}
 
 // file is the TOML layout.
 type file struct {

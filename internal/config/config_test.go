@@ -134,17 +134,68 @@ paths = ["~/clients", "/opt/private/"]
 // A config file shared with the dashboard server holds settings only the
 // server reads. The client accepts them without interpreting them.
 func TestLoadAcceptsServerOnlySettings(t *testing.T) {
-	home := t.TempDir()
-	writeConfig(t, home, `
-repo_url_template = "https://github.com/me/{project}/blob/{ref}/{path}"
-trusted_proxies = ["10.0.0.0/8"]
-
+	sections := map[string]string{
+		"prices": `
 [prices."gpt-5"]
 input = 1.25
 output = 10
-`)
-	if _, err := Load(Options{Home: home, Getenv: env(nil)}); err != nil {
-		t.Fatal(err)
+`,
+		"repo_url_template": `
+repo_url_template = "https://github.com/me/{project}/blob/{ref}/{path}"
+`,
+		"trusted_proxies": `
+trusted_proxies = ["10.0.0.0/8"]
+`,
+		"github": `
+[github]
+url = "https://github.example.com"
+app_id = 12345
+private_key_path = "/etc/firekeeper/github-app.pem"
+client_id = "Iv1.abc"
+ca_bundle_path = "/etc/ssl/corp.pem"
+sync_interval = "10m"
+`,
+	}
+	for k := range serverOnly {
+		if _, ok := sections[k]; !ok {
+			t.Errorf("server-only key %q has no test case", k)
+		}
+	}
+
+	var all strings.Builder
+	tests := []struct{ name, body string }{}
+	for _, k := range []string{"prices", "repo_url_template", "trusted_proxies", "github"} {
+		tests = append(tests, struct{ name, body string }{k, sections[k]})
+	}
+	for _, tt := range tests {
+		// Top-level keys must come before any table, so put them first.
+		if !strings.HasPrefix(strings.TrimSpace(tt.body), "[") {
+			all.WriteString(tt.body)
+		}
+	}
+	for _, tt := range tests {
+		if strings.HasPrefix(strings.TrimSpace(tt.body), "[") {
+			all.WriteString(tt.body)
+		}
+	}
+	tests = append(tests, struct{ name, body string }{"all together", all.String()})
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			// Client settings alongside the server's must still load.
+			writeConfig(t, home, "server = \"https://fk.example\"\nproviders = [\"codex\"]\n"+tt.body)
+			c, err := Load(Options{Home: home, Getenv: env(nil)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Server != "https://fk.example" || c.Sources["server"] != "file" {
+				t.Fatalf("server = %q (%s), want the file's value", c.Server, c.Sources["server"])
+			}
+			if len(c.Providers) != 1 || c.Providers[0] != "codex" {
+				t.Fatalf("providers = %v, want [codex]", c.Providers)
+			}
+		})
 	}
 }
 
