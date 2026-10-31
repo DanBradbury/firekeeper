@@ -75,6 +75,8 @@ removing Firekeeper.
   and lifetime tokens. Claude's 5-hour and weekly limits appear automatically when Claude Code is
   signed in on this machine (turn off with `firekeeper claude-limits disable`;
   see [Usage](docs/reference.md#usage)). A Usage tab shows token history by model, per provider.
+  Live Copilot token breakdowns use full-session totals from its local database,
+  including cache reads and writes when available.
 - **Read what happened.** Press `c` on a session to read its prompts and
   replies in the terminal, read-only, following new messages live.
 - **Take your history with you.** `firekeeper snapshot --json` prints the

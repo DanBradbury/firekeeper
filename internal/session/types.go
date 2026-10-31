@@ -24,16 +24,20 @@ type CopilotWorkspaceMetadata struct {
 }
 
 type CopilotStoredMetadata struct {
-	ID         string `json:"id"`
-	CWD        string `json:"cwd"`
-	Repository string `json:"repository"`
-	HostType   string `json:"host_type"`
-	Branch     string `json:"branch"`
-	Summary    string `json:"summary"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
-	Model      string `json:"model"`
-	TokensUsed int64  `json:"tokens_used"`
+	ID               string `json:"id"`
+	CWD              string `json:"cwd"`
+	Repository       string `json:"repository"`
+	HostType         string `json:"host_type"`
+	Branch           string `json:"branch"`
+	Summary          string `json:"summary"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	Model            string `json:"model"`
+	TokensUsed       int64  `json:"tokens_used"`
+	InputTokens      int64  `json:"input_tokens"`
+	OutputTokens     int64  `json:"output_tokens"`
+	CacheReadTokens  int64  `json:"cache_read_tokens"`
+	CacheWriteTokens int64  `json:"cache_write_tokens"`
 }
 
 type CopilotEventMetadata struct {
