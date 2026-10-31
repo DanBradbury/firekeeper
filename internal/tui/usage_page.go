@@ -219,11 +219,7 @@ func (m model) usageCardRow(page usagePage, height int) []string {
 	for index, card := range cards {
 		width := remaining / (count - index)
 		remaining -= width
-		body := card.Lines(height - 2)
-		for line := range body {
-			body[line] = usageFitStat(body[line], width-4)
-		}
-		box := dashBox(card.Title, body, width, height, card.Accent)
+		box := dashBox(card.Title, card.Lines(height-2), width, height, card.Accent)
 		for row := range rows {
 			rows[row] += box[row]
 		}
@@ -349,6 +345,10 @@ func usageProjectLines(history []usageSession, rows int) []string {
 		}
 		return totals[i].name < totals[j].name
 	})
+	countWidth := 0
+	for _, entry := range totals {
+		countWidth = max(countWidth, len(fmt.Sprintf("×%d", entry.sessions)))
+	}
 	var lines []string
 	for index, entry := range totals {
 		if index == rows-1 && len(totals) > rows {
@@ -356,9 +356,11 @@ func usageProjectLines(history []usageSession, rows int) []string {
 			break
 		}
 		lines = append(lines,
-			dashPaint(dashCell(entry.name, 16, false)+" ", usageBrightColor, true)+
+			usageSplit(
+				dashPaint(entry.name, usageBrightColor, true),
 				dashPaint(dashCell(formatTokenCount(entry.tokens), 7, true), dashYellow, true)+
-				dashPaint(fmt.Sprintf("  ×%d", entry.sessions), dashOrange, false),
+					dashPaint("  "+dashCell(fmt.Sprintf("×%d", entry.sessions), countWidth, true), dashOrange, false),
+			),
 		)
 	}
 	return lines
@@ -499,28 +501,30 @@ func usageStat(name, value, color string) string {
 	if color == "" {
 		color = usageBrightColor
 	}
-	return dashPaint(name, usageMutedColor, false) + usageStatGap + dashPaint(value, color, true)
+	return usageSplit(dashPaint(name, usageMutedColor, false), dashPaint(value, color, true))
 }
+
+// usageSplit joins a painted name and value so usageFitStat floats the value
+// to the right edge of whatever box the line lands in.
+func usageSplit(name, value string) string { return name + usageStatGap + value }
 
 // usageStatGap separates a stat's name from its value until the card width is
 // known; usageFitStat then floats the value to the right edge.
 const usageStatGap = "\x1f"
 
-// usageFitStat expands the gap in a usageStat line so the name stays whole and
-// the value sits flush right. When the row is too narrow the value is
-// truncated instead of the name.
+// usageFitStat expands the gap in a usageSplit line so the value sits flush
+// right. When the row is too narrow the name is truncated, never the value.
 func usageFitStat(line string, inner int) string {
 	name, value, ok := strings.Cut(line, usageStatGap)
 	if !ok {
 		return line
 	}
-	nameWidth := ansi.StringWidth(name)
 	valueWidth := ansi.StringWidth(value)
-	if nameWidth+1+valueWidth > inner {
-		value = ansi.Truncate(value, max(inner-nameWidth-1, 0), "…")
-		valueWidth = ansi.StringWidth(value)
+	if ansi.StringWidth(name)+1+valueWidth > inner {
+		name = ansi.Truncate(name, max(inner-valueWidth-1, 0), "…")
 	}
-	return name + dashPaint(strings.Repeat(" ", max(inner-nameWidth-valueWidth, 1)), usageTextColor, false) + value
+	gap := max(inner-ansi.StringWidth(name)-valueWidth, 1)
+	return name + dashPaint(strings.Repeat(" ", gap), usageTextColor, false) + value
 }
 
 // usageNote is a muted explanatory line, such as where to find quota.
@@ -539,9 +543,10 @@ func usageModelCardLines(models []modelUsage, rows int, empty string) []string {
 		}
 		name := strings.ReplaceAll(strings.ToUpper(model.Model), "-", " ")
 		lines = append(lines,
-			dashPaint("◆ ", model.Color, true)+
-				dashPaint(dashCell(name, 18, false), usageTextColor, false)+
+			usageSplit(
+				dashPaint("◆ ", model.Color, true)+dashPaint(name, usageTextColor, false),
 				dashPaint(formatTokenCount(model.Tokens), usageBrightColor, true),
+			),
 		)
 	}
 	return lines

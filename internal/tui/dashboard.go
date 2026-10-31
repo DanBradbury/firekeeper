@@ -679,7 +679,7 @@ func dashBox(title string, body []string, width, height int, accent string) []st
 			line = body[row]
 		}
 		lines = append(lines,
-			dashPaint("│ ", dashBorderColor, false)+dashFit(line, inner, usagePanelColor)+dashPaint(" │", dashBorderColor, false),
+			dashPaint("│ ", dashBorderColor, false)+dashFit(usageFitStat(line, inner), inner, usagePanelColor)+dashPaint(" │", dashBorderColor, false),
 		)
 	}
 	if height >= 2 {
