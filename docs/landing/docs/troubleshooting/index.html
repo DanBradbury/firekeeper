@@ -40,7 +40,14 @@
     <p class="eyebrow">Using Firekeeper</p>
     <h1>Troubleshooting</h1>
     <p class="lede">Start with the symptom you can see. You should not need to relaunch agents through a wrapper or enable reporting to fix the local dashboard.</p>
-    <nav class="on-page" aria-label="On this page"><a href="#missing-session">Missing session</a><a href="#wrong-session">Wrong details</a><a href="#switch">Terminal switching</a><a href="#usage">Usage</a><a href="#report">Report a problem</a></nav>
+    <nav class="on-page" aria-label="On this page"><a href="#command-not-found">Command not found</a><a href="#missing-session">Missing session</a><a href="#wrong-session">Wrong details</a><a href="#switch">Terminal switching</a><a href="#usage">Usage</a><a href="#report">Report a problem</a></nav>
+    <h2 id="command-not-found">My shell cannot find firekeeper</h2>
+    <p>First check that the installer finished successfully. The macOS/Linux script installs to <code>~/.local/bin</code> by default but does not change your shell configuration. In bash or zsh, add that directory for the current session:</p>
+    <pre><code>export PATH="$HOME/.local/bin:$PATH"
+firekeeper --version</code></pre>
+    <p>Use your custom directory instead if you set <code>FIREKEEPER_INSTALL_DIR</code>. For persistent shell configuration, see <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">the installation guide</a>.</p>
+    <p>On Windows, the installer updates your user PATH and the terminal running it. Reopen other terminal windows to pick up that change. A manual install, or an install with PATH updates disabled, needs the installation directory added to your user PATH.</p>
+    <p>For Homebrew, follow Homebrew's shell setup instructions if <code>brew</code> itself is missing. For a Go install, add <code>GOBIN</code> (or the <code>bin</code> directory under <code>go env GOPATH</code>) to PATH.</p>
     <h2 id="missing-session">My agent is not in Processes</h2>
     <ol>
       <li>Confirm that the agent is still running. Processes shows live runtimes, not every saved conversation. Check <a href="/docs/usage/#history">Usage</a> for supported providers' historical sessions.</li>

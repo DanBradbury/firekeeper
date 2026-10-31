@@ -1,94 +1,108 @@
 # Firekeeper
 
-**Tend every coding agent from one bonfire.**
+**One terminal dashboard for all your coding agents.**
 
 [![CI](https://github.com/DanBradbury/firekeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/DanBradbury/firekeeper/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Firekeeper is a keyboard-driven terminal dashboard for the coding agents
-running on your machine. It shows what Codex, GitHub Copilot CLI, Claude Code,
-Kimi Code, OpenCode, Gemini CLI, and Cursor CLI are doing right now: which
-sessions are working or waiting for you, which model and project they use, and
-how many tokens they have spent.
+See which agents are working or need attention, read their latest replies,
+and check token usage without hunting through terminal tabs. Firekeeper
+discovers **Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode,
+Gemini CLI, and Cursor CLI** running on your machine.
 
-It runs on your hardware and changes nothing about how you launch your
-agents. Nothing starts and nothing is uploaded unless you ask.
+**Free and open source. No Firekeeper account, server, or agent wrappers
+required.** Launch your agents as usual, then open `firekeeper` beside them.
+The terminal dashboard reads local session data without uploading it;
+[usage lookups and update checks](https://firekeeper.ai/docs/usage/#network)
+can contact the network.
 
-![Firekeeper terminal dashboard showing four agent sessions across Claude, Codex, Copilot, and OpenCode](docs/firekeeper-tui.jpg)
-
-## Why
-
-If you use more than one coding agent, each keeps its history in its own
-format in its own folder. Simple questions get hard. What was that agent doing
-when it stopped and waited for you? Which project is using the most tokens?
-What did it change?
-
-Firekeeper answers those from one place, and lets you take the history
-elsewhere if you want to.
+[Install](#install) · [First run](#first-run) ·
+[Usage guides](https://firekeeper.ai/docs/) ·
+[Troubleshooting](https://firekeeper.ai/docs/troubleshooting/)
 
 ## Install
+
+Choose **one** method. All three install a prebuilt binary; no Go toolchain
+is needed.
+
+**macOS — Homebrew**
 
 ```sh
 brew install DanBradbury/tap/firekeeper
 ```
 
-or
+**macOS or Linux — install script**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
 ```
 
-or, on Windows, in PowerShell:
+Installs to `~/.local/bin` without `sudo`. Follow the installer's `PATH`
+hint if that directory is not on your path.
+
+**Windows — PowerShell 5.1 or 7**
 
 ```powershell
 irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
 ```
 
-To read the script or check the zip's SHA-256 yourself before anything runs,
-see [Verify before you install](docs/install.md#verify-before-you-install-windows).
+Installs to `%LOCALAPPDATA%\Programs\firekeeper` and adds it to your user
+`PATH`; no administrator rights are needed.
 
-Each installs a prebuilt binary, so you do not need a Go toolchain. Then run:
+The script commands download and execute code. For manual downloads,
+checksum verification, version pinning, source builds, or uninstalling, see
+[Install and uninstall](docs/install.md).
 
-```sh
-firekeeper
-```
+macOS (Apple Silicon and Intel) is the main target. Windows 10 1809+ and 11
+(amd64 and arm64) are supported with [platform limitations](docs/reference.md#windows).
+Linux (amd64 and arm64) is best effort.
 
-Releases cover macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and
-Windows 10 1809+ and 11 (amd64 and arm64). macOS is the main target; Linux is
-best effort. Windows is supported with limits: the binaries are not
-code-signed, switching to a session raises its terminal window but not the
-tab, and Codex runtimes are matched to threads by directory and time because
-Windows cannot list open files. See [Windows](docs/reference.md#windows) for
-the full list, and [Install and uninstall](docs/install.md) for pinning a version, building from source, and
-removing Firekeeper.
+## First run
+
+1. Start a supported agent in your project using its usual command, or leave
+   an existing session running. Firekeeper does not install or launch agents.
+2. Open another terminal window, tab, or pane on the same machine, as the same
+   user, and run `firekeeper` from any directory.
+3. The **Processes** view should show your running agents within a couple of
+   seconds. Select a row to see its project, state, model, and available tokens.
+
+| Key | What to do |
+| --- | --- |
+| Up / Down | Select an agent runtime |
+| `c`, then Esc | Read its conversation, then return |
+| `s` | Jump to its terminal on macOS or Windows |
+| Tab | Switch between Processes, Overview, and Usage |
+| `?` | Show all keyboard shortcuts |
+| `q` | Quit from a main view; your agents keep running |
+
+Terminal switching supports Ghostty 1.3+, Terminal.app, and iTerm2 on macOS.
+On Windows it raises the window, not the tab; Linux has no terminal switching.
+An empty list usually means no supported agent is running where Firekeeper
+can see it. See the [missing-session checklist](https://firekeeper.ai/docs/troubleshooting/#missing-session).
+You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
+
+![Firekeeper terminal dashboard showing four agent sessions across Claude, Codex, Copilot, and OpenCode](docs/firekeeper-tui.jpg)
 
 ## What you get
 
-- **See what is running.** Agent processes are grouped with their child
-  processes, with state, model, working directory, Git branch, and tokens.
-  Each collapsed runtime has one row, including its working directory.
-  On macOS, press `s` to jump to the terminal that holds a session.
-  Details appear in the bottom session panel; on smaller terminals, press
-  Enter to expand them inline instead.
-- **Understand usage.** An Overview tab shows every provider's quota meters
-  and reset countdowns (Codex limits, Copilot AI credits) beside today, 7-day
-  and lifetime tokens. Claude's 5-hour and weekly limits appear automatically when Claude Code is
-  signed in on this machine (turn off with `firekeeper claude-limits disable`;
-  see [Usage](docs/reference.md#usage)). A Usage tab shows token history by model, per provider.
-  Live Copilot token breakdowns use full-session totals from its local database,
-  including cache reads and writes when available.
-- **Read what happened.** Press `c` on a session to read its prompts and
-  replies in the terminal, read-only, following new messages live.
-- **Take your history with you.** `firekeeper snapshot --json` prints the
-  sessions it finds, and you can optionally send redacted transcripts to a
-  server (see below).
+- **Follow work across projects.** Processes groups each agent runtime with
+  its child processes and shows available state, model, directory, Git branch,
+  and tokens. Check which session needs attention without visiting every tab.
+- **Understand usage.** Overview summarizes local tokens and available
+  provider limits; Usage breaks history down by model and lets you open past
+  conversations. See [what each provider reports](https://firekeeper.ai/docs/usage/).
+- **Read without interrupting.** The chat view follows new prompts and replies
+  live, read-only. Return to the agent's own terminal to reply or approve work.
+- **Take your history with you.** `firekeeper snapshot --json` prints discovered
+  sessions for scripts. Transcript exports and server reporting are separate,
+  optional commands in the [reference](docs/reference.md#reporting).
 
-Start an agent in another terminal and it appears within a couple of seconds.
-Press `?` for every key.
+Usage history is available for Codex, Copilot CLI, Claude Code, and Kimi Code.
+Local token totals can be incomplete and are not an account-wide bill.
 
 ## Supported agents
 
-| Agent | Live dashboard | Transcript upload |
+| Agent | Live dashboard | Optional transcript upload |
 | --- | --- | --- |
 | Claude Code | Yes | Yes |
 | Codex | Yes | Yes |
@@ -110,9 +124,9 @@ for each one, and what each version needs.
 
 ## Private by default
 
-- Plain `firekeeper` uploads no session data and starts no daemon. Two lookups
-  in the Usage tab do contact other services; the
-  [reference](docs/reference.md#terminal-dashboard) names them.
+- Plain `firekeeper` uploads no session data and starts no daemon. Provider
+  usage lookups and release checks can contact the network; the
+  [usage guide](https://firekeeper.ai/docs/usage/#network) names them.
 - Uploading is a separate set of commands that you run on purpose, and it is
   opt-in per agent. `firekeeper report --dry-run` shows what would be sent
   without opening a connection.
@@ -131,47 +145,31 @@ and sends.
 
 ## Send sessions to a server (optional)
 
+Already using the local dashboard? Reporting is a separate workflow for
+sending session metadata and full transcripts to a server you choose.
+Start with a local preview; this command uploads nothing:
+
 ```sh
-firekeeper backfill --all --dry-run   # preview importing your existing history
-firekeeper login --server https://dash.example   # link this machine in the browser
-firekeeper daemon install             # report in the background, starting at login
+firekeeper backfill --all --dry-run
 ```
 
-`report`, `backfill`, `daemon`, and `login` are documented in the
-[reference](docs/reference.md#reporting).
+Before enabling uploads, read the [reporting guide](docs/reference.md#reporting)
+for linking a machine, choosing providers, importing history, and installing
+the optional background reporter. Redaction is best effort, and the server
+operator can read what you send.
 
 ### The dashboard server
 
-A web dashboard for browsing, searching, and charting uploaded sessions is a
-separate commercial product, `firekeeper-server`, made by Lucky Daisy LLC. It is
-not part of this repository. **It is free to run on your own machine**: with no
-license key, `firekeeper serve` starts a dashboard for you alone on this
-computer, with every feature, so you can browse your sessions outside the
-terminal and see what it does. Running it for a team, on other machines or as a
-hosted service needs a license key; to get one, or a free evaluation key, email
-dan.luckydaisy@gmail.com.
+`firekeeper-server` is a separate commercial product from Lucky Daisy LLC
+for browsing, searching, and charting reported sessions in a browser. It is
+not part of this repository or required by the terminal dashboard.
+**It is free to run for yourself on this machine** without a license key;
+team, remote, or hosted use requires a license.
 
-`firekeeper serve [args]` runs `firekeeper-server serve [args]` in its place,
-with the same arguments, environment, and exit status. It looks in
-`$FIREKEEPER_SERVER_BIN`, then next to the `firekeeper` executable, then on your
-`PATH`, then in `~/.local/bin`.
-
-If it finds nothing, `firekeeper serve` offers to download the server for you.
-It asks `[y/N]` first, only in an interactive terminal, and downloads nothing
-unless you answer `y`. On `y` it fetches the latest release from the public
-`firekeeper-server-releases` repository, checks it against the published
-checksums, installs it, and starts it. With no license key it starts the free
-local dashboard; for shared use it reads a key from `--license FILE`,
-`FIREKEEPER_LICENSE`, `FIREKEEPER_LICENSE_FILE` or `~/.firekeeper/license.key`.
-When you already have the server, `firekeeper serve` checks for a newer
-release the way the client does for itself and offers `1) Update now`,
-`2) Not now` or `3) Skip this version`. An update that your license's update
-period does not cover is undone and the version you had is kept. Set
-`FIREKEEPER_NO_PROMPT=1` to never be asked about installing, and
-`FIREKEEPER_NO_UPDATE_CHECK=1` to stop the update check as well. That prompt is the only place
-Firekeeper downloads a binary; plain `firekeeper` uploads nothing and starts no
-daemon, and neither `report`, `daemon` nor anything else fetches software. See
-[Installing the server from `serve`](docs/reference.md#installing-the-server-from-serve).
+Run `firekeeper serve` to launch it. If the server is missing, release builds
+offer to download it and ask for confirmation first. See
+[server installation, updates, and license configuration](docs/reference.md#installing-the-server-from-serve)
+or [server plans](https://firekeeper.ai/#pricing).
 
 The protocol is open. The reporter speaks the HTTP API in
 [docs/api.md](docs/api.md) and the event format in

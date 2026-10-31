@@ -1,7 +1,11 @@
 # Firekeeper documentation
 
-Start with the [usage guides](https://firekeeper.ai/docs/) for the terminal
-dashboard:
+Firekeeper is a free, open-source terminal dashboard for coding agents
+running on your machine. Install it, start your agents as usual, and run
+`firekeeper` in another terminal. No Firekeeper account or server is needed.
+
+**New here? [Install and find your first session](https://firekeeper.ai/docs/quick-start/).**
+For everyday use, start with these guides:
 
 - [Quick start](https://firekeeper.ai/docs/quick-start/)
 - [How to work with Firekeeper](https://firekeeper.ai/docs/how-to-work/)

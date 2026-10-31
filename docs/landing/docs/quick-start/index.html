@@ -40,26 +40,28 @@
     <p class="eyebrow">Start here</p>
     <h1>Quick start</h1>
     <p class="lede">Install once. Launch your agents normally. Run <code>firekeeper</code> in another terminal.</p>
+    <p><strong>Before you start:</strong> have at least one supported agent installed and signed in on this machine: Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, or Cursor CLI. Firekeeper monitors agents; it does not install or launch them.</p>
     <nav class="on-page" aria-label="On this page"><a href="#install">Install</a><a href="#first-session">First session</a><a href="#controls">First controls</a></nav>
     <h2 id="install">1. Install Firekeeper</h2>
     <p>Choose one installation method. These install a prebuilt binary; you do not need Go.</p>
     <h3>macOS with Homebrew</h3>
     <pre><code>brew install DanBradbury/tap/firekeeper</code></pre>
+    <p>Requires <a href="https://brew.sh/">Homebrew</a>. If you do not use Homebrew, choose the script below instead.</p>
     <h3>macOS or Linux with the install script</h3>
     <pre><code>curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh</code></pre>
-    <p>The script installs to <code>~/.local/bin</code> without <code>sudo</code>. Follow its PATH hint if your shell cannot find <code>firekeeper</code>.</p>
+    <p>The script installs to <code>~/.local/bin</code> without <code>sudo</code>. Follow its PATH hint if your shell cannot find <code>firekeeper</code>, or see <a href="/docs/troubleshooting/#command-not-found">command not found</a>.</p>
     <h3>Windows with PowerShell</h3>
     <pre><code>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex</code></pre>
     <p>The script installs to <code>%LOCALAPPDATA%\Programs\firekeeper</code> and adds it to your user PATH. Administrator rights are not required.</p>
     <p>These one-liners execute a downloaded script. Prefer to inspect it or install a release manually? See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md">installation, checksum verification, version pinning, and uninstall instructions</a>.</p>
     <p>macOS is the main target. Linux is best effort. Windows 10 1809+ and Windows 11 are supported on amd64 and arm64, with <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#windows">platform-specific limitations</a>.</p>
     <h2 id="first-session">2. Find your first session</h2>
-    <p>Open your project and start a supported agent using your normal command. If one is already running on this machine, leave it running.</p>
+    <p>Open your project and start a supported agent using your normal command, for example <code>claude</code> or <code>codex</code>. If one is already running on this machine, leave it running. Use the same operating-system user for Firekeeper and the agent.</p>
     <p>In a second terminal window, tab, or pane, run:</p>
     <pre><code>firekeeper</code></pre>
     <p>Firekeeper opens on <strong>Processes</strong>. Within a couple of seconds, you should see the agent's runtime, project, and the session details it can read. Firekeeper can run from any directory; it does not have to be inside the agent's project.</p>
     <div class="callout"><p><strong>No setup service required.</strong> You do not need <code>login</code>, <code>serve</code>, or <code>daemon install</code> for this workflow. Your agent keeps its normal launch command and sign-in.</p></div>
-    <p>If the list stays empty, follow <a href="/docs/troubleshooting/#missing-session">the missing-session checklist</a>.</p>
+    <p>An empty list does not mean installation failed: Processes shows running agents, not all saved conversations. If your running agent is missing, follow <a href="/docs/troubleshooting/#missing-session">the missing-session checklist</a>. For agents inside WSL, install and run the Linux build of Firekeeper inside WSL too.</p>
     <h2 id="controls">3. Try the everyday controls</h2>
     <ol>
       <li>Use <kbd>Up</kbd> / <kbd>Down</kbd> to select a runtime and inspect its details.</li>
