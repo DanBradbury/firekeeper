@@ -41,6 +41,11 @@ section 1.3.
   These are read-only. For Claude Code, Firekeeper also checks whether a
   session has files under `subagents/`. It uses that only to warn that token
   totals may be low, and it does not read those files' contents for the warning.
+  Antigravity CLI reads JSONL transcripts and local usage databases below
+  `~/.gemini/antigravity-cli` (honoring `GEMINI_CLI_HOME`). Grok Build reads
+  append-only updates and bounded summary/billing sidecars below `~/.grok`
+  (honoring `GROK_HOME`). Neither integration contacts the provider, installs
+  hooks, nor changes agent launch commands.
   Sessions in repositories containing a `.firekeeper-ignore` file, or matching
   `exclude` in the config, are never read.
 - **Writes**, under `~/.firekeeper/`: `config.toml` (server address and, after

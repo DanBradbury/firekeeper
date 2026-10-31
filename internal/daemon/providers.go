@@ -33,6 +33,8 @@ func DetectProviders(home string, getenv func(string) string, lookPath func(stri
 		{transcript.ProviderOpenCode, "XDG_DATA_HOME", "opencode", filepath.Join(".local", "share", "opencode"), "opencode"},
 		{transcript.ProviderGemini, "GEMINI_CLI_HOME", ".gemini", ".gemini", "gemini"},
 		{transcript.ProviderCursor, "CURSOR_CONFIG_DIR", "", ".cursor", "cursor-agent"},
+		{transcript.ProviderAntigravity, "GEMINI_CLI_HOME", filepath.Join(".gemini", "antigravity-cli"), filepath.Join(".gemini", "antigravity-cli"), "agy"},
+		{transcript.ProviderGrok, "GROK_HOME", "", ".grok", "grok"},
 	} {
 		directory := strings.TrimSpace(getenv(candidate.env))
 		if directory == "" {

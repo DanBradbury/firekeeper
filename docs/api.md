@@ -140,7 +140,7 @@ One normalized transcript record. The JSON shape is pinned by
 {
   "machine_id": "string",
   "session_id": "string",
-  "provider": "codex | copilot | kimi | claude | opencode | gemini | cursor",
+  "provider": "codex | copilot | kimi | claude | opencode | gemini | cursor | antigravity | grok",
   "seq": 0,
   "ts": "RFC3339 or null",
   "role": "user | assistant | tool_call | tool_result | system | meta",

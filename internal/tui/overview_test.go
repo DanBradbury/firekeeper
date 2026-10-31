@@ -47,7 +47,7 @@ func TestOverviewShowsQuotaMetersResetsAndTokenTotals(t *testing.T) {
 		"today 1.2K", "7d 2.0K", "lifetime 5.0M",
 		"╭─copilot", "AI credits", "20%", "300 / 1,500",
 		"╭─claude", "Limits: firekeeper claude-limits enable", "today 1.2K",
-		"1 provider(s) with no local usage data are not shown",
+		"3 provider(s) with no local usage data are not shown",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("overview missing %q:\n%s", expected, view)

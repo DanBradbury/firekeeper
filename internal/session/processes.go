@@ -118,6 +118,16 @@ func (d *discoverer) classifyProcess(command string) string {
 	case isMicrosoftTeamsCommand(lower):
 		// Teams helpers name Microsoft 365 Copilot hosts in their flags.
 		return ""
+	case antigravityArgs(command) != nil:
+		if d.isAntigravityCommand(command) {
+			return "Antigravity"
+		}
+		return ""
+	case grokArgs(command) != nil:
+		if d.isGrokCommand(command) {
+			return "Grok"
+		}
+		return ""
 	case d.isClaudeCodeCommand(command):
 		// Checked first: Claude Code command lines can name other
 		// harnesses in resumed transcript paths.

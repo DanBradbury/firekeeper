@@ -16,6 +16,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
 )
@@ -463,6 +464,10 @@ func (m model) usageProviderName() string {
 		return "kimi"
 	case claudeProvider:
 		return "claude"
+	case grokProvider:
+		return "grok"
+	case antigravityProvider:
+		return "antigravity"
 	default:
 		return "codex"
 	}
@@ -472,7 +477,7 @@ func (m model) usageProviderName() string {
 // the active provider is a highlighted chip, the others are muted.
 func (m model) usageProviderSelectorLine() string {
 	line := dashPaint(" ", usageTextColor, false)
-	for _, name := range []string{"codex", "copilot", "kimi", "claude"} {
+	for _, name := range []string{"codex", "copilot", "kimi", "claude", "grok", "antigravity"} {
 		label := strings.ToUpper(name)
 		if name == m.usageProviderName() {
 			line += usagePaint("[ "+label+" ]", dashOrange, true, usageHighlightColor) + dashPaint(" ", usageTextColor, false)
@@ -481,6 +486,10 @@ func (m model) usageProviderSelectorLine() string {
 		}
 	}
 	line += dashPaint(" ←/→ provider", usageMutedColor, false)
+	if ansi.StringWidth(line) > m.width {
+		line = usagePaint("[ "+strings.ToUpper(m.usageProviderName())+" ]", dashOrange, true, usageHighlightColor) +
+			dashPaint(" ←/→ provider", usageMutedColor, false)
+	}
 	return dashFit(line, m.width, usagePanelColor)
 }
 
@@ -567,6 +576,19 @@ func (m model) usageFooter() (string, string) {
 
 // usageStatusText is the Usage tab's status line for the selected provider.
 func (m model) usageStatusText() string {
+	if state := m.localUsage(m.usageProvider); state != nil {
+		label, _ := localUsageIdentity(m.usageProvider)
+		if state.Loading {
+			return "  reading local " + label + " usage"
+		}
+		if state.Err != "" {
+			return "  " + label + " usage: " + state.Err
+		}
+		if state.Refreshed.IsZero() {
+			return "  " + label + " usage not loaded"
+		}
+		return "  " + label + " refreshed " + state.Refreshed.Format("15:04:05")
+	}
 	switch m.usageProvider {
 	case copilotProvider:
 		if m.copilotUsageLoading {

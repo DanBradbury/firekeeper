@@ -8,11 +8,13 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/antigravity"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/cursor"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/gemini"
+	_ "github.com/DanBradbury/firekeeper/internal/transcript/grok"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/kimi"
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"

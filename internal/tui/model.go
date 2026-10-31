@@ -46,6 +46,8 @@ const (
 	copilotProvider
 	kimiProvider
 	claudeProvider
+	grokProvider
+	antigravityProvider
 	usageProviderCount
 )
 
@@ -141,6 +143,8 @@ type model struct {
 	claudeUsageLoading      bool
 	claudeUsageRefreshedAt  time.Time
 	claudeHistoryCursor     int
+	grokUsage               localUsageState
+	antigravityUsage        localUsageState
 	helpOpen                bool
 	metadataMisses          map[int]int
 	chat                    chatState
@@ -370,6 +374,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clampUsageCursors()
 		}
 
+	case localUsageResultMsg:
+		state := m.localUsage(msg.provider)
+		if state != nil {
+			state.Loading, state.Refreshed = false, msg.refreshed
+			state.Err = ""
+			if msg.err != nil {
+				state.Err = sanitizeProcessCommand(msg.err.Error())
+			}
+			if msg.err == nil || len(msg.snapshot.Sessions) > 0 {
+				state.Snapshot = msg.snapshot
+			}
+			state.Cursor = min(state.Cursor, max(len(state.Snapshot.Sessions)-1, 0))
+		}
+
 	}
 
 	return m, nil
@@ -377,6 +395,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
+	if state := m.localUsage(m.usageProvider); state != nil && !state.Refreshed.IsZero() && state.Err == "" {
+		return nil
+	}
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
 		return nil
 	}
@@ -393,6 +414,13 @@ func (m *model) cycleUsageProvider(delta int) tea.Cmd {
 }
 
 func (m *model) beginUsageRefresh() tea.Cmd {
+	if state := m.localUsage(m.usageProvider); state != nil {
+		if state.Loading {
+			return nil
+		}
+		state.Loading = true
+		return refreshLocalUsage(m.usageProvider)
+	}
 	if m.usageProvider == copilotProvider {
 		m.copilotUsageLoading = true
 		return refreshCopilotUsage()
