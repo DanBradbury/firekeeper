@@ -1,6 +1,6 @@
 # Firekeeper Privacy Policy
 
-Last updated: October 29, 2026
+Last updated: October 30, 2026
 
 This policy covers the Firekeeper client software in this repository ("the
 Software"), by Dan Bradbury ("**I**", "**me**"). Who handles your data depends
@@ -104,6 +104,17 @@ If you fill in the contact form on firekeeper.ai, your name, work email,
 company, and the other answers you give are sent to Formspree, a third-party
 form service, which emails them to me. I use them only to reply to you. This is
 separate from the Firekeeper client, which never sends anything to that form.
+
+### 1.5 Buying the server
+
+If you buy a license for the dashboard server, checkout is hosted by Stripe, a
+third-party payment processor. Your card details go to Stripe and never to me.
+Stripe gives Lucky Daisy LLC, which sells the server, your name or company, email
+address, billing address and tax ID if you gave them, and the order and amount.
+These are used to send you your license key, to handle tax and accounting, and
+to reply to you, and are kept as long as the law requires for business records.
+Stripe's own privacy policy covers what it does with your data. This is separate
+from the Firekeeper client, which never contacts Stripe.
 
 ## 2. Changes
 
