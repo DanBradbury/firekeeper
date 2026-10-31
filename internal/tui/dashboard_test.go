@@ -336,8 +336,8 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
 		"[ Processes ]", "¹summary", "³providers", "⁴projects", "sessions (3)",
-		"Codex", "Copilot", "OpenCode", "Dashboard first pass", "▲ NEEDS INPUT", "● ACTIVE",
-		"1.2M", "019fb33c", "└─ main · /workspace/firekeeper", "session metadata unavailable",
+		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "▲ NEEDS INPUT", "● ACTIVE",
+		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
 		"Sessions 2", "1 active", "1 input",
 	} {
@@ -347,6 +347,111 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	}
 	if strings.Contains(view, "¹overview") {
 		t.Fatal("Processes panel still collides with the Overview tab name")
+	}
+}
+
+func TestDashboardProcessRowsKeepDirectoryOnOneLine(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	m := dashboardTestModel()
+	m.width, m.height = 200, 40
+	m.processGroups[0].sessions = append(m.processGroups[0].sessions, sessionInfo{id: "another-session"})
+	m.processGroups[1].sessions[0].name = ""
+	m.processGroups[1].sessions[0].cwd = ""
+
+	header := ansi.Strip(dashHeaderRow(m.dashFitColumns(m.dashInnerWidth()), m.dashInnerWidth()))
+	for _, column := range []string{"Project", "Session", "Directory"} {
+		if !strings.Contains(header, column) {
+			t.Errorf("missing column %q in %q", column, header)
+		}
+	}
+	for _, column := range []string{"Summary", "Title", "Branch"} {
+		if strings.Contains(header, column) {
+			t.Errorf("unexpected column %q in %q", column, header)
+		}
+	}
+
+	lines, offsets := m.processBodyLines()
+	if len(lines) != len(m.processGroups) {
+		t.Fatalf("collapsed runtimes use %d lines, want %d", len(lines), len(m.processGroups))
+	}
+	for index, line := range lines {
+		if offsets[index] != index {
+			t.Errorf("runtime %d starts at line %d, want %d", index, offsets[index], index)
+		}
+		if strings.Contains(line, "\n") || ansi.StringWidth(line) != m.dashInnerWidth() {
+			t.Errorf("runtime %d does not fit on one line", index)
+		}
+	}
+	for _, expected := range []string{"Codex", "019fb33c +1", "/workspace/firekeeper"} {
+		if !strings.Contains(ansi.Strip(lines[0]), expected) {
+			t.Errorf("first runtime row missing %q: %q", expected, ansi.Strip(lines[0]))
+		}
+	}
+	for _, unwanted := range []string{"Dashboard first pass", "main", "+1 sessions"} {
+		if strings.Contains(ansi.Strip(lines[0]), unwanted) {
+			t.Errorf("first runtime row contains %q: %q", unwanted, ansi.Strip(lines[0]))
+		}
+	}
+	if row := ansi.Strip(lines[1]); !strings.Contains(row, "—") || strings.Contains(row, "feature/x") {
+		t.Errorf("missing directory is not shown as unavailable: %q", row)
+	}
+	if row := ansi.Strip(lines[2]); !strings.Contains(row, "session metadata unavailable") || strings.Contains(row, "ttys003") || strings.Contains(row, "1 proc") {
+		t.Errorf("unexpected missing-metadata fallback: %q", row)
+	}
+	directoryColumn := []dashColumn{{key: "directory", width: 48}}
+	for index, want := range []string{"/workspace/firekeeper", "—", "session metadata unavailable"} {
+		row := dashGroupRow(m.processGroups[index], directoryColumn, 51, false, false, usagePanelColor)
+		if got := strings.TrimSpace(ansi.Strip(row)); got != want {
+			t.Errorf("runtime %d directory = %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestDashboardDirectoryFitsLongAndUnsafeValues(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 80, 24
+	m.processGroups[0].sessions[0].cwd = "/workspace/a/very/long/directory/for/the/project\nunexpected\x1b[31m"
+	m.processGroups[0].sessions[0].gitBranch = "feature\x1b[31m"
+	lines, _ := m.processBodyLines()
+	row := lines[0]
+	if strings.Contains(row, "\n") || strings.Contains(row, "\x1b[31m") {
+		t.Fatal("directory data escaped the runtime row")
+	}
+	if plain := ansi.Strip(row); strings.Contains(plain, "feature") || !strings.Contains(plain, "/workspace/") || !strings.Contains(plain, "…") {
+		t.Errorf("long directory included a branch or was not truncated: %q", plain)
+	}
+}
+
+func TestDashboardKeepsRuntimeIdentifiersBesideDirectory(t *testing.T) {
+	for _, width := range []int{100, 120, 140} {
+		m := dashboardTestModel()
+		m.width, m.height = width, 40
+		header := ansi.Strip(dashHeaderRow(m.dashFitColumns(m.dashInnerWidth()), m.dashInnerWidth()))
+		for _, column := range []string{"PID", "Project", "Session", "Directory"} {
+			if !strings.Contains(header, column) {
+				t.Errorf("width %d: missing column %q in %q", width, column, header)
+			}
+		}
+		lines, _ := m.processBodyLines()
+		row := ansi.Strip(lines[0])
+		for _, value := range []string{"100", "firekeeper", "019fb33c", "/workspace/firekeeper"} {
+			if !strings.Contains(row, value) {
+				t.Errorf("width %d: missing %q in %q", width, value, row)
+			}
+		}
+	}
+}
+
+func TestDashboardSessionCountFitsBesideIdentifier(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 100, 40
+	m.processGroups[0].sessions = append(m.processGroups[0].sessions, make([]sessionInfo, 12)...)
+	lines, _ := m.processBodyLines()
+	row := ansi.Strip(lines[0])
+	for _, value := range []string{"019fb33c +12", "/workspace/firekeeper"} {
+		if !strings.Contains(row, value) {
+			t.Errorf("missing %q in %q", value, row)
+		}
 	}
 }
 
@@ -456,14 +561,19 @@ func TestDashboardDropsColumnsAndPanelsWhenNarrow(t *testing.T) {
 	if strings.Contains(view, "³providers") || strings.Contains(view, "Up ") {
 		t.Fatalf("narrow dashboard kept wide-only content:\n%s", view)
 	}
-	if !strings.Contains(view, "Dashboard first") {
-		t.Fatalf("narrow dashboard lost the session summary:\n%s", view)
+	if !strings.Contains(view, "Directory") || !strings.Contains(view, "/workspace/firekeeper") {
+		t.Fatalf("narrow dashboard lost the session directory:\n%s", view)
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "Dashboard first pass") {
+		t.Fatalf("inline details lost the session title:\n%s", view)
 	}
 }
 
 func TestDashboardSelectionScrollsWithinSessionsPanel(t *testing.T) {
 	m := dashboardTestModel()
-	m.width, m.height = 80, 12
+	m.width, m.height = 80, 6
 	for range 2 {
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 		m = updated.(model)
@@ -471,8 +581,39 @@ func TestDashboardSelectionScrollsWithinSessionsPanel(t *testing.T) {
 	if m.processCursor != 2 {
 		t.Fatalf("cursor = %d, want 2", m.processCursor)
 	}
+	if m.processScroll != 2 {
+		t.Fatalf("scroll = %d, want 2", m.processScroll)
+	}
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "▶ OpenCode") {
 		t.Fatalf("selected runtime not visible:\n%s", view)
+	}
+}
+
+func TestDashboardSelectionScrollsPastExpandedRuntime(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 100, 9
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	_, offsets := m.processBodyLines()
+	if offsets[1] <= 1 {
+		t.Fatal("expanded details did not move the next runtime")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "▶ Copilot") {
+		t.Fatalf("selected runtime after expanded details is not visible:\n%s", view)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(model)
+	if m.processScroll != 0 {
+		t.Fatalf("returning to expanded runtime left scroll at %d", m.processScroll)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	_, offsets = m.processBodyLines()
+	if offsets[1] != 1 {
+		t.Fatalf("collapsed next runtime starts at line %d, want 1", offsets[1])
 	}
 }
 

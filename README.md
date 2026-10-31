@@ -66,6 +66,7 @@ removing Firekeeper.
 
 - **See what is running.** Agent processes are grouped with their child
   processes, with state, model, working directory, Git branch, and tokens.
+  Each collapsed runtime has one row, including its working directory.
   On macOS, press `s` to jump to the terminal that holds a session.
   Details appear in the bottom session panel; on smaller terminals, press
   Enter to expand them inline instead.

@@ -100,7 +100,7 @@ func (m model) viewProcesses(contentRows int) string {
 
 func (m model) dashSessionsPanel(layout dashLayout) []string {
 	inner := m.dashInnerWidth()
-	columns := dashFitColumns(inner)
+	columns := m.dashFitColumns(inner)
 	body := []string{dashHeaderRow(columns, inner)}
 	// Reuse the header row for feedback without changing the table's scroll budget.
 	switch {
@@ -147,30 +147,41 @@ var dashColumns = []dashColumn{
 	{key: "pid", title: "PID", width: 7, drop: 5},
 	{key: "project", title: "Project", width: 14, drop: 3},
 	{key: "session", title: "Session", width: 8, drop: 6},
-	{key: "summary", title: "Summary", drop: 0},
+	{key: "directory", title: "Directory", drop: 0},
 	{key: "status", title: "Status", width: 13, drop: 2},
-	{key: "model", title: "Model", width: 16, drop: 4},
+	{key: "model", title: "Model", width: 16, drop: 7},
 	{key: "tokens", title: "Tokens", width: 7, drop: 3, right: true},
-	{key: "up", title: "Up", width: 11, drop: 7},
+	{key: "up", title: "Up", width: 11, drop: 9},
 }
 
 const (
-	dashMarkerWidth     = 2
-	dashSummaryMinWidth = 16
+	dashMarkerWidth       = 2
+	dashDirectoryMinWidth = 24
 )
 
 // dashFitColumns drops the lowest-priority columns until the table fits
-// width, then gives the remaining space to the Summary column.
-func dashFitColumns(width int) []dashColumn {
+// width, then gives the remaining space to the Directory column.
+func (m model) dashFitColumns(width int) []dashColumn {
 	columns := append([]dashColumn(nil), dashColumns...)
+	for index := range columns {
+		if columns[index].key == "session" {
+			for _, group := range m.processGroups {
+				if len(group.sessions) > 1 {
+					label := sanitizeProcessCommand(dashSessionLabel(group))
+					columns[index].width = max(columns[index].width, ansi.StringWidth(label))
+				}
+			}
+			break
+		}
+	}
 	for {
 		fixed := dashMarkerWidth
 		for _, column := range columns {
 			fixed += column.width + 1
 		}
-		if fixed+dashSummaryMinWidth <= width || len(columns) <= 1 {
+		if fixed+dashDirectoryMinWidth <= width || len(columns) <= 1 {
 			for index := range columns {
-				if columns[index].key == "summary" {
+				if columns[index].key == "directory" {
 					columns[index].width = max(width-fixed, 1)
 				}
 			}
@@ -213,18 +224,8 @@ func dashCell(value string, width int, right bool) string {
 // line index. Inline details are used only when the separate detail panel is hidden.
 func (m model) processBodyLines() ([]string, []int) {
 	width := m.dashInnerWidth()
-	columns := dashFitColumns(width)
+	columns := m.dashFitColumns(width)
 	inlineDetails := m.dashboardLayout().detail == 0
-	summaryOffset := dashMarkerWidth
-	for _, column := range columns {
-		if column.key == "summary" {
-			break
-		}
-		summaryOffset += column.width + 1
-	}
-	if summaryOffset >= width-8 {
-		summaryOffset = dashMarkerWidth
-	}
 
 	var lines []string
 	offsets := make([]int, len(m.processGroups))
@@ -237,11 +238,6 @@ func (m model) processBodyLines() ([]string, []int) {
 			background = usageHighlightColor
 		}
 		lines = append(lines, dashGroupRow(group, columns, width, selected, expanded, background))
-		lines = append(lines, dashFit(
-			dashPaint(strings.Repeat(" ", summaryOffset), usageMutedColor, false)+dashGroupSubline(group),
-			width,
-			usagePanelColor,
-		))
 		if !expanded {
 			continue
 		}
@@ -277,15 +273,12 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 				value, color, bold = "—", usageMutedColor, false
 			}
 		case "session":
-			value, color = dashShortID(session.id), dashOrange
-		case "summary":
-			value = session.name
-			if !hasSession {
-				value, color = "session metadata unavailable", usageMutedColor
-			} else if value == "" {
-				value, color = filepath.Base(session.cwd), usageMutedColor
+			value, color = dashSessionLabel(group), dashOrange
+		case "directory":
+			value, color = "session metadata unavailable", usageMutedColor
+			if hasSession {
+				value = emptyFallback(dashShortPath(session.cwd), "—")
 			}
-			bold = selected
 		case "status":
 			state := sessionStateUnknown
 			if hasSession {
@@ -305,31 +298,6 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		row.WriteString(usagePaint(dashCell(sanitizeProcessCommand(value), column.width, column.right)+" ", color, bold, background))
 	}
 	return dashFit(row.String(), width, background)
-}
-
-func dashGroupSubline(group processGroup) string {
-	session, ok := firstSession(group)
-	if !ok {
-		procs := "procs"
-		if len(group.processes) == 1 {
-			procs = "proc"
-		}
-		return dashPaint(fmt.Sprintf("└─ %s · %d %s", displayTTY(group.root.tty), len(group.processes), procs), usageMutedColor, false)
-	}
-	parts := []string{}
-	if session.gitBranch != "" {
-		parts = append(parts, session.gitBranch)
-	}
-	if session.cwd != "" {
-		parts = append(parts, dashShortPath(session.cwd))
-	}
-	if extra := len(group.sessions) - 1; extra > 0 {
-		parts = append(parts, fmt.Sprintf("+%d sessions", extra))
-	}
-	if len(parts) == 0 {
-		parts = append(parts, displayTTY(group.root.tty))
-	}
-	return dashPaint("└─ ", usageMutedColor, false) + dashPaint(strings.Join(parts, " · "), usageMutedColor, false)
 }
 
 // dashGroupDetail describes every session and process of one runtime. It backs
@@ -752,6 +720,15 @@ func dashShortID(id string) string {
 		return "—"
 	}
 	return string([]rune(id)[:min(8, len([]rune(id)))])
+}
+
+func dashSessionLabel(group processGroup) string {
+	session, _ := firstSession(group)
+	label := dashShortID(session.id)
+	if extra := len(group.sessions) - 1; extra > 0 {
+		label += fmt.Sprintf(" +%d", extra)
+	}
+	return label
 }
 
 // dashShortPath replaces the home directory prefix with ~.
