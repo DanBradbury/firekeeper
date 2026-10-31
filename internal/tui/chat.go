@@ -323,22 +323,9 @@ func (m model) viewChat(contentRows int) string {
 	return strings.Join(dashBox(title, body, m.width, contentRows, dashToolColor(m.chat.tool)), "\n")
 }
 
-func (m model) chatFooter() (string, string) {
-	keys := []struct{ key, action string }{
+func (m model) chatFooter() string {
+	keys := []footerKey{
 		{"↑↓", "scroll"}, {"pgup/pgdn", "page"}, {"g/G", "top/latest"}, {"r", "reload"}, {"esc", "back"},
 	}
-	help := dashPaint(" ", usageTextColor, false)
-	for _, key := range keys {
-		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+"  ", usageTextColor, false)
-	}
-	status := fmt.Sprintf("%d messages", len(m.chat.messages))
-	if !m.chat.loadedAt.IsZero() {
-		status += "  •  read " + m.chat.loadedAt.Format("15:04:05")
-	}
-	if m.chat.follow {
-		status += "  •  following latest"
-	} else {
-		status += "  •  scrolled (G to follow)"
-	}
-	return dashFit(help, m.width, usagePanelColor), dashFit(dashPaint("  "+status, usageMutedColor, false), m.width, usagePanelColor)
+	return renderFooterKeys(keys, m.width)
 }

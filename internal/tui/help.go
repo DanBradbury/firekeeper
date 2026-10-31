@@ -28,7 +28,7 @@ var helpSections = []helpSection{
 		{"↑ ↓ / j k", "Select runtime"},
 		{"PgUp / PgDn", "Move half a page"},
 		{"Home / End", "Jump to first or last runtime"},
-		{"Enter", "Expand session details and process tree"},
+		{"Enter", "Expand details inline when the bottom session panel is hidden"},
 		{"s", "Switch to the runtime's terminal"},
 		{"c", "Open the session's chat history"},
 		{"r", "Refresh now"},
@@ -105,8 +105,11 @@ func (m model) viewHelp(contentRows int) string {
 	return strings.Join(lines[:contentRows], "\n")
 }
 
-func (m model) helpFooter() (string, string) {
-	help := dashPaint(" ", usageTextColor, false) +
-		dashPaint("any key ", dashBlue, true) + dashPaint("close", usageTextColor, false)
-	return dashFit(help, m.width, usagePanelColor), dashFit(dashPaint("  keyboard shortcuts", usageMutedColor, false), m.width, usagePanelColor)
+func (m model) helpFooter() string {
+	keys := []footerKey{{"any key", "close"}}
+	_, available := footerVersion(m.width)
+	if footerKeysWidth(keys, 1) > available {
+		keys[0].action = "back"
+	}
+	return renderFooterKeys(keys, m.width)
 }

@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	chromeRows          = 3
+	chromeRows          = 2
 	processPollInterval = 2 * time.Second
 	// sessionMetadataGraceRefreshes is how many consecutive refreshes may
 	// miss a runtime's session metadata before the last known copy is
@@ -243,9 +243,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
-				rootPID := m.processGroups[m.processCursor].root.pid
-				m.expandedGroups[rootPID] = !m.expandedGroups[rootPID]
-				m.ensureSelectedProcessVisible()
+				if m.dashboardLayout().detail == 0 {
+					rootPID := m.processGroups[m.processCursor].root.pid
+					m.expandedGroups[rootPID] = !m.expandedGroups[rootPID]
+					m.ensureSelectedProcessVisible()
+				}
 			} else if m.activeTab == usageTab {
 				return m, m.openUsageSessionChat()
 			}
@@ -415,23 +417,23 @@ func (m model) View() string {
 	}
 	contentRows := m.height - chromeRows
 	if m.helpOpen {
-		help, status := m.helpFooter()
-		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help, status}, "\n")
+		help := m.helpFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help}, "\n")
 	}
 	if m.chat.open {
-		help, status := m.chatFooter()
-		return strings.Join([]string{m.dashHeaderLine(), m.viewChat(contentRows), help, status}, "\n")
+		help := m.chatFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewChat(contentRows), help}, "\n")
 	}
 	if m.activeTab == processesTab {
-		help, status := m.processFooter()
-		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help, status}, "\n")
+		help := m.processFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewProcesses(contentRows), help}, "\n")
 	}
 	if m.activeTab == overviewTab {
-		help, status := m.overviewFooter()
-		return strings.Join([]string{m.dashHeaderLine(), m.viewOverview(contentRows), help, status}, "\n")
+		help := m.overviewFooter()
+		return strings.Join([]string{m.dashHeaderLine(), m.viewOverview(contentRows), help}, "\n")
 	}
-	help, status := m.usageFooter()
-	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), help, status}, "\n")
+	help := m.usageFooter()
+	return strings.Join([]string{m.dashHeaderLine(), m.viewUsage(contentRows), help}, "\n")
 }
 
 func padText(value string, width int) string {

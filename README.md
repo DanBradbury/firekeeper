@@ -66,7 +66,10 @@ removing Firekeeper.
 
 - **See what is running.** Agent processes are grouped with their child
   processes, with state, model, working directory, Git branch, and tokens.
+  Each collapsed runtime has one row, including its working directory.
   On macOS, press `s` to jump to the terminal that holds a session.
+  Details appear in the bottom session panel; on smaller terminals, press
+  Enter to expand them inline instead.
 - **Understand usage.** An Overview tab shows every provider's quota meters
   and reset countdowns (Codex limits, Copilot AI credits) beside today, 7-day
   and lifetime tokens. Claude's 5-hour and weekly limits appear automatically when Claude Code is

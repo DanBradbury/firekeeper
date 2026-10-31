@@ -100,15 +100,24 @@ func (m model) viewProcesses(contentRows int) string {
 
 func (m model) dashSessionsPanel(layout dashLayout) []string {
 	inner := m.dashInnerWidth()
-	columns := dashFitColumns(inner)
+	columns := m.dashFitColumns(inner)
 	body := []string{dashHeaderRow(columns, inner)}
-	if len(m.processGroups) == 0 {
+	// Reuse the header row for feedback without changing the table's scroll budget.
+	switch {
+	case m.processErr != "":
+		body[0] = dashPaint("process scan failed: "+sanitizeProcessCommand(m.processErr), dashRed, false)
+	case m.terminalStatus != "":
+		body[0] = dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false)
+	case m.processMetadataWarning != "":
+		body[0] = dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false)
+	}
+	if len(m.processGroups) == 0 && m.processErr == "" {
 		message := "No running Codex, Copilot, or OpenCode processes found."
 		if m.refreshedAt.IsZero() {
 			message = "Scanning for Codex, Copilot, and OpenCode processes…"
 		}
 		body = append(body, dashPaint(message, usageMutedColor, false))
-	} else {
+	} else if len(m.processGroups) > 0 {
 		lines, _ := m.processBodyLines()
 		end := min(m.processScroll+m.processPageSize(), len(lines))
 		body = append(body, lines[min(m.processScroll, end):end]...)
@@ -138,30 +147,41 @@ var dashColumns = []dashColumn{
 	{key: "pid", title: "PID", width: 7, drop: 5},
 	{key: "project", title: "Project", width: 14, drop: 3},
 	{key: "session", title: "Session", width: 8, drop: 6},
-	{key: "summary", title: "Summary", drop: 0},
+	{key: "directory", title: "Directory", drop: 0},
 	{key: "status", title: "Status", width: 13, drop: 2},
-	{key: "model", title: "Model", width: 16, drop: 4},
+	{key: "model", title: "Model", width: 16, drop: 7},
 	{key: "tokens", title: "Tokens", width: 7, drop: 3, right: true},
-	{key: "up", title: "Up", width: 11, drop: 7},
+	{key: "up", title: "Up", width: 11, drop: 9},
 }
 
 const (
-	dashMarkerWidth     = 2
-	dashSummaryMinWidth = 16
+	dashMarkerWidth       = 2
+	dashDirectoryMinWidth = 24
 )
 
 // dashFitColumns drops the lowest-priority columns until the table fits
-// width, then gives the remaining space to the Summary column.
-func dashFitColumns(width int) []dashColumn {
+// width, then gives the remaining space to the Directory column.
+func (m model) dashFitColumns(width int) []dashColumn {
 	columns := append([]dashColumn(nil), dashColumns...)
+	for index := range columns {
+		if columns[index].key == "session" {
+			for _, group := range m.processGroups {
+				if len(group.sessions) > 1 {
+					label := sanitizeProcessCommand(dashSessionLabel(group))
+					columns[index].width = max(columns[index].width, ansi.StringWidth(label))
+				}
+			}
+			break
+		}
+	}
 	for {
 		fixed := dashMarkerWidth
 		for _, column := range columns {
 			fixed += column.width + 1
 		}
-		if fixed+dashSummaryMinWidth <= width || len(columns) <= 1 {
+		if fixed+dashDirectoryMinWidth <= width || len(columns) <= 1 {
 			for index := range columns {
-				if columns[index].key == "summary" {
+				if columns[index].key == "directory" {
 					columns[index].width = max(width-fixed, 1)
 				}
 			}
@@ -200,38 +220,25 @@ func dashCell(value string, width int, right bool) string {
 	return value + space
 }
 
-// processBodyLines returns the sessions table body (two rows per runtime,
-// plus details when expanded) and the first line index of each runtime.
+// processBodyLines returns the sessions table body and each runtime's first
+// line index. Inline details are used only when the separate detail panel is hidden.
 func (m model) processBodyLines() ([]string, []int) {
 	width := m.dashInnerWidth()
-	columns := dashFitColumns(width)
-	summaryOffset := dashMarkerWidth
-	for _, column := range columns {
-		if column.key == "summary" {
-			break
-		}
-		summaryOffset += column.width + 1
-	}
-	if summaryOffset >= width-8 {
-		summaryOffset = dashMarkerWidth
-	}
+	columns := m.dashFitColumns(width)
+	inlineDetails := m.dashboardLayout().detail == 0
 
 	var lines []string
 	offsets := make([]int, len(m.processGroups))
 	for index, group := range m.processGroups {
 		offsets[index] = len(lines)
 		selected := index == m.processCursor
+		expanded := inlineDetails && m.expandedGroups[group.root.pid]
 		background := usagePanelColor
 		if selected {
 			background = usageHighlightColor
 		}
-		lines = append(lines, dashGroupRow(group, columns, width, selected, m.expandedGroups[group.root.pid], background))
-		lines = append(lines, dashFit(
-			dashPaint(strings.Repeat(" ", summaryOffset), usageMutedColor, false)+dashGroupSubline(group),
-			width,
-			usagePanelColor,
-		))
-		if !m.expandedGroups[group.root.pid] {
+		lines = append(lines, dashGroupRow(group, columns, width, selected, expanded, background))
+		if !expanded {
 			continue
 		}
 		for _, line := range dashGroupDetail(group) {
@@ -266,15 +273,12 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 				value, color, bold = "—", usageMutedColor, false
 			}
 		case "session":
-			value, color = dashShortID(session.id), dashOrange
-		case "summary":
-			value = session.name
-			if !hasSession {
-				value, color = "session metadata unavailable", usageMutedColor
-			} else if value == "" {
-				value, color = filepath.Base(session.cwd), usageMutedColor
+			value, color = dashSessionLabel(group), dashOrange
+		case "directory":
+			value, color = "session metadata unavailable", usageMutedColor
+			if hasSession {
+				value = emptyFallback(dashShortPath(session.cwd), "—")
 			}
-			bold = selected
 		case "status":
 			state := sessionStateUnknown
 			if hasSession {
@@ -296,33 +300,8 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 	return dashFit(row.String(), width, background)
 }
 
-func dashGroupSubline(group processGroup) string {
-	session, ok := firstSession(group)
-	if !ok {
-		procs := "procs"
-		if len(group.processes) == 1 {
-			procs = "proc"
-		}
-		return dashPaint(fmt.Sprintf("└─ %s · %d %s", displayTTY(group.root.tty), len(group.processes), procs), usageMutedColor, false)
-	}
-	parts := []string{}
-	if session.gitBranch != "" {
-		parts = append(parts, session.gitBranch)
-	}
-	if session.cwd != "" {
-		parts = append(parts, dashShortPath(session.cwd))
-	}
-	if extra := len(group.sessions) - 1; extra > 0 {
-		parts = append(parts, fmt.Sprintf("+%d sessions", extra))
-	}
-	if len(parts) == 0 {
-		parts = append(parts, displayTTY(group.root.tty))
-	}
-	return dashPaint("└─ ", usageMutedColor, false) + dashPaint(strings.Join(parts, " · "), usageMutedColor, false)
-}
-
 // dashGroupDetail describes every session and process of one runtime. It backs
-// both the detail panel and inline expansion with Enter.
+// both the detail panel and inline expansion when that panel is hidden.
 func dashGroupDetail(group processGroup) []string {
 	var lines []string
 	label := func(name, value string) string {
@@ -480,7 +459,7 @@ func (m model) dashSummaryPanels(height int) []string {
 		accent string
 		body   func(width int) []string
 	}{
-		{"¹overview", dashBlue, summary.overviewLines},
+		{"¹summary", dashBlue, summary.summaryLines},
 		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
 		{"³providers", dashPurple, summary.providerLines},
 		{"⁴projects", dashGreen, summary.projectLines},
@@ -509,7 +488,7 @@ func (m model) dashSummaryPanels(height int) []string {
 	return rows
 }
 
-func (s dashSummary) overviewLines(width int) []string {
+func (s dashSummary) summaryLines(width int) []string {
 	stat := func(name string, value int) string {
 		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(fmt.Sprintf("%-4d", value), usageBrightColor, true)
 	}
@@ -529,6 +508,14 @@ func (s dashSummary) overviewLines(width int) []string {
 func (s dashSummary) providerLines(width int) []string {
 	if len(s.tools) == 0 {
 		return []string{dashPaint("No agent runtimes running.", usageMutedColor, false)}
+	}
+	if len(s.tools) == 1 {
+		tool := s.tools[0]
+		return []string{usageSplit(
+			dashPaint(dashCell(tool.tool, 8, false), dashToolColor(tool.tool), true)+
+				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false),
+			dashPaint(formatTokenCount(tool.tokens), usageTextColor, false),
+		)}
 	}
 	var maximum int64
 	for _, tool := range s.tools {
@@ -577,11 +564,10 @@ func (s dashSummary) projectLines(width int) []string {
 	return lines
 }
 
-// dashHeaderLine is the top row shared by both tabs: product name, tabs, and
-// on the right the last refresh time with live state counts.
+// dashHeaderLine is the top row shared by all tabs, with live state counts on
+// the right.
 func (m model) dashHeaderLine() string {
-	left := dashPaint(" firekeeper ", usageBrightColor, true) +
-		dashPaint(version.Version+" · agent monitor  ", usageMutedColor, false)
+	left := dashPaint(" ", usageTextColor, false)
 	for _, item := range []struct {
 		tab   tab
 		label string
@@ -592,12 +578,9 @@ func (m model) dashHeaderLine() string {
 			left += dashPaint("  "+item.label+"   ", usageMutedColor, false)
 		}
 	}
-	left += dashPaint(" tab switch  ? help", usageMutedColor, false)
-
 	right := ""
 	if !m.refreshedAt.IsZero() {
 		summary := m.dashSummarize()
-		right = dashPaint(m.refreshedAt.Format("15:04:05")+"  ", usageMutedColor, false)
 		for _, state := range []sessionState{sessionStateActive, sessionStateWaiting, sessionStateNeedsInput} {
 			if count := summary.states[state]; count > 0 {
 				right += dashPaint(fmt.Sprintf("%d%s ", count, dashStateIcon(state)), dashStateColor(state), true)
@@ -614,52 +597,62 @@ func (m model) dashHeaderLine() string {
 // footerKey is one key and its action in a footer help line.
 type footerKey struct{ key, action string }
 
-// renderFooterKeys paints a footer help line shared by the Processes and Usage
-// tabs, filled to width with the panel background.
+func footerKeysWidth(keys []footerKey, spacing int) int {
+	width := 1
+	for _, key := range keys {
+		width += ansi.StringWidth(key.key) + 1 + ansi.StringWidth(key.action) + spacing
+	}
+	return width
+}
+
+func footerVersion(width int) (string, int) {
+	label := ansi.Truncate(version.Version, max(width/2, 0), "…")
+	available := max(width, 0)
+	if label != "" {
+		available = max(available-ansi.StringWidth(label)-1, 0)
+	}
+	return label, available
+}
+
+// renderFooterKeys paints the shortcuts and right-aligned version.
 func renderFooterKeys(keys []footerKey, width int) string {
+	label, available := footerVersion(width)
+	spacing := "  "
+	if footerKeysWidth(keys, len(spacing)) > available {
+		spacing = " "
+	}
 	help := dashPaint(" ", usageTextColor, false)
 	for _, key := range keys {
-		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+"  ", usageTextColor, false)
+		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+spacing, usageTextColor, false)
 	}
-	return dashFit(help, width, usagePanelColor)
+	help = dashFit(help, available, usagePanelColor)
+	if label == "" {
+		return help
+	}
+	return help + dashPaint(label, dashGreen, true) + dashPaint(" ", usageTextColor, false)
 }
 
-func (m model) processFooter() (string, string) {
-	help := renderFooterKeys([]footerKey{
-		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
-	}, m.width)
-	status := dashFit(dashPaint("  "+m.processStatusText(), usageMutedColor, false), m.width, usagePanelColor)
-	return help, status
-}
-
-func (m model) processStatusText() string {
-	if m.processErr != "" {
-		return "process scan failed: " + m.processErr
+func (m model) processFooter() string {
+	keys := []footerKey{{"↑↓", "select"}}
+	if m.dashboardLayout().detail == 0 {
+		keys = append(keys, footerKey{"enter", "expand"})
 	}
-	if m.terminalStatus != "" {
-		return m.terminalStatus
+	keys = append(keys, []footerKey{
+		{"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"},
+	}...)
+	_, available := footerVersion(m.width)
+	for _, compact := range []footerKey{{"s", "terminal"}, {"tab", "next"}, {"r", "reload"}} {
+		if footerKeysWidth(keys, 1) <= available {
+			break
+		}
+		for index := range keys {
+			if keys[index].key == compact.key {
+				keys[index].action = compact.action
+				break
+			}
+		}
 	}
-	if m.refreshedAt.IsZero() {
-		return "scanning processes…"
-	}
-	processCount := 0
-	for _, group := range m.processGroups {
-		processCount += len(group.processes)
-	}
-	if m.processMetadataWarning != "" {
-		return fmt.Sprintf(
-			"%d runtimes / %d processes  •  session metadata unavailable: %s",
-			len(m.processGroups), processCount, m.processMetadataWarning,
-		)
-	}
-	return fmt.Sprintf(
-		"%d runtimes / %d processes  •  selected %d/%d  •  refreshed %s  •  2s auto",
-		len(m.processGroups),
-		processCount,
-		min(m.processCursor+1, len(m.processGroups)),
-		len(m.processGroups),
-		m.refreshedAt.Format("15:04:05"),
-	)
+	return renderFooterKeys(keys, m.width)
 }
 
 // dashBox draws a rounded panel of exactly width columns and height rows with
@@ -727,6 +720,15 @@ func dashShortID(id string) string {
 		return "—"
 	}
 	return string([]rune(id)[:min(8, len([]rune(id)))])
+}
+
+func dashSessionLabel(group processGroup) string {
+	session, _ := firstSession(group)
+	label := dashShortID(session.id)
+	if extra := len(group.sessions) - 1; extra > 0 {
+		label += fmt.Sprintf(" +%d", extra)
+	}
+	return label
 }
 
 // dashShortPath replaces the home directory prefix with ~.

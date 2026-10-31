@@ -135,17 +135,19 @@ harnesses show the total only. A Claude Code session that has subagent
 files warns that its measured total is likely low, because background
 summary calls are not in the transcript. See [Claude Code subagent
 undercount](#claude-code-subagent-undercount). Below them, the sessions
-table lists one runtime per row with
-its provider, PID, project, short session id, title, state, model, tokens, and
-uptime, and a second line with the branch and working directory. A detail
-panel at the bottom shows the selected runtime's session metadata and process
-tree. On smaller terminals the summary and detail panels are hidden and the
-narrowest table columns drop out first; Enter still expands details inline.
+table lists each collapsed runtime on one row with its provider, PID, project,
+short session id, working directory, state, model, tokens, and uptime. A `+N`
+beside the session id indicates additional sessions in the same runtime. A
+detail panel at the bottom shows the selected runtime's session metadata and
+process tree, without duplicating them in the table. The providers panel hides
+its comparison bar when only one provider is running. On smaller terminals
+the summary and detail panels may be hidden, and lower-priority table columns
+drop out; Enter expands details inline only when the bottom panel is hidden.
 
 | Key | Action |
 | --- | --- |
 | Up / Down or `J` / `K` | Select runtime |
-| Enter | Expand session metadata and process tree |
+| Enter | Expand session metadata and process tree when the bottom panel is hidden |
 | `s` | Switch to terminal containing selected runtime |
 | `c` | Open the selected session's chat history |
 | Page Up / Page Down | Move through runtime groups |

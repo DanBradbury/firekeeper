@@ -173,10 +173,27 @@ func (m model) viewUsagePage(contentRows int) string {
 		return m.usageMessageBox("unavailable", page.Err, contentRows)
 	}
 
+	var notice string
+	switch {
+	case page.Err != "":
+		notice = "Usage refresh failed: " + page.Err
+	case page.HistoryErr != "" && len(page.Sessions) > 0:
+		notice = "Session history refresh failed: " + page.HistoryErr
+	// An empty session panel reports its own error when there is room for it.
+	case page.HistoryErr != "" && contentRows < usageCardRows+usageDaysMinRows+usageSessionMinRows:
+		notice = "Session history unavailable: " + page.HistoryErr
+	}
+	var lines []string
+	if notice != "" {
+		lines = append(lines, dashFit(dashPaint(" "+sanitizeProcessCommand(notice), dashRed, false), m.width, usagePanelColor))
+	}
+
 	now := time.Now()
-	cardHeight := min(usageCardRows, contentRows)
-	lines := m.usageCardRow(page, cardHeight)
-	if rest := contentRows - cardHeight; rest >= 4 {
+	cardHeight := min(usageCardRows, contentRows-len(lines))
+	if cardHeight > 0 {
+		lines = append(lines, m.usageCardRow(page, cardHeight)...)
+	}
+	if rest := contentRows - len(lines); rest >= 4 {
 		// The session list is interactive, so it keeps its minimum height
 		// and the chart gives up rows first.
 		days := rest
@@ -195,7 +212,7 @@ func (m model) viewUsagePage(contentRows int) string {
 }
 
 func (m model) usageMessageBox(title, message string, height int) string {
-	body := []string{dashPaint(message, usageMutedColor, false)}
+	body := []string{dashPaint(sanitizeProcessCommand(message), usageMutedColor, false)}
 	return strings.Join(dashBox(title, body, m.width, height, dashBlue), "\n")
 }
 
@@ -288,7 +305,7 @@ func usageSessionLines(page usagePage, width, rows int, now time.Time) []string 
 		message := "No historical " + page.Label + " sessions."
 		switch {
 		case page.HistoryErr != "":
-			message = "Session history unavailable: " + page.HistoryErr
+			message = "Session history unavailable: " + sanitizeProcessCommand(page.HistoryErr)
 		case page.Loading:
 			message = "Loading historical " + page.Label + " sessions…"
 		}

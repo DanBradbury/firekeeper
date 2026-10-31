@@ -138,11 +138,9 @@ func TestOverviewRefreshSkipsProvidersAlreadyLoading(t *testing.T) {
 
 func TestOverviewFooterMatchesFooterWidth(t *testing.T) {
 	m := model{width: 100, height: 30, activeTab: overviewTab}
-	help, status := m.overviewFooter()
-	for name, line := range map[string]string{"help": help, "status": status} {
-		if got := ansi.StringWidth(line); got != m.width {
-			t.Fatalf("%s width = %d, want %d", name, got, m.width)
-		}
+	help := m.overviewFooter()
+	if got := ansi.StringWidth(help); got != m.width {
+		t.Fatalf("help width = %d, want %d", got, m.width)
 	}
 }
 
