@@ -3,7 +3,9 @@ package tui
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -57,6 +61,14 @@ type claudeHistoricalSession struct {
 }
 
 type claudeUsageSnapshot struct {
+	// Limits are the 5-hour and weekly windows. They are fetched unless the
+	// user ran `firekeeper claude-limits disable`: LimitsOn says it is on, and
+	// LimitsErr why the windows are missing when it is (a missing sign-in is
+	// not an error).
+	Limits    claudelimits.Limits
+	LimitsOn  bool
+	LimitsErr string
+
 	Summary claudeUsageSummary
 	Daily   []claudeDailyUsage
 	Models  []claudeUsageModel
@@ -90,9 +102,32 @@ type claudeUsageRecord struct {
 	} `json:"message"`
 }
 
+// claudeLimitsSource reports whether limits are enabled and, if so, fetches
+// them. It is a variable so tests do not touch the config file, the Keychain
+// or the network.
+var claudeLimitsSource = func() (limits claudelimits.Limits, enabled bool, err error) {
+	cfg, loadErr := config.Load(config.Options{Getenv: os.Getenv})
+	if loadErr != nil || !cfg.ClaudeLimits {
+		return claudelimits.Limits{}, false, nil
+	}
+	limits, err = claudelimits.Client{}.Fetch(context.Background())
+	return limits, true, err
+}
+
 func refreshClaudeUsage() tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fetchClaudeUsage()
+		if err == nil {
+			limits, enabled, limitsErr := claudeLimitsSource()
+			snapshot.LimitsOn = enabled
+			// No sign-in just means Claude Code is not logged in here: show
+			// nothing rather than an error on every machine without one.
+			if limitsErr != nil && !errors.Is(limitsErr, claudelimits.ErrNoToken) {
+				snapshot.LimitsErr = limitsErr.Error()
+			} else {
+				snapshot.Limits = limits
+			}
+		}
 		return claudeUsageResultMsg{snapshot: snapshot, refreshed: time.Now(), err: err}
 	}
 }
@@ -101,8 +136,8 @@ func refreshClaudeUsage() tea.Cmd {
 // under CLAUDE_CONFIG_DIR/projects. Claude Code repeats a response's usage on
 // every content block line, so each message id is counted once, across all
 // files, which also keeps messages copied into a resumed session from
-// counting twice. Plan limits are not stored locally, so only token history
-// is shown.
+// counting twice. Plan limits are not stored locally; they come from
+// claudeLimitsSource when the user opted in.
 func fetchClaudeUsage() (claudeUsageSnapshot, error) {
 	dir, err := claudeConfigDir()
 	if err != nil {
@@ -274,4 +309,42 @@ func recentClaudeDailyUsage(buckets []claudeDailyUsage, now time.Time, count int
 		result = append(result, claudeDailyUsage{StartDate: date, Tokens: byDate[date]})
 	}
 	return result
+}
+
+// claudeLimitWindow is one named window for display.
+type claudeLimitWindow struct {
+	Label       string
+	UsedPercent float64
+	ResetsAt    time.Time
+}
+
+// claudeLimitWindows lists the reported windows, shortest first.
+func claudeLimitWindows(limits claudelimits.Limits) []claudeLimitWindow {
+	var windows []claudeLimitWindow
+	for _, item := range []struct {
+		label  string
+		window *claudelimits.Window
+	}{
+		{"5-hour", limits.FiveHour},
+		{"Weekly", limits.SevenDay},
+		{"Weekly · Opus", limits.SevenDayOpus},
+		{"Weekly · Sonnet", limits.SevenDaySonnet},
+	} {
+		if item.window != nil {
+			windows = append(windows, claudeLimitWindow{item.label, item.window.UsedPercent, item.window.ResetsAt})
+		}
+	}
+	return windows
+}
+
+// claudeLimitsNote is the muted line shown where limits would be.
+func claudeLimitsNote(snapshot claudeUsageSnapshot) string {
+	switch {
+	case !snapshot.LimitsOn:
+		return "firekeeper claude-limits enable" // short: it must fit a card
+	case snapshot.LimitsErr != "":
+		return "Limits unavailable: " + snapshot.LimitsErr
+	default:
+		return "Plan limits: Claude Code /usage"
+	}
 }

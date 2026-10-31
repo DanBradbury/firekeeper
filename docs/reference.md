@@ -96,9 +96,14 @@ less everyday use than macOS. Please report what you find.
 
 ## Terminal dashboard
 
-Firekeeper opens on Processes. Press Tab to move between two text views:
+Firekeeper opens on Processes. Press Tab to move between three text views:
 
 - **Processes** — running agent harnesses and their session details.
+- **Overview** — an at-a-glance panel per provider with data: quota meters and
+  reset countdowns where a supported source exists (Codex limits, Copilot AI
+  credits), plus tokens today, over the last 7 days, and lifetime. Claude Code
+  and Kimi expose no quota locally, so their panels show token totals and point
+  to `/usage`. `r` refreshes every provider. It reads the same sources as Usage.
 - **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage.
 
 Two lookups in the Usage tab leave the machine, and neither uploads session
@@ -204,6 +209,22 @@ Kimi usage reads local `usage.record` events from Kimi Code sessions under
 cache, output, and total token history. Kimi quota/reset data is exposed by
 Kimi Code’s `/usage` flow; Firekeeper does not extract credentials or call
 undocumented quota endpoints.
+
+Claude limits (5-hour and weekly, with reset times) are not stored locally, so
+Firekeeper asks for them, and this is on by default. When Claude Code is signed
+in on this machine, Firekeeper reads that sign-in (`CLAUDE_CODE_OAUTH_TOKEN`,
+the macOS Keychain item `Claude Code-credentials`, or
+`CLAUDE_CONFIG_DIR/.credentials.json`, default `~/.claude/.credentials.json` on
+Linux and Windows) and asks Anthropic's usage endpoint, the way Claude Code's
+`/usage` does. With no sign-in it does nothing and shows nothing. The endpoint
+is undocumented and can change without notice, so a failure only shows a short
+note on the Claude panel. The token is used for that single request: it is not
+stored, refreshed, logged, or uploaded, and Claude Code's own files are never
+written. On macOS the Keychain may ask you to allow access the first time.
+An expired sign-in is reported, not renewed; open `claude` once to renew it.
+`firekeeper claude-limits status` shows what it can read, `disable` turns it
+off, and `enable` turns it back on. The setting is `[claude_limits] enabled` in
+`~/.firekeeper/config.toml`.
 
 Claude Code usage reads assistant message usage from local transcripts under
 `CLAUDE_CONFIG_DIR/projects` (default `~/.claude/projects`), read-only. It

@@ -59,6 +59,11 @@ type Config struct {
 	// TelemetryPort is the listener port on 127.0.0.1. Zero means
 	// DefaultTelemetryPort until a file sets it.
 	TelemetryPort int
+	// ClaudeLimits lets the dashboard read Claude Code's stored sign-in and
+	// ask Anthropic for the 5-hour and weekly limits. On by default, and only
+	// does anything when a Claude Code sign-in exists; `firekeeper
+	// claude-limits disable` turns it off.
+	ClaudeLimits bool
 
 	// Path is the config file read, or "" when none was.
 	Path string
@@ -85,6 +90,9 @@ type file struct {
 		Enabled *bool `toml:"enabled"`
 		Port    *int  `toml:"port"`
 	} `toml:"telemetry"`
+	ClaudeLimits *struct {
+		Enabled *bool `toml:"enabled"`
+	} `toml:"claude_limits"`
 
 	// Settings that only the separate dashboard server reads. They are
 	// accepted so one config file can serve both programs, and ignored here.
@@ -145,6 +153,7 @@ func Load(opts Options) (Config, error) {
 	if c.TelemetryPort == 0 {
 		c.TelemetryPort = DefaultTelemetryPort
 	}
+	c.ClaudeLimits = true
 	c.Sources = map[string]string{}
 	for _, k := range []string{"server", "token", "providers", "interval"} {
 		c.Sources[k] = "default"
@@ -281,6 +290,9 @@ func (c *Config) readFile(path, home string) error {
 				c.Sources["telemetry"] = "file"
 			}
 		}
+	}
+	if f.ClaudeLimits != nil && f.ClaudeLimits.Enabled != nil {
+		c.ClaudeLimits, c.Sources["claude_limits"] = *f.ClaudeLimits.Enabled, "file"
 	}
 	return nil
 }

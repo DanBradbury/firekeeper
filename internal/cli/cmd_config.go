@@ -140,6 +140,7 @@ func writeConfig(w io.Writer, c config.Config) {
 	fmt.Fprintf(w, "exclude = %s\n", tomlList(c.Exclude))
 	fmt.Fprintf(w, "\n[redact]\npaths = %s\n", tomlList(c.RedactPaths))
 	fmt.Fprintf(w, "\n[telemetry]\nenabled = %t%s\nport = %d\n", c.TelemetryEnabled, src("telemetry"), c.TelemetryPort)
+	fmt.Fprintf(w, "\n[claude_limits]\nenabled = %t%s\n", c.ClaudeLimits, src("claude_limits"))
 }
 
 func tomlList(items []string) string {

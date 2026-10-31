@@ -585,7 +585,7 @@ func (m model) dashHeaderLine() string {
 	for _, item := range []struct {
 		tab   tab
 		label string
-	}{{processesTab, "Processes"}, {usageTab, "Usage"}} {
+	}{{processesTab, "Processes"}, {overviewTab, "Overview"}, {usageTab, "Usage"}} {
 		if item.tab == m.activeTab {
 			left += usagePaint("[ "+item.label+" ]", dashOrange, true, usageHighlightColor) + dashPaint(" ", usageTextColor, false)
 		} else {

@@ -67,8 +67,11 @@ removing Firekeeper.
 - **See what is running.** Agent processes are grouped with their child
   processes, with state, model, working directory, Git branch, and tokens.
   On macOS, press `s` to jump to the terminal that holds a session.
-- **Understand usage.** A Usage tab shows token history by model, and Codex
-  limits, read from local files.
+- **Understand usage.** An Overview tab shows every provider's quota meters
+  and reset countdowns (Codex limits, Copilot AI credits) beside today, 7-day
+  and lifetime tokens. Claude's 5-hour and weekly limits appear automatically when Claude Code is
+  signed in on this machine (turn off with `firekeeper claude-limits disable`;
+  see [Usage](docs/reference.md#usage)). A Usage tab shows token history by model, per provider.
 - **Read what happened.** Press `c` on a session to read its prompts and
   replies in the terminal, read-only, following new messages live.
 - **Take your history with you.** `firekeeper snapshot --json` prints the

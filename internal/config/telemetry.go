@@ -44,9 +44,15 @@ func setTelemetry(lines []string, enabled bool, port int) []string {
 }
 
 func telemetrySpan(lines []string) (start, end int) {
+	return tableSpan(lines, "[telemetry]")
+}
+
+// tableSpan returns the line range of the table whose header is header, from
+// the header up to the next table (or the end), or -1, -1 when it is absent.
+func tableSpan(lines []string, header string) (start, end int) {
 	start = -1
 	for i, line := range lines {
-		if strings.TrimSpace(line) == "[telemetry]" {
+		if strings.TrimSpace(line) == header {
 			start = i
 			continue
 		}

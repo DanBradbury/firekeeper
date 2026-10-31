@@ -1,0 +1,17 @@
+package tui
+
+import (
+	"os"
+	"testing"
+
+	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+)
+
+// Claude limits are on by default, so no test may reach the real config,
+// Keychain or network through refreshClaudeUsage.
+func TestMain(m *testing.M) {
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
+		return claudelimits.Limits{}, false, nil
+	}
+	os.Exit(m.Run())
+}

@@ -156,7 +156,7 @@ func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
 	}
 	rawView := m.viewUsagePage(24)
 	view := ansi.Strip(rawView)
-	for _, expected := range []string{"╭─lifetime", "Responses", "1.2K", "Plan limits: Claude Code /usage", "╭─tokens by day", "Today", "CLAUDE OPUS"} {
+	for _, expected := range []string{"╭─lifetime", "Responses", "1.2K", "firekeeper claude-limits enable", "╭─tokens by day", "Today", "CLAUDE OPUS"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Claude usage view missing %q:\n%s", expected, view)
 		}
