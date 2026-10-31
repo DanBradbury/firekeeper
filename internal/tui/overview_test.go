@@ -238,3 +238,25 @@ func TestRefreshClaudeUsageAttachesLimitsWithoutFailingOnLimitsError(t *testing.
 		t.Fatal("limits reported on while disabled")
 	}
 }
+
+func TestOverviewShowsClaudeCloudSyncWarning(t *testing.T) {
+	m := overviewTestModel(time.Now())
+	if view := ansi.Strip(m.viewOverview(30)); strings.Contains(view, "Cloud sync") {
+		t.Fatalf("cloud note shown without a warning:\n%s", view)
+	}
+	m.claudeUsage.CloudSyncWarn = "claudecloud: the Claude Code login has expired"
+	if view := ansi.Strip(m.viewOverview(30)); !strings.Contains(view, "Cloud sync: claudecloud: the Claude Code login") {
+		t.Fatalf("cloud warning not shown:\n%s", view)
+	}
+	original := claudeCloudStatusSource
+	defer func() { claudeCloudStatusSource = original }()
+	claudeCloudStatusSource = func() string { return "boom" }
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	if err := os.MkdirAll(filepath.Join(home, "projects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if msg := refreshClaudeUsage()().(claudeUsageResultMsg); msg.snapshot.CloudSyncWarn != "boom" {
+		t.Fatalf("snapshot = %+v", msg.snapshot)
+	}
+}

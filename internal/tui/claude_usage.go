@@ -16,6 +16,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/claudelimits"
 	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -68,6 +69,9 @@ type claudeUsageSnapshot struct {
 	Limits    claudelimits.Limits
 	LimitsOn  bool
 	LimitsErr string
+	// CloudSyncWarn is the daemon's last Claude Code on the web sync
+	// problem, set only while `[claude_cloud] enabled = true`.
+	CloudSyncWarn string
 
 	Summary claudeUsageSummary
 	Daily   []claudeDailyUsage
@@ -114,6 +118,25 @@ var claudeLimitsSource = func() (limits claudelimits.Limits, enabled bool, err e
 	return limits, true, err
 }
 
+// claudeCloudStatusSource returns the daemon's last cloud sync warning, or
+// "" when cloud sync is off or clean. It reads only Firekeeper's own status
+// file, never the Claude Code login, and is a variable for tests.
+var claudeCloudStatusSource = func() string {
+	cfg, err := config.Load(config.Options{Getenv: os.Getenv})
+	if err != nil || !cfg.ClaudeCloud {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	status, ok := claudecloud.ReadStatus(filepath.Join(home, ".firekeeper", claudecloud.StatusFile))
+	if !ok {
+		return ""
+	}
+	return sanitizeProcessCommand(status.Warning)
+}
+
 func refreshClaudeUsage() tea.Cmd {
 	return func() tea.Msg {
 		snapshot, err := fetchClaudeUsage()
@@ -128,6 +151,7 @@ func refreshClaudeUsage() tea.Cmd {
 				snapshot.Limits = limits
 			}
 		}
+		snapshot.CloudSyncWarn = claudeCloudStatusSource()
 		return claudeUsageResultMsg{snapshot: snapshot, refreshed: time.Now(), err: err}
 	}
 }

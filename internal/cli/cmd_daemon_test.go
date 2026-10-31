@@ -449,3 +449,27 @@ func isolateDaemonConfig(t *testing.T) string {
 	}
 	return home
 }
+
+func TestDaemonClaudeCloudFromConfig(t *testing.T) {
+	cfg := stubDaemon(t, nil)
+	var stdout, stderr bytes.Buffer
+	withConfigFile(t, "providers = [\"claude\"]\n")
+	if code := runDaemon(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if cfg.ClaudeCloud.Enabled {
+		t.Fatal("cloud sync is on without [claude_cloud] enabled = true")
+	}
+	withConfigFile(t, "providers = [\"claude\"]\n\n[claude_cloud]\nenabled = true\ninterval = \"20m\"\n")
+	if code := runDaemon(nil, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if !cfg.ClaudeCloud.Enabled || cfg.ClaudeCloud.Interval != 20*time.Minute {
+		t.Fatalf("cloud config = %+v", cfg.ClaudeCloud)
+	}
+	withConfigFile(t, "providers = [\"claude\"]\n\n[claude_cloud]\nenabled = true\ninterval = \"1m\"\n")
+	stderr.Reset()
+	if code := runDaemon(nil, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "claude_cloud.interval must be at least 10m") {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}

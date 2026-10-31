@@ -43,12 +43,15 @@ type Options struct {
 // token breakdowns remain zero; aggregate tokens are retained in TokensUsed.
 // Discovery does not scan full transcripts to infer unavailable totals.
 type Meta struct {
-	ID             string       `json:"session_id"`
-	PID            int          `json:"pid"`
-	TTY            string       `json:"tty"`
-	MachineID      string       `json:"machine_id"`
-	Project        string       `json:"project"`
-	Provider       string       `json:"provider"`
+	ID        string `json:"session_id"`
+	PID       int    `json:"pid"`
+	TTY       string `json:"tty"`
+	MachineID string `json:"machine_id"`
+	Project   string `json:"project"`
+	Provider  string `json:"provider"`
+	// Origin is "cloud" for a session that ran on a hosted service and was
+	// imported, and empty for one that ran on this machine.
+	Origin         string       `json:"-"`
 	Name           string       `json:"-"`
 	State          State        `json:"state"`
 	CWD            string       `json:"cwd"`

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/DanBradbury/firekeeper/internal/reporter"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 )
 
 // stubBackfill records the config and answers as a pass that planned one
@@ -186,5 +189,105 @@ func TestBackfillConfirmation(t *testing.T) {
 				t.Fatalf("stdout = %q", stdout.String())
 			}
 		})
+	}
+}
+
+// stubClaudeCloud replaces the cloud download and the home directory, and
+// records what the download was asked to do.
+type cloudCall struct {
+	called bool
+	home   string
+	dir    string
+	after  time.Time
+}
+
+func stubClaudeCloud(t *testing.T, result claudecloud.SyncResult, err error) *cloudCall {
+	t.Helper()
+	call := &cloudCall{}
+	previousSync, previousHome := claudeCloudSync, configHome
+	home := t.TempDir()
+	configHome = func() (string, error) { return home, nil }
+	claudeCloudSync = func(_ context.Context, h, dir string, after time.Time, _ io.Writer) (claudecloud.SyncResult, error) {
+		*call = cloudCall{called: true, home: h, dir: dir, after: after}
+		return result, err
+	}
+	t.Cleanup(func() { claudeCloudSync, configHome = previousSync, previousHome })
+	return call
+}
+
+func TestBackfillClaudeCloudWiresTheCache(t *testing.T) {
+	cfg, _ := stubBackfill(t, "", false)
+	call := stubClaudeCloud(t, claudecloud.SyncResult{Listed: 3, Fetched: 2, Current: 1}, nil)
+	var stdout, stderr bytes.Buffer
+	if code := runBackfill([]string{"--claude-cloud", "--after", "2026-03-04", "--yes"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if !call.called || call.dir != filepath.Join(call.home, ".firekeeper", "cloud", "claude") {
+		t.Fatalf("download = %+v; the cache must live under ~/.firekeeper, not ~/.claude", *call)
+	}
+	if want := time.Date(2026, 3, 4, 0, 0, 0, 0, time.Local); !call.after.Equal(want) {
+		t.Fatalf("cutoff = %v, want %v", call.after, want)
+	}
+	if !slices.Equal(cfg.Providers, []transcript.Provider{transcript.ProviderClaude}) {
+		t.Fatalf("providers = %v", cfg.Providers)
+	}
+	if cfg.Sources == nil || cfg.Enumerators == nil {
+		t.Fatal("the reporter was not pointed at the cloud cache")
+	}
+	if source, ok := cfg.Sources(transcript.ProviderClaude); !ok || source == nil {
+		t.Fatal("no cloud source for claude")
+	}
+	if _, ok := cfg.Sources(transcript.ProviderCodex); ok {
+		t.Fatal("cloud source answers for another provider")
+	}
+	if _, ok := cfg.Enumerators(transcript.ProviderCodex); ok {
+		t.Fatal("cloud enumerator answers for another provider")
+	}
+	if !strings.Contains(stdout.String(), "3 listed, 2 downloaded, 1 already cached") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "api.anthropic.com") {
+		t.Fatalf("stderr = %q; the download must be announced", stderr.String())
+	}
+}
+
+func TestBackfillClaudeCloudNeedsNoOtherProviderFlags(t *testing.T) {
+	for _, args := range [][]string{{"--claude-cloud", "--all"}, {"--claude-cloud", "--provider", "claude"}} {
+		stubBackfill(t, "", false)
+		call := stubClaudeCloud(t, claudecloud.SyncResult{}, nil)
+		var stdout, stderr bytes.Buffer
+		if code := runBackfill(args, &stdout, &stderr); code != 2 {
+			t.Fatalf("%v: code = %d, want 2", args, code)
+		}
+		if call.called {
+			t.Fatalf("%v: downloaded before rejecting the flags", args)
+		}
+	}
+}
+
+func TestBackfillClaudeCloudFailureUploadsNothing(t *testing.T) {
+	cfg, confirmed := stubBackfill(t, "", false)
+	stubClaudeCloud(t, claudecloud.SyncResult{}, claudecloud.ErrNoLogin)
+	var stdout, stderr bytes.Buffer
+	if code := runBackfill([]string{"--claude-cloud", "--yes"}, &stdout, &stderr); code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	if *confirmed || cfg.Providers != nil {
+		t.Fatal("backfill ran after the download failed")
+	}
+	if !strings.Contains(stderr.String(), "no Claude Code login") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestBackfillClaudeCloudWarnsAboutFailedSessions(t *testing.T) {
+	stubBackfill(t, "", false)
+	stubClaudeCloud(t, claudecloud.SyncResult{Listed: 1, Failed: []string{"session_x: claudecloud: API returned HTTP 500"}}, nil)
+	var stdout, stderr bytes.Buffer
+	if code := runBackfill([]string{"--claude-cloud", "--yes"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "warning: cloud session session_x") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
