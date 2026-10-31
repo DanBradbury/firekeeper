@@ -52,18 +52,110 @@ func TestUsageCardsFloatValuesRight(t *testing.T) {
 
 func TestUsageFooterMatchesProcessesFooterStyle(t *testing.T) {
 	m := model{width: 100, height: 30, activeTab: usageTab}
-	usageHelp, usageStatus := m.usageFooter()
-	processHelp, processStatus := m.processFooter()
-	for name, line := range map[string]string{"usage help": usageHelp, "usage status": usageStatus} {
-		if got := ansi.StringWidth(line); got != m.width {
-			t.Errorf("%s width = %d, want %d", name, got, m.width)
-		}
+	usageHelp := m.usageFooter()
+	processHelp := m.processFooter()
+	if got := ansi.StringWidth(usageHelp); got != m.width {
+		t.Errorf("usage help width = %d, want %d", got, m.width)
 	}
 	if !strings.Contains(usageHelp, dashPaint("tab ", dashBlue, true)) {
 		t.Errorf("usage help keys are not painted like the Processes footer: %q", usageHelp)
 	}
-	if len(usageHelp) == 0 || len(processHelp) == 0 || len(usageStatus) == 0 || len(processStatus) == 0 {
+	if len(usageHelp) == 0 || len(processHelp) == 0 {
 		t.Fatal("empty footer")
+	}
+}
+
+func TestUsageShowsRefreshErrorsWithCachedData(t *testing.T) {
+	for _, provider := range []usageProvider{codexProvider, copilotProvider, kimiProvider, claudeProvider} {
+		m := NewModel()
+		m.width, m.height = 120, 30
+		m.activeTab, m.usageProvider = usageTab, provider
+		m.codexUsage.Daily = []codexDailyUsage{{StartDate: "2026-10-31", Tokens: 100}}
+		m.copilotUsage.Summary.Sessions = 1
+		m.kimiUsage.Summary.Sessions = 1
+		m.claudeUsage.Summary.Sessions = 1
+		m.codexUsageErr, m.copilotUsageErr = "temporary failure", "temporary failure"
+		m.kimiUsageErr, m.claudeUsageErr = "temporary failure", "temporary failure"
+
+		view := ansi.Strip(m.View())
+		if !strings.Contains(view, "Usage refresh failed: temporary failure") {
+			t.Errorf("provider %d: refresh error not visible", provider)
+		}
+		if !strings.Contains(view, "╭─lifetime") {
+			t.Errorf("provider %d: cached usage not visible", provider)
+		}
+	}
+}
+
+func TestUsageShowsHistoryErrorsWithAndWithoutCachedSessions(t *testing.T) {
+	for _, provider := range []usageProvider{codexProvider, copilotProvider} {
+		for _, height := range []int{12, 19, 20, 40} {
+			for _, cached := range []bool{false, true} {
+				m := NewModel()
+				m.width, m.height = 120, height
+				m.activeTab, m.usageProvider = usageTab, provider
+				m.codexUsage.Daily = []codexDailyUsage{{StartDate: "2026-10-31", Tokens: 100}}
+				m.copilotUsage.Summary.Sessions = 1
+				m.codexHistoryErr, m.copilotHistoryErr = "database unavailable", "database unavailable"
+				if cached {
+					m.codexUsage.History = []codexHistoricalSession{{ID: "test-session", Title: "cached session", WorkDir: "/workspace/project"}}
+					m.copilotUsage.History = []copilotHistoricalSession{{ID: "test-session", Title: "cached session", WorkDir: "/workspace/project"}}
+				}
+				view := ansi.Strip(m.View())
+				message := "Session history unavailable: database unavailable"
+				if cached {
+					message = "Session history refresh failed: database unavailable"
+				}
+				if count := strings.Count(view, message); count != 1 {
+					t.Errorf("provider %d height %d cached %v: history error shown %d times", provider, height, cached, count)
+				}
+				if cached && height == 40 && !strings.Contains(view, "cached session") {
+					t.Errorf("provider %d: cached session not visible", provider)
+				}
+			}
+		}
+	}
+}
+
+func TestUsageErrorsFitAndSanitize(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func(*model)
+		want string
+	}{
+		{"initial failure", func(m *model) { m.codexUsageErr = "failed\nagain\x1b[31m" }, "unavailable"},
+		{"cached usage", func(m *model) {
+			m.codexUsage.Daily = []codexDailyUsage{{StartDate: "2026-10-31", Tokens: 100}}
+			m.codexUsageErr = "failed\nagain\x1b[31m"
+		}, "Usage refresh"},
+		{"empty history", func(m *model) {
+			m.codexHistoryErr = "failed\nagain\x1b[31m"
+		}, "Session history"},
+		{"cached history", func(m *model) {
+			m.codexUsage.History = []codexHistoricalSession{{ID: "test-session"}}
+			m.codexHistoryErr = "failed\nagain\x1b[31m"
+		}, "Session history"},
+	}
+	for _, tt := range tests {
+		for _, size := range [][2]int{{20, 6}, {40, 12}, {80, 24}} {
+			m := NewModel()
+			m.width, m.height = size[0], size[1]
+			m.activeTab = usageTab
+			tt.set(&m)
+			view := m.View()
+			lines := strings.Split(view, "\n")
+			if len(lines) != m.height {
+				t.Fatalf("%s %v: rows = %d, want %d", tt.name, size, len(lines), m.height)
+			}
+			for i, line := range lines {
+				if width := ansi.StringWidth(line); width != m.width {
+					t.Fatalf("%s %v: line %d width = %d, want %d", tt.name, size, i, width, m.width)
+				}
+			}
+			if !strings.Contains(ansi.Strip(view), tt.want) || strings.Contains(view, "\x1b[31m") {
+				t.Errorf("%s %v: error was hidden or contained an unsafe escape", tt.name, size)
+			}
+		}
 	}
 }
 

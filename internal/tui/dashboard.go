@@ -102,13 +102,22 @@ func (m model) dashSessionsPanel(layout dashLayout) []string {
 	inner := m.dashInnerWidth()
 	columns := dashFitColumns(inner)
 	body := []string{dashHeaderRow(columns, inner)}
-	if len(m.processGroups) == 0 {
+	// Reuse the header row for feedback without changing the table's scroll budget.
+	switch {
+	case m.processErr != "":
+		body[0] = dashPaint("process scan failed: "+sanitizeProcessCommand(m.processErr), dashRed, false)
+	case m.terminalStatus != "":
+		body[0] = dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false)
+	case m.processMetadataWarning != "":
+		body[0] = dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false)
+	}
+	if len(m.processGroups) == 0 && m.processErr == "" {
 		message := "No running Codex, Copilot, or OpenCode processes found."
 		if m.refreshedAt.IsZero() {
 			message = "Scanning for Codex, Copilot, and OpenCode processes…"
 		}
 		body = append(body, dashPaint(message, usageMutedColor, false))
-	} else {
+	} else if len(m.processGroups) > 0 {
 		lines, _ := m.processBodyLines()
 		end := min(m.processScroll+m.processPageSize(), len(lines))
 		body = append(body, lines[min(m.processScroll, end):end]...)
@@ -577,11 +586,10 @@ func (s dashSummary) projectLines(width int) []string {
 	return lines
 }
 
-// dashHeaderLine is the top row shared by all tabs: product name, tabs, and
-// on the right the last refresh time with live state counts.
+// dashHeaderLine is the top row shared by all tabs, with live state counts on
+// the right.
 func (m model) dashHeaderLine() string {
-	left := dashPaint(" firekeeper ", usageBrightColor, true) +
-		dashPaint(version.Version+" · agent monitor  ", usageMutedColor, false)
+	left := dashPaint(" ", usageTextColor, false)
 	for _, item := range []struct {
 		tab   tab
 		label string
@@ -595,7 +603,6 @@ func (m model) dashHeaderLine() string {
 	right := ""
 	if !m.refreshedAt.IsZero() {
 		summary := m.dashSummarize()
-		right = dashPaint(m.refreshedAt.Format("15:04:05")+"  ", usageMutedColor, false)
 		for _, state := range []sessionState{sessionStateActive, sessionStateWaiting, sessionStateNeedsInput} {
 			if count := summary.states[state]; count > 0 {
 				right += dashPaint(fmt.Sprintf("%d%s ", count, dashStateIcon(state)), dashStateColor(state), true)
@@ -614,73 +621,56 @@ type footerKey struct{ key, action string }
 
 func footerKeysWidth(keys []footerKey, spacing int) int {
 	width := 1
-	for index, key := range keys {
-		if index > 0 {
-			width += spacing
-		}
-		width += ansi.StringWidth(key.key) + 1 + ansi.StringWidth(key.action)
+	for _, key := range keys {
+		width += ansi.StringWidth(key.key) + 1 + ansi.StringWidth(key.action) + spacing
 	}
 	return width
 }
 
-// renderFooterKeys paints a footer help line filled to width with the panel background.
+func footerVersion(width int) (string, int) {
+	label := ansi.Truncate(version.Version, max(width/2, 0), "…")
+	available := max(width, 0)
+	if label != "" {
+		available = max(available-ansi.StringWidth(label)-1, 0)
+	}
+	return label, available
+}
+
+// renderFooterKeys paints the shortcuts and right-aligned version.
 func renderFooterKeys(keys []footerKey, width int) string {
+	label, available := footerVersion(width)
 	spacing := "  "
-	if footerKeysWidth(keys, len(spacing)) > width {
+	if footerKeysWidth(keys, len(spacing)) > available {
 		spacing = " "
 	}
 	help := dashPaint(" ", usageTextColor, false)
 	for _, key := range keys {
 		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+spacing, usageTextColor, false)
 	}
-	return dashFit(help, width, usagePanelColor)
+	help = dashFit(help, available, usagePanelColor)
+	if label == "" {
+		return help
+	}
+	return help + dashPaint(label, dashGreen, true) + dashPaint(" ", usageTextColor, false)
 }
 
-func (m model) processFooter() (string, string) {
+func (m model) processFooter() string {
 	keys := []footerKey{
 		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"},
 	}
-	if footerKeysWidth(keys, 1) > m.width {
+	_, available := footerVersion(m.width)
+	for _, compact := range []footerKey{{"s", "terminal"}, {"tab", "next"}, {"r", "reload"}} {
+		if footerKeysWidth(keys, 1) <= available {
+			break
+		}
 		for index := range keys {
-			if keys[index].key == "s" {
-				keys[index].action = "terminal"
+			if keys[index].key == compact.key {
+				keys[index].action = compact.action
 				break
 			}
 		}
 	}
-	help := renderFooterKeys(keys, m.width)
-	status := dashFit(dashPaint("  "+m.processStatusText(), usageMutedColor, false), m.width, usagePanelColor)
-	return help, status
-}
-
-func (m model) processStatusText() string {
-	if m.processErr != "" {
-		return "process scan failed: " + m.processErr
-	}
-	if m.terminalStatus != "" {
-		return m.terminalStatus
-	}
-	if m.refreshedAt.IsZero() {
-		return "scanning processes…"
-	}
-	processCount := 0
-	for _, group := range m.processGroups {
-		processCount += len(group.processes)
-	}
-	if m.processMetadataWarning != "" {
-		return fmt.Sprintf(
-			"%d runtimes / %d processes  •  session metadata unavailable: %s",
-			len(m.processGroups), processCount, m.processMetadataWarning,
-		)
-	}
-	return fmt.Sprintf(
-		"%d runtimes / %d processes  •  selected %d/%d  •  refreshed %s  •  2s auto",
-		len(m.processGroups),
-		processCount,
-		min(m.processCursor+1, len(m.processGroups)),
-		len(m.processGroups),
-		m.refreshedAt.Format("15:04:05"),
-	)
+	return renderFooterKeys(keys, m.width)
 }
 
 // dashBox draws a rounded panel of exactly width columns and height rows with

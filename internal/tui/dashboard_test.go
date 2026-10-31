@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/DanBradbury/firekeeper/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
@@ -66,6 +67,176 @@ func TestDashboardFitsTerminalAtEverySize(t *testing.T) {
 	}
 }
 
+func TestDashboardHeaderShowsCountsWithoutRefreshTime(t *testing.T) {
+	m := dashboardTestModel()
+	m.width = 120
+
+	header := ansi.Strip(m.dashHeaderLine())
+	if strings.Contains(header, "09:30:00") {
+		t.Fatalf("header shows refresh time: %q", header)
+	}
+	for _, status := range []string{"1●", "1▲"} {
+		if !strings.Contains(header, status) {
+			t.Errorf("header missing status count %q: %q", status, header)
+		}
+	}
+}
+
+func TestVersionInBottomRight(t *testing.T) {
+	originalVersion := version.Version
+	t.Cleanup(func() { version.Version = originalVersion })
+
+	views := []struct {
+		name string
+		tab  tab
+		help bool
+		chat bool
+		key  string
+	}{
+		{"processes", processesTab, false, false, "↑↓"},
+		{"overview", overviewTab, false, false, "r refresh"},
+		{"usage", usageTab, false, false, "↑↓"},
+		{"chat", processesTab, false, true, "↑↓"},
+		{"help", processesTab, true, false, "any key"},
+	}
+	for _, currentVersion := range []string{"dev", "0.8.5", "0.10.1"} {
+		version.Version = currentVersion
+		for _, view := range views {
+			for _, width := range []int{20, 40, 80, 140} {
+				t.Run(fmt.Sprintf("%s/%s/%d", currentVersion, view.name, width), func(t *testing.T) {
+					m := dashboardTestModel()
+					m.width, m.height = width, 40
+					m.activeTab, m.helpOpen, m.chat.open = view.tab, view.help, view.chat
+					m.codexUsage.History = []codexHistoricalSession{{ID: "test-session", WorkDir: "/workspace/project"}}
+
+					lines := strings.Split(m.View(), "\n")
+					header := ansi.Strip(lines[0])
+					for _, text := range []string{"firekeeper", "agent monitor", " " + currentVersion + " "} {
+						if strings.Contains(header, text) {
+							t.Errorf("header contains %q: %q", text, header)
+						}
+					}
+					footer := lines[len(lines)-1]
+					if got := ansi.StringWidth(footer); got != width {
+						t.Errorf("footer width = %d, want %d", got, width)
+					}
+					if !strings.HasSuffix(footer, dashPaint(currentVersion, dashGreen, true)+dashPaint(" ", usageTextColor, false)) {
+						t.Errorf("version missing right padding or green styling: %q", footer)
+					}
+					if plain := ansi.Strip(footer); !strings.Contains(plain, view.key) {
+						t.Errorf("footer missing %q: %q", view.key, plain)
+					}
+					if view.help {
+						plain := ansi.Strip(footer)
+						if !strings.Contains(plain, "any key close") && !strings.Contains(plain, "any key back") {
+							t.Errorf("footer missing help-close hint: %q", plain)
+						}
+					}
+					if width >= 80 && view.name == "processes" {
+						plain := ansi.Strip(footer)
+						for _, hint := range []string{"↑↓ select", "enter expand", "c chat", "? help", "q quit"} {
+							if !strings.Contains(plain, hint) {
+								t.Errorf("footer missing %q: %q", hint, plain)
+							}
+						}
+						if !strings.Contains(plain, "tab switch") && !strings.Contains(plain, "tab next") {
+							t.Errorf("footer missing tab hint: %q", plain)
+						}
+						if !strings.Contains(plain, "r refresh") && !strings.Contains(plain, "r reload") {
+							t.Errorf("footer missing refresh hint: %q", plain)
+						}
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestLongVersionKeepsRoomForShortcuts(t *testing.T) {
+	originalVersion := version.Version
+	t.Cleanup(func() { version.Version = originalVersion })
+	version.Version = "0.8.5-development-build"
+
+	m := dashboardTestModel()
+	m.width, m.height = 20, 6
+	lines := strings.Split(m.View(), "\n")
+	footer := lines[len(lines)-1]
+	label := ansi.Truncate(version.Version, m.width/2, "…")
+	if got := ansi.StringWidth(footer); got != m.width {
+		t.Errorf("footer width = %d, want %d", got, m.width)
+	}
+	if !strings.HasSuffix(footer, dashPaint(label, dashGreen, true)+dashPaint(" ", usageTextColor, false)) {
+		t.Errorf("truncated version missing right padding or green styling: %q", footer)
+	}
+	if !strings.Contains(ansi.Strip(footer), "↑↓") {
+		t.Errorf("long version displaced shortcuts: %q", ansi.Strip(footer))
+	}
+}
+
+func TestDashboardShowsOperationalMessagesInSessionsPanel(t *testing.T) {
+	tests := []struct {
+		name     string
+		set      func(*model)
+		message  string
+		noGroups bool
+	}{
+		{"scan failure", func(m *model) { m.processErr = "ps unavailable" }, "process scan failed: ps unavailable", false},
+		{"scan failure without results", func(m *model) {
+			m.processErr = "ps unavailable"
+			m.processGroups = nil
+		}, "process scan failed: ps unavailable", true},
+		{"terminal switch", func(m *model) { m.terminalStatus = "terminal switch failed: permission denied" }, "terminal switch failed: permission denied", false},
+		{"metadata warning", func(m *model) { m.processMetadataWarning = "timed out" }, "session metadata unavailable: timed out", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := dashboardTestModel()
+			m.width, m.height = 120, 40
+			tt.set(&m)
+			lines := strings.Split(ansi.Strip(m.View()), "\n")
+			body := strings.Join(lines[:len(lines)-1], "\n")
+			if !strings.Contains(body, tt.message) {
+				t.Errorf("missing operational message %q", tt.message)
+			}
+			if tt.noGroups && strings.Contains(body, "No running Codex") {
+				t.Error("scan failure was presented as an empty process list")
+			}
+			if !tt.noGroups && !strings.Contains(body, "Dashboard first pass") {
+				t.Error("operational message hid the existing sessions")
+			}
+			if !strings.Contains(lines[len(lines)-1], "? help") {
+				t.Error("operational message replaced the shortcuts")
+			}
+		})
+	}
+}
+
+func TestDashboardOperationalMessagesFitAndSanitize(t *testing.T) {
+	for _, size := range [][2]int{{20, 6}, {40, 12}, {80, 24}} {
+		m := dashboardTestModel()
+		m.width, m.height = size[0], size[1]
+		m.processErr = "failed\nagain\x1b[31m"
+		m.terminalStatus = "switch status"
+		m.processMetadataWarning = "metadata warning"
+		view := m.View()
+		lines := strings.Split(view, "\n")
+		if len(lines) != m.height {
+			t.Fatalf("%v: rows = %d, want %d", size, len(lines), m.height)
+		}
+		for i, line := range lines {
+			if width := ansi.StringWidth(line); width != m.width {
+				t.Fatalf("%v: line %d width = %d, want %d", size, i, width, m.width)
+			}
+		}
+		if !strings.Contains(ansi.Strip(view), "process scan") || strings.Contains(view, "\x1b[31m") {
+			t.Errorf("%v: scan failure was hidden or contained an unsafe escape", size)
+		}
+		if strings.Contains(ansi.Strip(view), "switch status") || strings.Contains(ansi.Strip(view), "metadata warning") {
+			t.Errorf("%v: lower-priority feedback replaced the scan failure", size)
+		}
+	}
+}
+
 func TestShortcutHintsStayInFooter(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -106,17 +277,20 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 						t.Errorf("provider selector missing %q: %q", selected, lines[1])
 					}
 				}
-				body := strings.Join(lines[:len(lines)-2], "\n")
-				for _, hint := range []string{"tab switch", "? help", "←/→ provider"} {
+				body := strings.Join(lines[1:len(lines)-1], "\n")
+				for _, hint := range []string{"tab switch", "tab next", "? help", "←/→ provider", "runtimes /", "refreshed "} {
 					if strings.Contains(body, hint) {
-						t.Errorf("shortcut %q appears above the footer", hint)
+						t.Errorf("footer-only text %q appears above the footer", hint)
 					}
 				}
-				footer := lines[len(lines)-2]
-				for _, hint := range append([]string{"tab switch", "? help", "q quit"}, tt.footerHints...) {
+				footer := lines[len(lines)-1]
+				for _, hint := range append([]string{"? help", "q quit"}, tt.footerHints...) {
 					if !strings.Contains(footer, hint) {
 						t.Errorf("footer missing %q: %q", hint, footer)
 					}
+				}
+				if !strings.Contains(footer, "tab switch") && !(tt.tab == processesTab && strings.Contains(footer, "tab next")) {
+					t.Errorf("footer missing tab hint: %q", footer)
 				}
 				if tt.tab == processesTab {
 					terminalHint := "s terminal"
@@ -152,7 +326,7 @@ func TestOverlayHeadersDoNotShowShortcutHints(t *testing.T) {
 					t.Errorf("header contains %q: %q", hint, lines[0])
 				}
 			}
-			if footer := lines[len(lines)-2]; !strings.Contains(footer, tt.footer) {
+			if footer := lines[len(lines)-1]; !strings.Contains(footer, tt.footer) {
 				t.Errorf("footer missing %q: %q", tt.footer, footer)
 			}
 		})

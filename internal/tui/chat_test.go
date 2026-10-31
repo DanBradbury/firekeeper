@@ -79,7 +79,7 @@ func TestChatOpensWithUserAndAssistantMessages(t *testing.T) {
 		t.Fatalf("messages = %d, want the user prompt and the assistant reply", len(m.chat.messages))
 	}
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"chat (demo/0199c3d4)", "You", "Please add a chat view", "Claude", "Sure, adding the chat view now.", "2 messages"} {
+	for _, expected := range []string{"chat (demo/0199c3d4)", "You", "Please add a chat view", "Claude", "Sure, adding the chat view now."} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("chat view missing %q:\n%s", expected, view)
 		}
@@ -195,7 +195,7 @@ func TestChatReadsKimiSession(t *testing.T) {
 		t.Fatalf("messages = %+v", m.chat.messages)
 	}
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"You", "Fix the build", "Kimi", "The build passes now.", "2 messages"} {
+	for _, expected := range []string{"You", "Fix the build", "Kimi", "The build passes now."} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("chat view missing %q:\n%s", expected, view)
 		}
@@ -229,7 +229,7 @@ func TestChatReadsGeminiSession(t *testing.T) {
 		t.Fatalf("messages = %+v", m.chat.messages)
 	}
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"You", "Fix the build", "Gemini", "The build passes now.", "2 messages"} {
+	for _, expected := range []string{"You", "Fix the build", "Gemini", "The build passes now."} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("chat view missing %q:\n%s", expected, view)
 		}
@@ -263,7 +263,7 @@ func TestChatReadsCursorSession(t *testing.T) {
 		t.Fatalf("messages = %+v", m.chat.messages)
 	}
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"You", "Fix the build", "Cursor", "The build passes now.", "2 messages"} {
+	for _, expected := range []string{"You", "Fix the build", "Cursor", "The build passes now."} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("chat view missing %q:\n%s", expected, view)
 		}
