@@ -168,6 +168,38 @@ func TestWindowsInstallArgs(t *testing.T) {
 	}
 }
 
+func TestWindowsInstallEnvDropsPSModulePath(t *testing.T) {
+	parent := []string{
+		`PATH=C:\Windows\system32`,
+		`PSModulePath=C:\Users\me\Documents\PowerShell\Modules;C:\Program Files\PowerShell\7\Modules`,
+		`psmodulepath=C:\lower`,
+		`PSMODULEPATH=C:\upper`,
+		`PSModulePathExtra=keep`,
+		`XPSModulePath=keep`,
+		`=C:=C:\src`,
+		`FIREKEEPER_HOME=C:\fk=x`,
+		`EMPTY=`,
+	}
+	want := []string{
+		`PATH=C:\Windows\system32`,
+		`PSModulePathExtra=keep`,
+		`XPSModulePath=keep`,
+		`=C:=C:\src`,
+		`FIREKEEPER_HOME=C:\fk=x`,
+		`EMPTY=`,
+	}
+	got := windowsInstallEnv(parent)
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("env = %q, want %q", got, want)
+	}
+	if len(parent) != 9 || parent[1] == "" {
+		t.Fatal("windowsInstallEnv changed its input")
+	}
+	if got := windowsInstallEnv(nil); len(got) != 0 {
+		t.Fatalf("env of nil = %q", got)
+	}
+}
+
 func TestInstallOnWindowsValidatesVersionFirst(t *testing.T) {
 	old := goos
 	goos = "windows"

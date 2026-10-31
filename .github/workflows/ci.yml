@@ -135,6 +135,21 @@ jobs:
       - name: installer test (Windows PowerShell 5.1)
         shell: powershell
         run: ./scripts/test-install.ps1
+      - name: installer test (Windows PowerShell 5.1 started from PowerShell 7)
+        # firekeeper's self-update runs powershell.exe, and from a pwsh
+        # session that child inherits pwsh's PSModulePath, where 5.1 cannot
+        # autoload Get-FileHash or Expand-Archive. Run install.ps1 in exactly
+        # that setup, with no help from update.go's cleaned environment.
+        shell: pwsh
+        run: |
+          $docs = [Environment]::GetFolderPath('MyDocuments')
+          $env:FIREKEEPER_TEST_INSTALLER_PSMODULEPATH = @(
+            (Join-Path $docs 'PowerShell\Modules'),
+            (Join-Path $env:ProgramFiles 'PowerShell\Modules'),
+            (Join-Path $PSHOME 'Modules')
+          ) -join ';'
+          $env:FIREKEEPER_TEST_INSTALLER_SHELL = (Get-Command powershell.exe).Source
+          ./scripts/test-install.ps1
 
   installer:
     runs-on: ubuntu-latest

@@ -82,7 +82,9 @@ What differs from macOS and Linux:
   SmartScreen's "downloaded from the internet" mark; a browser download of the
   zip may trigger a prompt.
 - **Updates** re-run `install.ps1` for the new version (with `powershell`, or
-  `pwsh` when Windows PowerShell is missing) instead of `install.sh`.
+  `pwsh` when Windows PowerShell is missing) instead of `install.sh`. The
+  installer gets your environment minus `PSModulePath`, so updating from a
+  PowerShell 7 session works too.
 - **The login service** is a Task Scheduler task; see
   [Running the daemon at login](#running-the-daemon-at-login).
 - **The dashboard server** for Windows is `firekeeper-server.exe`, from a
