@@ -209,11 +209,12 @@ func dashCell(value string, width int, right bool) string {
 	return value + space
 }
 
-// processBodyLines returns the sessions table body (two rows per runtime,
-// plus details when expanded) and the first line index of each runtime.
+// processBodyLines returns the sessions table body and each runtime's first
+// line index. Inline details are used only when the separate detail panel is hidden.
 func (m model) processBodyLines() ([]string, []int) {
 	width := m.dashInnerWidth()
 	columns := dashFitColumns(width)
+	inlineDetails := m.dashboardLayout().detail == 0
 	summaryOffset := dashMarkerWidth
 	for _, column := range columns {
 		if column.key == "summary" {
@@ -230,17 +231,18 @@ func (m model) processBodyLines() ([]string, []int) {
 	for index, group := range m.processGroups {
 		offsets[index] = len(lines)
 		selected := index == m.processCursor
+		expanded := inlineDetails && m.expandedGroups[group.root.pid]
 		background := usagePanelColor
 		if selected {
 			background = usageHighlightColor
 		}
-		lines = append(lines, dashGroupRow(group, columns, width, selected, m.expandedGroups[group.root.pid], background))
+		lines = append(lines, dashGroupRow(group, columns, width, selected, expanded, background))
 		lines = append(lines, dashFit(
 			dashPaint(strings.Repeat(" ", summaryOffset), usageMutedColor, false)+dashGroupSubline(group),
 			width,
 			usagePanelColor,
 		))
-		if !m.expandedGroups[group.root.pid] {
+		if !expanded {
 			continue
 		}
 		for _, line := range dashGroupDetail(group) {
@@ -331,7 +333,7 @@ func dashGroupSubline(group processGroup) string {
 }
 
 // dashGroupDetail describes every session and process of one runtime. It backs
-// both the detail panel and inline expansion with Enter.
+// both the detail panel and inline expansion when that panel is hidden.
 func dashGroupDetail(group processGroup) []string {
 	var lines []string
 	label := func(name, value string) string {
@@ -489,7 +491,7 @@ func (m model) dashSummaryPanels(height int) []string {
 		accent string
 		body   func(width int) []string
 	}{
-		{"¹overview", dashBlue, summary.overviewLines},
+		{"¹summary", dashBlue, summary.summaryLines},
 		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
 		{"³providers", dashPurple, summary.providerLines},
 		{"⁴projects", dashGreen, summary.projectLines},
@@ -518,7 +520,7 @@ func (m model) dashSummaryPanels(height int) []string {
 	return rows
 }
 
-func (s dashSummary) overviewLines(width int) []string {
+func (s dashSummary) summaryLines(width int) []string {
 	stat := func(name string, value int) string {
 		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(fmt.Sprintf("%-4d", value), usageBrightColor, true)
 	}
@@ -538,6 +540,14 @@ func (s dashSummary) overviewLines(width int) []string {
 func (s dashSummary) providerLines(width int) []string {
 	if len(s.tools) == 0 {
 		return []string{dashPaint("No agent runtimes running.", usageMutedColor, false)}
+	}
+	if len(s.tools) == 1 {
+		tool := s.tools[0]
+		return []string{usageSplit(
+			dashPaint(dashCell(tool.tool, 8, false), dashToolColor(tool.tool), true)+
+				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false),
+			dashPaint(formatTokenCount(tool.tokens), usageTextColor, false),
+		)}
 	}
 	var maximum int64
 	for _, tool := range s.tools {
@@ -655,9 +665,13 @@ func renderFooterKeys(keys []footerKey, width int) string {
 }
 
 func (m model) processFooter() string {
-	keys := []footerKey{
-		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"},
+	keys := []footerKey{{"↑↓", "select"}}
+	if m.dashboardLayout().detail == 0 {
+		keys = append(keys, footerKey{"enter", "expand"})
 	}
+	keys = append(keys, []footerKey{
+		{"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"},
+	}...)
 	_, available := footerVersion(m.width)
 	for _, compact := range []footerKey{{"s", "terminal"}, {"tab", "next"}, {"r", "reload"}} {
 		if footerKeysWidth(keys, 1) <= available {

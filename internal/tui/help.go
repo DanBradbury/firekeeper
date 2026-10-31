@@ -28,7 +28,7 @@ var helpSections = []helpSection{
 		{"↑ ↓ / j k", "Select runtime"},
 		{"PgUp / PgDn", "Move half a page"},
 		{"Home / End", "Jump to first or last runtime"},
-		{"Enter", "Expand session details and process tree"},
+		{"Enter", "Expand details inline when the bottom session panel is hidden"},
 		{"s", "Switch to the runtime's terminal"},
 		{"c", "Open the session's chat history"},
 		{"r", "Refresh now"},

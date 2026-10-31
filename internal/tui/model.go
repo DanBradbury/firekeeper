@@ -243,9 +243,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
-				rootPID := m.processGroups[m.processCursor].root.pid
-				m.expandedGroups[rootPID] = !m.expandedGroups[rootPID]
-				m.ensureSelectedProcessVisible()
+				if m.dashboardLayout().detail == 0 {
+					rootPID := m.processGroups[m.processCursor].root.pid
+					m.expandedGroups[rootPID] = !m.expandedGroups[rootPID]
+					m.ensureSelectedProcessVisible()
+				}
 			} else if m.activeTab == usageTab {
 				return m, m.openUsageSessionChat()
 			}

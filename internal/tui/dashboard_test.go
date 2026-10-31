@@ -134,7 +134,7 @@ func TestVersionInBottomRight(t *testing.T) {
 					}
 					if width >= 80 && view.name == "processes" {
 						plain := ansi.Strip(footer)
-						for _, hint := range []string{"↑↓ select", "enter expand", "c chat", "? help", "q quit"} {
+						for _, hint := range []string{"↑↓ select", "c chat", "? help", "q quit"} {
 							if !strings.Contains(plain, hint) {
 								t.Errorf("footer missing %q: %q", hint, plain)
 							}
@@ -246,7 +246,7 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 		header      string
 		footerHints []string
 	}{
-		{"processes", processesTab, codexProvider, false, "[ Processes ]", []string{"↑↓ select", "enter expand", "c chat", "r refresh"}},
+		{"processes", processesTab, codexProvider, false, "[ Processes ]", []string{"↑↓ select", "c chat", "r refresh"}},
 		{"overview", overviewTab, codexProvider, false, "[ Overview ]", []string{"r refresh"}},
 		{"usage codex", usageTab, codexProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
 		{"usage copilot", usageTab, copilotProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
@@ -293,12 +293,8 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 					t.Errorf("footer missing tab hint: %q", footer)
 				}
 				if tt.tab == processesTab {
-					terminalHint := "s terminal"
-					if width == 140 {
-						terminalHint = "s switch terminal"
-					}
-					if !strings.Contains(footer, terminalHint) {
-						t.Errorf("footer missing %q: %q", terminalHint, footer)
+					if !strings.Contains(footer, "s switch terminal") && !(width == 80 && strings.Contains(footer, "s terminal")) {
+						t.Errorf("footer missing terminal hint: %q", footer)
 					}
 				}
 			})
@@ -339,7 +335,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	m.processCursor = 1
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"[ Processes ]", "¹overview", "³providers", "⁴projects", "sessions (3)",
+		"[ Processes ]", "¹summary", "³providers", "⁴projects", "sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Dashboard first pass", "▲ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "└─ main · /workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
@@ -348,6 +344,93 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
+	}
+	if strings.Contains(view, "¹overview") {
+		t.Fatal("Processes panel still collides with the Overview tab name")
+	}
+}
+
+func TestDashboardDetailsUseSingleLocationAcrossResize(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 24
+	id := m.processGroups[0].sessions[0].id
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.expandedGroups[100] || !strings.Contains(ansi.Strip(m.processFooter()), "enter expand") {
+		t.Fatal("small terminals lost inline expansion")
+	}
+	lines, _ := m.processBodyLines()
+	if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "SESSION "+id) {
+		t.Fatal("inline details missing when the bottom panel is hidden")
+	}
+
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = updated.(model)
+	lines, _ = m.processBodyLines()
+	table := ansi.Strip(strings.Join(lines, "\n"))
+	if strings.Contains(table, "SESSION ") || strings.Contains(table, "PROCESSES (") || strings.Contains(table, "▾") {
+		t.Fatal("middle panel duplicates the bottom panel's details")
+	}
+	if count := strings.Count(ansi.Strip(m.View()), "SESSION "+id); count != 1 {
+		t.Fatalf("session details shown %d times, want once", count)
+	}
+	if strings.Contains(ansi.Strip(m.processFooter()), "enter expand") {
+		t.Fatal("footer advertises inline expansion while the bottom panel is visible")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.expandedGroups[100] {
+		t.Fatal("Enter changed inline expansion while the bottom panel is visible")
+	}
+
+	updated, _ = m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
+	m = updated.(model)
+	lines, _ = m.processBodyLines()
+	if !strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "SESSION "+id) {
+		t.Fatal("shrinking the terminal did not restore inline details")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	lines, _ = m.processBodyLines()
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "SESSION "+id) {
+		t.Fatal("Enter did not collapse inline details on the smaller terminal")
+	}
+}
+
+func TestProviderBarsRequireMultipleProviders(t *testing.T) {
+	tests := []struct {
+		name  string
+		tools []dashToolSummary
+		bar   bool
+	}{
+		{"none", nil, false},
+		{"single", []dashToolSummary{{tool: "Codex", runtimes: 2, tokens: 1200}}, false},
+		{"single without tokens", []dashToolSummary{{tool: "Codex", runtimes: 2}}, false},
+		{"multiple", []dashToolSummary{{tool: "Codex", runtimes: 2, tokens: 1200}, {tool: "Copilot", runtimes: 1, tokens: 600}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, width := range []int{24, 40, 80} {
+				summary := dashSummary{tools: tt.tools}
+				lines := dashBox("providers", summary.providerLines(width-4), width, 5, dashPurple)
+				view := ansi.Strip(strings.Join(lines, "\n"))
+				if strings.Contains(view, "━") != tt.bar {
+					t.Fatalf("width %d: unexpected provider bar visibility", width)
+				}
+				for _, line := range lines {
+					if got := ansi.StringWidth(line); got != width {
+						t.Fatalf("provider panel width = %d, want %d", got, width)
+					}
+				}
+				if len(tt.tools) == 1 {
+					for _, text := range []string{"Codex", "  2", formatTokenCount(tt.tools[0].tokens)} {
+						if !strings.Contains(view, text) {
+							t.Errorf("single provider lost %q", text)
+						}
+					}
+				}
+			}
+		})
 	}
 }
 

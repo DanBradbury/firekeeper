@@ -139,13 +139,15 @@ table lists one runtime per row with
 its provider, PID, project, short session id, title, state, model, tokens, and
 uptime, and a second line with the branch and working directory. A detail
 panel at the bottom shows the selected runtime's session metadata and process
-tree. On smaller terminals the summary and detail panels are hidden and the
-narrowest table columns drop out first; Enter still expands details inline.
+tree, without duplicating them in the table. The providers panel hides its
+comparison bar when only one provider is running. On smaller terminals the
+summary and detail panels are hidden and the narrowest table columns drop
+out first; Enter expands details inline only when the bottom panel is hidden.
 
 | Key | Action |
 | --- | --- |
 | Up / Down or `J` / `K` | Select runtime |
-| Enter | Expand session metadata and process tree |
+| Enter | Expand session metadata and process tree when the bottom panel is hidden |
 | `s` | Switch to terminal containing selected runtime |
 | `c` | Open the selected session's chat history |
 | Page Up / Page Down | Move through runtime groups |
