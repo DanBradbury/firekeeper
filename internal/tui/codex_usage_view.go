@@ -99,6 +99,18 @@ func codexLimitLine(name string, window codexQuotaWindow, now time.Time) string 
 		dashPaint(codexResetText(window.ResetsAt, now), usageMutedColor, false)
 }
 
+// usageLimitLine is one quota row for providers whose windows are not Codex
+// ones: name, percent used, and the reset countdown.
+func usageLimitLine(name string, percent float64, resetAt, now time.Time) string {
+	reset := "reset unknown"
+	if !resetAt.IsZero() {
+		reset = codexResetText(resetAt.Unix(), now)
+	}
+	return dashPaint(dashCell(name, 15, false), usageTextColor, false) +
+		dashPaint(fmt.Sprintf("%4.0f%% ", percent), usagePercentColor(percent), true) +
+		dashPaint(reset, usageMutedColor, false)
+}
+
 func usagePercentColor(percent float64) string {
 	switch {
 	case percent >= 80:

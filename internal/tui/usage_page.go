@@ -208,6 +208,9 @@ func (m model) usageCardRow(page usagePage, height int) []string {
 	case m.width >= 64:
 		count = 2
 	}
+	if len(cards) > 3 && m.width >= 128 {
+		count = 4 // a provider with a limits card keeps its models card
+	}
 	cards = cards[:min(count, len(cards))]
 	count = len(cards)
 

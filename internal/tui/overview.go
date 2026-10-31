@@ -155,8 +155,14 @@ func (m model) claudeOverview(now time.Time) overviewProvider {
 		dates, tokens = append(dates, day.StartDate), append(tokens, day.Tokens)
 	}
 	provider.Today, provider.Week = overviewRecentTokens(dates, tokens, now)
-	if provider.HasData {
-		provider.Notes = append(provider.Notes, "Plan limits: Claude Code /usage")
+	for _, window := range claudeLimitWindows(snapshot.Limits) {
+		provider.Meters = append(provider.Meters, overviewMeter{Label: window.Label, Percent: window.UsedPercent, ResetAt: window.ResetsAt})
+	}
+	switch {
+	case !snapshot.LimitsOn && provider.HasData:
+		provider.Notes = append(provider.Notes, "Limits: firekeeper claude-limits enable")
+	case snapshot.LimitsErr != "":
+		provider.Notes = append(provider.Notes, "Limits unavailable: "+snapshot.LimitsErr)
 	}
 	return provider
 }

@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DanBradbury/firekeeper/internal/claudelimits"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -43,7 +46,7 @@ func TestOverviewShowsQuotaMetersResetsAndTokenTotals(t *testing.T) {
 		"╭─codex", "5-hour", "42%", "↻ 1h", "Weekly", "85%", "↻ 2d",
 		"today 1.2K", "7d 2.0K", "lifetime 5.0M",
 		"╭─copilot", "AI credits", "20%", "300 / 1,500",
-		"╭─claude", "Plan limits: Claude Code /usage", "today 1.2K",
+		"╭─claude", "Limits: firekeeper claude-limits enable", "today 1.2K",
 		"1 provider(s) with no local usage data are not shown",
 	} {
 		if !strings.Contains(view, expected) {
@@ -140,5 +143,84 @@ func TestOverviewFooterMatchesFooterWidth(t *testing.T) {
 		if got := ansi.StringWidth(line); got != m.width {
 			t.Fatalf("%s width = %d, want %d", name, got, m.width)
 		}
+	}
+}
+
+func TestOverviewShowsClaudeLimitsWhenEnabled(t *testing.T) {
+	now := time.Now()
+	m := overviewTestModel(now)
+	m.claudeUsage.LimitsOn = true
+	m.claudeUsage.Limits = claudelimits.Limits{
+		FiveHour: &claudelimits.Window{UsedPercent: 64, ResetsAt: now.Add(2*time.Hour + 30*time.Minute)},
+		SevenDay: &claudelimits.Window{UsedPercent: 12, ResetsAt: now.Add(4 * 24 * time.Hour)},
+	}
+	view := ansi.Strip(m.viewOverview(30))
+	for _, expected := range []string{"╭─claude", "5-hour", "64%", "↻ 2h", "Weekly", "12%", "↻ 4d"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("missing %q:\n%s", expected, view)
+		}
+	}
+	if strings.Contains(view, "claude-limits enable") {
+		t.Fatalf("enable hint shown while enabled:\n%s", view)
+	}
+}
+
+func TestOverviewClaudeLimitsHintAndError(t *testing.T) {
+	now := time.Now()
+	m := overviewTestModel(now)
+	if view := ansi.Strip(m.viewOverview(30)); !strings.Contains(view, "Limits: firekeeper claude-limits enable") {
+		t.Fatalf("missing enable hint:\n%s", view)
+	}
+	m.claudeUsage.LimitsOn = true
+	m.claudeUsage.LimitsErr = claudelimits.ErrTokenExpired.Error()
+	view := ansi.Strip(m.viewOverview(30))
+	if !strings.Contains(view, "Limits unavailable: Claude Code sign-in has expired") || strings.Contains(view, "claude-limits enable") {
+		t.Fatalf("error not shown:\n%s", view)
+	}
+}
+
+func TestClaudeUsageUsageTabLimitsCard(t *testing.T) {
+	now := time.Now()
+	m := overviewTestModel(now)
+	m.activeTab = usageTab
+	m.usageProvider = claudeProvider
+	m.width, m.height = 140, 40
+	m.claudeUsage.LimitsOn = true
+	m.claudeUsage.Limits = claudelimits.Limits{SevenDay: &claudelimits.Window{UsedPercent: 88, ResetsAt: now.Add(26 * time.Hour)}}
+	view := ansi.Strip(m.viewUsagePage(30))
+	for _, expected := range []string{"╭─limits", "Weekly", "88%", "↻ 1d", "╭─lifetime", "╭─models"} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestRefreshClaudeUsageAttachesLimitsWithoutFailingOnLimitsError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	if err := os.MkdirAll(filepath.Join(home, "projects"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := claudeLimitsSource
+	defer func() { claudeLimitsSource = original }()
+
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
+		return claudelimits.Limits{FiveHour: &claudelimits.Window{UsedPercent: 5}}, true, nil
+	}
+	msg := refreshClaudeUsage()().(claudeUsageResultMsg)
+	if msg.err != nil || !msg.snapshot.LimitsOn || msg.snapshot.Limits.FiveHour == nil {
+		t.Fatalf("limits not attached: %+v err %v", msg.snapshot, msg.err)
+	}
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
+		return claudelimits.Limits{}, true, claudelimits.ErrNoToken
+	}
+	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
+	if msg.err != nil || msg.snapshot.LimitsErr == "" || msg.snapshot.Limits.Any() {
+		t.Fatalf("limits error must not fail the refresh: %+v err %v", msg.snapshot, msg.err)
+	}
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) { return claudelimits.Limits{}, false, nil }
+	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
+	if msg.snapshot.LimitsOn {
+		t.Fatal("limits reported on while disabled")
 	}
 }

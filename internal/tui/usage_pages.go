@@ -212,38 +212,24 @@ func (m model) claudePage() usagePage {
 		})
 	}
 
-	return usagePage{
+	cards := []usageCard{}
+	if limits := claudeLimitWindows(snapshot.Limits); len(limits) > 0 {
+		cards = append(cards, usageCard{"limits", dashOrange, func(rows int) []string {
+			now := time.Now()
+			lines := make([]string, 0, len(limits))
+			for _, window := range limits {
+				lines = append(lines, usageLimitLine(window.Label, window.UsedPercent, window.ResetsAt, now))
+			}
+			return lines
+		}})
+	}
+	page := usagePage{
 		Label:       "Claude",
 		Provider:    transcript.ProviderClaude,
 		Loading:     m.claudeUsageLoading,
 		LoadingText: "Reading local Claude Code transcripts…",
 		HasData:     snapshot.hasData(),
 		Err:         m.claudeUsageErr,
-		Cards: []usageCard{
-			{"lifetime", dashYellow, func(rows int) []string {
-				lines := []string{
-					usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
-					usageStat("Responses", fmt.Sprintf("%d", summary.Messages), ""),
-					usageStat("Tokens", formatTokenCount(summary.LifetimeTokens), dashYellow),
-				}
-				if len(m.telemetry) == 0 {
-					lines = append(lines, usageNote("firekeeper telemetry enable gets exact totals"))
-				}
-				return lines
-			}},
-			{"tokens", dashBlue, func(rows int) []string {
-				return []string{
-					usageStat("Input", formatTokenCount(summary.InputTokens), ""),
-					usageStat("Cache read", formatTokenCount(summary.CacheRead), ""),
-					usageStat("Cache write", formatTokenCount(summary.CacheCreation), ""),
-					usageStat("Output", formatTokenCount(summary.OutputTokens), ""),
-					usageNote("Plan limits: Claude Code /usage"),
-				}
-			}},
-			{"models", dashPurple, func(rows int) []string {
-				return usageModelCardLines(usageModels(models, colors), rows, "No local Claude Code token records.")
-			}},
-		},
 		Days: func(count, inner int) (string, []string) {
 			days := recentClaudeDailyUsage(snapshot.Daily, time.Now(), count)
 			dates, tokens := make([]string, len(days)), make([]int64, len(days))
@@ -255,4 +241,30 @@ func (m model) claudePage() usagePage {
 		Sessions: sessions,
 		Cursor:   m.claudeHistoryCursor,
 	}
+	page.Cards = append(cards, []usageCard{
+		{"lifetime", dashYellow, func(rows int) []string {
+			lines := []string{
+				usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
+				usageStat("Responses", fmt.Sprintf("%d", summary.Messages), ""),
+				usageStat("Tokens", formatTokenCount(summary.LifetimeTokens), dashYellow),
+			}
+			if len(m.telemetry) == 0 {
+				lines = append(lines, usageNote("firekeeper telemetry enable gets exact totals"))
+			}
+			return lines
+		}},
+		{"tokens", dashBlue, func(rows int) []string {
+			return []string{
+				usageStat("Input", formatTokenCount(summary.InputTokens), ""),
+				usageStat("Cache read", formatTokenCount(summary.CacheRead), ""),
+				usageStat("Cache write", formatTokenCount(summary.CacheCreation), ""),
+				usageStat("Output", formatTokenCount(summary.OutputTokens), ""),
+				usageNote(claudeLimitsNote(snapshot)),
+			}
+		}},
+		{"models", dashPurple, func(rows int) []string {
+			return usageModelCardLines(usageModels(models, colors), rows, "No local Claude Code token records.")
+		}},
+	}...)
+	return page
 }

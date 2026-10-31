@@ -210,6 +210,21 @@ cache, output, and total token history. Kimi quota/reset data is exposed by
 Kimi Code’s `/usage` flow; Firekeeper does not extract credentials or call
 undocumented quota endpoints.
 
+Claude limits (5-hour and weekly, with reset times) are not stored locally, so
+they are off by default. `firekeeper claude-limits enable` turns them on:
+Firekeeper then reads the sign-in Claude Code already keeps on this machine
+(`CLAUDE_CODE_OAUTH_TOKEN`, the macOS Keychain item `Claude Code-credentials`,
+or `CLAUDE_CONFIG_DIR/.credentials.json`, default `~/.claude/.credentials.json`
+on Linux and Windows) and asks Anthropic's usage endpoint, the way Claude
+Code's `/usage` does. That endpoint is undocumented and can change without
+notice, so a failure only shows a short note on the Claude panel. The token is
+used for that single request: it is not stored, refreshed, logged, or uploaded,
+and Claude Code's own files are never written. On macOS the Keychain may ask you
+to allow access. An expired sign-in is reported, not renewed; open `claude`
+once to renew it. `firekeeper claude-limits status` shows whether it is on and
+what it can read, and `disable` turns it off. The setting is `[claude_limits]
+enabled` in `~/.firekeeper/config.toml`.
+
 Claude Code usage reads assistant message usage from local transcripts under
 `CLAUDE_CONFIG_DIR/projects` (default `~/.claude/projects`), read-only. It
 shows session, model, input, cache read, cache write, output, and total token
