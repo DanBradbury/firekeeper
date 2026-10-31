@@ -1,6 +1,6 @@
 # Firekeeper Privacy Policy
 
-Last updated: October 30, 2026
+Last updated: October 31, 2026
 
 This policy covers the Firekeeper client software in this repository ("the
 Software"), by Dan Bradbury ("**I**", "**me**"). Who handles your data depends
@@ -8,7 +8,7 @@ on how you use it:
 
 | How you use Firekeeper | Who receives your data |
 | --- | --- |
-| The terminal dashboard (`firekeeper`) | Nobody. It stays on your machine, apart from the update check and two provider lookups in section 1.3. |
+| The terminal dashboard (`firekeeper`) | Session data stays on your machine. Update checks and provider usage lookups contact the services listed in section 1.3. |
 | `telemetry`, `otel-listen`, and `otel-reconcile` | Nobody. The listener accepts Claude Code's telemetry on 127.0.0.1 and writes usage counts to a file on this machine. It does not upload them. |
 | Uploading to a server (`report`, `backfill`, `daemon`) | The operator of the server you configure, under their own privacy notice. The Software never sends session data anywhere else, and I receive nothing from it. |
 
@@ -29,8 +29,8 @@ and starts no daemon.
 ### 1.1 No telemetry
 
 The Software contains no analytics, crash reporting, or usage tracking. It
-never sends anything to me. Its one automatic request is the update check in
-section 1.3.
+never sends anything to me. Release checks and provider usage lookups are
+described in section 1.3.
 
 ### 1.2 What it reads and writes on your machine
 
@@ -41,6 +41,8 @@ section 1.3.
   These are read-only. For Claude Code, Firekeeper also checks whether a
   session has files under `subagents/`. It uses that only to warn that token
   totals may be low, and it does not read those files' contents for the warning.
+  The Claude limits lookup also reads Claude Code's existing OAuth sign-in
+  when available, as described in section 1.3.
   Sessions in repositories containing a `.firekeeper-ignore` file, or matching
   `exclude` in the config, are never read.
 - **Writes**, under `~/.firekeeper/`: `config.toml` (server address and, after
@@ -61,7 +63,7 @@ section 1.3.
 
 ### 1.3 Network requests the terminal dashboard makes
 
-The terminal dashboard makes three kinds of request that leave your machine.
+The terminal dashboard can make the following requests that leave your machine.
 None sends session data, and none goes to me:
 
 - **Update check**: when you start `firekeeper` in a terminal, it asks
@@ -77,6 +79,14 @@ None sends session data, and none goes to me:
 - **Copilot plan details**: if a GitHub token is available, Firekeeper sends
   it to GitHub's API (or `GITHUB_API_URL`) to read your Copilot plan. This is
   governed by GitHub's privacy statement. The token is not stored or logged.
+- **Claude limits**: enabled by default when a Claude Code OAuth sign-in is
+  available. Firekeeper reads `CLAUDE_CODE_OAUTH_TOKEN`, the macOS Keychain
+  item `Claude Code-credentials`, or Claude Code's `.credentials.json`, and
+  uses the token to request five-hour and weekly limits from Anthropic's
+  undocumented usage endpoint. The token is sent only to Anthropic for that
+  request, not to a Firekeeper server; Firekeeper never stores, logs, or
+  refreshes it. On macOS, the first lookup may ask for Keychain access.
+  Run `firekeeper claude-limits disable` to turn this lookup off.
 
 ### 1.4 Uploading transcripts
 

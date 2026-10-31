@@ -1,20 +1,71 @@
-Detailed installation notes for Firekeeper. For the short version, see the [README](../README.md#install).
-
 # Install and uninstall
+
+Install Firekeeper, then run it beside your existing agent terminals.
+No Firekeeper account, server, or background service is required.
+
+## Choose one installation method
+
+These methods install a prebuilt binary; you do not need Go.
+
+### macOS — Homebrew
 
 ```sh
 brew install DanBradbury/tap/firekeeper
+```
+
+### macOS or Linux — install script
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
 ```
 
-On Windows, in PowerShell (Windows PowerShell 5.1 or PowerShell 7):
+### Windows — PowerShell 5.1 or 7
 
 ```powershell
 irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
 ```
 
-Use whichever fits your system, then run `firekeeper`. Each installs a prebuilt binary, so no Go
-toolchain is needed. Check it with `firekeeper --version`.
+The script commands download and execute code. You can inspect
+[install.sh](../install.sh) or [install.ps1](../install.ps1) first, or get a
+binary from [GitHub Releases](https://github.com/DanBradbury/firekeeper/releases).
+See [Windows verification](#verify-before-you-install-windows) for a step-by-step
+manual download and checksum check.
+
+## Launch the dashboard
+
+Start a supported coding agent as usual, then open a second terminal and run:
+
+```sh
+firekeeper
+```
+
+Run it from any directory on the same machine and as the same user as your
+agents. The **Processes** view should populate within a couple of seconds.
+Use Up/Down to select, `c` to read a conversation, Esc to return, and `?`
+for help. Quitting with `q` from a main view leaves your agents running.
+See [First run](../README.md#first-run) or the
+[missing-session checklist](https://firekeeper.ai/docs/troubleshooting/#missing-session).
+
+### If your shell says `firekeeper: command not found`
+
+The macOS/Linux script installs to `~/.local/bin` by default but does not
+change your shell configuration. For the current bash or zsh session:
+
+```sh
+export PATH="$HOME/.local/bin:$PATH"
+firekeeper --version
+```
+
+Add that `export` line to `~/.zshrc` for zsh or `~/.bashrc` for interactive
+bash to keep it for new sessions. Other shells need their own PATH syntax;
+follow the installer's hint. If you set `FIREKEEPER_INSTALL_DIR`, use that
+directory instead.
+
+The Windows script updates the current session and your user PATH. Terminals
+already open elsewhere may need to be reopened. If you installed manually or
+disabled PATH changes, add the installation directory to your user PATH.
+
+## Install locations and version pinning
 
 The install script puts the binary in `~/.local/bin` (set
 `FIREKEEPER_INSTALL_DIR` to change that) and prints a `PATH` hint if that
@@ -36,7 +87,7 @@ any value before piping). Downloads made this way carry no
 "downloaded from the internet" mark, so SmartScreen does not prompt; the
 binaries are not code-signed.
 
-### Verify before you install (Windows)
+## Verify before you install (Windows)
 
 The one-liner runs whatever `install.ps1` is on `main` at that moment, and its
 checksum check compares the zip with `checksums.txt` from the same GitHub
@@ -80,8 +131,10 @@ its license files. Add `%LOCALAPPDATA%\Programs\firekeeper` to your user
 downloaded in a browser is marked as from the internet, so Windows may show a
 SmartScreen prompt for the unsigned binary.
 
+## Supported platforms and updates
+
 Releases cover macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and
-Windows (amd64 and arm64, as `.zip` archives). macOS is the main target; Linux
+Windows 10 1809+ and 11 (amd64 and arm64, as `.zip` archives). macOS is the main target; Linux
 is best effort; Windows is supported with the differences listed under
 [Windows](reference.md#windows). Release tags with a suffix, such as
 `v0.1.0-rc1`, are prereleases: the install scripts can fetch them with
