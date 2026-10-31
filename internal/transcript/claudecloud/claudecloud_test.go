@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -149,7 +150,8 @@ func TestSyncWritesTranscriptAndSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	// Windows has no Unix permission bits; the home directory's ACL applies.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("cache file mode = %v, want 0600", info.Mode().Perm())
 	}
 	if !info.ModTime().Equal(time.Date(2026, 10, 1, 11, 0, 0, 0, time.UTC)) {
