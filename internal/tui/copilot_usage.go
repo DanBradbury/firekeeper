@@ -480,7 +480,6 @@ func (m model) usageProviderSelectorLine() string {
 			line += dashPaint("  "+label+"   ", usageMutedColor, false)
 		}
 	}
-	line += dashPaint(" ←/→ provider", usageMutedColor, false)
 	return dashFit(line, m.width, usagePanelColor)
 }
 

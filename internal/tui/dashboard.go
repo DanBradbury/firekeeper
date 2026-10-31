@@ -577,7 +577,7 @@ func (s dashSummary) projectLines(width int) []string {
 	return lines
 }
 
-// dashHeaderLine is the top row shared by both tabs: product name, tabs, and
+// dashHeaderLine is the top row shared by all tabs: product name, tabs, and
 // on the right the last refresh time with live state counts.
 func (m model) dashHeaderLine() string {
 	left := dashPaint(" firekeeper ", usageBrightColor, true) +
@@ -592,8 +592,6 @@ func (m model) dashHeaderLine() string {
 			left += dashPaint("  "+item.label+"   ", usageMutedColor, false)
 		}
 	}
-	left += dashPaint(" tab switch  ? help", usageMutedColor, false)
-
 	right := ""
 	if !m.refreshedAt.IsZero() {
 		summary := m.dashSummarize()
@@ -614,20 +612,43 @@ func (m model) dashHeaderLine() string {
 // footerKey is one key and its action in a footer help line.
 type footerKey struct{ key, action string }
 
-// renderFooterKeys paints a footer help line shared by the Processes and Usage
-// tabs, filled to width with the panel background.
+func footerKeysWidth(keys []footerKey, spacing int) int {
+	width := 1
+	for index, key := range keys {
+		if index > 0 {
+			width += spacing
+		}
+		width += ansi.StringWidth(key.key) + 1 + ansi.StringWidth(key.action)
+	}
+	return width
+}
+
+// renderFooterKeys paints a footer help line filled to width with the panel background.
 func renderFooterKeys(keys []footerKey, width int) string {
+	spacing := "  "
+	if footerKeysWidth(keys, len(spacing)) > width {
+		spacing = " "
+	}
 	help := dashPaint(" ", usageTextColor, false)
 	for _, key := range keys {
-		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+"  ", usageTextColor, false)
+		help += dashPaint(key.key+" ", dashBlue, true) + dashPaint(key.action+spacing, usageTextColor, false)
 	}
 	return dashFit(help, width, usagePanelColor)
 }
 
 func (m model) processFooter() (string, string) {
-	help := renderFooterKeys([]footerKey{
-		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"?", "help"}, {"q", "quit"},
-	}, m.width)
+	keys := []footerKey{
+		{"↑↓", "select"}, {"enter", "expand"}, {"s", "switch terminal"}, {"c", "chat"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"},
+	}
+	if footerKeysWidth(keys, 1) > m.width {
+		for index := range keys {
+			if keys[index].key == "s" {
+				keys[index].action = "terminal"
+				break
+			}
+		}
+	}
+	help := renderFooterKeys(keys, m.width)
 	status := dashFit(dashPaint("  "+m.processStatusText(), usageMutedColor, false), m.width, usagePanelColor)
 	return help, status
 }

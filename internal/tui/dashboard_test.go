@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,99 @@ func TestDashboardFitsTerminalAtEverySize(t *testing.T) {
 				t.Fatalf("%v: line %d width = %d, want %d", size, index, width, m.width)
 			}
 		}
+	}
+}
+
+func TestShortcutHintsStayInFooter(t *testing.T) {
+	tests := []struct {
+		name        string
+		tab         tab
+		provider    usageProvider
+		withHistory bool
+		header      string
+		footerHints []string
+	}{
+		{"processes", processesTab, codexProvider, false, "[ Processes ]", []string{"↑↓ select", "enter expand", "c chat", "r refresh"}},
+		{"overview", overviewTab, codexProvider, false, "[ Overview ]", []string{"r refresh"}},
+		{"usage codex", usageTab, codexProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
+		{"usage copilot", usageTab, copilotProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
+		{"usage kimi", usageTab, kimiProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
+		{"usage claude", usageTab, claudeProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
+		{"usage with history", usageTab, codexProvider, true, "[ Usage ]", []string{"↑↓ session", "enter chat", "←/→ provider", "r refresh"}},
+	}
+	for _, tt := range tests {
+		for _, width := range []int{80, 140} {
+			t.Run(fmt.Sprintf("%s/%d", tt.name, width), func(t *testing.T) {
+				m := dashboardTestModel()
+				m.width, m.height = width, 40
+				m.activeTab = tt.tab
+				m.usageProvider = tt.provider
+				if tt.withHistory {
+					m.codexUsage.History = []codexHistoricalSession{{ID: "test-session", WorkDir: "/workspace/project"}}
+				}
+				lines := strings.Split(ansi.Strip(m.View()), "\n")
+				if len(lines) != m.height {
+					t.Fatalf("rows = %d, want %d", len(lines), m.height)
+				}
+				if !strings.Contains(lines[0], tt.header) {
+					t.Errorf("header missing active tab %q: %q", tt.header, lines[0])
+				}
+				if tt.tab == usageTab {
+					selected := "[ " + strings.ToUpper(m.usageProviderName()) + " ]"
+					if !strings.Contains(lines[1], selected) {
+						t.Errorf("provider selector missing %q: %q", selected, lines[1])
+					}
+				}
+				body := strings.Join(lines[:len(lines)-2], "\n")
+				for _, hint := range []string{"tab switch", "? help", "←/→ provider"} {
+					if strings.Contains(body, hint) {
+						t.Errorf("shortcut %q appears above the footer", hint)
+					}
+				}
+				footer := lines[len(lines)-2]
+				for _, hint := range append([]string{"tab switch", "? help", "q quit"}, tt.footerHints...) {
+					if !strings.Contains(footer, hint) {
+						t.Errorf("footer missing %q: %q", hint, footer)
+					}
+				}
+				if tt.tab == processesTab {
+					terminalHint := "s terminal"
+					if width == 140 {
+						terminalHint = "s switch terminal"
+					}
+					if !strings.Contains(footer, terminalHint) {
+						t.Errorf("footer missing %q: %q", terminalHint, footer)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestOverlayHeadersDoNotShowShortcutHints(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		help   bool
+		chat   bool
+		footer string
+	}{
+		{"help", true, false, "any key close"},
+		{"chat", false, true, "esc back"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			m := dashboardTestModel()
+			m.width, m.height = 100, 40
+			m.helpOpen, m.chat.open = tt.help, tt.chat
+			lines := strings.Split(ansi.Strip(m.View()), "\n")
+			for _, hint := range []string{"tab switch", "? help"} {
+				if strings.Contains(lines[0], hint) {
+					t.Errorf("header contains %q: %q", hint, lines[0])
+				}
+			}
+			if footer := lines[len(lines)-2]; !strings.Contains(footer, tt.footer) {
+				t.Errorf("footer missing %q: %q", tt.footer, footer)
+			}
+		})
 	}
 }
 
