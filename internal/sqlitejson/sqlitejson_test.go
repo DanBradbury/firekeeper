@@ -92,6 +92,13 @@ func TestRunInProcessErrorsDoNotLeakQueryOrPath(t *testing.T) {
 	}
 }
 
+func TestRunInProcessErrorNamesResultCode(t *testing.T) {
+	_, err := RunInProcess(context.Background(), "-readonly", "-json", fixture(t), "SELECT x FROM nowhere")
+	if err == nil || !strings.Contains(err.Error(), "SQLITE_ERROR") {
+		t.Errorf("error = %v, want result code SQLITE_ERROR", err)
+	}
+}
+
 func TestRunInProcessRejectsOtherArguments(t *testing.T) {
 	for _, args := range [][]string{
 		nil,
