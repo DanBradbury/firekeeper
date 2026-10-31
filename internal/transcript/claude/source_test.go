@@ -143,7 +143,7 @@ func TestSeqStability(t *testing.T) {
 }
 
 // A split read must recover tool names and counted usage from before the
-// offset; the stability helper compares neither tokens nor models.
+// offset, including boundaries beyond the stability helper's midpoint.
 func TestReadFromOffsetRestoresState(t *testing.T) {
 	source := &Source{}
 	whole, _, err := source.Read(fixturePath, 0)

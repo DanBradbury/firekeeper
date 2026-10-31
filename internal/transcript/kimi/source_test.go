@@ -171,15 +171,33 @@ func deref(s *string) string {
 }
 
 func TestSeqStability(t *testing.T) {
+	// Kimi derives the session ID from the directory, not the wire records.
+	partial := func(path, id string) string {
+		t.Helper()
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.SplitAfter(string(data), "\n")
+		dir := filepath.Join(t.TempDir(), id, "agents", "main")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		out := filepath.Join(dir, "wire.jsonl")
+		if err := os.WriteFile(out, []byte(strings.Join(lines[:len(lines)/2], "")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
 	transcripttest.RunSeqStability(t, &Source{}, []transcripttest.SeqCase{
-		{Name: "transcript", Path: fixturePath},
-		{Name: "migrated", Path: legacyPath},
+		{Name: "transcript", Path: fixturePath, Partial: partial(fixturePath, fixtureID)},
+		{Name: "migrated", Path: legacyPath, Partial: partial(legacyPath, legacyID)},
 		{Name: "malformed", Path: malformed},
 	})
 }
 
 // A split read must recover tool names and the requested model from before
-// the offset; the stability helper compares neither models nor tokens.
+// the offset, including boundaries beyond the stability helper's midpoint.
 func TestReadFromOffsetRestoresState(t *testing.T) {
 	for _, path := range []string{fixturePath, legacyPath} {
 		source := &Source{}

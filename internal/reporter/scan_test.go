@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -331,48 +332,59 @@ func newIngestRecorder(t *testing.T) *ingestRecorder {
 }
 
 func TestScanBurstUploadsNewestFirstOverSeveralPasses(t *testing.T) {
-	events := make([]int, 500)
-	for i := range events {
-		events[i] = 1
-	}
-	f := newHistoryFixture(t, events...)
-	rec := newIngestRecorder(t)
-	cfg, _ := f.scanConfig(rec.URL)
-	// The limit alone splits the burst here; TestScanTimeBudget covers the
-	// budget with a fake clock, and a slow machine must not change the count.
-	cfg.ScanBudget = time.Hour
+	for _, tt := range []struct {
+		name  string
+		limit int
+		total int
+	}{
+		{"default limit", 0, 2*DefaultScanLimit + 1},
+		{"explicit limit", 2, 5},
+		{"exact boundary", 2, 4},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			events := make([]int, tt.total)
+			for i := range events {
+				events[i] = 1
+			}
+			f := newHistoryFixture(t, events...)
+			rec := newIngestRecorder(t)
+			cfg, enumerator := f.scanConfig(rec.URL)
+			cfg.ScanLimit = tt.limit
+			// Start oldest first so the test actually exercises sorting.
+			enumerator.metas = slices.Clone(f.metas)
+			slices.Reverse(enumerator.metas)
+			now := time.Now()
+			cfg.Now = func() time.Time { return now }
 
-	passes := 0
-	for {
-		passes++
-		if passes > 20 {
-			t.Fatal("burst did not finish within 20 passes")
-		}
-		before := len(rec.sessions)
-		got := pass(t, cfg)
-		if got.Scan.Read > DefaultScanLimit || len(rec.sessions)-before > DefaultScanLimit {
-			t.Fatalf("pass %d read %d sessions, over the limit of %d", passes, got.Scan.Read, DefaultScanLimit)
-		}
-		if got.Scan.Read+got.Scan.Deferred != got.Scan.Found {
-			t.Fatalf("pass %d: scan = %+v", passes, got.Scan)
-		}
-		if got.Scan.Complete {
-			break
-		}
-	}
-	if passes != 10 {
-		t.Fatalf("passes = %d, want 10", passes)
-	}
-	if len(rec.sessions) != 500 {
-		t.Fatalf("uploaded %d sessions, want 500", len(rec.sessions))
-	}
-	for i, id := range rec.sessions {
-		if id != f.metas[i].ID {
-			t.Fatalf("upload %d is session %s, want %s (newest first)", i, id, f.metas[i].ID)
-		}
-	}
-	if again := pass(t, cfg); again.Scan.Found != 0 {
-		t.Fatalf("pass after the burst found %d sessions", again.Scan.Found)
+			limit := tt.limit
+			if limit == 0 {
+				limit = DefaultScanLimit
+			}
+			for uploaded := 0; uploaded < tt.total; {
+				read := min(limit, tt.total-uploaded)
+				want := ScanSummary{
+					Ran: true, Found: tt.total - uploaded, Read: read,
+					Deferred: tt.total - uploaded - read,
+					Complete: uploaded+read == tt.total,
+				}
+				got := pass(t, cfg)
+				if got.Scan != want {
+					t.Fatalf("after %d uploads: scan = %+v, want %+v", uploaded, got.Scan, want)
+				}
+				uploaded += read
+				if len(rec.sessions) != uploaded {
+					t.Fatalf("uploaded %d sessions, want %d", len(rec.sessions), uploaded)
+				}
+			}
+			for i, id := range rec.sessions {
+				if id != f.metas[i].ID {
+					t.Fatalf("upload %d is session %s, want %s (newest first)", i, id, f.metas[i].ID)
+				}
+			}
+			if again := pass(t, cfg); again.Scan != (ScanSummary{Ran: true, Complete: true}) || len(rec.sessions) != tt.total {
+				t.Fatalf("pass after the burst: scan = %+v, uploads = %d", again.Scan, len(rec.sessions))
+			}
+		})
 	}
 }
 

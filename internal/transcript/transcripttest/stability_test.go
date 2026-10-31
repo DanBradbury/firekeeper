@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/session"
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -92,6 +93,60 @@ func TestCheckSeqStabilityFailures(t *testing.T) {
 			err := checkSeqStability(tt.source, c, t.TempDir())
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+type changingSource struct {
+	lineSource
+	change func([]transcript.Event, int64)
+}
+
+func (s changingSource) Read(path string, from int64) ([]transcript.Event, int64, error) {
+	events, end, err := s.lineSource.Read(path, from)
+	if err == nil {
+		s.change(events, from)
+	}
+	return events, end, err
+}
+
+func TestCheckSeqStabilityDetectsChangedEventFields(t *testing.T) {
+	const private = "synthetic-private-value"
+	path := writeFixture(t, "s.jsonl", "1\n2\n3\n4\n")
+	for name, change := range map[string]func(*transcript.Event){
+		"machine":  func(e *transcript.Event) { e.MachineID = private },
+		"session":  func(e *transcript.Event) { e.SessionID = private },
+		"provider": func(e *transcript.Event) { e.Provider = transcript.ProviderClaude },
+		"time":     func(e *transcript.Event) { at := time.Unix(1, 0).UTC(); e.TS = &at },
+		"model":    func(e *transcript.Event) { model := private; e.Model = &model },
+		"tokens":   func(e *transcript.Event) { e.Tokens.Input = 1 },
+		"raw":      func(e *transcript.Event) { e.Raw = []byte(`{"text":"` + private + `"}`) },
+		"tool":     func(e *transcript.Event) { tool := private; e.ToolName = &tool },
+		"text":     func(e *transcript.Event) { e.Text = private },
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, reread := range []bool{false, true} {
+				stage, want := "split", "split at offset"
+				if reread {
+					stage, want = "reread", "re-read not deterministic"
+				}
+				t.Run(stage, func(t *testing.T) {
+					reads := 0
+					source := changingSource{change: func(events []transcript.Event, from int64) {
+						reads++
+						if len(events) > 0 && ((!reread && from > 0) || (reread && reads == 2)) {
+							change(&events[0])
+						}
+					}}
+					err := checkSeqStability(source, SeqCase{Path: path}, t.TempDir())
+					if err == nil || !strings.Contains(err.Error(), want) {
+						t.Fatalf("error = %v, want %q", err, want)
+					}
+					if strings.Contains(err.Error(), private) {
+						t.Fatal("failure message disclosed event contents")
+					}
+				})
 			}
 		})
 	}
