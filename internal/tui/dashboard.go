@@ -131,11 +131,20 @@ func (m model) viewIdleProcesses(rows int) string {
 	}
 	lines := make([]string, rows)
 	lines[0] = dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
-	start := max(1, (rows-len(body))/2)
+	// Recent sessions take the space under the hint, which moves up to make room.
+	recent := m.recentLines(min(rows-1-len(body)-2, recentSessionLimit+1))
+	start := max(1, (rows-len(body)-len(recent))/2)
+	if len(recent) > 0 {
+		body = append(body, "")
+		body = append(body, recent...)
+	}
 	for i := 1; i < rows; i++ {
 		line := ""
 		if index := i - start; index >= 0 && index < len(body) {
-			line = dashPaint(strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(body[index]))/2)), usageTextColor, false) + body[index]
+			line = body[index]
+			if index < len(body)-len(recent) || len(recent) == 0 {
+				line = dashPaint(strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(line))/2)), usageTextColor, false) + line
+			}
 		}
 		lines[i] = dashFit(line, m.width, usagePanelColor)
 	}
@@ -681,6 +690,9 @@ func renderFooterKeys(keys []footerKey, width int) string {
 
 func (m model) processFooter() string {
 	if len(m.processGroups) == 0 {
+		if len(m.recentSessions) > 0 {
+			return renderFooterKeys([]footerKey{{"↑↓", "select"}, {"enter", "chat"}, {"R", "resume"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
+		}
 		return renderFooterKeys([]footerKey{{"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
 	}
 	keys := []footerKey{{"↑↓", "select"}}

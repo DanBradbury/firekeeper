@@ -144,6 +144,10 @@ type model struct {
 	helpOpen                bool
 	metadataMisses          map[int]int
 	chat                    chatState
+	recentSessions          []recentSession
+	recentCursor            int
+	recentLoading           bool
+	recentLoadedAt          time.Time
 }
 
 // NewModel returns the dashboard's initial Bubble Tea model.
@@ -168,7 +172,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.chat.open {
 			return m.updateChat(msg)
 		}
-		if m.activeTab == processesTab && msg.String() != "s" {
+		if m.activeTab == processesTab && msg.String() != "s" && msg.String() != "R" {
 			m.terminalStatus = ""
 		}
 		switch msg.String() {
@@ -200,28 +204,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.cycleUsageProvider(1)
 			}
 		case "up", "k":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(-1)
+			} else if m.activeTab == processesTab {
 				m.processCursor--
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(-1)
 			}
 		case "down", "j":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(1)
+			} else if m.activeTab == processesTab {
 				m.processCursor++
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(1)
 			}
 		case "pgup":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(-recentPage)
+			} else if m.activeTab == processesTab {
 				m.processCursor -= max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(-usageSessionPage)
 			}
 		case "pgdown":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(recentPage)
+			} else if m.activeTab == processesTab {
 				m.processCursor += max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
@@ -242,6 +254,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setUsageCursorEnd()
 			}
 		case "enter":
+			if m.idleListActive() {
+				return m, m.openRecentChat()
+			}
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
 				if m.dashboardLayout().detail == 0 {
 					rootPID := m.processGroups[m.processCursor].root.pid
@@ -253,6 +268,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			if m.activeTab == processesTab {
+				m.recentLoadedAt = time.Time{}
 				return m, refreshProcesses()
 			}
 			if m.activeTab == overviewTab {
@@ -260,6 +276,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.activeTab == usageTab {
 				return m, m.beginUsageRefresh()
+			}
+		case "R":
+			if m.idleListActive() {
+				return m, m.resumeRecent()
 			}
 		case "s":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
@@ -299,6 +319,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.telemetry = msg.telemetry
 			m.ensureSelectedProcessVisible()
 		}
+		return m, m.maybeLoadRecent()
+
+	case resumeResultMsg:
+		m.terminalStatus = msg.status()
+
+	case recentSessionsMsg:
+		m.applyRecentSessions(msg)
 
 	case terminalSwitchResultMsg:
 		if msg.err != nil {
@@ -774,19 +801,21 @@ func focusTerminalSession(tty, cwd string) (string, error) {
 		tty,
 		cwd,
 		runtime.GOOS,
-		func(script string, arguments ...string) (string, error) {
-			commandArguments := append([]string{"-e", script}, arguments...)
-			output, err := exec.Command("osascript", commandArguments...).CombinedOutput()
-			result := strings.TrimSpace(string(output))
-			if err != nil {
-				if result != "" {
-					return "", fmt.Errorf("%s: %w", sanitizeProcessCommand(result), err)
-				}
-				return "", err
-			}
-			return result, nil
-		},
+		runOsascript,
 	)
+}
+
+func runOsascript(script string, arguments ...string) (string, error) {
+	commandArguments := append([]string{"-e", script}, arguments...)
+	output, err := exec.Command("osascript", commandArguments...).CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		if result != "" {
+			return "", fmt.Errorf("%s: %w", sanitizeProcessCommand(result), err)
+		}
+		return "", err
+	}
+	return result, nil
 }
 
 func focusTerminalSessionWith(

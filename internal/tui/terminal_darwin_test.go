@@ -58,3 +58,14 @@ func TestMacTerminalAdapterScriptsCompile(t *testing.T) {
 		})
 	}
 }
+
+func TestResumeTerminalScriptsCompile(t *testing.T) {
+	for name, script := range resumeTerminalScripts {
+		t.Run(name, func(t *testing.T) {
+			outputPath := filepath.Join(t.TempDir(), "resume.scpt")
+			if output, err := exec.Command("osacompile", "-o", outputPath, "-e", script).CombinedOutput(); err != nil {
+				t.Fatalf("compile AppleScript: %s: %v", strings.TrimSpace(string(output)), err)
+			}
+		})
+	}
+}

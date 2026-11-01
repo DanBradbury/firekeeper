@@ -850,3 +850,88 @@ func TestIdleDashboardPaintsCenteredPadding(t *testing.T) {
 		})
 	}
 }
+
+func idleRecentModel(width, height int) model {
+	m := dashboardTestModel()
+	m.processGroups = nil
+	m.width, m.height = width, height
+	now := time.Now()
+	for i, tool := range []string{"Copilot", "Codex", "Claude", "Gemini", "Kimi", "Cursor", "OpenCode"} {
+		m.recentSessions = append(m.recentSessions, recentSession{
+			tool: tool, id: fmt.Sprintf("session-%d-abcdef", i), project: "proj" + tool,
+			title: "title " + tool, last: now.Add(-time.Duration(i+1) * time.Hour),
+		})
+	}
+	return m
+}
+
+func TestIdleDashboardRecentSessions(t *testing.T) {
+	for _, size := range [][2]int{{20, 8}, {80, 24}, {140, 40}, {80, 10}} {
+		m := idleRecentModel(size[0], size[1])
+		view := ansi.Strip(m.View())
+		lines := strings.Split(view, "\n")
+		if len(lines) != size[1] {
+			t.Fatalf("%v: rows = %d", size, len(lines))
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) > size[0] {
+				t.Fatalf("%v: line exceeds width: %q", size, line)
+			}
+		}
+		if size[0] >= 80 && size[1] >= 24 {
+			for _, want := range []string{"Recent sessions", "▸ Copilot", "Codex", "1h", "enter chat"} {
+				if !strings.Contains(view, want) {
+					t.Errorf("%v: missing %q:\n%s", size, want, view)
+				}
+			}
+		}
+	}
+}
+
+func TestIdleRecentSelectionScrollsAndOpensChat(t *testing.T) {
+	m := idleRecentModel(80, 14)
+	for range 6 {
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(model)
+	}
+	if m.recentCursor != 6 || !strings.Contains(ansi.Strip(m.View()), "▸ OpenCode") {
+		t.Fatalf("cursor %d not visible:\n%s", m.recentCursor, ansi.Strip(m.View()))
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if next.(model).recentCursor != 6 {
+		t.Fatal("cursor moved past the last session")
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	opened := next.(model)
+	if cmd == nil || !opened.chat.open || opened.chat.tool != "OpenCode" || opened.chat.meta.ID != "session-6-abcdef" {
+		t.Fatalf("enter did not open the selected session: %+v", opened.chat)
+	}
+}
+
+func TestRecentSessionsLoadWhileIdleOnly(t *testing.T) {
+	m := NewModel()
+	if cmd := m.maybeLoadRecent(); cmd == nil || !m.recentLoading {
+		t.Fatal("idle model did not start a load")
+	}
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("second load started while one is running")
+	}
+	m.applyRecentSessions(recentSessionsMsg{loadedAt: time.Now()})
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("reload started inside the refresh interval")
+	}
+	m.recentLoadedAt = time.Now().Add(-time.Hour)
+	m.processGroups = dashboardTestModel().processGroups
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("load started while sessions are running")
+	}
+}
+
+func TestSortRecentSessionsNewestFirst(t *testing.T) {
+	now := time.Now()
+	list := []recentSession{{id: "a", last: now.Add(-2 * time.Hour)}, {id: "b", last: now}, {id: "c", last: now.Add(-time.Hour)}}
+	sortRecentSessions(list)
+	if list[0].id != "b" || list[1].id != "c" || list[2].id != "a" {
+		t.Fatalf("order = %v", list)
+	}
+}

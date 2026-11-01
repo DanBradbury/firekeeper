@@ -78,8 +78,11 @@ Linux (amd64 and arm64) is best effort.
 Terminal switching supports Ghostty 1.3+, Terminal.app, and iTerm2 on macOS.
 On Windows it raises the window, not the tab; Linux has no terminal switching.
 When no agents are running, Processes shows a compact idle state with the last
-scan time, a launch hint, and a pointer to Overview / Usage history. Scans run
-every two seconds; session actions appear when sessions are available.
+scan time, a launch hint, and your 10 most recent sessions across providers
+(last 30 days), centered. Use `↑↓` to select, `Enter` to read a session's chat, and
+`R` to resume it in a new tab of the current terminal (Ghostty, iTerm2, or Terminal.app on macOS;
+elsewhere the resume command is shown to copy). Terminal.app needs Accessibility permission to open the tab.
+Scans run every two seconds; session actions appear when sessions are available.
 An empty list usually means no supported agent is running where Firekeeper
 can see it. See the [missing-session checklist](https://firekeeper.ai/docs/troubleshooting/#missing-session).
 You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.

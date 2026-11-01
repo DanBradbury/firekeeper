@@ -31,6 +31,8 @@ var helpSections = []helpSection{
 		{"Enter", "Expand details inline when the bottom session panel is hidden"},
 		{"s", "Switch to the runtime's terminal"},
 		{"c", "Open the session's chat history"},
+		{"Enter", "With nothing running, open the selected recent session's chat"},
+		{"R", "With nothing running, resume the selected recent session in a new tab (Ghostty, iTerm2, Terminal.app)"},
 		{"r", "Refresh now"},
 	}},
 	{"Chat", []helpKey{
