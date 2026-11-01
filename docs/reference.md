@@ -128,7 +128,10 @@ launch; set `FIREKEEPER_NO_UPDATE_CHECK=1` to disable that check.
 ### Processes
 
 The Processes tab is laid out as a dashboard. Summary panels across the top
-count sessions by state, break the selected session's tokens into input,
+count sessions by state (zero counts are dimmed and sessions that need input
+are highlighted), show the running sessions' total tokens and an
+input/output/cache split, break the
+selected session's tokens into input,
 output, cache read, and cache write, and show live tokens per provider and
 the projects and branches in use. Input counts uncached input only. Codex
 reports cached input as cache read, so its cache write stays 0. Copilot's

@@ -468,11 +468,12 @@ func (m model) dashSelectedDetail(width int) []string {
 
 // dashSummary aggregates the visible runtimes for the summary panels.
 type dashSummary struct {
-	sessions, processes int
-	states              map[sessionState]int
-	tokens              int64
-	tools               []dashToolSummary
-	projects            []dashProjectSummary
+	sessions  int
+	states    map[sessionState]int
+	tokens    int64
+	breakdown tokenBreakdown
+	tools     []dashToolSummary
+	projects  []dashProjectSummary
 }
 
 type dashToolSummary struct {
@@ -493,7 +494,6 @@ func (m model) dashSummarize() dashSummary {
 	projects := map[string]*dashProjectSummary{}
 	var projectOrder []string
 	for _, group := range m.processGroups {
-		summary.processes += len(group.processes)
 		tool := tools[group.tool]
 		if tool == nil {
 			tool = &dashToolSummary{tool: group.tool}
@@ -507,6 +507,10 @@ func (m model) dashSummarize() dashSummary {
 			summary.sessions++
 			summary.states[session.state]++
 			summary.tokens += sessionTokenTotal(session)
+			summary.breakdown.Input += session.tokens.Input
+			summary.breakdown.Output += session.tokens.Output
+			summary.breakdown.CacheRead += session.tokens.CacheRead
+			summary.breakdown.CacheWrite += session.tokens.CacheWrite
 			tool.tokens += sessionTokenTotal(session)
 			name := dashProjectName(session)
 			project := projects[name]
@@ -573,20 +577,55 @@ func (m model) dashSummaryPanels(height int) []string {
 }
 
 func (s dashSummary) summaryLines(width int) []string {
-	stat := func(name string, value int) string {
-		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(fmt.Sprintf("%-4d", value), usageBrightColor, true)
-	}
 	state := func(value sessionState, label string) string {
+		count := s.states[value]
+		if count == 0 {
+			return dashPaint(dashStateIcon(value)+" ", usageMutedColor, false) +
+				dashPaint(fmt.Sprintf("%d %-9s", count, label), usageMutedColor, false)
+		}
+		number := dashPaint(fmt.Sprintf("%d", count), dashStateColor(value), true)
+		if value == sessionStateNeedsInput {
+			// The state that needs the user stands out as a highlighted block.
+			number = usagePaint(fmt.Sprintf(" %d ", count), usagePanelColor, true, dashRed)
+		}
+		pad := strings.Repeat(" ", max(9-len(label), 0))
 		return dashPaint(dashStateIcon(value)+" ", dashStateColor(value), true) +
-			dashPaint(fmt.Sprintf("%d %-9s", s.states[value], label), usageTextColor, false)
+			number + dashPaint(" "+label+pad, dashStateColor(value), false)
 	}
 	return []string{
-		stat("Sessions", s.sessions) + stat("Procs", s.processes),
-		state(sessionStateActive, "active") + state(sessionStateWaiting, "waiting"),
-		state(sessionStateNeedsInput, "input") + state(sessionStateUnknown, "unknown"),
+		dashPaint("Sessions ", usageMutedColor, false) + dashPaint(fmt.Sprint(s.sessions), usageBrightColor, true),
+		state(sessionStateActive, "active"),
+		state(sessionStateWaiting, "waiting"),
+		state(sessionStateNeedsInput, "input"),
 		dashPaint("Tokens ", usageMutedColor, false) + dashPaint(formatTokenCount(s.tokens), dashYellow, true) +
-			dashPaint(" live", usageMutedColor, false),
+			dashPaint(" total", usageMutedColor, false),
+		s.splitLine(),
 	}
+}
+
+// splitLine shows how the running sessions' tokens divide into input, output
+// and cache, for sessions that report a breakdown.
+func (s dashSummary) splitLine() string {
+	total := s.breakdown.Total()
+	if total == 0 {
+		return dashPaint("no token split reported", usageMutedColor, false)
+	}
+	part := func(label string, value int64, color string) string {
+		return dashPaint(label+" ", usageMutedColor, false) + dashPaint(dashPercent(value, total), color, false)
+	}
+	dot := dashPaint(" · ", usageMutedColor, false)
+	return part("in", s.breakdown.Input, dashBlue) + dot +
+		part("out", s.breakdown.Output, dashGreen) + dot +
+		part("cache", s.breakdown.Cache(), dashPurple)
+}
+
+// dashPercent formats value as a share of total, showing <1% rather than 0%
+// for a part that exists.
+func dashPercent(value, total int64) string {
+	if value > 0 && value*200 < total {
+		return "<1%"
+	}
+	return fmt.Sprintf("%.0f%%", float64(value)*100/float64(total))
 }
 
 func (s dashSummary) providerLines(width int) []string {

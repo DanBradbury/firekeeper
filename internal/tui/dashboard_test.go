@@ -339,7 +339,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "▲ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
-		"Sessions 2", "1 active", "1 input",
+		"Sessions 2", "1 active", " 1  input", "Tokens 1.3M total", "in 4% · out 16% · cache 80%",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
@@ -965,5 +965,51 @@ func TestModelColumnFitsLongModelNames(t *testing.T) {
 		if view := ansi.Strip(m.View()); !strings.Contains(view, "claude-sonnet-5-5") {
 			t.Errorf("width %d: model truncated:\n%s", width, view)
 		}
+	}
+}
+
+func TestSummaryStateCountsDimZerosAndHighlightInput(t *testing.T) {
+	zero := dashSummary{states: map[sessionState]int{}}
+	busy := dashSummary{states: map[sessionState]int{
+		sessionStateActive: 2, sessionStateWaiting: 1, sessionStateNeedsInput: 3,
+	}}
+	zeroLines, busyLines := zero.summaryLines(30), busy.summaryLines(30)
+	if strings.Contains(zeroLines[3], "48;2;"+dashRed) {
+		t.Error("input highlighted at zero")
+	}
+	if !strings.Contains(busyLines[3], "48;2;"+dashRed) {
+		t.Errorf("non-zero input lacks a highlight background: %q", busyLines[3])
+	}
+	if !strings.Contains(zeroLines[1], "38;2;"+usageMutedColor) || strings.Contains(zeroLines[1], "38;2;"+dashGreen) {
+		t.Errorf("zero active count not dimmed: %q", zeroLines[1])
+	}
+	if !strings.Contains(busyLines[1], "38;2;"+dashGreen) || !strings.Contains(busyLines[2], "38;2;"+dashYellow) {
+		t.Errorf("non-zero counts not colored by state: %q %q", busyLines[1], busyLines[2])
+	}
+	for _, line := range append(zeroLines, busyLines...) {
+		if ansi.StringWidth(line) > 28 {
+			t.Errorf("summary line wider than a quarter panel: %q", ansi.Strip(line))
+		}
+	}
+}
+
+func TestSummaryOmitsProcsRateAndUnknown(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	view := ansi.Strip(m.View())
+	for _, unwanted := range []string{"Procs", " live", "Rate", " unknown"} {
+		if strings.Contains(strings.SplitN(view, "╰", 2)[0], unwanted) {
+			t.Fatalf("summary still shows %q:\n%s", unwanted, view)
+		}
+	}
+}
+
+func TestSummaryTokenSplit(t *testing.T) {
+	if got := (dashSummary{states: map[sessionState]int{}}).splitLine(); !strings.Contains(ansi.Strip(got), "no token split reported") {
+		t.Errorf("empty split = %q", ansi.Strip(got))
+	}
+	s := dashSummary{breakdown: tokenBreakdown{Input: 1, Output: 10, CacheRead: 989}}
+	if got := ansi.Strip(s.splitLine()); got != "in <1% · out 1% · cache 99%" {
+		t.Errorf("split = %q", got)
 	}
 }
