@@ -144,6 +144,9 @@ type model struct {
 	helpOpen                bool
 	metadataMisses          map[int]int
 	chat                    chatState
+	mouse                   mouseState
+	menu                    *contextMenu
+	notice                  string
 	recentSessions          []recentSession
 	recentCursor            int
 	recentLoading           bool
@@ -165,7 +168,22 @@ func pollProcesses() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
+
+	case copyResultMsg:
+		if msg.err != nil {
+			m.notice = "copy failed: " + sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.notice = fmt.Sprintf("copied %d characters", msg.chars)
+		}
+
 	case tea.KeyMsg:
+		m.notice = ""
+		m.clearSelection()
+		if m.menu != nil {
+			return m.updateMenuKey(msg)
+		}
 		if m.helpOpen {
 			return m.updateHelp(msg)
 		}
@@ -185,16 +203,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openChat()
 			}
 		case "tab", "shift+tab":
-			m.activeTab = (m.activeTab + 1) % tabCount
-			if m.activeTab == processesTab {
-				return m, refreshProcesses()
-			}
-			if m.activeTab == overviewTab {
-				return m, m.beginOverviewRefresh()
-			}
-			if m.activeTab == usageTab {
-				return m, m.beginUsageRefresh()
-			}
+			return m, m.switchTab((m.activeTab + 1) % tabCount)
 		case "left", "h":
 			if m.activeTab == usageTab {
 				return m, m.cycleUsageProvider(-1)
@@ -438,7 +447,23 @@ func (m *model) beginUsageRefresh() tea.Cmd {
 	return refreshCodexUsage()
 }
 
-func (m model) View() string {
+// switchTab shows t and starts the refresh that tab needs.
+func (m *model) switchTab(t tab) tea.Cmd {
+	m.activeTab = t
+	switch t {
+	case processesTab:
+		return refreshProcesses()
+	case overviewTab:
+		return m.beginOverviewRefresh()
+	case usageTab:
+		return m.beginUsageRefresh()
+	}
+	return nil
+}
+
+// screen renders the whole terminal as newline-joined rows, before any mouse
+// selection or context menu is drawn over it.
+func (m model) screen() string {
 	if m.width < 20 || m.height < 6 {
 		return "Terminal too small (need 20x6)\n"
 	}

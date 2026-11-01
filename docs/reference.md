@@ -125,6 +125,15 @@ launch; set `FIREKEEPER_NO_UPDATE_CHECK=1` to disable that check.
 | `?` | Show all hotkeys; any key closes the list without running its action (Ctrl+C still quits) |
 | `q` / Ctrl+C | Quit |
 
+### Mouse
+
+The dashboard captures the mouse (cell-motion reporting). Clicks, double-clicks,
+the wheel, right-click menus, and drag or word selection map onto the keyboard
+actions listed in `?`; none adds behavior the keyboard lacks. Copying a
+selection writes the selected screen text to the clipboard, using the platform
+tool when present and OSC 52 otherwise. Hold Shift (Option in iTerm2) while
+dragging to bypass capture and use the terminal's own selection.
+
 ### Processes
 
 The Processes tab is laid out as a dashboard. Summary panels across the top

@@ -28,7 +28,7 @@ func main() {
 	if offerUpdate() {
 		return
 	}
-	p := tea.NewProgram(tui.NewModel(), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "firekeeper TUI failed: %v\n", err)
 		os.Exit(1)

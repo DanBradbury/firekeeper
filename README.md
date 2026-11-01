@@ -75,6 +75,17 @@ Linux (amd64 and arm64) is best effort.
 | `?` | Show all keyboard shortcuts |
 | `q` | Quit from a main view; your agents keep running |
 
+The dashboard is also mouse-native. Click tabs, provider chips, and session
+rows; double-click a row to jump to its terminal (or open the chat for a recent
+or past session); scroll the wheel to move through lists and chats; and
+right-click for a menu of that row's actions. Drag to select text, or
+double-click a token and hold the second press to extend by whole words; the
+text is copied to your clipboard on release (via `pbcopy`, `wl-copy`, `xclip`,
+or `xsel` when present, otherwise the terminal's OSC 52 clipboard sequence).
+Because Firekeeper captures the mouse, use Shift (Option in iTerm2) with a drag
+to get your terminal's own selection. Every mouse action has a keyboard
+equivalent, and nothing is sent anywhere.
+
 Terminal switching supports Ghostty 1.3+, Terminal.app, and iTerm2 on macOS.
 On Windows it raises the window, not the tab; Linux has no terminal switching.
 When no agents are running, Processes shows a compact idle state with the last

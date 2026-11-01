@@ -42,6 +42,14 @@ var helpSections = []helpSection{
 		{"r", "Reload the transcript"},
 		{"Esc / c / q", "Back"},
 	}},
+	{"Mouse", []helpKey{
+		{"Click", "Switch tabs and provider chips; select a session row"},
+		{"Double-click", "On a row: switch terminal or open chat. Elsewhere: select a token"},
+		{"Right-click", "Context menu for the row, chat, or view under the pointer"},
+		{"Wheel", "Scroll the list or chat"},
+		{"Drag", "Select text; it is copied on release (hold Shift to use the terminal's own selection)"},
+		{"Double-click + drag", "Extend the selection by whole words"},
+	}},
 	{"Overview", []helpKey{
 		{"r", "Refresh every provider"},
 	}},

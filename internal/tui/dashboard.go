@@ -101,19 +101,15 @@ func (m model) viewProcesses(contentRows int) string {
 	return strings.Join(lines[:contentRows], "\n")
 }
 
-// viewIdleProcesses keeps empty discovery useful without empty panel frames.
-func (m model) viewIdleProcesses(rows int) string {
-	status := "Idle · Scanning every 2s"
+// idleBody is the centered message block of the idle Processes view, without
+// the recent-sessions list under it.
+func (m model) idleBody() []string {
 	message := "No agent sessions running"
 	if m.refreshedAt.IsZero() {
-		status = "Scanning every 2s · first scan pending"
 		message = "Scanning for agent sessions…"
-	} else {
-		status += " · last scan " + m.refreshedAt.Format("15:04:05")
 	}
 	color := usageBrightColor
 	if m.processErr != "" {
-		status = strings.Replace(status, "Idle · ", "", 1)
 		message = "process scan failed: " + sanitizeProcessCommand(m.processErr)
 		color = dashRed
 	}
@@ -129,11 +125,38 @@ func (m model) viewIdleProcesses(rows int) string {
 	if m.terminalStatus != "" {
 		body = append(body, dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false))
 	}
+	return body
+}
+
+// idleGeometry places the idle view's blocks in a content area of rows rows:
+// the first row of the message block and the number of recent-list rows
+// (heading included) under it.
+func (m model) idleGeometry(rows int) (start, recentRows int) {
+	body := m.idleBody()
+	recentRows = len(m.recentLines(min(rows-1-len(body)-2, recentSessionLimit+1)))
+	if recentRows > 0 {
+		recentRows++ // blank separator
+	}
+	return max(1, (rows-len(body)-recentRows)/2), recentRows
+}
+
+// viewIdleProcesses keeps empty discovery useful without empty panel frames.
+func (m model) viewIdleProcesses(rows int) string {
+	status := "Idle · Scanning every 2s"
+	if m.refreshedAt.IsZero() {
+		status = "Scanning every 2s · first scan pending"
+	} else {
+		status += " · last scan " + m.refreshedAt.Format("15:04:05")
+	}
+	if m.processErr != "" {
+		status = strings.Replace(status, "Idle · ", "", 1)
+	}
+	body := m.idleBody()
 	lines := make([]string, rows)
 	lines[0] = dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
 	// Recent sessions take the space under the hint, which moves up to make room.
 	recent := m.recentLines(min(rows-1-len(body)-2, recentSessionLimit+1))
-	start := max(1, (rows-len(body)-len(recent))/2)
+	start, _ := m.idleGeometry(rows)
 	if len(recent) > 0 {
 		body = append(body, "")
 		body = append(body, recent...)
@@ -702,7 +725,9 @@ func (m model) dashHeaderLine() string {
 		}
 	}
 	right := ""
-	if !m.refreshedAt.IsZero() {
+	if m.notice != "" {
+		right = dashPaint(sanitizeProcessCommand(m.notice)+" ", dashGreen, true)
+	} else if !m.refreshedAt.IsZero() {
 		summary := m.dashSummarize()
 		for _, state := range []sessionState{sessionStateActive, sessionStateWaiting, sessionStateNeedsInput} {
 			if count := summary.states[state]; count > 0 {

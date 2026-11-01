@@ -173,42 +173,73 @@ func (m model) viewUsagePage(contentRows int) string {
 		return m.usageMessageBox("unavailable", page.Err, contentRows)
 	}
 
-	var notice string
-	switch {
-	case page.Err != "":
-		notice = "Usage refresh failed: " + page.Err
-	case page.HistoryErr != "" && len(page.Sessions) > 0:
-		notice = "Session history refresh failed: " + page.HistoryErr
-	// An empty session panel reports its own error when there is room for it.
-	case page.HistoryErr != "" && contentRows < usageCardRows+usageDaysMinRows+usageSessionMinRows:
-		notice = "Session history unavailable: " + page.HistoryErr
-	}
+	geometry := usageGeometryFor(page, contentRows)
 	var lines []string
-	if notice != "" {
-		lines = append(lines, dashFit(dashPaint(" "+sanitizeProcessCommand(notice), dashRed, false), m.width, usagePanelColor))
+	if geometry.notice != "" {
+		lines = append(lines, dashFit(dashPaint(" "+sanitizeProcessCommand(geometry.notice), dashRed, false), m.width, usagePanelColor))
 	}
 
 	now := time.Now()
-	cardHeight := min(usageCardRows, contentRows-len(lines))
-	if cardHeight > 0 {
-		lines = append(lines, m.usageCardRow(page, cardHeight)...)
+	if geometry.cards > 0 {
+		lines = append(lines, m.usageCardRow(page, geometry.cards)...)
 	}
-	if rest := contentRows - len(lines); rest >= 4 {
-		// The session list is interactive, so it keeps its minimum height
-		// and the chart gives up rows first.
-		days := rest
-		if rest >= usageDaysMinRows+usageSessionMinRows {
-			days = min(usageDaysRows, rest-usageSessionMinRows)
-		}
-		lines = append(lines, m.usageDaysPanel(page, days)...)
-		if below := rest - days; below >= usageSessionMinRows {
-			lines = append(lines, m.usageSessionRow(page, below, now)...)
+	if geometry.days > 0 {
+		lines = append(lines, m.usageDaysPanel(page, geometry.days)...)
+		if geometry.sessions > 0 {
+			lines = append(lines, m.usageSessionRow(page, geometry.sessions, now)...)
 		}
 	}
 	for len(lines) < contentRows {
 		lines = append(lines, dashFit("", m.width, usagePanelColor))
 	}
 	return strings.Join(lines[:contentRows], "\n")
+}
+
+// usageGeometry is the row budget of the Usage page below its provider
+// selector: an optional notice line, then the cards, the days chart and the
+// sessions row. A zero height means that block is not drawn.
+type usageGeometry struct {
+	notice                string
+	cards, days, sessions int
+}
+
+// usageSessionsTop is the page row where the sessions panel starts.
+func (g usageGeometry) usageSessionsTop() int {
+	top := g.cards + g.days
+	if g.notice != "" {
+		top++
+	}
+	return top
+}
+
+func usageGeometryFor(page usagePage, contentRows int) usageGeometry {
+	var g usageGeometry
+	switch {
+	case page.Err != "":
+		g.notice = "Usage refresh failed: " + page.Err
+	case page.HistoryErr != "" && len(page.Sessions) > 0:
+		g.notice = "Session history refresh failed: " + page.HistoryErr
+	// An empty session panel reports its own error when there is room for it.
+	case page.HistoryErr != "" && contentRows < usageCardRows+usageDaysMinRows+usageSessionMinRows:
+		g.notice = "Session history unavailable: " + page.HistoryErr
+	}
+	used := 0
+	if g.notice != "" {
+		used = 1
+	}
+	g.cards = max(min(usageCardRows, contentRows-used), 0)
+	if rest := contentRows - used - g.cards; rest >= 4 {
+		// The session list is interactive, so it keeps its minimum height
+		// and the chart gives up rows first.
+		g.days = rest
+		if rest >= usageDaysMinRows+usageSessionMinRows {
+			g.days = min(usageDaysRows, rest-usageSessionMinRows)
+		}
+		if below := rest - g.days; below >= usageSessionMinRows {
+			g.sessions = below
+		}
+	}
+	return g
 }
 
 func (m model) usageMessageBox(title, message string, height int) string {
