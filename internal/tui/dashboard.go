@@ -83,6 +83,9 @@ func (m model) viewProcesses(contentRows int) string {
 	if contentRows < 1 {
 		return ""
 	}
+	if len(m.processGroups) == 0 {
+		return m.viewIdleProcesses(contentRows)
+	}
 	layout := m.dashboardLayout()
 	var lines []string
 	if layout.summary > 0 {
@@ -96,6 +99,47 @@ func (m model) viewProcesses(contentRows int) string {
 		lines = append(lines, dashFit("", m.width, usagePanelColor))
 	}
 	return strings.Join(lines[:contentRows], "\n")
+}
+
+// viewIdleProcesses keeps empty discovery useful without empty panel frames.
+func (m model) viewIdleProcesses(rows int) string {
+	status := "Idle · Scanning every 2s"
+	message := "No agent sessions running"
+	if m.refreshedAt.IsZero() {
+		status = "Scanning every 2s · first scan pending"
+		message = "Scanning for agent sessions…"
+	} else {
+		status += " · last scan " + m.refreshedAt.Format("15:04:05")
+	}
+	color := usageBrightColor
+	if m.processErr != "" {
+		status = strings.Replace(status, "Idle · ", "", 1)
+		message = "process scan failed: " + sanitizeProcessCommand(m.processErr)
+		color = dashRed
+	}
+	body := []string{
+		dashPaint(message, color, false),
+		dashPaint("Start codex, copilot or opencode in a terminal.", usageMutedColor, false),
+		dashPaint("Supported agents appear here automatically.", usageMutedColor, false),
+		dashPaint("Press Tab for Overview / Usage history.", usageMutedColor, false),
+	}
+	if m.processMetadataWarning != "" {
+		body = append(body, dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false))
+	}
+	if m.terminalStatus != "" {
+		body = append(body, dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false))
+	}
+	lines := make([]string, rows)
+	lines[0] = dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
+	start := max(1, (rows-len(body))/2)
+	for i := 1; i < rows; i++ {
+		line := ""
+		if index := i - start; index >= 0 && index < len(body) {
+			line = strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(body[index]))/2)) + body[index]
+		}
+		lines[i] = dashFit(line, m.width, usagePanelColor)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) dashSessionsPanel(layout dashLayout) []string {
@@ -112,9 +156,9 @@ func (m model) dashSessionsPanel(layout dashLayout) []string {
 		body[0] = dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false)
 	}
 	if len(m.processGroups) == 0 && m.processErr == "" {
-		message := "No running Codex, Copilot, or OpenCode processes found."
+		message := "No agent sessions running"
 		if m.refreshedAt.IsZero() {
-			message = "Scanning for Codex, Copilot, and OpenCode processes…"
+			message = "Scanning for agent sessions…"
 		}
 		body = append(body, dashPaint(message, usageMutedColor, false))
 	} else if len(m.processGroups) > 0 {
@@ -376,8 +420,11 @@ func dashGroupDetail(group processGroup) []string {
 }
 
 func (m model) dashSelectedDetail(width int) []string {
+	if len(m.processGroups) == 0 {
+		return []string{dashPaint("No sessions", usageMutedColor, false)}
+	}
 	if len(m.processGroups) == 0 || m.processCursor >= len(m.processGroups) {
-		return []string{dashPaint("Select a runtime to see its session details.", usageMutedColor, false)}
+		return []string{dashPaint("Select a session to see its details.", usageMutedColor, false)}
 	}
 	return dashGroupDetail(m.processGroups[m.processCursor])
 }
@@ -633,6 +680,9 @@ func renderFooterKeys(keys []footerKey, width int) string {
 }
 
 func (m model) processFooter() string {
+	if len(m.processGroups) == 0 {
+		return renderFooterKeys([]footerKey{{"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
+	}
 	keys := []footerKey{{"↑↓", "select"}}
 	if m.dashboardLayout().detail == 0 {
 		keys = append(keys, footerKey{"enter", "expand"})
@@ -848,6 +898,9 @@ func (m model) dashTokensTitle() string {
 // dashTokenLines breaks down the selected session's tokens into input,
 // output, cache read, and cache write bars, each scaled to the session total.
 func (m model) dashTokenLines(width int) []string {
+	if len(m.processGroups) == 0 {
+		return []string{dashPaint("No sessions", usageMutedColor, false)}
+	}
 	_, session, ok := m.selectedSession()
 	if !ok {
 		return []string{dashPaint("Select a session to see its tokens.", usageMutedColor, false)}

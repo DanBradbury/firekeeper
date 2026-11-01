@@ -774,3 +774,45 @@ func TestDashboardShowsTelemetryAndDropsUndercountWarning(t *testing.T) {
 		t.Fatalf("exact total missing:\n%s", view)
 	}
 }
+
+func TestIdleDashboard(t *testing.T) {
+	for _, width := range []int{20, 80, 140} {
+		m := dashboardTestModel()
+		m.processGroups = nil
+		m.width, m.height = width, 24
+		view := ansi.Strip(m.View())
+		for _, unwanted := range []string{"╭", "Select a", "s switch", "c chat", "PID", "0 active"} {
+			if strings.Contains(view, unwanted) {
+				t.Errorf("empty dashboard contains %q", unwanted)
+			}
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if ansi.StringWidth(line) > width {
+				t.Fatal("empty dashboard exceeds width")
+			}
+		}
+		if width >= 80 {
+			for _, want := range []string{"No agent sessions running", "Scanning every 2s", "last scan", "Start codex", "Overview / Usage"} {
+				if !strings.Contains(view, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+		}
+	}
+}
+
+func TestIdleDashboardScanStates(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = nil
+	m.width, m.height = 100, 24
+	m.refreshedAt = time.Time{}
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "first scan pending") || strings.Contains(view, "No agent sessions running") {
+		t.Fatal("initial scan presented as completed empty discovery")
+	}
+	m.processErr = "ps unavailable"
+	view = ansi.Strip(m.View())
+	if !strings.Contains(view, "process scan failed: ps unavailable") || strings.Contains(view, "No agent sessions running") {
+		t.Fatal("failed scan presented as empty discovery")
+	}
+}
