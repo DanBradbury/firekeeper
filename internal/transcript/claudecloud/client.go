@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,12 +29,75 @@ const (
 	// maxResponseBytes bounds one response body.
 	maxResponseBytes = 128 << 20
 	requestTimeout   = 90 * time.Second
+	// maxRetryAfter caps a server's Retry-After hint.
+	maxRetryAfter = 24 * time.Hour
 )
 
 // StatusError is a non-200 API reply. It carries the status only, never the
 // body, which may echo request data.
 type StatusError struct {
 	Status int
+	// RetryAfter is the server's Retry-After hint, or zero when it sent
+	// none or one that could not be parsed.
+	RetryAfter time.Duration
+}
+
+// transportError is a request that got no HTTP reply at all (DNS, TLS,
+// connection reset, timeout).
+type transportError struct{ err error }
+
+func (e *transportError) Error() string { return "claudecloud: request failed: " + e.err.Error() }
+func (e *transportError) Unwrap() error { return e.err }
+
+// AccountWide reports whether err says the API or the login is unusable
+// right now, as opposed to one session being unreadable: a refused login
+// (401, 403), rate limiting (429), a request timeout (408), a server error
+// (5xx), or no reply at all. A daemon pass that hits one stops downloading
+// and backs off instead of trying the next session.
+func AccountWide(err error) bool {
+	var se *StatusError
+	if errors.As(err, &se) {
+		switch {
+		case se.Status == http.StatusUnauthorized, se.Status == http.StatusForbidden,
+			se.Status == http.StatusRequestTimeout, se.Status == http.StatusTooManyRequests,
+			se.Status >= 500:
+			return true
+		}
+		return false
+	}
+	var te *transportError
+	return errors.As(err, &te)
+}
+
+// RetryAfter returns the Retry-After hint carried by err, or zero.
+func RetryAfter(err error) time.Duration {
+	var se *StatusError
+	if errors.As(err, &se) {
+		return se.RetryAfter
+	}
+	return 0
+}
+
+// parseRetryAfter reads a Retry-After header: delay seconds or an HTTP date.
+// Anything else, or a time in the past, is zero.
+func parseRetryAfter(v string, now time.Time) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseInt(v, 10, 64); err == nil {
+		if secs <= 0 {
+			return 0
+		}
+		if secs > int64(maxRetryAfter/time.Second) {
+			return maxRetryAfter
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(v); err == nil && t.After(now) {
+		return min(t.Sub(now), maxRetryAfter)
+	}
+	return 0
 }
 
 func (e *StatusError) Error() string {
@@ -42,6 +106,8 @@ func (e *StatusError) Error() string {
 		return fmt.Sprintf("claudecloud: API refused the Claude Code login (HTTP %d); sign in again with `claude`", e.Status)
 	case http.StatusNotFound:
 		return "claudecloud: API endpoint not found (HTTP 404); the internal API may have changed"
+	case http.StatusTooManyRequests:
+		return "claudecloud: API is rate limiting requests (HTTP 429)"
 	}
 	return fmt.Sprintf("claudecloud: API returned HTTP %d", e.Status)
 }
@@ -321,7 +387,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, into any) e
 	if err != nil {
 		return errors.New("claudecloud: build request")
 	}
-	req.Header.Set("Authorization", "Bearer "+c.creds.Token)
+	req.Header.Set("Authorization", "Bearer "+c.creds.token)
 	req.Header.Set("anthropic-version", anthropicVersion)
 	req.Header.Set("anthropic-beta", betaHeader)
 	req.Header.Set("x-organization-uuid", c.creds.OrgUUID)
@@ -336,12 +402,12 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, into any) e
 		if errors.As(err, &uerr) {
 			err = uerr.Err
 		}
-		return fmt.Errorf("claudecloud: request failed: %w", err)
+		return &transportError{err: err}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-		return &StatusError{Status: resp.StatusCode}
+		return &StatusError{Status: resp.StatusCode, RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After"), time.Now())}
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {

@@ -755,11 +755,18 @@ minute. Sessions that did not change cost one list request and no
 downloads.
 
 Failures never stop the daemon. No login, an expired login, a refused login
-(HTTP 401 or 403), and an API that changed shape are logged once, written to
+(HTTP 401 or 403), rate limiting (429), a server error (5xx), no reply, and an
+API that changed shape fail the whole pass, on the session list or on any
+session's download: the pass stops at the first one rather than trying the
+next session. Each is logged once, written to
 `~/.firekeeper/claude-cloud-status.json`, and shown as a "Cloud sync" note on
 the Claude card of the Overview tab. The next try waits the interval, then
-doubles after each further failure up to 6 hours, and the first clean pass
-returns to the interval. The same credential rules apply as for
+doubles after each further failure up to 6 hours (a `Retry-After` from the
+API can lengthen a wait, still to at most 6 hours), and the first clean pass returns to the
+interval. Sessions downloaded before the stop are still uploaded. A problem
+with one session only (deleted, HTTP 404, or unreadable) is a warning: the
+rest of the pass continues, and that session is asked for once per pass,
+after the normal interval, never the one-minute catch-up. The same credential rules apply as for
 `backfill --claude-cloud` above.
 
 ### Linking a machine

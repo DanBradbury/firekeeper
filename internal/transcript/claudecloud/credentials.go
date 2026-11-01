@@ -25,6 +25,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,7 +35,10 @@ import (
 // Credentials authenticate API requests as the signed-in Claude Code user.
 // The token is a secret: String, GoString and %v print only a placeholder.
 type Credentials struct {
-	Token   string
+	// token is unexported so encoding/json, %+v reflection, and other
+	// packages cannot copy or serialize it; only this package's Client
+	// sends it, and only to the API host.
+	token   string
 	OrgUUID string
 	// Expires is when the access token stops working, or zero when the
 	// stored login did not say.
@@ -166,14 +170,14 @@ func LoadCredentialsWith(ctx context.Context, home string, opts CredentialOption
 	if err != nil {
 		return Credentials{}, err
 	}
-	return Credentials{Token: tok.token, OrgUUID: org, Expires: tok.expires}, nil
+	return Credentials{token: tok.token, OrgUUID: org, Expires: tok.expires}, nil
 }
 
 // securityFindPassword runs macOS `security` with an argument array and
 // returns its standard output. Failures drop the command's output, which may
 // hold the secret.
 func securityFindPassword(ctx context.Context) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "security", "find-generic-password", "-a", os.Getenv("USER"), "-s", keychainService, "-w")
+	cmd := exec.CommandContext(ctx, securityPath, keychainArgs(keychainAccount())...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, errors.New("keychain lookup failed")
@@ -182,6 +186,33 @@ func securityFindPassword(ctx context.Context) ([]byte, error) {
 		return nil, errors.New("keychain item too large")
 	}
 	return out, nil
+}
+
+// securityPath is macOS's keychain tool. It is run by absolute path so a
+// `security` earlier on PATH cannot receive the request or fake the reply.
+const securityPath = "/usr/bin/security"
+
+// keychainAccount is the account Claude Code stores its login under: the
+// login name. $USER is used first, then the OS user database. An empty result
+// means the lookup matches the service name alone, as internal/claudelimits
+// does, rather than passing an empty account that matches nothing.
+func keychainAccount() string {
+	if name := strings.TrimSpace(os.Getenv("USER")); name != "" {
+		return name
+	}
+	if u, err := user.Current(); err == nil {
+		return strings.TrimSpace(u.Username)
+	}
+	return ""
+}
+
+// keychainArgs builds the `security` arguments for account.
+func keychainArgs(account string) []string {
+	args := []string{"find-generic-password"}
+	if account != "" {
+		args = append(args, "-a", account)
+	}
+	return append(args, "-s", keychainService, "-w")
 }
 
 // login is the part of Claude Code's stored login that is used.

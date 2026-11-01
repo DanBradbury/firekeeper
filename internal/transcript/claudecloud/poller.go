@@ -185,6 +185,11 @@ func (p *Poller) Poll(ctx context.Context) PollResult {
 	case res.Err != nil:
 		p.failures++
 		wait = pollBackoff(p.failures, p.cfg.Interval)
+		// A server's Retry-After can only lengthen the wait, never shorten
+		// it below the backoff, and is capped like the backoff.
+		if hint := RetryAfter(res.Err); hint > wait {
+			wait = min(hint, MaxBackoff)
+		}
 		status.Warning = res.Err.Error()
 		msg := res.Err.Error()
 		if msg != p.lastLog {
@@ -200,7 +205,9 @@ func (p *Poller) Poll(ctx context.Context) PollResult {
 		p.failures, p.lastLog = 0, ""
 		status.LastSuccess = now
 		status.Warning = res.Warning
-		if res.Sync.Remaining > 0 {
+		// Come back sooner only for work the cap left over, never to retry
+		// sessions that failed: those wait for the normal interval.
+		if res.Sync.Remaining > 0 && len(res.Sync.Failed) == 0 {
 			wait = MoreWorkDelay
 		}
 	}
@@ -224,8 +231,12 @@ func (p *Poller) pass(ctx context.Context) PollResult {
 	client.BaseURL, client.HTTP = p.cfg.BaseURL, p.cfg.HTTP
 	res.Sync, err = Sync(ctx, client, SyncOptions{Dir: p.cfg.Dir, After: p.after, MaxFetch: p.cfg.MaxFetch})
 	if err != nil {
+		// Upload what was cached before the stop, then report the stop so
+		// the pass backs off. Nothing cached means nothing to upload.
 		res.Err = err
-		return res
+		if res.Sync.Fetched == 0 || ctx.Err() != nil {
+			return res
+		}
 	}
 	if n := len(res.Sync.Failed); n > 0 {
 		res.Warning = fmt.Sprintf("%d cloud %s could not be downloaded and will be retried: %s",
@@ -250,9 +261,12 @@ func (p *Poller) pass(ctx context.Context) PollResult {
 	cfg.ScanEnded = true
 	cfg.ScanAfter = p.after
 	cfg.ScanBudget = pollScanBudget
+	syncErr := res.Err
 	summary, err := p.cfg.RunOnce(context.WithoutCancel(ctx), cfg)
 	if err != nil {
-		res.Err = fmt.Errorf("upload cloud sessions: %w", err)
+		if syncErr == nil {
+			res.Err = fmt.Errorf("upload cloud sessions: %w", err)
+		}
 		return res
 	}
 	failed := 0
@@ -272,7 +286,7 @@ func (p *Poller) pass(ctx context.Context) PollResult {
 	if summary.Scan.Deferred > 0 {
 		res.Sync.Remaining += summary.Scan.Deferred
 	}
-	if failed > 0 {
+	if failed > 0 && syncErr == nil {
 		res.Err = fmt.Errorf("%d cloud %s failed to upload", failed, plural(failed, "session", "sessions"))
 	}
 	return res

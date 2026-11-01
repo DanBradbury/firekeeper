@@ -22,8 +22,11 @@ type fakeCloud struct {
 	events   map[string][]map[string]any
 	// pageSize caps events per page, below the client's requested limit.
 	pageSize int
-	// failEvents makes the events endpoint of these sessions answer 500.
-	failEvents map[string]bool
+	// failEvents makes the events endpoint of these sessions answer with
+	// the given HTTP status instead of events.
+	failEvents map[string]int
+	// retryAfter, when set, is sent as Retry-After with every failure.
+	retryAfter string
 	// eventCalls counts requests to each session's events endpoint.
 	eventCalls map[string]int
 	// sessionCalls counts requests to the list endpoint.
@@ -34,10 +37,10 @@ type fakeCloud struct {
 
 func newFakeCloud(t *testing.T) (*fakeCloud, *Client) {
 	t.Helper()
-	f := &fakeCloud{events: map[string][]map[string]any{}, failEvents: map[string]bool{}, eventCalls: map[string]int{}, pageSize: 2}
+	f := &fakeCloud{events: map[string][]map[string]any{}, failEvents: map[string]int{}, eventCalls: map[string]int{}, pageSize: 2}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
-	c := NewClient(Credentials{Token: testToken, OrgUUID: testOrg})
+	c := NewClient(Credentials{token: testToken, OrgUUID: testOrg})
 	c.BaseURL = srv.URL + "/v1"
 	return f, c
 }
@@ -59,8 +62,11 @@ func (f *fakeCloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(path) > len("/v1/sessions/") && path[len(path)-len("/events"):] == "/events":
 		id := path[len("/v1/sessions/") : len(path)-len("/events")]
 		f.eventCalls[id]++
-		if f.failEvents[id] {
-			w.WriteHeader(http.StatusInternalServerError)
+		if status := f.failEvents[id]; status != 0 {
+			if f.retryAfter != "" {
+				w.Header().Set("Retry-After", f.retryAfter)
+			}
+			w.WriteHeader(status)
 			_, _ = w.Write([]byte("internal secret detail"))
 			return
 		}
@@ -128,4 +134,15 @@ func conversation(sid string) []map[string]any {
 			"message": map[string]any{"id": "m3", "role": "assistant", "model": "claude-sonnet-5-5",
 				"content": []map[string]any{{"type": "text", "text": "sub-agent note"}}}, "parent_tool_use_id": "t1"},
 	}
+}
+
+// totalEventCalls counts requests to every session's events endpoint.
+func (f *fakeCloud) totalEventCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.eventCalls {
+		n += c
+	}
+	return n
 }

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ import (
 const sid = "session_01TESTAAAAAAAAAAAAAAAAAA"
 
 func TestCredentialsNeverPrint(t *testing.T) {
-	creds := Credentials{Token: testToken, OrgUUID: testOrg}
+	creds := Credentials{token: testToken, OrgUUID: testOrg}
 	for _, out := range []string{fmt.Sprint(creds), fmt.Sprintf("%v", creds), fmt.Sprintf("%+v", creds), fmt.Sprintf("%#v", creds), fmt.Sprint(&creds)} {
 		if strings.Contains(out, testToken) {
 			t.Fatalf("credentials print the token: %q", out)
@@ -78,7 +79,7 @@ func TestEventsPageThroughAll(t *testing.T) {
 func TestStatusErrorCarriesNoBodyOrToken(t *testing.T) {
 	f, c := newFakeCloud(t)
 	f.events[sid] = conversation(sid)
-	f.failEvents[sid] = true
+	f.failEvents[sid] = http.StatusInternalServerError
 	_, err := c.Events(context.Background(), sid)
 	var status *StatusError
 	if !errors.As(err, &status) || status.Status != http.StatusInternalServerError {
@@ -91,7 +92,7 @@ func TestStatusErrorCarriesNoBodyOrToken(t *testing.T) {
 
 func TestClientRejectsWrongCredentialsClearly(t *testing.T) {
 	_, c := newFakeCloud(t)
-	c.creds.Token = "other"
+	c.creds.token = "other"
 	_, err := c.Sessions(context.Background())
 	var status *StatusError
 	if !errors.As(err, &status) {
@@ -107,7 +108,7 @@ func TestClientDoesNotFollowRedirects(t *testing.T) {
 		http.Redirect(w, r, other.URL, http.StatusFound)
 	}))
 	defer srv.Close()
-	c := NewClient(Credentials{Token: testToken, OrgUUID: testOrg})
+	c := NewClient(Credentials{token: testToken, OrgUUID: testOrg})
 	c.BaseURL = srv.URL
 	if _, err := c.Sessions(context.Background()); err == nil {
 		t.Fatal("redirect answered as success")
@@ -120,7 +121,7 @@ func TestClientDoesNotFollowRedirects(t *testing.T) {
 func TestClientUnexpectedFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`["not","an","object"]`)) }))
 	defer srv.Close()
-	c := NewClient(Credentials{Token: testToken, OrgUUID: testOrg})
+	c := NewClient(Credentials{token: testToken, OrgUUID: testOrg})
 	c.BaseURL = srv.URL
 	if _, err := c.Sessions(context.Background()); err == nil || !strings.Contains(err.Error(), "may have changed") {
 		t.Fatalf("err = %v", err)
@@ -254,7 +255,7 @@ func TestSyncAfterCutoffAndFailureIsolation(t *testing.T) {
 	f.events["session_good"] = conversation("session_good")
 	f.events["session_bad"] = conversation("session_bad")
 	f.events["session_old"] = conversation("session_old")
-	f.failEvents["session_bad"] = true
+	f.failEvents["session_bad"] = http.StatusNotFound // deleted: this session only
 	dir := t.TempDir()
 	res := syncOnce(t, c, dir, time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC))
 	if res.Skipped != 1 || res.Fetched != 1 || len(res.Failed) != 1 || !strings.HasPrefix(res.Failed[0], "session_bad:") {
@@ -265,6 +266,55 @@ func TestSyncAfterCutoffAndFailureIsolation(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "session_bad.json")); err == nil {
 		t.Fatal("a failed session left a metadata file that marks it complete")
+	}
+}
+
+// An account-wide refusal on one session's events stops the Sync with that
+// error instead of trying every other session, and a session-level 404 does
+// not.
+func TestSyncStopsOnAccountWideEventErrors(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			f, c := newFakeCloud(t)
+			f.sessions = []map[string]any{
+				cloudSession("session_new", "2026-10-03T00:00:00Z"),
+				cloudSession("session_mid", "2026-10-02T00:00:00Z"),
+				cloudSession("session_old", "2026-10-01T00:00:00Z"),
+			}
+			for _, id := range []string{"session_new", "session_mid", "session_old"} {
+				f.events[id] = conversation(id)
+			}
+			f.failEvents["session_mid"] = status
+			res, err := Sync(context.Background(), c, SyncOptions{Dir: t.TempDir()})
+			var se *StatusError
+			if !errors.As(err, &se) || se.Status != status || !AccountWide(err) {
+				t.Fatalf("err = %v, want HTTP %d", err, status)
+			}
+			if res.Fetched != 1 || len(res.Failed) != 0 || res.Remaining != 2 || f.eventCalls["session_old"] != 0 {
+				t.Fatalf("result = %+v, calls %v", res, f.eventCalls)
+			}
+		})
+	}
+}
+
+func TestRetryAfterParsing(t *testing.T) {
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	for in, want := range map[string]time.Duration{
+		"":                              0,
+		"120":                           2 * time.Minute,
+		"0":                             0,
+		"-5":                            0,
+		"soon":                          0,
+		"999999999":                     maxRetryAfter,
+		"Thu, 01 Oct 2026 13:00:00 GMT": time.Hour,
+		"Thu, 01 Oct 2026 11:00:00 GMT": 0,
+	} {
+		if got := parseRetryAfter(in, now); got != want {
+			t.Errorf("parseRetryAfter(%q) = %s, want %s", in, got, want)
+		}
+	}
+	if AccountWide(&StatusError{Status: http.StatusNotFound}) || AccountWide(errors.New("x")) || !AccountWide(&transportError{err: errors.New("reset")}) {
+		t.Fatal("AccountWide misclassifies")
 	}
 }
 

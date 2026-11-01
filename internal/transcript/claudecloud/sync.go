@@ -50,6 +50,14 @@ type SyncResult struct {
 // metadata. A session is downloaded again only when the API reports a newer
 // update time, and its file is rewritten with the same leading lines, so
 // offsets a reporter saved stay valid and a rerun uploads only what is new.
+//
+// Download errors are split in two. One that says the login or the API is
+// unusable right now (AccountWide: 401, 403, 408, 429, 5xx, or no reply)
+// ends the Sync with that error, so the daemon backs off rather than asking
+// for the next session. One that concerns only this session (404 because it
+// was deleted, a malformed page, too many pages, a cache write failure) is
+// recorded in Failed and the Sync goes on; that session is asked for again
+// on the next pass, one request per pass, and still counts toward MaxFetch.
 func Sync(ctx context.Context, c *Client, opts SyncOptions) (SyncResult, error) {
 	var res SyncResult
 	if opts.Dir == "" {
@@ -84,6 +92,13 @@ func Sync(ctx context.Context, c *Client, opts SyncOptions) (SyncResult, error) 
 			if ctx.Err() != nil {
 				return res, ctx.Err()
 			}
+			if AccountWide(err) {
+				// The login or the API is the problem, not this session:
+				// every further request would fail the same way. Stop here
+				// so the caller backs off. Sessions cached so far stay.
+				res.Remaining += remainingAfter(sessions, info.ID)
+				return res, err
+			}
 			res.Failed = append(res.Failed, fmt.Sprintf("%s: %v", info.ID, err))
 			continue
 		}
@@ -100,6 +115,17 @@ func Sync(ctx context.Context, c *Client, opts SyncOptions) (SyncResult, error) 
 		}
 	}
 	return res, nil
+}
+
+// remainingAfter counts the sessions listed after id, which a stopped Sync
+// did not look at. It is an upper bound on the work left.
+func remainingAfter(sessions []SessionInfo, id string) int {
+	for i, info := range sessions {
+		if info.ID == id {
+			return len(sessions) - i
+		}
+	}
+	return 0
 }
 
 // transcriptLines converts API events into Claude Code transcript lines.

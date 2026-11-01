@@ -37,7 +37,7 @@ func newPollHarness(t *testing.T, mutate func(*PollerConfig)) *pollHarness {
 	h := &pollHarness{t: t, cloud: f, api: fakeapi.New(), home: t.TempDir(),
 		now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
 	h.creds = func(context.Context) (Credentials, error) {
-		return Credentials{Token: testToken, OrgUUID: testOrg}, nil
+		return Credentials{token: testToken, OrgUUID: testOrg}, nil
 	}
 	if err := os.MkdirAll(filepath.Join(h.home, ".firekeeper"), 0o700); err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestPollerBacksOffAndWarns(t *testing.T) {
 
 	// The user ran claude; the next pass recovers and clears the warning.
 	h.creds = func(context.Context) (Credentials, error) {
-		return Credentials{Token: testToken, OrgUUID: testOrg}, nil
+		return Credentials{token: testToken, OrgUUID: testOrg}, nil
 	}
 	res := h.p.Poll(context.Background())
 	if res.Err != nil || res.Next.Sub(h.now) != DefaultPollInterval {
@@ -251,6 +251,103 @@ func TestPollerLeavesWorkForASoonerPass(t *testing.T) {
 	}
 	if len(h.api.Events(testMachine, sid)) != 5 || len(h.api.Events(testMachine, other)) != 5 {
 		t.Fatal("both sessions should be uploaded")
+	}
+}
+
+// manySessions gives the fake cloud n changed sessions, more than one pass
+// may download.
+func manySessions(f *fakeCloud, n int) []string {
+	ids := make([]string, n)
+	for i := range n {
+		id := fmt.Sprintf("session_01MANY%020d", i)
+		ids[i] = id
+		f.sessions = append(f.sessions, cloudSession(id, fmt.Sprintf("2026-10-01T11:%02d:00Z", i)))
+		f.events[id] = conversation(id)
+	}
+	return ids
+}
+
+// A rate limit or refused login on /events must back off the whole pass:
+// one request per pass, the interval doubling, never MoreWorkDelay, however
+// much work is pending (review of #45).
+func TestPollerBacksOffOnAccountWideEventErrors(t *testing.T) {
+	for name, tc := range map[string]struct {
+		status     int
+		retryAfter string
+		waits      []time.Duration
+		warn       string
+	}{
+		"429":             {http.StatusTooManyRequests, "", []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour}, "HTTP 429"},
+		"429 retry-after": {http.StatusTooManyRequests, "7200", []time.Duration{2 * time.Hour, 2 * time.Hour, 2 * time.Hour, 2 * time.Hour}, "HTTP 429"},
+		"401":             {http.StatusUnauthorized, "", []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour}, "sign in again"},
+		"503":             {http.StatusServiceUnavailable, "", []time.Duration{15 * time.Minute, 30 * time.Minute, time.Hour, 2 * time.Hour}, "HTTP 503"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newPollHarness(t, nil)
+			for _, id := range manySessions(h.cloud, 30) {
+				h.cloud.failEvents[id] = tc.status
+			}
+			h.cloud.retryAfter = tc.retryAfter
+			h.cloud.pageSize = 1000 // one list request per pass, like the real API
+			for i, wait := range tc.waits {
+				res := h.p.Poll(context.Background())
+				if !res.Ran || res.Err == nil || !strings.Contains(h.status().Warning, tc.warn) {
+					t.Fatalf("pass %d = %+v, warning %q", i, res, h.status().Warning)
+				}
+				if got := res.Next.Sub(h.now); got != wait {
+					t.Fatalf("pass %d waits %s, want %s (MoreWorkDelay must not apply)", i, got, wait)
+				}
+				if calls := h.cloud.totalEventCalls(); calls != i+1 {
+					t.Fatalf("after pass %d: %d events requests, want %d (one per pass)", i, calls, i+1)
+				}
+				// Nothing runs before the wait is over, even a minute later.
+				h.now = h.now.Add(MoreWorkDelay)
+				if again := h.p.Poll(context.Background()); again.Ran {
+					t.Fatal("a pass ran during backoff")
+				}
+				h.now = res.Next
+			}
+			if h.cloud.sessionCalls != len(tc.waits) {
+				t.Fatalf("list requests = %d", h.cloud.sessionCalls)
+			}
+
+			// The API recovers: the cap applies, and leftover work comes back
+			// after MoreWorkDelay.
+			h.cloud.failEvents = map[string]int{}
+			res := h.p.Poll(context.Background())
+			if res.Err != nil || res.Sync.Fetched != DefaultMaxFetch || res.Sync.Remaining != 5 || res.Next.Sub(h.now) != MoreWorkDelay {
+				t.Fatalf("recovery = %+v next %s", res, res.Next.Sub(h.now))
+			}
+		})
+	}
+}
+
+// Sessions cached before a pass stopped are still uploaded by that pass.
+func TestPollerUploadsWhatItGotBeforeARateLimit(t *testing.T) {
+	h := newPollHarness(t, nil)
+	ids := manySessions(h.cloud, 3) // newest is ids[2]
+	h.cloud.failEvents[ids[1]] = http.StatusTooManyRequests
+	res := h.p.Poll(context.Background())
+	if res.Err == nil || res.Sync.Fetched != 1 || res.Next.Sub(h.now) != DefaultPollInterval {
+		t.Fatalf("pass = %+v", res)
+	}
+	if len(h.api.Events(testMachine, ids[2])) != 5 || h.cloud.eventCalls[ids[0]] != 0 {
+		t.Fatalf("uploaded %d events for the fetched session; calls %v", len(h.api.Events(testMachine, ids[2])), h.cloud.eventCalls)
+	}
+}
+
+// A session-level failure (404: deleted) is a warning, not a backoff, but it
+// never earns the sooner MoreWorkDelay retry.
+func TestPollerSessionFailureWaitsTheInterval(t *testing.T) {
+	h := newPollHarness(t, func(c *PollerConfig) { c.MaxFetch = 1 })
+	ids := manySessions(h.cloud, 2)
+	h.cloud.failEvents[ids[1]] = http.StatusNotFound
+	res := h.p.Poll(context.Background())
+	if res.Err != nil || len(res.Sync.Failed) != 1 || res.Sync.Remaining != 1 || res.Next.Sub(h.now) != DefaultPollInterval {
+		t.Fatalf("pass = %+v next %s", res, res.Next.Sub(h.now))
+	}
+	if !strings.Contains(h.status().Warning, "will be retried") {
+		t.Fatalf("warning = %q", h.status().Warning)
 	}
 }
 

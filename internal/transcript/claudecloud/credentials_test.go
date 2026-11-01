@@ -2,8 +2,11 @@ package claudecloud
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -111,7 +114,7 @@ func TestCredentialsFileOnLinuxAndWindows(t *testing.T) {
 					}
 					return
 				}
-				if creds.Token != testToken || creds.OrgUUID != testOrg {
+				if creds.token != testToken || creds.OrgUUID != testOrg {
 					t.Fatal("wrong credentials")
 				}
 			})
@@ -155,7 +158,7 @@ func TestCredentialsHonorClaudeConfigDir(t *testing.T) {
 	}
 	h.env[envConfigDir] = dir
 	creds, err := h.load("linux", nil)
-	if err != nil || creds.Token != testToken || creds.OrgUUID != testOrg {
+	if err != nil || creds.token != testToken || creds.OrgUUID != testOrg {
 		t.Fatalf("err = %v; CLAUDE_CONFIG_DIR's credentials and ~/.claude.json's org must be used", err)
 	}
 	other := "99999999-2222-3333-4444-555555555555"
@@ -172,7 +175,7 @@ func TestCredentialsOnMacOS(t *testing.T) {
 	t.Run("keychain first", func(t *testing.T) {
 		h := newCredHome(t, loginJSON("file-token", future), orgConfig, 0o600)
 		creds, err := h.load("darwin", func(context.Context) ([]byte, error) { return []byte(loginJSON(testToken, future) + "\n"), nil })
-		if err != nil || creds.Token != testToken {
+		if err != nil || creds.token != testToken {
 			t.Fatalf("err = %v; the keychain item wins on macOS", err)
 		}
 	})
@@ -188,7 +191,7 @@ func TestCredentialsOnMacOS(t *testing.T) {
 	t.Run("file when no keychain item", func(t *testing.T) {
 		h := newCredHome(t, loginJSON(testToken, future), orgConfig, 0o600)
 		creds, err := h.load("darwin", func(context.Context) ([]byte, error) { return nil, errors.New("boom " + testToken) })
-		if err != nil || creds.Token != testToken {
+		if err != nil || creds.token != testToken {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -199,4 +202,38 @@ func TestCredentialsOnMacOS(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+}
+
+func TestCredentialsTokenCannotBeSerialized(t *testing.T) {
+	creds := Credentials{token: testToken, OrgUUID: testOrg}
+	data, err := json.Marshal(creds)
+	if err != nil || strings.Contains(string(data), testToken) {
+		t.Fatalf("json = %s, err %v", data, err)
+	}
+	for _, s := range []string{fmt.Sprint(creds), fmt.Sprintf("%+v", creds), fmt.Sprintf("%#v", creds)} {
+		if strings.Contains(s, testToken) {
+			t.Fatalf("formatted credentials leak the token: %q", s)
+		}
+	}
+}
+
+func TestKeychainLookup(t *testing.T) {
+	if securityPath != "/usr/bin/security" {
+		t.Fatalf("security is run from %q, want the absolute system path", securityPath)
+	}
+	if got := strings.Join(keychainArgs("dan"), " "); got != "find-generic-password -a dan -s Claude Code-credentials -w" {
+		t.Fatalf("args = %q", got)
+	}
+	// No account name: match the service alone rather than pass "-a ''".
+	if got := strings.Join(keychainArgs(""), " "); got != "find-generic-password -s Claude Code-credentials -w" {
+		t.Fatalf("args = %q", got)
+	}
+	t.Setenv("USER", "  someone ")
+	if got := keychainAccount(); got != "someone" {
+		t.Fatalf("account = %q", got)
+	}
+	t.Setenv("USER", "")
+	if u, err := user.Current(); err == nil && keychainAccount() != strings.TrimSpace(u.Username) {
+		t.Fatalf("empty $USER did not fall back to the OS user (%q)", keychainAccount())
+	}
 }

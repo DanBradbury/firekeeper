@@ -95,9 +95,17 @@ minimum 10m), after its normal cycle. A pass is one `GET /sessions` (all
 pages), event downloads for at most 25 sessions whose `updated_at` moved
 since the cache, then the normal reporter pass over the cache, which uploads
 only lines past the saved offset. The first window is `scan_lookback`. A pass
-that hits the 25 cap runs again after a minute. Any whole-pass failure (no
-login, expired, 401/403, changed shape, network) backs off: the interval,
-doubled per failure, capped at 6 hours; the same error is logged once. The
+that hits the 25 cap runs again after a minute, but only when no session
+failed. Any whole-pass failure backs off: the interval, doubled per failure,
+capped at 6 hours, lengthened (never shortened) by a `Retry-After`; the same
+error is logged once. Whole-pass failures are no login, expired, a changed
+shape, and any of 401, 403, 408, 429, 5xx or no reply, whether on the list or
+on one session's `/events` (`AccountWide`): those say the login or the API is
+unusable, so the pass stops instead of asking for the next session, and what
+it cached before the stop is still uploaded. A 404 or a malformed reply for
+one session is that session's problem: it is a warning, the pass goes on,
+and the session costs one request per pass until it works or leaves the
+list. The
 last outcome is in `~/.firekeeper/claude-cloud-status.json` (no secrets) for
 the TUI.
 - `session_context.cwd` is an empty string on every session seen (29 of 29),
