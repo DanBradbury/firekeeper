@@ -28,9 +28,11 @@ var helpSections = []helpSection{
 		{"↑ ↓ / j k", "Select runtime"},
 		{"PgUp / PgDn", "Move half a page"},
 		{"Home / End", "Jump to first or last runtime"},
-		{"Enter", "Expand session details and process tree"},
+		{"Enter", "Expand details inline when the bottom session panel is hidden"},
 		{"s", "Switch to the runtime's terminal"},
 		{"c", "Open the session's chat history"},
+		{"Enter", "With nothing running, open the selected recent session's chat"},
+		{"R", "With nothing running, resume the selected recent session in a new tab (Ghostty, iTerm2, Terminal.app)"},
 		{"r", "Refresh now"},
 	}},
 	{"Chat", []helpKey{
@@ -39,6 +41,14 @@ var helpSections = []helpSection{
 		{"g / G", "Jump to the first or latest message"},
 		{"r", "Reload the transcript"},
 		{"Esc / c / q", "Back"},
+	}},
+	{"Mouse", []helpKey{
+		{"Click", "Switch tabs and provider chips; select a session row"},
+		{"Double-click", "On a row: switch terminal or open chat. Elsewhere: select a token"},
+		{"Right-click", "Context menu for the row, chat, or view under the pointer"},
+		{"Wheel", "Scroll the list or chat"},
+		{"Drag", "Select text; it is copied on release (hold Shift to use the terminal's own selection)"},
+		{"Double-click + drag", "Extend the selection by whole words"},
 	}},
 	{"Overview", []helpKey{
 		{"r", "Refresh every provider"},
@@ -105,8 +115,11 @@ func (m model) viewHelp(contentRows int) string {
 	return strings.Join(lines[:contentRows], "\n")
 }
 
-func (m model) helpFooter() (string, string) {
-	help := dashPaint(" ", usageTextColor, false) +
-		dashPaint("any key ", dashBlue, true) + dashPaint("close", usageTextColor, false)
-	return dashFit(help, m.width, usagePanelColor), dashFit(dashPaint("  keyboard shortcuts", usageMutedColor, false), m.width, usagePanelColor)
+func (m model) helpFooter() string {
+	keys := []footerKey{{"any key", "close"}}
+	_, available := footerVersion(m.width)
+	if footerKeysWidth(keys, 1) > available {
+		keys[0].action = "back"
+	}
+	return renderFooterKeys(keys, m.width)
 }

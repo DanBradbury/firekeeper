@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyboard shortcuts | Firekeeper docs</title>
+<meta name="description" content="Firekeeper keyboard controls for Processes, Overview, Usage, chat history, and terminal switching.">
+<link rel="canonical" href="https://firekeeper.ai/docs/keyboard/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/" aria-current="page">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Using Firekeeper</p>
+    <h1>Keyboard shortcuts</h1>
+    <p class="lede">Press <kbd>?</kbd> in a main view for the help overlay in your installed version. Letter shortcuts are lowercase unless shown otherwise.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#global">Global</a><a href="#processes">Processes</a><a href="#chat">Chat</a><a href="#overview">Overview</a><a href="#usage">Usage</a></nav>
+    <h2 id="global">Global</h2>
+    <div class="table-wrap" role="region" aria-label="Global shortcuts" tabindex="0"><table>
+      <thead><tr><th scope="col">Key</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd></td><td>Cycle between Processes, Overview, and Usage.</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Open help. Any key closes it without running that key's action, except Ctrl+C, which quits.</td></tr>
+        <tr><td><kbd>q</kbd></td><td>Quit from a main view. In chat, return to the previous view instead.</td></tr>
+        <tr><td><kbd>Ctrl+C</kbd></td><td>Quit Firekeeper, including from help or chat. Agents keep running.</td></tr>
+      </tbody>
+    </table></div>
+    <h2 id="processes">Processes</h2>
+    <div class="table-wrap" role="region" aria-label="Processes shortcuts" tabindex="0"><table>
+      <thead><tr><th scope="col">Key</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Up</kbd> / <kbd>Down</kbd> or <kbd>k</kbd> / <kbd>j</kbd></td><td>Select a runtime.</td></tr>
+        <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Move half a page through runtimes.</td></tr>
+        <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>Select the first or last runtime.</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Expand or collapse inline details when the bottom session panel is hidden.</td></tr>
+        <tr><td><kbd>c</kbd></td><td>Open the matched session's chat history.</td></tr>
+        <tr><td><kbd>s</kbd></td><td>Switch to the runtime's terminal. <a href="/docs/how-to-work/#switch">Platform limits apply.</a></td></tr>
+        <tr><td><kbd>r</kbd></td><td>Refresh immediately.</td></tr>
+      </tbody>
+    </table></div>
+    <h2 id="chat">Chat history</h2>
+    <div class="table-wrap" role="region" aria-label="Chat shortcuts" tabindex="0"><table>
+      <thead><tr><th scope="col">Key</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Up</kbd> / <kbd>Down</kbd> or <kbd>k</kbd> / <kbd>j</kbd></td><td>Scroll a line.</td></tr>
+        <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Scroll a page.</td></tr>
+        <tr><td><kbd>g</kbd> / <kbd>G</kbd></td><td>Jump to the first or latest message. Uppercase G follows new messages.</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Reload the transcript.</td></tr>
+        <tr><td><kbd>Esc</kbd> / <kbd>c</kbd> / <kbd>q</kbd></td><td>Return to the view you opened chat from.</td></tr>
+      </tbody>
+    </table></div>
+    <p>Chat is read-only. Return to the agent's terminal to send a message or approve an action.</p>
+    <h2 id="overview">Overview</h2>
+    <p>Press <kbd>r</kbd> to refresh every provider. Use <kbd>Tab</kbd> to move to another main view.</p>
+    <h2 id="usage">Usage</h2>
+    <div class="table-wrap" role="region" aria-label="Usage shortcuts" tabindex="0"><table>
+      <thead><tr><th scope="col">Key</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>Left</kbd> / <kbd>Right</kbd> or <kbd>h</kbd> / <kbd>l</kbd></td><td>Switch provider.</td></tr>
+        <tr><td><kbd>Up</kbd> / <kbd>Down</kbd> or <kbd>k</kbd> / <kbd>j</kbd></td><td>Select a historical session.</td></tr>
+        <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Move through sessions in groups of ten.</td></tr>
+        <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>Select the first or last session.</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Open the selected session's chat.</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Refresh the selected provider.</td></tr>
+      </tbody>
+    </table></div>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/usage/"><small>Previous</small>&larr; Understand usage</a><a href="/docs/troubleshooting/"><small>Next</small>Troubleshooting &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/keyboard/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>

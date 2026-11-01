@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://firekeeper.ai/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/quick-start/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/how-to-work/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/usage/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/keyboard/</loc></url>
+  <url><loc>https://firekeeper.ai/docs/troubleshooting/</loc></url>
   <url><loc>https://firekeeper.ai/contact</loc></url>
   <url><loc>https://firekeeper.ai/terms</loc></url>
   <url><loc>https://firekeeper.ai/refund</loc></url>

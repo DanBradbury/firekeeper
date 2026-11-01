@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Firekeeper – live dashboard and audit trail for AI coding agents (Claude Code, Codex, Cursor)</title>
-<meta name="description" content="Firekeeper: a local terminal dashboard and session reporter for Codex, Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI.">
+<title>Firekeeper – one terminal dashboard for your coding agents</title>
+<meta name="description" content="See which coding agents need attention, read conversations, and track token usage. Free, open-source terminal dashboard for Claude Code, Codex, Copilot CLI, and more.">
 <link rel="canonical" href="https://firekeeper.ai/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -12,18 +12,18 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Firekeeper">
 <meta property="og:url" content="https://firekeeper.ai/">
-<meta property="og:title" content="Firekeeper: tend every coding agent from one bonfire">
-<meta property="og:description" content="See what your AI coding agents are doing, right from your terminal. Works with Claude Code, Codex, Copilot CLI, Gemini CLI, Cursor, OpenCode, and Kimi.">
+<meta property="og:title" content="Firekeeper: one terminal dashboard for your coding agents">
+<meta property="og:description" content="See which agents need attention, read their replies, and check token usage. Free and open source. No Firekeeper account, server, or agent wrappers required.">
 <meta property="og:image" content="https://firekeeper.ai/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Firekeeper's terminal dashboard listing coding agent sessions">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Firekeeper: tend every coding agent from one bonfire">
-<meta name="twitter:description" content="See what your AI coding agents are doing, live from your terminal. Works with Claude Code, Codex, Copilot CLI, Gemini CLI, Cursor, OpenCode, and Kimi.">
+<meta name="twitter:title" content="Firekeeper: one terminal dashboard for your coding agents">
+<meta name="twitter:description" content="See which agents need attention, read their replies, and check token usage. Free and open source. No Firekeeper account, server, or agent wrappers required.">
 <meta name="twitter:image" content="https://firekeeper.ai/og.png">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","url":"https://firekeeper.ai/","description":"Live terminal dashboard and redacted session reporter for AI coding agents: Claude Code, Codex, Copilot CLI, Cursor, Gemini, OpenCode, and Kimi.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","url":"https://firekeeper.ai/","description":"Free, open-source terminal dashboard for monitoring local coding agents, reading conversations, and checking token usage. Works with Claude Code, Codex, Copilot CLI, Cursor CLI, Gemini CLI, OpenCode, and Kimi Code.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <style>
 :root {
@@ -248,6 +248,7 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
       <li class="opt"><a href="#pricing">Pricing</a></li>
       <li class="opt"><a href="#privacy">Privacy</a></li>
       <li><a href="#install">Install</a></li>
+      <li><a href="/docs/">Docs</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
     </ul>
   </div>
@@ -256,13 +257,15 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow">Open-source client · Apache 2.0 · Runs on your hardware</span>
-      <h1>Tend every coding agent from <em>one bonfire</em>.</h1>
-      <p class="lede">Live state, tokens, and transcripts for seven coding-agent CLIs, in one terminal dashboard. Optionally send redacted session history to a dashboard server. Nothing uploads unless you ask.</p>
+      <span class="eyebrow">Free · Open source · Runs on your machine</span>
+      <h1>Your coding agents.<br><em>One terminal dashboard.</em></h1>
+      <p class="lede">See which agents are working or need attention, read their replies, and check token usage without hunting through tabs. Keep launching your agents as usual; run <code>firekeeper</code> beside them.</p>
       <div class="cta">
-        <a class="btn btn-primary" href="#install">Install Firekeeper</a>
-        <a class="btn btn-ghost" href="#quickstart">Quick start →</a>
+        <a class="btn btn-primary" href="#install">Install free</a>
+        <a class="btn btn-ghost" href="#quickstart">See the first-run steps →</a>
       </div>
+      <p class="fine">Works with Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI.</p>
+      <p class="fine">No Firekeeper account, server, or wrappers required. The terminal dashboard uploads no session data. <a href="/docs/usage/#network">Usage and update checks can contact the network.</a></p>
     </div>
     <a class="shot-link" href="firekeeper-tui.jpg" aria-label="Open the dashboard screenshot at full size">
       <picture>
@@ -276,8 +279,8 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
 <section id="features">
   <div class="wrap">
     <div class="section-head">
-      <h2>Everything your agents did, in one place</h2>
-      <p>Each agent keeps its own history, in its own format, in its own folder. Firekeeper reads them all and gives you one view. Use the parts you want.</p>
+      <h2>Know where your attention is needed</h2>
+      <p>One agent or several, across projects and terminal tabs: see their latest observable state, inspect a reply, and return to the right terminal to keep working.</p>
     </div>
     <div class="grid">
       <div class="card">
@@ -294,12 +297,12 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z"/></svg></div>
         <h3>Read the conversation</h3>
-        <p>Press <kbd>c</kbd> on any session to read its prompts and replies right in the terminal. Read locally and read-only, following new messages live.</p>
+        <p>Select a session and press <kbd>c</kbd> to read its available prompts and replies, following new messages live. Press <kbd>Esc</kbd> to return. Reply and approve tool calls in the agent's own terminal.</p>
       </div>
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
         <h3>Understand usage</h3>
-        <p>Codex limits, and token history by model for Codex, Copilot CLI, Kimi, and Claude Code, read from local files.</p>
+        <p>Compare local token history by model for Codex, Copilot CLI, Kimi Code, and Claude Code. See provider limits where available, separately from local totals. <a href="/docs/usage/">Understand the data sources</a>.</p>
       </div>
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg></div>
@@ -313,32 +316,29 @@ footer a { color: var(--muted); display: inline-block; padding: 12px 0; }
 <section id="install">
   <div class="wrap">
     <div class="section-head">
-      <h2>Install in one line</h2>
-      <p>Prebuilt binaries for macOS (Apple Silicon and Intel), Linux (amd64 and arm64), and Windows 10 1809+ and 11 (amd64 and arm64). No Go toolchain needed.</p>
+      <h2>Install Firekeeper</h2>
+      <p>Choose one method for your system. Prebuilt binaries need no Go toolchain. Then start your agents as usual and open Firekeeper in another terminal.</p>
     </div>
 
     <div class="tabs" role="tablist" aria-label="Install method">
-      <button type="button" role="tab" aria-selected="true" aria-controls="p-brew" id="t-brew">Homebrew</button>
-      <button type="button" role="tab" aria-selected="false" aria-controls="p-curl" id="t-curl" tabindex="-1">Install script</button>
+      <button type="button" role="tab" aria-selected="true" aria-controls="p-brew" id="t-brew">macOS (Homebrew)</button>
+      <button type="button" role="tab" aria-selected="false" aria-controls="p-curl" id="t-curl" tabindex="-1">macOS / Linux (script)</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="p-ps" id="t-ps" tabindex="-1">Windows (PowerShell)</button>
       <button type="button" role="tab" aria-selected="false" aria-controls="p-go" id="t-go" tabindex="-1">From source</button>
     </div>
 
     <div class="panel active" id="p-brew" role="tabpanel" aria-labelledby="t-brew">
-      <div class="code"><button class="copy">Copy</button><pre>brew install DanBradbury/tap/firekeeper
-firekeeper</pre></div>
-      <p>Upgrade later with <code>brew upgrade</code>. Firekeeper also offers to update itself when a new release is out.</p>
+      <div class="code"><button class="copy">Copy</button><pre>brew install DanBradbury/tap/firekeeper</pre></div>
+      <p>For macOS with <a href="https://brew.sh/">Homebrew</a> already installed. No Homebrew? Use the macOS / Linux script tab. Upgrade later with <code>brew upgrade firekeeper</code>.</p>
     </div>
 
     <div class="panel" id="p-curl" role="tabpanel" aria-labelledby="t-curl">
-      <div class="code"><button class="copy">Copy</button><pre>curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
-firekeeper</pre></div>
-      <p>Installs to <code>~/.local/bin</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), never uses <code>sudo</code>, and verifies the download against the release's SHA-256 checksums. Pin a release with <code>sh -s -- --version vX.Y.Z</code>.</p>
+      <div class="code"><button class="copy">Copy</button><pre>curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh</pre></div>
+      <p>Installs to <code>~/.local/bin</code> without <code>sudo</code> and checks the binary against the release's SHA-256 checksums. Follow the installer's PATH hint before running <code>firekeeper</code>. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">Command not found?</a></p>
     </div>
 
     <div class="panel" id="p-ps" role="tabpanel" aria-labelledby="t-ps">
-      <div class="code"><button class="copy">Copy</button><pre>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
-firekeeper</pre></div>
+      <div class="code"><button class="copy">Copy</button><pre>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex</pre></div>
       <p>Run in Windows PowerShell 5.1 or PowerShell 7. Installs <code>firekeeper.exe</code> to <code>%LOCALAPPDATA%\Programs\firekeeper</code> (override with <code>FIREKEEPER_INSTALL_DIR</code>), adds it to your user <code>PATH</code>, needs no administrator rights, and verifies the download against the release's SHA-256 checksums. Pin a release by running <code>$env:FIREKEEPER_VERSION = 'vX.Y.Z'</code> first. The binaries are not code-signed.</p>
       <details class="verify">
         <summary>Verify first: read the script or check the zip yourself</summary>
@@ -353,40 +353,71 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Version $v</p
     </div>
 
     <div class="panel" id="p-go" role="tabpanel" aria-labelledby="t-go">
-      <div class="code"><button class="copy">Copy</button><pre>go install github.com/DanBradbury/firekeeper@latest
-firekeeper</pre></div>
-      <p>Requires Go 1.26 or newer. Builds from source report their version as <code>dev</code> and never check for updates.</p>
+      <div class="code"><button class="copy">Copy</button><pre>go install github.com/DanBradbury/firekeeper@latest</pre></div>
+      <p>Requires Go 1.26 or newer. Add your Go bin directory (<code>GOBIN</code>, or <code>$(go env GOPATH)/bin</code> by default) to PATH. Builds from source report their version as <code>dev</code> and never check for updates.</p>
     </div>
 
+    <p class="note">The script commands download and execute code. Prefer to inspect the scripts or download a release yourself? See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md">verification, version pinning, and manual installation</a>. <a href="/docs/quick-start/#install">Read the installation steps without tabs.</a></p>
+    <p class="note">macOS (Apple Silicon and Intel) is the main target. Windows 10 1809+ and 11 (amd64 and arm64) are supported with <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#windows">limitations</a>. Linux (amd64 and arm64) is best effort.</p>
     <div class="install-meta">
       <div><strong>Verify</strong><code>firekeeper --version</code></div>
-      <div><strong>See every command</strong><code>firekeeper --help</code></div>
-      <div><strong>Uninstall</strong><code>firekeeper daemon uninstall</code>, then remove the binary</div>
-      <div><strong>On Windows</strong>The daemon runs as a Task Scheduler task. To uninstall, delete <code>%LOCALAPPDATA%\Programs\firekeeper</code> and remove it from your user <code>PATH</code></div>
+      <div><strong>Launch</strong><code>firekeeper</code> in another terminal</div>
+      <div><strong>Learn the controls</strong>Press <kbd>?</kbd> inside the dashboard</div>
+      <div><strong>Remove later</strong><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#uninstall">Uninstall instructions</a></div>
     </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Your first session, in three steps</h2>
+      <p>Once installed, there is nothing to configure for the local dashboard. No login, server, or daemon needed.</p>
+    </div>
+    <ol class="steps">
+      <li><div>
+        <h3>Start an agent as usual</h3>
+        <p>Open your project and launch any supported agent with its normal command and sign-in. Already have agents running? Leave them running. Firekeeper does not install or launch them.</p>
+      </div></li>
+      <li><div>
+        <h3>Open Firekeeper beside it</h3>
+        <p>In another terminal window, tab, or pane on the same machine, run this from any directory:</p>
+        <div class="code"><button class="copy">Copy</button><pre>firekeeper</pre></div>
+        <p>The Processes view should show your agents within a couple of seconds, along with the project, state, model, and token data it can read.</p>
+      </div></li>
+      <li><div>
+        <h3>Select a session and read its latest reply</h3>
+        <p>Use Up/Down to select, <kbd>c</kbd> to open the conversation, and <kbd>Esc</kbd> to return. Press <kbd>s</kbd> to switch terminals on macOS or Windows; reply in the agent itself. Quitting Firekeeper leaves your agents running.</p>
+        <div class="keys">
+          <span><kbd>Tab</kbd> Processes / Overview / Usage</span>
+          <span><kbd>?</kbd> all keys</span>
+          <span><kbd>q</kbd> quit from a main view</span>
+        </div>
+      </div></li>
+    </ol>
+    <p class="note">Nothing showing up? Check <a href="/docs/troubleshooting/#missing-session">missing sessions</a>. On Windows, switching raises the terminal window, not the tab; on Linux, use your terminal's controls. See the <a href="/docs/how-to-work/">everyday workflow guide</a> for more.</p>
   </div>
 </section>
 
 <section id="modes">
   <div class="wrap">
     <div class="section-head">
-      <h2>Use it how you need it</h2>
-      <p>Start with the terminal dashboard. Send sessions to a server only when you want history somewhere else. Every step up is a separate command you run on purpose.</p>
+      <h2>Stay local. Add reporting only if you need it.</h2>
+      <p>The terminal dashboard is a complete, free tool on its own. Sending transcripts to a web dashboard is a separate opt-in workflow, not another setup step.</p>
     </div>
     <div class="modes">
       <div class="mode">
-        <span class="step">Mode 1</span>
+        <span class="step">Default · Free and open source</span>
         <h3>Terminal dashboard</h3>
         <div class="code"><pre>firekeeper</pre></div>
         <p>Watch running sessions, read their chat, check usage, and jump to their terminal.</p>
         <div class="leaves"><b>Leaves the machine:</b> no session data. No daemon starts.</div>
       </div>
       <div class="mode">
-        <span class="step">Mode 2</span>
+        <span class="step">Optional · Reporting</span>
         <h3>Upload to a server</h3>
-        <div class="code"><pre>firekeeper login --server https://…</pre></div>
-        <p>Link the machine with a browser approval, then run <code>report</code>, <code>backfill</code>, or the daemon for the providers you allow.</p>
-        <div class="leaves"><b>Leaves the machine:</b> redacted transcripts, to the server you named. Its operator can read them.</div>
+        <p>Preview local history with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. Then follow the <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">reporting guide</a> to link a server and choose which providers to upload.</p>
+        <div class="leaves"><b>If you enable uploads:</b> session metadata and full transcripts go through best-effort redaction to the server you name. Its operator can read them.</div>
       </div>
     </div>
   </div>
@@ -400,11 +431,11 @@ firekeeper</pre></div>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Provider</th><th>Process discovery</th><th>State &amp; metadata</th><th>Usage tab</th><th>Transcript upload</th></tr></thead>
+        <thead><tr><th>Provider</th><th>Process discovery</th><th>State &amp; metadata</th><th>Usage tab</th><th>Optional transcript upload</th></tr></thead>
         <tbody>
           <tr><td>Codex</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Limits and history</td><td class="yes">Yes</td></tr>
           <tr><td>GitHub Copilot CLI</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Local history and plan details</td><td class="yes">Yes</td></tr>
-          <tr><td>Claude Code</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Token history</td><td class="yes">Yes</td></tr>
+          <tr><td>Claude Code</td><td class="yes">Yes</td><td class="yes">Yes</td><td>Limits and token history</td><td class="yes">Yes</td></tr>
           <tr><td>Kimi Code</td><td class="yes">Yes</td><td class="part">Metadata</td><td>Token history</td><td class="yes">Yes</td></tr>
           <tr><td>OpenCode</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="yes">Yes</td></tr>
           <tr><td>Gemini CLI</td><td class="yes">Yes</td><td class="part">Yes, no NEEDS INPUT</td><td class="no">No</td><td class="yes">Yes</td></tr>
@@ -416,64 +447,16 @@ firekeeper</pre></div>
   </div>
 </section>
 
-<section id="quickstart">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Quick start</h2>
-      <p>From the terminal dashboard to uploading history in five steps. Stop at any step.</p>
-    </div>
-    <ol class="steps">
-      <li><div>
-        <h3>Open the terminal dashboard</h3>
-        <p>Start an agent in another terminal and it appears within a couple of seconds.</p>
-        <div class="code"><button class="copy">Copy</button><pre>firekeeper</pre></div>
-        <div class="keys">
-          <span><kbd>Tab</kbd> switch views</span>
-          <span><kbd>↑</kbd><kbd>↓</kbd> select</span>
-          <span><kbd>⏎</kbd> details</span>
-          <span><kbd>s</kbd> switch terminal</span>
-          <span><kbd>c</kbd> chat history</span>
-          <span><kbd>?</kbd> all keys</span>
-          <span><kbd>q</kbd> quit</span>
-        </div>
-      </div></li>
-      <li><div>
-        <h3>Link this machine to a server</h3>
-        <p>Optional, and only for a server you have access to. The command prints a URL and a code; open it, sign in, and approve.</p>
-        <div class="code"><button class="copy">Copy</button><pre>firekeeper login --server https://dash.example.com</pre></div>
-      </div></li>
-      <li><div>
-        <h3>Preview, then upload</h3>
-        <p>The dry run reads and redacts transcripts and prints counts without opening a connection. Then name the providers you allow.</p>
-        <div class="code"><button class="copy">Copy</button><pre>firekeeper report --dry-run
-firekeeper report --provider codex --provider claude</pre></div>
-      </div></li>
-      <li><div>
-        <h3>Import past sessions</h3>
-        <p>Bring in the history already on your machine, in one pass.</p>
-        <div class="code"><button class="copy">Copy</button><pre>firekeeper backfill --all --dry-run
-firekeeper backfill --all</pre></div>
-      </div></li>
-      <li><div>
-        <h3>Keep it flowing</h3>
-        <p>Install the daemon as a per-user service. It detects your agent CLIs and reports them in the background.</p>
-        <div class="code"><button class="copy">Copy</button><pre>firekeeper daemon install --dry-run
-firekeeper daemon install</pre></div>
-      </div></li>
-    </ol>
-  </div>
-</section>
-
 <section id="pricing">
   <div class="wrap">
     <div class="section-head">
       <h2>Pricing</h2>
-      <p>The terminal client is free and open source. Pay only if you want the dashboard server.</p>
+      <p>The terminal dashboard is free and open source, with no subscription. The separate commercial web dashboard is free for local use on your own machine. For remote or shared use, see the server licenses below.</p>
     </div>
     <div class="modes">
       <div class="mode tier">
         <span class="step">Free</span>
-        <h3>Client</h3>
+        <h3>Terminal dashboard</h3>
         <div class="price">$0</div>
         <ul><li>Terminal dashboard for seven agent CLIs</li><li>Local chat history and usage</li><li>Open source, Apache 2.0</li></ul>
         <div class="spacer"></div>
@@ -481,7 +464,7 @@ firekeeper daemon install</pre></div>
       </div>
       <div class="mode tier">
         <span class="step">Personal</span>
-        <h3>Dashboard server for one</h3>
+        <h3>Web dashboard server for one</h3>
         <div class="price">$49 <small>one-time</small></div>
         <ul><li>A year of updates included, then $29 a year for updates</li><li><b>$29 for the first 100 buyers</b></li></ul>
         <div class="spacer"></div>
@@ -514,7 +497,7 @@ firekeeper daemon install</pre></div>
   <div class="wrap">
     <div class="section-head">
       <h2>Your transcripts, your rules</h2>
-      <p>Firekeeper is built to run on hardware you control and to do nothing you did not ask for.</p>
+      <p>The terminal dashboard reads provider data locally and uploads no conversations. <a href="/docs/usage/#network">Provider usage lookups and release checks can contact the network.</a> Transcript reporting is separate and opt-in.</p>
     </div>
     <div class="privacy">
       <div><h3>Opt-in per provider</h3><p>An unconfigured <code>report</code> or <code>daemon</code> sends nothing. You name each provider you allow.</p></div>
@@ -534,7 +517,7 @@ firekeeper daemon install</pre></div>
       <p>Plain <code>firekeeper</code> opens the dashboard. Everything else is an explicit subcommand.</p>
     </div>
     <div class="cli-grid">
-      <div class="cli"><code>firekeeper</code><span>Terminal dashboard: Processes and Usage</span></div>
+      <div class="cli"><code>firekeeper</code><span>Terminal dashboard: Processes, Overview, and Usage</span></div>
       <div class="cli"><code>firekeeper login --server URL</code><span>Link this machine with a browser approval</span></div>
       <div class="cli"><code>firekeeper report</code><span>Upload the sessions running right now</span></div>
       <div class="cli"><code>firekeeper backfill --all</code><span>Import past sessions from local history</span></div>
@@ -553,6 +536,7 @@ firekeeper daemon install</pre></div>
     <ul>
       <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper/releases">Releases</a></li>
+      <li><a href="/docs/">Docs</a></li>
       <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/api.md">API</a></li>
       <li><a href="/terms">Terms</a></li>
       <li><a href="/refund">Refunds</a></li>

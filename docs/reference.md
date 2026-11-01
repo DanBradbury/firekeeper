@@ -8,7 +8,7 @@ The full reference for the terminal dashboard, session reporting, the daemon and
 | --- | --- | --- | --- | --- |
 | Codex | Yes | Yes, from rollout events and `state_5.sqlite` | Limits and history | Yes |
 | GitHub Copilot CLI | Yes | Yes, from `events.jsonl`, `workspace.yaml`, and `session-store.db` | Local history and plan details | Yes |
-| Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | Token history | Yes |
+| Claude Code | Yes | Yes, from `~/.claude/projects` transcripts | Limits and token history | Yes |
 | Kimi Code | Yes | Metadata from session `state.json`; the state is shown as `ACTIVE` whenever a session matches | Token history | Yes, from the main agent's `wire.jsonl` |
 | OpenCode | Yes | Yes, from `session_v2` and `session_message` in `opencode.db` | No | Yes |
 | Gemini CLI | Yes | Yes, from session logs under `~/.gemini/tmp`; `NEEDS INPUT` is never shown | No | Yes, from the main session log |
@@ -103,15 +103,19 @@ Firekeeper opens on Processes. Press Tab to move between three text views:
 - **Processes** — running agent harnesses and their session details.
 - **Overview** — an at-a-glance panel per provider with data: quota meters and
   reset countdowns where a supported source exists (Codex limits, Copilot AI
-  credits), plus tokens today, over the last 7 days, and lifetime. Claude Code
-  and Kimi expose no quota locally, so their panels show token totals and point
-  to `/usage`. `r` refreshes every provider. It reads the same sources as Usage.
-- **Usage** — Codex quotas plus Codex, Copilot CLI, Kimi, and Claude Code token history and model usage.
+  credits, and Claude limits when signed in), plus tokens today, over the last
+  7 days, and lifetime. Kimi shows local token totals; use Kimi Code's `/usage`
+  for its quota. `r` refreshes every provider. It reads the same sources as Usage.
+- **Usage** — provider limits where available, plus Codex, Copilot CLI, Kimi,
+  and Claude Code token history and model usage.
 
-Two lookups in the Usage tab leave the machine, and neither uploads session
-data. Codex usage starts a short-lived `codex app-server` and asks it for your
+Provider usage lookups can leave the machine, but none uploads session data.
+Codex usage starts a short-lived `codex app-server` and asks it for your
 limits. Copilot usage, when a GitHub token is available, asks GitHub for plan
-details (see [Usage](#usage)).
+details. Claude limits use Claude Code's existing sign-in to ask Anthropic
+for usage; disable this with `firekeeper claude-limits disable` (see
+[Usage](#usage)). Release builds also check GitHub for updates on interactive
+launch; set `FIREKEEPER_NO_UPDATE_CHECK=1` to disable that check.
 
 ### Global controls
 
@@ -121,31 +125,48 @@ details (see [Usage](#usage)).
 | `?` | Show all hotkeys; any key closes the list without running its action (Ctrl+C still quits) |
 | `q` / Ctrl+C | Quit |
 
+### Mouse
+
+The dashboard captures the mouse (cell-motion reporting). Clicks, double-clicks,
+the wheel, right-click menus, and drag or word selection map onto the keyboard
+actions listed in `?`; none adds behavior the keyboard lacks. Copying a
+selection writes the selected screen text to the clipboard, using the platform
+tool when present and OSC 52 otherwise. Hold Shift (Option in iTerm2) while
+dragging to bypass capture and use the terminal's own selection.
+
 ### Processes
 
 The Processes tab is laid out as a dashboard. Summary panels across the top
-count sessions by state, break the selected session's tokens into input,
+count sessions by state (zero counts are dimmed and sessions that need input
+are highlighted), show the running sessions' total tokens and an
+input/output/cache split, break the
+selected session's tokens into input,
 output, cache read, and cache write, and show live tokens per provider and
-the projects and branches in use. Input counts uncached input only. Codex and
-Copilot report only cached input, which shows as cache read, so their cache
-write stays 0. The breakdown comes from Claude Code transcripts, Codex rollout
-`token_count` events, and Copilot `model.model_call_success` events, read from
-the tail of each file, so very long sessions can be undercounted. Other
+the projects and branches in use. Input counts uncached input only. Codex
+reports cached input as cache read, so its cache write stays 0. Copilot's
+breakdown comes from full-session totals in read-only `session-store.db`,
+including cache reads and writes when those columns are available. Older
+stores provide input and output only. If the store is unavailable, Copilot
+falls back to `model.model_call_success` events in the event-log tail.
+Claude Code transcripts and Codex rollout `token_count` events are also read
+from file tails, so those breakdowns can undercount very long sessions. Other
 harnesses show the total only. A Claude Code session that has subagent
 files warns that its measured total is likely low, because background
 summary calls are not in the transcript. See [Claude Code subagent
 undercount](#claude-code-subagent-undercount). Below them, the sessions
-table lists one runtime per row with
-its provider, PID, project, short session id, title, state, model, tokens, and
-uptime, and a second line with the branch and working directory. A detail
-panel at the bottom shows the selected runtime's session metadata and process
-tree. On smaller terminals the summary and detail panels are hidden and the
-narrowest table columns drop out first; Enter still expands details inline.
+table lists each collapsed runtime on one row with its provider, project,
+short session id, working directory, state, model, tokens, and uptime. A `+N`
+beside the session id indicates additional sessions in the same runtime. A
+detail panel at the bottom shows the selected runtime's session metadata and
+process tree, without duplicating them in the table. The providers panel hides
+its comparison bar when only one provider is running. On smaller terminals
+the summary and detail panels may be hidden, and lower-priority table columns
+drop out; Enter expands details inline only when the bottom panel is hidden.
 
 | Key | Action |
 | --- | --- |
 | Up / Down or `J` / `K` | Select runtime |
-| Enter | Expand session metadata and process tree |
+| Enter | Expand session metadata and process tree when the bottom panel is hidden |
 | `s` | Switch to terminal containing selected runtime |
 | `c` | Open the selected session's chat history |
 | Page Up / Page Down | Move through runtime groups |
@@ -191,8 +212,8 @@ foreground program.
 | Left / Right or `H` / `L` | Switch between Codex, Copilot, Kimi, and Claude |
 | `r` | Refresh selected provider |
 
-Press `Enter` on any supported provider to browse historical sessions. Use
-Up/Down to select a session; press `Enter` or `Esc` to return. Codex history is
+Use Up/Down to select a historical session, then press `Enter` to open its
+chat. Press `Esc` to return to Usage. Codex history is
 read from local `state_5.sqlite`; Copilot history is read from local
 `session-store.db`; Claude Code history is read from its transcripts. Each
 browser is limited to the 500 most recent sessions.
@@ -235,9 +256,8 @@ history. Claude Code repeats a response's usage on every content block line,
 so each message ID is counted once, including messages copied into a resumed
 session. Requests Claude Code does not write to the transcript, such as title
 generation, are not counted, so totals can be slightly below what Claude Code
-reports. Plan limits and reset times are not stored locally; use Claude
-Code's `/usage`. Firekeeper does not read credentials or call Anthropic
-endpoints.
+reports. Plan limits and reset times come from the separate Claude limits
+lookup described above, not from these transcripts.
 
 #### Claude Code subagent undercount
 

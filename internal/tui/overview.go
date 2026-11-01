@@ -335,17 +335,8 @@ func (m model) viewOverview(contentRows int) string {
 	return strings.Join(lines[:contentRows], "\n")
 }
 
-func (m model) overviewFooter() (string, string) {
-	help := renderFooterKeys([]footerKey{{"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
-	status := "  quota windows come from each provider; others show local token history"
-	if m.usageAnyLoading() {
-		status = "  refreshing provider usage…"
-	}
-	return help, dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
-}
-
-func (m model) usageAnyLoading() bool {
-	return m.codexUsageLoading || m.copilotUsageLoading || m.kimiUsageLoading || m.claudeUsageLoading
+func (m model) overviewFooter() string {
+	return renderFooterKeys([]footerKey{{"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
 }
 
 // beginOverviewRefresh refreshes every provider that is not already loading.

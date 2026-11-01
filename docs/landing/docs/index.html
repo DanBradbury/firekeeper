@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation | Firekeeper</title>
+<meta name="description" content="Learn to use Firekeeper: install the terminal dashboard, monitor coding agents, read conversations, and understand usage.">
+<link rel="canonical" href="https://firekeeper.ai/docs/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="header-inner">
+    <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+    <nav class="header-links" aria-label="Main"><a href="/docs/" aria-current="page">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+  </div>
+</header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/" aria-current="page">Introduction</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Firekeeper documentation</p>
+    <h1>One terminal dashboard for your coding agents.</h1>
+    <p class="lede">See which agents are working or need attention, read their latest replies, and check token usage. Firekeeper is free and open source: launch your agents as usual, then run <code>firekeeper</code> in another terminal.</p>
+    <p>Works with Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI. No Firekeeper account, server, or wrappers required.</p>
+    <div class="cards">
+      <section class="card">
+        <h2>First time here?</h2>
+        <p>Install Firekeeper, find your first session, and learn the few keys you need to get started.</p>
+        <a href="/docs/quick-start/">Install and find your first session &rarr;</a>
+      </section>
+      <section class="card">
+        <h2>Already running agents?</h2>
+        <p>See who needs attention, read the latest reply, and jump back to the terminal where the work is happening.</p>
+        <a href="/docs/how-to-work/">Learn the everyday workflow &rarr;</a>
+      </section>
+    </div>
+    <figure>
+      <img class="shot" src="/firekeeper-tui.jpg" alt="Firekeeper Processes view showing agent sessions, token summaries, and selected session details">
+      <figcaption>The Processes view groups running agents with their child processes.</figcaption>
+    </figure>
+    <h2 id="what-it-does">A dashboard, not a new way to launch agents</h2>
+    <p>Firekeeper discovers Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI. Start them in their own terminals as usual. You do not need wrappers, a background service, or a dashboard account.</p>
+    <p>It reads local process information and provider session files without modifying them. Quitting Firekeeper leaves your agents running. It does not host terminal panes, keep remote sessions alive, or send messages to agents for you.</p>
+    <div class="callout"><p><strong>No transcript uploads from the terminal dashboard.</strong> Usage and update checks can contact provider services or GitHub. Sending transcripts to a server is a separate, explicit opt-in workflow. See <a href="/docs/usage/#network">what contacts the network</a>.</p></div>
+    <h2 id="guides">Find your next step</h2>
+    <div class="cards">
+      <section class="card"><h3>Understand usage</h3><p>Tell local token history apart from account limits, and browse past sessions.</p><a href="/docs/usage/">Read the usage guide &rarr;</a></section>
+      <section class="card"><h3>Keyboard shortcuts</h3><p>Navigation, chat history, terminal switching, and refresh controls in one place.</p><a href="/docs/keyboard/">Find a shortcut &rarr;</a></section>
+      <section class="card"><h3>Something missing?</h3><p>Check session discovery, terminal permissions, provider paths, and incomplete totals.</p><a href="/docs/troubleshooting/">Troubleshoot Firekeeper &rarr;</a></section>
+      <section class="card"><h3>Go beyond the terminal</h3><p>Explore optional snapshots, exports, and redacted reporting. None is needed for the live dashboard.</p><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Read the reporting reference &rarr;</a></section>
+    </div>
+    <nav class="page-nav" aria-label="Next page"><a href="/docs/quick-start/"><small>Next</small>Quick start &rarr;</a></nav>
+    <footer class="page-footer">Open-source client. Separate, optional commercial server. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>

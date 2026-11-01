@@ -189,6 +189,7 @@ func entries(t *testing.T, dir string) []string {
 }
 
 func TestInstallOK(t *testing.T) {
+	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "bin")
 	in := serve(t, release{tag: "v1.2.3", archive: goodArchive(t)})
 	var log bytes.Buffer
@@ -210,6 +211,7 @@ func TestInstallOK(t *testing.T) {
 }
 
 func TestInstallReplacesExisting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "firekeeper-server"), []byte("old"), 0o755)
 	in := serve(t, release{tag: "v1.0.0", archive: goodArchive(t)})
@@ -313,6 +315,7 @@ func TestOversizedDownload(t *testing.T) {
 }
 
 func TestSanityCheckFailureInstallsNothing(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	in := serve(t, release{tag: "v1.0.0", archive: makeArchive(t, entry{name: "firekeeper-server", body: "#!/bin/sh\nexit 1\n"})})
 	if _, err := in.Install(context.Background(), dir); err == nil || !strings.Contains(err.Error(), "version") {
@@ -416,6 +419,7 @@ func TestResolveRules(t *testing.T) {
 }
 
 func TestLoopbackHTTPInstall(t *testing.T) {
+	t.Parallel()
 	mux := http.NewServeMux()
 	arch := goodArchive(t)
 	sum := sha256.Sum256(arch)
@@ -520,8 +524,10 @@ func TestAssetAndExecutableNames(t *testing.T) {
 }
 
 func TestWindowsZipInstall(t *testing.T) {
+	t.Parallel()
 	for _, arch := range []string{"amd64", "arm64"} {
 		t.Run(arch, func(t *testing.T) {
+			t.Parallel()
 			dir := filepath.Join(t.TempDir(), "bin")
 			in := serve(t, release{tag: "v0.8.0", archive: goodZip(t), goos: "windows", goarch: arch})
 			p, err := in.Install(context.Background(), dir)
@@ -543,6 +549,7 @@ func TestWindowsZipInstall(t *testing.T) {
 }
 
 func TestWindowsZipReplacesExisting(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "firekeeper-server.exe"), []byte("old"), 0o755)
 	in := serve(t, release{tag: "v0.8.0", archive: goodZip(t), goos: "windows"})

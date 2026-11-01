@@ -1,10 +1,15 @@
 package session
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/DanBradbury/firekeeper/internal/testenv"
 )
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
@@ -170,6 +175,101 @@ func TestScanCopilotEventsTracksActiveWaitingAndInput(t *testing.T) {
 	}
 	if metadata.UpdatedAt != time.Date(2026, 8, 1, 1, 0, 6, 0, time.UTC) {
 		t.Fatalf("updated time = %s", metadata.UpdatedAt)
+	}
+}
+
+func TestCopilotStoredTokenBreakdown(t *testing.T) {
+	sqlite := testenv.NeedTool(t, "sqlite3")
+	for _, tt := range []struct {
+		name    string
+		columns string
+		values  string
+		want    TokenBreakdown
+		total   int64
+		longLog bool
+	}{
+		{
+			name:    "full session beyond event tail",
+			columns: ", cache_read_tokens INTEGER, cache_write_tokens INTEGER",
+			values:  "(1, '%s', 'main-model', 1000, 50, 800, 100), (2, '%s', 'main-model', 200, 5, NULL, NULL)",
+			want:    TokenBreakdown{Input: 300, Output: 55, CacheRead: 800, CacheWrite: 100},
+			total:   1255,
+			longLog: true,
+		},
+		{
+			name:   "older schema without cache columns",
+			values: "(1, '%s', 'main-model', 1000, 50), (2, '%s', 'main-model', 200, 5)",
+			want:   TokenBreakdown{Input: 1200, Output: 55},
+			total:  1255,
+		},
+		{
+			name:    "read cache only",
+			columns: ", cache_read_tokens INTEGER",
+			values:  "(1, '%s', 'main-model', 1000, 50, 800), (2, '%s', 'main-model', 200, 5, NULL)",
+			want:    TokenBreakdown{Input: 400, Output: 55, CacheRead: 800},
+			total:   1255,
+		},
+		{
+			name:    "null and negative counters",
+			columns: ", cache_read_tokens INTEGER, cache_write_tokens INTEGER",
+			values:  "(1, '%s', 'main-model', 100, 50, NULL, -10), (2, '%s', 'main-model', NULL, -5, NULL, NULL)",
+			want:    TokenBreakdown{Input: 100, Output: 50},
+			total:   150,
+		},
+		{
+			name:   "no recorded usage falls back to events",
+			values: "(1, '%s', 'main-model', NULL, NULL), (2, '%s', 'main-model', NULL, NULL)",
+			want:   TokenBreakdown{Input: 9, Output: 1},
+			total:  1,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, "session-store.db")
+			schema := `
+					CREATE TABLE sessions (
+						id TEXT PRIMARY KEY, cwd TEXT, repository TEXT, host_type TEXT,
+						branch TEXT, summary TEXT, created_at TEXT, updated_at TEXT
+					);
+					CREATE TABLE assistant_usage_events (
+						id INTEGER PRIMARY KEY, session_id TEXT, model TEXT,
+						input_tokens INTEGER, output_tokens INTEGER` + tt.columns + `
+					);
+					INSERT INTO sessions (id) VALUES ('` + testCopilotSessionID + `'), ('other-session');
+					INSERT INTO assistant_usage_events VALUES ` + fmt.Sprintf(tt.values, testCopilotSessionID, testCopilotSessionID) + `;
+					INSERT INTO assistant_usage_events (id, session_id, input_tokens, output_tokens)
+						VALUES (3, 'other-session', 99999, 99999);
+				`
+			if output, err := exec.Command(sqlite, path, schema).CombinedOutput(); err != nil {
+				t.Fatalf("create synthetic Copilot store: %v: %s", err, output)
+			}
+			directory := filepath.Join(home, "session-state", testCopilotSessionID)
+			fixtureFile(t, filepath.Join(directory, "workspace.yaml"), "cwd: /workspace/test\n")
+			events := `{"type":"model.model_call_success","data":{"responseChunk":{"usage":{"prompt_tokens":9,"completion_tokens":1}}}}` + "\n"
+			if tt.longLog {
+				events += `{"type":"system.message","data":{"content":"` + strings.Repeat("x", int(CopilotEventTailBytes)) + "\"}}\n"
+			}
+			events += "{\"type\":\"assistant.turn_end\",\"data\":{\"outputTokens\":1}}\n"
+			fixtureFile(t, filepath.Join(directory, "events.jsonl"), events)
+			d := standalone()
+			stored, err := d.readCopilotStoredMetadata(home, map[string]bool{testCopilotSessionID: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(stored) != 1 {
+				t.Fatalf("got %d stored sessions, want only the requested session", len(stored))
+			}
+			info, err := d.loadCopilotSession(home, testCopilotSessionID, stored[testCopilotSessionID])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Tokens != tt.want || info.TokensUsed != tt.total {
+				t.Fatalf("tokens = %+v, total = %d; want %+v, total = %d", info.Tokens, info.TokensUsed, tt.want, tt.total)
+			}
+			if info.State != SessionStateWaiting {
+				t.Fatalf("state = %s, want WAITING", info.State)
+			}
+		})
 	}
 }
 

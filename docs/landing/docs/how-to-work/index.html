@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to work with Firekeeper | Firekeeper docs</title>
+<meta name="description" content="An everyday workflow for monitoring coding agents, reading their conversations, and switching back to their terminals with Firekeeper.">
+<link rel="canonical" href="https://firekeeper.ai/docs/how-to-work/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/" aria-current="page">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Start here</p>
+    <h1>How to work with Firekeeper</h1>
+    <p class="lede">Keep Firekeeper beside your agent terminals. Use it to decide where to look next, then do the work in the agent itself.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#watch">Watch</a><a href="#read">Read</a><a href="#switch">Switch</a><a href="#remote">Remote work</a></nav>
+    <h2 id="watch">Watch several agents at once</h2>
+    <p>Start your agents as usual, in separate tabs, windows, or multiplexer panes. Open another terminal and run <code>firekeeper</code>. Leave it on <strong>Processes</strong> while they work.</p>
+    <p>The list refreshes every two seconds. Each row represents a runtime and its child processes, not necessarily a single conversation. A <code>+N</code> next to the session ID means the runtime has more sessions.</p>
+    <p>Select a row with <kbd>Up</kbd> / <kbd>Down</kbd> or <kbd>j</kbd> / <kbd>k</kbd>. The bottom panel shows session metadata and the process tree. If your terminal is too small for that panel, press <kbd>Enter</kbd> to expand details inline.</p>
+    <div class="table-wrap" role="region" aria-label="Session states" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">State</th><th scope="col">How to use it</th></tr></thead>
+        <tbody>
+          <tr><td><code>ACTIVE</code></td><td>The latest observable activity suggests work is in progress.</td></tr>
+          <tr><td><code>WAITING</code></td><td>The agent appears idle or finished with its latest turn. Check the reply before giving it another task.</td></tr>
+          <tr><td><code>NEEDS INPUT</code></td><td>The provider exposed an input or approval request. Switch to its terminal to respond.</td></tr>
+          <tr><td><code>UNKNOWN</code></td><td>Firekeeper cannot infer a state from the available data. Check the original terminal.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>These are hints from provider events, not guaranteed ground truth. Not every provider exposes every state: Kimi matches are shown as active, and Gemini and Cursor never show needs-input. See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#supported-providers">provider-specific behavior</a>.</p>
+    <h2 id="read">Read the latest reply without switching away</h2>
+    <p>On Processes, select a runtime and press <kbd>c</kbd>. The chat view shows the matched session's prompts and assistant replies, read-only. It leaves out tool calls, tool results, and injected harness context.</p>
+    <p>New messages appear on the two-second refresh while you follow the bottom of the conversation. Scroll up to read earlier messages; press <kbd>G</kbd> to return to the latest. Press <kbd>Esc</kbd>, <kbd>c</kbd>, or <kbd>q</kbd> to return to the view you came from.</p>
+    <p>The view keeps the latest 1,000 messages. OpenCode replies appear after they finish. To reply, approve a tool call, or inspect full tool output, use the agent's own terminal.</p>
+    <h2 id="switch">Go where your attention is needed</h2>
+    <p>Back on Processes, press <kbd>s</kbd> to focus the selected runtime's terminal.</p>
+    <ul>
+      <li><strong>macOS:</strong> Ghostty 1.3+, Terminal.app, and iTerm2 are supported. Allow Automation access when macOS asks. Ghostty versions without TTY matching use a best-effort working-directory match, which can be ambiguous when several panes share a directory.</li>
+      <li><strong>Windows:</strong> Firekeeper raises the hosting window. It cannot pick a tab inside Windows Terminal; choose the tab yourself.</li>
+      <li><strong>Linux:</strong> terminal switching is not supported. Use your terminal or multiplexer controls.</li>
+    </ul>
+    <p>Firekeeper also attempts to focus a matching Herdr pane on macOS before raising the terminal. Herdr is optional; Firekeeper does not create or manage its sessions.</p>
+    <h2 id="check-usage">Check usage between tasks</h2>
+    <p>Press <kbd>Tab</kbd> to open <strong>Overview</strong> for provider totals and available limits. Tab again to <strong>Usage</strong> for model breakdowns and historical sessions. Use <kbd>Left</kbd> / <kbd>Right</kbd> to switch providers there.</p>
+    <p>These views answer different questions from Processes: a session can disappear from the live list when its runtime exits but remain in local usage history. Read <a href="/docs/usage/">Understand usage</a> before treating token totals as a quota or bill.</p>
+    <h2 id="remote">Work on another machine</h2>
+    <p>Firekeeper discovers processes on the machine where it runs. If your agents run on a remote host, install Firekeeper on that host and run it inside your usual SSH session:</p>
+    <pre><code>ssh you@workbox
+firekeeper</code></pre>
+    <p>This monitors that host, not your laptop and remote host together. Terminal switching does not focus a local terminal through SSH. Firekeeper is not a multiplexer: it does not keep agents alive when SSH disconnects. Use your existing session-management workflow for that.</p>
+    <h2 id="finish">Close the dashboard, leave the work running</h2>
+    <p>Press <kbd>q</kbd> from a main view to quit, or <kbd>Ctrl+C</kbd> from anywhere. Only Firekeeper exits. Run <code>firekeeper</code> again to rediscover the agents still running.</p>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/quick-start/"><small>Previous</small>&larr; Quick start</a><a href="/docs/usage/"><small>Next</small>Understand usage &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/how-to-work/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>
