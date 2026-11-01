@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/DanBradbury/firekeeper/internal/transcript"
@@ -31,8 +32,8 @@ type SeqCase struct {
 // RunSeqStability checks that reading each fixture in two halves, the way a
 // tailing reporter sees a growing file, yields the same events as reading it
 // whole. The first half is read from Partial at offset 0; the second half is
-// read from Path at the offset that read returned. Seq, Role, Text, and
-// ToolName must match the whole read in order. It also checks that re-reads
+// read from Path at the offset that read returned. Every event field must
+// match the whole read in order. It also checks that re-reads
 // are deterministic, seqs strictly increase, and reading at the end is a no-op.
 //
 // Failure messages name seqs and offsets only, never transcript text.
@@ -45,24 +46,6 @@ func RunSeqStability(t *testing.T, source reader.Source, cases []SeqCase) {
 			}
 		})
 	}
-}
-
-type eventKey struct {
-	Seq      int64
-	Role     transcript.Role
-	Text     string
-	ToolName string
-}
-
-func keys(events []transcript.Event) []eventKey {
-	out := make([]eventKey, len(events))
-	for i, e := range events {
-		out[i] = eventKey{Seq: e.Seq, Role: e.Role, Text: e.Text}
-		if e.ToolName != nil {
-			out[i].ToolName = *e.ToolName
-		}
-	}
-	return out
 }
 
 func seqs(events []transcript.Event) []int64 {
@@ -103,7 +86,7 @@ func checkSeqStability(source reader.Source, c SeqCase, tempDir string) error {
 	if err != nil {
 		return fmt.Errorf("second whole read: %w", err)
 	}
-	if againEnd != end || !equalKeys(keys(again), keys(whole)) {
+	if againEnd != end || !reflect.DeepEqual(again, whole) {
 		return fmt.Errorf("re-read not deterministic: seqs %v end %d, then seqs %v end %d", seqs(whole), end, seqs(again), againEnd)
 	}
 
@@ -125,8 +108,8 @@ func checkSeqStability(source reader.Source, c SeqCase, tempDir string) error {
 		return fmt.Errorf("second half read from offset %d: %w", mid, err)
 	}
 	split := append(append([]transcript.Event{}, first...), second...)
-	if !equalKeys(keys(split), keys(whole)) {
-		return fmt.Errorf("split at offset %d gives seqs %v + %v, whole gives %v (or roles, text, or tool names differ)", mid, seqs(first), seqs(second), seqs(whole))
+	if !reflect.DeepEqual(split, whole) {
+		return fmt.Errorf("split at offset %d gives seqs %v + %v, whole gives %v (or event fields differ)", mid, seqs(first), seqs(second), seqs(whole))
 	}
 	if secondEnd != end {
 		return fmt.Errorf("split read ends at offset %d, whole read at %d", secondEnd, end)
@@ -140,18 +123,6 @@ func checkSeqStability(source reader.Source, c SeqCase, tempDir string) error {
 		return fmt.Errorf("read at end offset %d returned %d events and offset %d; want none and the same offset", end, len(tail), tailEnd)
 	}
 	return nil
-}
-
-func equalKeys(a, b []eventKey) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // writeLinePrefix copies the first half of path's newline-terminated lines into

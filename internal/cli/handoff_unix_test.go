@@ -4,7 +4,9 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -138,11 +140,16 @@ func TestResolveServerThroughSymlink(t *testing.T) {
 // environment: an empty PATH directory unless extra says otherwise.
 func helperCmd(t *testing.T, exe string, env []string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
-	cmd := exec.Command(exe, args...)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Env = append([]string{helperEnv + "=1", "HOME=" + t.TempDir(), "PATH=" + t.TempDir()}, env...)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		t.Fatalf("helper did not finish: %v", ctx.Err())
+	}
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
@@ -155,6 +162,8 @@ func helperCmd(t *testing.T, exe string, env []string, args ...string) (stdout, 
 }
 
 // copyTestBinary makes dir/name an executable copy of the running test binary.
+// Call before t.Parallel: a concurrent fork can briefly inherit the writable
+// descriptor and make Linux reject execution with ETXTBSY even after Close.
 func copyTestBinary(t *testing.T, dir, name string) string {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -183,47 +192,49 @@ func copyTestBinary(t *testing.T, dir, name string) string {
 // process is replaced, the arguments arrive after "serve", the environment is
 // kept, and the server's exit status is the command's.
 func TestServeExecsTheServer(t *testing.T) {
-	dir := t.TempDir()
-	client := copyTestBinary(t, dir, "firekeeper")
-	server := copyTestBinary(t, dir, serverBinName)
-	args := []string{"serve", "--listen", "127.0.0.1:0", "--banner", "two words", "admin"}
-
-	out, errOut, code := helperCmd(t, client, []string{passthroughEnv + "=kept", exitEnv + "=3"}, args...)
-	if code != 3 {
-		t.Fatalf("exit %d, want the server's 3; stderr %q", code, errOut)
-	}
-	want := "argv0=firekeeper-server\narg=serve\narg=--listen\narg=127.0.0.1:0\narg=--banner\narg=two words\narg=admin\npassthrough=kept\n"
-	if out != want {
-		t.Fatalf("server saw:\n%s\nwant:\n%s", out, want)
-	}
-
-	// The same client reaches the server through each place it looks.
-	if _, _, code := helperCmd(t, client, nil, "serve"); code != 0 {
-		t.Errorf("sibling lookup: exit %d", code)
-	}
-	if err := os.Remove(server); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, code := helperCmd(t, client, nil, "serve"); code != 2 {
-		t.Errorf("without the server anywhere: exit %d, want 2", code)
-	}
-	elsewhere := copyTestBinary(t, t.TempDir(), serverBinName)
-	if _, _, code := helperCmd(t, client, []string{ServerBinEnv + "=" + elsewhere, exitEnv + "=7"}, "serve"); code != 7 {
-		t.Errorf("env lookup: exit %d, want 7", code)
-	}
-	pathDir := t.TempDir()
-	if err := os.Symlink(elsewhere, filepath.Join(pathDir, serverBinName)); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command(client, "serve")
-	cmd.Env = []string{helperEnv + "=1", "PATH=" + pathDir, exitEnv + "=7"}
-	if err := cmd.Run(); err == nil || cmd.ProcessState.ExitCode() != 7 {
-		t.Errorf("PATH lookup: %v", err)
+	for _, tt := range []struct {
+		name string
+		code int
+	}{
+		{"sibling", 0},
+		{"env", 3},
+		{"PATH", 7},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			client := copyTestBinary(t, dir, "firekeeper")
+			env := []string{passthroughEnv + "=kept", exitEnv + "=" + fmt.Sprint(tt.code)}
+			switch tt.name {
+			case "sibling":
+				copyTestBinary(t, dir, serverBinName)
+			case "env":
+				server := copyTestBinary(t, t.TempDir(), serverBinName)
+				env = append(env, ServerBinEnv+"="+server)
+			case "PATH":
+				server := copyTestBinary(t, t.TempDir(), serverBinName)
+				pathDir := t.TempDir()
+				if err := os.Symlink(server, filepath.Join(pathDir, serverBinName)); err != nil {
+					t.Fatal(err)
+				}
+				env = append(env, "PATH="+pathDir)
+			}
+			t.Parallel()
+			args := []string{"serve", "--listen", "127.0.0.1:0", "--banner", "two words", "admin"}
+			out, errOut, code := helperCmd(t, client, env, args...)
+			if code != tt.code || errOut != "" {
+				t.Fatalf("exit %d, want %d; stderr %q", code, tt.code, errOut)
+			}
+			want := "argv0=firekeeper-server\narg=serve\narg=--listen\narg=127.0.0.1:0\narg=--banner\narg=two words\narg=admin\npassthrough=kept\n"
+			if out != want {
+				t.Fatalf("server saw:\n%s\nwant:\n%s", out, want)
+			}
+		})
 	}
 }
 
 func TestServeNotFoundExit(t *testing.T) {
 	client := copyTestBinary(t, t.TempDir(), "firekeeper")
+	t.Parallel()
 	_, errOut, code := helperCmd(t, client, nil, "serve", "--listen", "x")
 	if code != 2 || !strings.Contains(errOut, "separate commercial binary") || !strings.Contains(errOut, ServerBinEnv) {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
@@ -238,6 +249,7 @@ func TestServeNotFoundExit(t *testing.T) {
 // status comes back, and a signal sent to this process reaches the child.
 func TestRunChild(t *testing.T) {
 	server := copyTestBinary(t, t.TempDir(), serverBinName)
+	t.Parallel()
 	env := []string{helperEnv + "=1", exitEnv + "=7"}
 	var stderr bytes.Buffer
 	if code := runChild(server, []string{serverBinName, "serve"}, env, &stderr); code != 7 {
