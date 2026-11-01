@@ -816,3 +816,37 @@ func TestIdleDashboardScanStates(t *testing.T) {
 		t.Fatal("failed scan presented as empty discovery")
 	}
 }
+
+func TestIdleDashboardPaintsCenteredPadding(t *testing.T) {
+	for _, state := range []string{"idle", "pending", "error", "metadata warning", "terminal status"} {
+		t.Run(state, func(t *testing.T) {
+			m := dashboardTestModel()
+			m.processGroups = nil
+			m.width, m.height = 140, 24
+			switch state {
+			case "pending":
+				m.refreshedAt = time.Time{}
+			case "error":
+				m.processErr = "ps unavailable"
+			case "metadata warning":
+				m.processMetadataWarning = "metadata unavailable"
+			case "terminal status":
+				m.terminalStatus = "terminal unavailable"
+			}
+			for _, line := range strings.Split(m.viewIdleProcesses(m.height-chromeRows), "\n") {
+				plain := ansi.Strip(line)
+				if strings.TrimSpace(plain) == "" {
+					continue
+				}
+				padding := len(plain) - len(strings.TrimLeft(plain, " "))
+				if padding == 0 {
+					continue
+				}
+				want := dashPaint(strings.Repeat(" ", padding), usageTextColor, false)
+				if !strings.HasPrefix(line, want) {
+					t.Fatalf("centered padding does not use the dashboard background: %q", line)
+				}
+			}
+		})
+	}
+}

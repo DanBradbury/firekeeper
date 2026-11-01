@@ -135,7 +135,7 @@ func (m model) viewIdleProcesses(rows int) string {
 	for i := 1; i < rows; i++ {
 		line := ""
 		if index := i - start; index >= 0 && index < len(body) {
-			line = strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(body[index]))/2)) + body[index]
+			line = dashPaint(strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(body[index]))/2)), usageTextColor, false) + body[index]
 		}
 		lines[i] = dashFit(line, m.width, usagePanelColor)
 	}
