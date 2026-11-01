@@ -11,6 +11,7 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/config"
 	"github.com/DanBradbury/firekeeper/internal/daemon"
 	"github.com/DanBradbury/firekeeper/internal/reporter"
+	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 	"github.com/DanBradbury/firekeeper/internal/version"
 )
 
@@ -141,6 +142,11 @@ func writeConfig(w io.Writer, c config.Config) {
 	fmt.Fprintf(w, "\n[redact]\npaths = %s\n", tomlList(c.RedactPaths))
 	fmt.Fprintf(w, "\n[telemetry]\nenabled = %t%s\nport = %d\n", c.TelemetryEnabled, src("telemetry"), c.TelemetryPort)
 	fmt.Fprintf(w, "\n[claude_limits]\nenabled = %t%s\n", c.ClaudeLimits, src("claude_limits"))
+	cloudInterval := c.ClaudeCloudInterval
+	if cloudInterval == 0 {
+		cloudInterval = claudecloud.DefaultPollInterval
+	}
+	fmt.Fprintf(w, "\n[claude_cloud]\nenabled = %t%s\ninterval = %q\n", c.ClaudeCloud, src("claude_cloud"), cloudInterval.String())
 }
 
 func tomlList(items []string) string {

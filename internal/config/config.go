@@ -64,6 +64,13 @@ type Config struct {
 	// does anything when a Claude Code sign-in exists; `firekeeper
 	// claude-limits disable` turns it off.
 	ClaudeLimits bool
+	// ClaudeCloud lets the daemon import Claude Code on the web sessions
+	// with the user's Claude Code login, from `[claude_cloud] enabled`.
+	// Off by default.
+	ClaudeCloud bool
+	// ClaudeCloudInterval is the time between cloud sync passes, from
+	// `[claude_cloud] interval`. Zero means the poller's default.
+	ClaudeCloudInterval time.Duration
 
 	// Path is the config file read, or "" when none was.
 	Path string
@@ -100,6 +107,10 @@ type file struct {
 	ClaudeLimits *struct {
 		Enabled *bool `toml:"enabled"`
 	} `toml:"claude_limits"`
+	ClaudeCloud *struct {
+		Enabled  *bool   `toml:"enabled"`
+		Interval *string `toml:"interval"`
+	} `toml:"claude_cloud"`
 
 	// Settings that only the separate dashboard server reads. They are
 	// accepted so one config file can serve both programs, and ignored here.
@@ -300,6 +311,21 @@ func (c *Config) readFile(path, home string) error {
 	}
 	if f.ClaudeLimits != nil && f.ClaudeLimits.Enabled != nil {
 		c.ClaudeLimits, c.Sources["claude_limits"] = *f.ClaudeLimits.Enabled, "file"
+	}
+	if f.ClaudeCloud != nil {
+		if f.ClaudeCloud.Enabled != nil {
+			c.ClaudeCloud, c.Sources["claude_cloud"] = *f.ClaudeCloud.Enabled, "file"
+		}
+		if f.ClaudeCloud.Interval != nil {
+			d, err := time.ParseDuration(strings.TrimSpace(*f.ClaudeCloud.Interval))
+			if err != nil || d <= 0 {
+				return fmt.Errorf("config: %s: claude_cloud.interval %q is not a positive duration such as \"15m\"", path, *f.ClaudeCloud.Interval)
+			}
+			c.ClaudeCloudInterval = d
+			if c.Sources["claude_cloud"] == "" {
+				c.Sources["claude_cloud"] = "file"
+			}
+		}
 	}
 	return nil
 }

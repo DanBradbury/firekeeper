@@ -164,6 +164,9 @@ func (m model) claudeOverview(now time.Time) overviewProvider {
 	case snapshot.LimitsErr != "":
 		provider.Notes = append(provider.Notes, "Limits unavailable: "+snapshot.LimitsErr)
 	}
+	if snapshot.CloudSyncWarn != "" {
+		provider.Notes = append(provider.Notes, "Cloud sync: "+snapshot.CloudSyncWarn)
+	}
 	return provider
 }
 

@@ -103,6 +103,13 @@ func (s *Source) configDir() (string, error) {
 // read starting mid-file first scans the earlier lines to count them and to
 // recover the tool names and token accounting that later records depend on.
 func (s *Source) Read(path string, fromOffset int64) ([]transcript.Event, int64, error) {
+	return ReadAs(path, fromOffset, sessionIDFromPath(path))
+}
+
+// ReadAs is Read for a transcript whose file name is not the session's uuid.
+// The cloud reader uses it: its sessions keep their own ids. An empty
+// sessionID falls back to the first valid uuid a record carries.
+func ReadAs(path string, fromOffset int64, sessionID string) ([]transcript.Event, int64, error) {
 	if fromOffset < 0 {
 		return nil, 0, fmt.Errorf("claude: negative offset %d", fromOffset)
 	}
@@ -119,7 +126,7 @@ func (s *Source) Read(path string, fromOffset int64) ([]transcript.Event, int64,
 		return nil, fromOffset, fmt.Errorf("claude: offset %d is past end of transcript (%d bytes); file was truncated or rotated", fromOffset, info.Size())
 	}
 
-	p := parser{sessionID: sessionIDFromPath(path), toolNames: map[string]string{}, counted: map[string]bool{}}
+	p := parser{sessionID: sessionID, toolNames: map[string]string{}, counted: map[string]bool{}}
 	reader := bufio.NewReaderSize(file, 256<<10)
 	var offset int64
 	for offset < fromOffset {

@@ -42,7 +42,9 @@ described in section 1.3.
   session has files under `subagents/`. It uses that only to warn that token
   totals may be low, and it does not read those files' contents for the warning.
   The Claude limits lookup also reads Claude Code's existing OAuth sign-in
-  when available, as described in section 1.3.
+  when available, as described in section 1.3. So do `backfill
+  --claude-cloud` and, only when `[claude_cloud] enabled = true`, the daemon,
+  to import Claude Code on the web sessions (section 1.3).
   Sessions in repositories containing a `.firekeeper-ignore` file, or matching
   `exclude` in the config, are never read.
 - **Writes**, under `~/.firekeeper/`: `config.toml` (server address and, after
@@ -76,6 +78,16 @@ None sends session data, and none goes to me:
 - **Codex usage** starts your own `codex app-server` for a moment and asks it
   for your rate limits. Codex contacts OpenAI under your account, governed by
   OpenAI's privacy policy.
+- **Claude Code on the web**: only when you run `firekeeper backfill
+  --claude-cloud`, or turn on `[claude_cloud] enabled = true` for the daemon
+  (off by default), Firekeeper reads your Claude Code login (the macOS
+  keychain on macOS; `~/.claude/.credentials.json` on Linux and Windows) and
+  the organization id in `~/.claude.json`, and requests your cloud sessions
+  from `api.anthropic.com`, an undocumented API governed by Anthropic's terms
+  and privacy policy. Those files are read, never written, and the token is
+  never refreshed. The token stays in memory and is never stored, logged, or
+  uploaded. The sessions are cached unredacted in `~/.firekeeper/cloud/claude/`
+  (mode `0600`) and then uploaded as in section 1.4.
 - **Copilot plan details**: if a GitHub token is available, Firekeeper sends
   it to GitHub's API (or `GITHUB_API_URL`) to read your Copilot plan. This is
   governed by GitHub's privacy statement. The token is not stored or logged.

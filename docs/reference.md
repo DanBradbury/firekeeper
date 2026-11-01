@@ -664,6 +664,7 @@ that is still running keeps the state discovery reports for it.
 | `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Import this provider's sessions. Repeatable. `codex`, `copilot`, and `claude` can be backfilled. |
 | `--all` | Import all supported providers found locally, for this pass only. |
+| `--claude-cloud` | Import Claude Code on the web sessions instead of local ones. See [Cloud sessions](#claude-code-on-the-web-cloud-sessions). Not with `--all` or `--provider`. |
 | `--since DURATION` | Only import transcripts modified within the duration, for example `720h`. |
 | `--after YYYY-MM-DD` | Only import transcripts modified after this local date. Use `--since` or `--after`, not both. |
 | `--limit N` | Import at most N sessions, newest first. Run again to continue. |
@@ -679,6 +680,94 @@ learn the directory, and nothing more of an excluded transcript is read.
 Claude Code also reads at most 64 KiB to learn the directory; unknown directories
 are excluded. Historical Claude metadata uses the first available branch and
 model in that head, with file modification time as last activity.
+
+#### Claude Code on the web (cloud sessions)
+
+Sessions you ran on claude.ai/code have no files on your machine, so
+`--all` cannot see them. `--claude-cloud` imports them:
+
+```sh
+firekeeper backfill --claude-cloud --dry-run    # download, then print the plan
+firekeeper backfill --claude-cloud              # print the plan, ask, upload
+```
+
+How it works, and what you should know first:
+
+- **It downloads before it plans.** It signs in with your own Claude Code
+  login and makes read-only requests to
+  `api.anthropic.com` for your session list and each session's events. Even
+  with `--dry-run` it downloads, because the plan needs the events; nothing
+  goes to the dashboard until you confirm. Run `claude` and sign in first if it
+  says there is no login.
+- **Where the login comes from.** On macOS, the keychain item Claude Code
+  created (`Claude Code-credentials`), falling back to the file below. On
+  Linux and Windows, Claude Code's own `~/.claude/.credentials.json`
+  (`CLAUDE_CONFIG_DIR/.credentials.json` when that is set). Only
+  `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt` are read; the
+  refresh token is not. The organization id comes from `~/.claude.json`.
+  Both files are read, never written. Firekeeper never refreshes the token:
+  when it has expired, the import stops with a message to run `claude` once,
+  which refreshes it.
+- **It uses an undocumented API.** That is the internal API behind the web
+  app. It can change or stop working without notice; when it does, backfill
+  stops with an error rather than guessing. Check that Anthropic's terms allow
+  this use of your account.
+- **Your login stays local.** The token is held in memory for the run and sent
+  only to `api.anthropic.com`, with redirects refused. It is never logged,
+  saved, or uploaded.
+- **A local cache.** Sessions are written, unredacted like any transcript on
+  disk, to `~/.firekeeper/cloud/claude/` (mode `0600`), not to `~/.claude`.
+  Redaction happens as it does for every upload. A rerun downloads a session
+  again only when it changed, and uploads only its new events. Delete the
+  folder to reclaim space; the next run downloads again, and the server drops
+  events it already has.
+- **What is imported.** Prompts, replies, tool calls and results, and
+  sub-agent messages (shown as meta). Session plumbing (control messages,
+  rate limits, environment logs) is dropped. The dashboard shows the cloud
+  session id, its title, model, and branch. The API does not report a
+  working directory, so the project is the session's GitHub repository and
+  the directory is the virtual path `/claude-cloud/<owner>/<repo>` (just
+  `/claude-cloud` for a session with no repository). `--since`, `--after`, and `--limit` work as above;
+  `.firekeeper-ignore` and `exclude` match local paths, so they do not apply
+  to cloud sessions.
+
+#### Keeping cloud sessions in sync from the daemon
+
+The daemon can import cloud sessions as they happen. It is off until you
+turn it on in `~/.firekeeper/config.toml`, and `claude` must also be in
+`providers`:
+
+```toml
+providers = ["claude"]
+
+[claude_cloud]
+enabled = true      # default false
+interval = "15m"    # time between cloud passes; default 15m, minimum 10m
+```
+
+Restart the daemon after editing the file. Each cloud pass lists your
+sessions once, downloads at most 25 that are new or changed since the last
+pass (a session updated before the daemon started is included when it falls
+within `scan_lookback`; use `backfill --claude-cloud` for older history), and
+uploads only the new events through the same redaction and batching as
+everything else. A pass that leaves sessions for later runs again after a
+minute. Sessions that did not change cost one list request and no
+downloads.
+
+Failures never stop the daemon. No login, an expired login, a refused login
+(HTTP 401 or 403), rate limiting (429), a server error (5xx), no reply, and an
+API that changed shape fail the whole pass, on the session list or on any
+session's download: the pass stops at the first one rather than trying the
+next session. Each is logged once, written to
+`~/.firekeeper/claude-cloud-status.json`, and shown as a "Cloud sync" note on
+the Claude card of the Overview tab. The next try waits the interval, then
+doubles after each further failure up to 6 hours (a `Retry-After` from the
+API can lengthen a wait, still to at most 6 hours), and the first clean pass returns to the
+interval. Sessions downloaded before the stop are still uploaded. A problem
+with one session only (deleted, HTTP 404, or unreadable) is a warning: the
+rest of the pass continues, and that session is asked for once per pass,
+after the normal interval, never the one-minute catch-up. The same credential rules apply as for
+`backfill --claude-cloud` above.
 
 ### Linking a machine
 
@@ -861,6 +950,10 @@ exclude = [
 
 [redact]
 paths = ["~/clients"]            # also scrubbed to [REDACTED:path] in uploads
+
+[claude_cloud]
+enabled = false                  # daemon: import Claude Code on the web sessions (off by default)
+interval = "15m"                 # time between cloud passes, at least 10m
 ```
 
 `exclude` entries that start with `/` or `~` are directory globs, matched
@@ -884,5 +977,7 @@ Files Firekeeper reads and writes outside the provider data it only reads:
 | --- | --- | --- |
 | `~/.firekeeper/machine-id` | any command that identifies the machine | this machine's id |
 | `~/.firekeeper/state.json`, `state.lock` | `report`, `backfill`, `daemon` | per-file read offsets and their lock |
+| `~/.firekeeper/cloud/claude/` | `backfill --claude-cloud`, `daemon` with `[claude_cloud]` | cached Claude Code on the web sessions (mode `0600`) |
+| `~/.firekeeper/claude-cloud-status.json` | `daemon` with `[claude_cloud]` | time and warning of the last cloud pass, no secrets (mode `0600`) |
 | `~/.firekeeper/config.toml` | you; `login` and `logout` edit `server` and `token` | reporting configuration |
 | `~/.firekeeper/daemon.log`, `daemon.lock` | `daemon` | log and single-instance lock |
