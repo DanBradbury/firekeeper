@@ -142,7 +142,7 @@ harnesses show the total only. A Claude Code session that has subagent
 files warns that its measured total is likely low, because background
 summary calls are not in the transcript. See [Claude Code subagent
 undercount](#claude-code-subagent-undercount). Below them, the sessions
-table lists each collapsed runtime on one row with its provider, PID, project,
+table lists each collapsed runtime on one row with its provider, project,
 short session id, working directory, state, model, tokens, and uptime. A `+N`
 beside the session id indicates additional sessions in the same runtime. A
 detail panel at the bottom shows the selected runtime's session metadata and

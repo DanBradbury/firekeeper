@@ -58,14 +58,15 @@ func TestOpenResumeTab(t *testing.T) {
 		calls = append(calls, args)
 		return "ok", nil
 	}
-	for term, app := range map[string]string{"ghostty": "Ghostty", "iTerm.app": "iTerm2", "Apple_Terminal": "Terminal.app"} {
-		got, err := openResumeTab("darwin", term, "LINE", "/cwd", run)
-		if err != nil || got != app {
-			t.Fatalf("%s: %q, %v", term, got, err)
+	for _, c := range []struct{ term, app string }{{"ghostty", "Ghostty"}, {"iTerm.app", "iTerm2"}, {"Apple_Terminal", "Terminal.app"}} {
+		got, err := openResumeTab("darwin", c.term, "LINE", "/cwd", run)
+		if err != nil || got != c.app {
+			t.Fatalf("%s: %q, %v", c.term, got, err)
 		}
-	}
-	if len(calls) != 3 || calls[0][0] != "LINE" || calls[0][1] != "/cwd" || scripts[0][0] != resumeTerminalScripts["Ghostty"] {
-		t.Fatalf("script not run with line and cwd: %v", calls)
+		last := len(calls) - 1
+		if calls[last][0] != "LINE" || calls[last][1] != "/cwd" || scripts[last][0] != resumeTerminalScripts[c.app] {
+			t.Fatalf("%s: script not run with line and cwd: %v", c.app, calls[last])
+		}
 	}
 	for _, c := range []struct{ goos, term string }{{"darwin", "tmux"}, {"darwin", ""}, {"linux", "ghostty"}, {"windows", ""}} {
 		_, err := openResumeTab(c.goos, c.term, "LINE", "/cwd", run)

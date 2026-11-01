@@ -197,7 +197,6 @@ type dashColumn struct {
 
 var dashColumns = []dashColumn{
 	{key: "ai", title: "AI", width: 8, drop: 1},
-	{key: "pid", title: "PID", width: 7, drop: 5},
 	{key: "project", title: "Project", width: 14, drop: 3},
 	{key: "session", title: "Session", width: 8, drop: 6},
 	{key: "directory", title: "Directory", drop: 0},
@@ -210,6 +209,8 @@ var dashColumns = []dashColumn{
 const (
 	dashMarkerWidth       = 2
 	dashDirectoryMinWidth = 24
+	// dashGrowMaxWidth caps how far the Project and Model columns grow.
+	dashGrowMaxWidth = 32
 )
 
 // dashFitColumns drops the lowest-priority columns until the table fits
@@ -233,6 +234,20 @@ func (m model) dashFitColumns(width int) []dashColumn {
 			fixed += column.width + 1
 		}
 		if fixed+dashDirectoryMinWidth <= width || len(columns) <= 1 {
+			// Long model and project names take spare width before Directory does.
+			slack := width - fixed - dashDirectoryMinWidth
+			for _, key := range []string{"model", "project"} {
+				for index := range columns {
+					if columns[index].key != key || slack <= 0 {
+						continue
+					}
+					grow := min(max(m.longestCell(key)-columns[index].width, 0), slack, dashGrowMaxWidth-columns[index].width)
+					grow = max(grow, 0)
+					columns[index].width += grow
+					fixed += grow
+					slack -= grow
+				}
+			}
 			for index := range columns {
 				if columns[index].key == "directory" {
 					columns[index].width = max(width-fixed, 1)
@@ -252,6 +267,21 @@ func (m model) dashFitColumns(width int) []dashColumn {
 		}
 		columns = append(columns[:worst], columns[worst+1:]...)
 	}
+}
+
+// longestCell is the widest project or model label across all sessions.
+func (m model) longestCell(key string) int {
+	longest := 0
+	for _, group := range m.processGroups {
+		for _, session := range group.sessions {
+			value := session.model
+			if key == "project" {
+				value = dashProjectName(session)
+			}
+			longest = max(longest, ansi.StringWidth(sanitizeProcessCommand(value)))
+		}
+	}
+	return longest
 }
 
 func dashHeaderRow(columns []dashColumn, width int) string {
@@ -318,8 +348,6 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		switch column.key {
 		case "ai":
 			value, color, bold = group.tool, dashToolColor(group.tool), true
-		case "pid":
-			value, color = fmt.Sprint(group.root.pid), usageMutedColor
 		case "project":
 			value, color, bold = dashProjectName(session), usageBrightColor, true
 			if !hasSession {

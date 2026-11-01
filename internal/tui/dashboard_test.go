@@ -427,14 +427,17 @@ func TestDashboardKeepsRuntimeIdentifiersBesideDirectory(t *testing.T) {
 		m := dashboardTestModel()
 		m.width, m.height = width, 40
 		header := ansi.Strip(dashHeaderRow(m.dashFitColumns(m.dashInnerWidth()), m.dashInnerWidth()))
-		for _, column := range []string{"PID", "Project", "Session", "Directory"} {
+		for _, column := range []string{"Project", "Session", "Directory"} {
 			if !strings.Contains(header, column) {
 				t.Errorf("width %d: missing column %q in %q", width, column, header)
 			}
 		}
+		if strings.Contains(header, "PID") {
+			t.Errorf("width %d: PID column present in %q", width, header)
+		}
 		lines, _ := m.processBodyLines()
 		row := ansi.Strip(lines[0])
-		for _, value := range []string{"100", "firekeeper", "019fb33c", "/workspace/firekeeper"} {
+		for _, value := range []string{"firekeeper", "019fb33c", "/workspace/firekeeper"} {
 			if !strings.Contains(row, value) {
 				t.Errorf("width %d: missing %q in %q", width, value, row)
 			}
@@ -933,5 +936,34 @@ func TestSortRecentSessionsNewestFirst(t *testing.T) {
 	sortRecentSessions(list)
 	if list[0].id != "b" || list[1].id != "c" || list[2].id != "a" {
 		t.Fatalf("order = %v", list)
+	}
+}
+
+func TestProjectColumnGrowsForLongNames(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = m.processGroups[:1]
+	m.processGroups[0].sessions[0].cwd = "/workspace/firekeeper-server-extended"
+	m.width, m.height = 160, 30
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "firekeeper-server-extended") {
+		t.Fatalf("project name truncated at width 160:\n%s", view)
+	}
+	m.width = 80
+	for _, line := range strings.Split(ansi.Strip(m.View()), "\n") {
+		if ansi.StringWidth(line) > 80 {
+			t.Fatalf("line exceeds width: %q", line)
+		}
+	}
+}
+
+func TestModelColumnFitsLongModelNames(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = m.processGroups[:1]
+	m.processGroups[0].sessions[0].model = "claude-sonnet-5-5"
+	for _, width := range []int{120, 140} {
+		m.width, m.height = width, 30
+		if view := ansi.Strip(m.View()); !strings.Contains(view, "claude-sonnet-5-5") {
+			t.Errorf("width %d: model truncated:\n%s", width, view)
+		}
 	}
 }
