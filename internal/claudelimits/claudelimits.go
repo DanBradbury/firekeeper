@@ -30,6 +30,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,6 +57,26 @@ var (
 	// ErrUnauthorized means the endpoint rejected the token.
 	ErrUnauthorized = errors.New("Anthropic rejected the Claude Code sign-in; open claude and run /login")
 )
+
+// RateLimitedError means the endpoint answered HTTP 429. RetryAfter is the
+// server's Retry-After delay, or zero when it sent none.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	return "Anthropic usage endpoint is rate limiting requests (HTTP 429)"
+}
+
+// parseRetryAfter reads a delay-seconds Retry-After value. Anything else,
+// including an HTTP date, is treated as absent.
+func parseRetryAfter(value string) time.Duration {
+	seconds, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
+}
 
 // Window is one limit window. UsedPercent is 0-100; ResetsAt is zero when the
 // endpoint did not say.
@@ -243,6 +264,8 @@ func (c Client) Fetch(ctx context.Context) (Limits, error) {
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
 		return Limits{}, ErrUnauthorized
+	case response.StatusCode == http.StatusTooManyRequests:
+		return Limits{}, &RateLimitedError{RetryAfter: parseRetryAfter(response.Header.Get("Retry-After"))}
 	case response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices:
 		return Limits{}, fmt.Errorf("Anthropic usage endpoint returned HTTP %d", response.StatusCode)
 	}

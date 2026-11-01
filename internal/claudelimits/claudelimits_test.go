@@ -166,3 +166,11 @@ func TestMalformedCredentialFileIsNoToken(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNoToken", err)
 	}
 }
+
+func TestParseRetryAfter(t *testing.T) {
+	for in, want := range map[string]time.Duration{"120": 120 * time.Second, " 7 ": 7 * time.Second, "": 0, "0": 0, "-3": 0, "Wed, 21 Oct 2026 07:28:00 GMT": 0} {
+		if got := parseRetryAfter(in); got != want {
+			t.Errorf("parseRetryAfter(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

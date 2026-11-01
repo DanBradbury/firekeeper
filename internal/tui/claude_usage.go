@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/claudelimits"
@@ -114,8 +115,61 @@ var claudeLimitsSource = func() (limits claudelimits.Limits, enabled bool, err e
 	if loadErr != nil || !cfg.ClaudeLimits {
 		return claudelimits.Limits{}, false, nil
 	}
-	limits, err = claudelimits.Client{}.Fetch(context.Background())
+	limits, err = claudeLimitsBackoff.fetch(time.Now(), func() (claudelimits.Limits, error) {
+		return claudelimits.Client{}.Fetch(context.Background())
+	})
 	return limits, true, err
+}
+
+const (
+	// claudeLimitsMinInterval keeps the undocumented usage endpoint from being
+	// asked more often than this, however often the Overview refreshes.
+	claudeLimitsMinInterval = time.Minute
+	// claudeLimitsDefaultBackoff applies to a 429 without a Retry-After.
+	claudeLimitsDefaultBackoff = 5 * time.Minute
+	claudeLimitsMaxBackoff     = time.Hour
+)
+
+// claudeLimitsCache remembers the last good limits and when the endpoint may
+// be asked again. While rate limited it serves the last good limits, without
+// an error, instead of hitting the endpoint again.
+type claudeLimitsCache struct {
+	mu       sync.Mutex
+	limits   claudelimits.Limits
+	have     bool
+	notUntil time.Time
+}
+
+var claudeLimitsBackoff = &claudeLimitsCache{}
+
+func (c *claudeLimitsCache) fetch(now time.Time, do func() (claudelimits.Limits, error)) (claudelimits.Limits, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if now.Before(c.notUntil) {
+		if c.have {
+			return c.limits, nil
+		}
+		return claudelimits.Limits{}, &claudelimits.RateLimitedError{RetryAfter: c.notUntil.Sub(now)}
+	}
+	limits, err := do()
+	var limited *claudelimits.RateLimitedError
+	switch {
+	case errors.As(err, &limited):
+		wait := limited.RetryAfter
+		if wait <= 0 {
+			wait = claudeLimitsDefaultBackoff
+		}
+		c.notUntil = now.Add(min(wait, claudeLimitsMaxBackoff))
+		if c.have {
+			return c.limits, nil
+		}
+		return claudelimits.Limits{}, err
+	case err != nil:
+		return claudelimits.Limits{}, err
+	}
+	c.limits, c.have = limits, true
+	c.notUntil = now.Add(claudeLimitsMinInterval)
+	return limits, nil
 }
 
 // claudeCloudStatusSource returns the daemon's last cloud sync warning, or
