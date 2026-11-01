@@ -162,6 +162,8 @@ func helperCmd(t *testing.T, exe string, env []string, args ...string) (stdout, 
 }
 
 // copyTestBinary makes dir/name an executable copy of the running test binary.
+// Call before t.Parallel: a concurrent fork can briefly inherit the writable
+// descriptor and make Linux reject execution with ETXTBSY even after Close.
 func copyTestBinary(t *testing.T, dir, name string) string {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -190,7 +192,6 @@ func copyTestBinary(t *testing.T, dir, name string) string {
 // process is replaced, the arguments arrive after "serve", the environment is
 // kept, and the server's exit status is the command's.
 func TestServeExecsTheServer(t *testing.T) {
-	t.Parallel()
 	for _, tt := range []struct {
 		name string
 		code int
@@ -200,7 +201,6 @@ func TestServeExecsTheServer(t *testing.T) {
 		{"PATH", 7},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 			dir := t.TempDir()
 			client := copyTestBinary(t, dir, "firekeeper")
 			env := []string{passthroughEnv + "=kept", exitEnv + "=" + fmt.Sprint(tt.code)}
@@ -218,6 +218,7 @@ func TestServeExecsTheServer(t *testing.T) {
 				}
 				env = append(env, "PATH="+pathDir)
 			}
+			t.Parallel()
 			args := []string{"serve", "--listen", "127.0.0.1:0", "--banner", "two words", "admin"}
 			out, errOut, code := helperCmd(t, client, env, args...)
 			if code != tt.code || errOut != "" {
@@ -232,8 +233,8 @@ func TestServeExecsTheServer(t *testing.T) {
 }
 
 func TestServeNotFoundExit(t *testing.T) {
-	t.Parallel()
 	client := copyTestBinary(t, t.TempDir(), "firekeeper")
+	t.Parallel()
 	_, errOut, code := helperCmd(t, client, nil, "serve", "--listen", "x")
 	if code != 2 || !strings.Contains(errOut, "separate commercial binary") || !strings.Contains(errOut, ServerBinEnv) {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
@@ -247,8 +248,8 @@ func TestServeNotFoundExit(t *testing.T) {
 // TestRunChild covers the fallback for platforms without exec: the exit
 // status comes back, and a signal sent to this process reaches the child.
 func TestRunChild(t *testing.T) {
-	t.Parallel()
 	server := copyTestBinary(t, t.TempDir(), serverBinName)
+	t.Parallel()
 	env := []string{helperEnv + "=1", exitEnv + "=7"}
 	var stderr bytes.Buffer
 	if code := runChild(server, []string{serverBinName, "serve"}, env, &stderr); code != 7 {
