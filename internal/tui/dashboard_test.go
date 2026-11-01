@@ -335,17 +335,17 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	m.processCursor = 1
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"[ Processes ]", "¹summary", "³providers", "⁴projects", "sessions (3)",
+		"[ Processes ]", "summary", "providers", "projects", "sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "▲ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
-		"Sessions 2", "1 active", "1 input",
+		"Sessions 2", "1 active", " 1  input", "Tokens 1.3M total", "in 4% · out 16% · cache 80%",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
 	}
-	if strings.Contains(view, "¹overview") {
+	if strings.Contains(view, "overview") {
 		t.Fatal("Processes panel still collides with the Overview tab name")
 	}
 }
@@ -427,14 +427,17 @@ func TestDashboardKeepsRuntimeIdentifiersBesideDirectory(t *testing.T) {
 		m := dashboardTestModel()
 		m.width, m.height = width, 40
 		header := ansi.Strip(dashHeaderRow(m.dashFitColumns(m.dashInnerWidth()), m.dashInnerWidth()))
-		for _, column := range []string{"PID", "Project", "Session", "Directory"} {
+		for _, column := range []string{"Project", "Session", "Directory"} {
 			if !strings.Contains(header, column) {
 				t.Errorf("width %d: missing column %q in %q", width, column, header)
 			}
 		}
+		if strings.Contains(header, "PID") {
+			t.Errorf("width %d: PID column present in %q", width, header)
+		}
 		lines, _ := m.processBodyLines()
 		row := ansi.Strip(lines[0])
-		for _, value := range []string{"100", "firekeeper", "019fb33c", "/workspace/firekeeper"} {
+		for _, value := range []string{"firekeeper", "019fb33c", "/workspace/firekeeper"} {
 			if !strings.Contains(row, value) {
 				t.Errorf("width %d: missing %q in %q", width, value, row)
 			}
@@ -558,7 +561,7 @@ func TestDashboardDropsColumnsAndPanelsWhenNarrow(t *testing.T) {
 	m := dashboardTestModel()
 	m.width, m.height = 60, 20
 	view := ansi.Strip(m.View())
-	if strings.Contains(view, "³providers") || strings.Contains(view, "Up ") {
+	if strings.Contains(view, "providers") || strings.Contains(view, "Up ") {
 		t.Fatalf("narrow dashboard kept wide-only content:\n%s", view)
 	}
 	if !strings.Contains(view, "Directory") || !strings.Contains(view, "/workspace/firekeeper") {
@@ -692,7 +695,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 	m.width, m.height = 140, 40
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"²tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
+		"tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
 		"Cache read", "900.0K", "Cache write", "100.0K",
 		"tokens 1.2M (in 50.0K · out 200.0K · cache read 900.0K · cache write 100.0K)",
 	} {
@@ -703,7 +706,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 
 	m.processCursor = 1
 	view = ansi.Strip(m.View())
-	for _, expected := range []string{"²tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
+	for _, expected := range []string{"tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
@@ -772,5 +775,241 @@ func TestDashboardShowsTelemetryAndDropsUndercountWarning(t *testing.T) {
 	}
 	if !strings.Contains(view, "transcripts") || !strings.Contains(view, "371") {
 		t.Fatalf("exact total missing:\n%s", view)
+	}
+}
+
+func TestIdleDashboard(t *testing.T) {
+	for _, width := range []int{20, 80, 140} {
+		m := dashboardTestModel()
+		m.processGroups = nil
+		m.width, m.height = width, 24
+		view := ansi.Strip(m.View())
+		for _, unwanted := range []string{"╭", "Select a", "s switch", "c chat", "PID", "0 active"} {
+			if strings.Contains(view, unwanted) {
+				t.Errorf("empty dashboard contains %q", unwanted)
+			}
+		}
+		for _, line := range strings.Split(view, "\n") {
+			if ansi.StringWidth(line) > width {
+				t.Fatal("empty dashboard exceeds width")
+			}
+		}
+		if width >= 80 {
+			for _, want := range []string{"No agent sessions running", "Scanning every 2s", "last scan", "Start codex", "Overview / Usage"} {
+				if !strings.Contains(view, want) {
+					t.Errorf("missing %q", want)
+				}
+			}
+		}
+	}
+}
+
+func TestIdleDashboardScanStates(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = nil
+	m.width, m.height = 100, 24
+	m.refreshedAt = time.Time{}
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "first scan pending") || strings.Contains(view, "No agent sessions running") {
+		t.Fatal("initial scan presented as completed empty discovery")
+	}
+	m.processErr = "ps unavailable"
+	view = ansi.Strip(m.View())
+	if !strings.Contains(view, "process scan failed: ps unavailable") || strings.Contains(view, "No agent sessions running") {
+		t.Fatal("failed scan presented as empty discovery")
+	}
+}
+
+func TestIdleDashboardPaintsCenteredPadding(t *testing.T) {
+	for _, state := range []string{"idle", "pending", "error", "metadata warning", "terminal status"} {
+		t.Run(state, func(t *testing.T) {
+			m := dashboardTestModel()
+			m.processGroups = nil
+			m.width, m.height = 140, 24
+			switch state {
+			case "pending":
+				m.refreshedAt = time.Time{}
+			case "error":
+				m.processErr = "ps unavailable"
+			case "metadata warning":
+				m.processMetadataWarning = "metadata unavailable"
+			case "terminal status":
+				m.terminalStatus = "terminal unavailable"
+			}
+			for _, line := range strings.Split(m.viewIdleProcesses(m.height-chromeRows), "\n") {
+				plain := ansi.Strip(line)
+				if strings.TrimSpace(plain) == "" {
+					continue
+				}
+				padding := len(plain) - len(strings.TrimLeft(plain, " "))
+				if padding == 0 {
+					continue
+				}
+				want := dashPaint(strings.Repeat(" ", padding), usageTextColor, false)
+				if !strings.HasPrefix(line, want) {
+					t.Fatalf("centered padding does not use the dashboard background: %q", line)
+				}
+			}
+		})
+	}
+}
+
+func idleRecentModel(width, height int) model {
+	m := dashboardTestModel()
+	m.processGroups = nil
+	m.width, m.height = width, height
+	now := time.Now()
+	for i, tool := range []string{"Copilot", "Codex", "Claude", "Gemini", "Kimi", "Cursor", "OpenCode"} {
+		m.recentSessions = append(m.recentSessions, recentSession{
+			tool: tool, id: fmt.Sprintf("session-%d-abcdef", i), project: "proj" + tool,
+			title: "title " + tool, last: now.Add(-time.Duration(i+1) * time.Hour),
+		})
+	}
+	return m
+}
+
+func TestIdleDashboardRecentSessions(t *testing.T) {
+	for _, size := range [][2]int{{20, 8}, {80, 24}, {140, 40}, {80, 10}} {
+		m := idleRecentModel(size[0], size[1])
+		view := ansi.Strip(m.View())
+		lines := strings.Split(view, "\n")
+		if len(lines) != size[1] {
+			t.Fatalf("%v: rows = %d", size, len(lines))
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) > size[0] {
+				t.Fatalf("%v: line exceeds width: %q", size, line)
+			}
+		}
+		if size[0] >= 80 && size[1] >= 24 {
+			for _, want := range []string{"Recent sessions", "▸ Copilot", "Codex", "1h", "enter chat"} {
+				if !strings.Contains(view, want) {
+					t.Errorf("%v: missing %q:\n%s", size, want, view)
+				}
+			}
+		}
+	}
+}
+
+func TestIdleRecentSelectionScrollsAndOpensChat(t *testing.T) {
+	m := idleRecentModel(80, 14)
+	for range 6 {
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = next.(model)
+	}
+	if m.recentCursor != 6 || !strings.Contains(ansi.Strip(m.View()), "▸ OpenCode") {
+		t.Fatalf("cursor %d not visible:\n%s", m.recentCursor, ansi.Strip(m.View()))
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if next.(model).recentCursor != 6 {
+		t.Fatal("cursor moved past the last session")
+	}
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	opened := next.(model)
+	if cmd == nil || !opened.chat.open || opened.chat.tool != "OpenCode" || opened.chat.meta.ID != "session-6-abcdef" {
+		t.Fatalf("enter did not open the selected session: %+v", opened.chat)
+	}
+}
+
+func TestRecentSessionsLoadWhileIdleOnly(t *testing.T) {
+	m := NewModel()
+	if cmd := m.maybeLoadRecent(); cmd == nil || !m.recentLoading {
+		t.Fatal("idle model did not start a load")
+	}
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("second load started while one is running")
+	}
+	m.applyRecentSessions(recentSessionsMsg{loadedAt: time.Now()})
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("reload started inside the refresh interval")
+	}
+	m.recentLoadedAt = time.Now().Add(-time.Hour)
+	m.processGroups = dashboardTestModel().processGroups
+	if m.maybeLoadRecent() != nil {
+		t.Fatal("load started while sessions are running")
+	}
+}
+
+func TestSortRecentSessionsNewestFirst(t *testing.T) {
+	now := time.Now()
+	list := []recentSession{{id: "a", last: now.Add(-2 * time.Hour)}, {id: "b", last: now}, {id: "c", last: now.Add(-time.Hour)}}
+	sortRecentSessions(list)
+	if list[0].id != "b" || list[1].id != "c" || list[2].id != "a" {
+		t.Fatalf("order = %v", list)
+	}
+}
+
+func TestProjectColumnGrowsForLongNames(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = m.processGroups[:1]
+	m.processGroups[0].sessions[0].cwd = "/workspace/firekeeper-server-extended"
+	m.width, m.height = 160, 30
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, "firekeeper-server-extended") {
+		t.Fatalf("project name truncated at width 160:\n%s", view)
+	}
+	m.width = 80
+	for _, line := range strings.Split(ansi.Strip(m.View()), "\n") {
+		if ansi.StringWidth(line) > 80 {
+			t.Fatalf("line exceeds width: %q", line)
+		}
+	}
+}
+
+func TestModelColumnFitsLongModelNames(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = m.processGroups[:1]
+	m.processGroups[0].sessions[0].model = "claude-sonnet-5-5"
+	for _, width := range []int{120, 140} {
+		m.width, m.height = width, 30
+		if view := ansi.Strip(m.View()); !strings.Contains(view, "claude-sonnet-5-5") {
+			t.Errorf("width %d: model truncated:\n%s", width, view)
+		}
+	}
+}
+
+func TestSummaryStateCountsDimZerosAndHighlightInput(t *testing.T) {
+	zero := dashSummary{states: map[sessionState]int{}}
+	busy := dashSummary{states: map[sessionState]int{
+		sessionStateActive: 2, sessionStateWaiting: 1, sessionStateNeedsInput: 3,
+	}}
+	zeroLines, busyLines := zero.summaryLines(30), busy.summaryLines(30)
+	if strings.Contains(zeroLines[3], "48;2;"+dashRed) {
+		t.Error("input highlighted at zero")
+	}
+	if !strings.Contains(busyLines[3], "48;2;"+dashRed) {
+		t.Errorf("non-zero input lacks a highlight background: %q", busyLines[3])
+	}
+	if !strings.Contains(zeroLines[1], "38;2;"+usageMutedColor) || strings.Contains(zeroLines[1], "38;2;"+dashGreen) {
+		t.Errorf("zero active count not dimmed: %q", zeroLines[1])
+	}
+	if !strings.Contains(busyLines[1], "38;2;"+dashGreen) || !strings.Contains(busyLines[2], "38;2;"+dashYellow) {
+		t.Errorf("non-zero counts not colored by state: %q %q", busyLines[1], busyLines[2])
+	}
+	for _, line := range append(zeroLines, busyLines...) {
+		if ansi.StringWidth(line) > 28 {
+			t.Errorf("summary line wider than a quarter panel: %q", ansi.Strip(line))
+		}
+	}
+}
+
+func TestSummaryOmitsProcsRateAndUnknown(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	view := ansi.Strip(m.View())
+	for _, unwanted := range []string{"Procs", " live", "Rate", " unknown"} {
+		if strings.Contains(strings.SplitN(view, "╰", 2)[0], unwanted) {
+			t.Fatalf("summary still shows %q:\n%s", unwanted, view)
+		}
+	}
+}
+
+func TestSummaryTokenSplit(t *testing.T) {
+	if got := (dashSummary{states: map[sessionState]int{}}).splitLine(); !strings.Contains(ansi.Strip(got), "no token split reported") {
+		t.Errorf("empty split = %q", ansi.Strip(got))
+	}
+	s := dashSummary{breakdown: tokenBreakdown{Input: 1, Output: 10, CacheRead: 989}}
+	if got := ansi.Strip(s.splitLine()); got != "in <1% · out 1% · cache 99%" {
+		t.Errorf("split = %q", got)
 	}
 }

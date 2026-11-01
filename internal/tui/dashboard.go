@@ -83,6 +83,9 @@ func (m model) viewProcesses(contentRows int) string {
 	if contentRows < 1 {
 		return ""
 	}
+	if len(m.processGroups) == 0 {
+		return m.viewIdleProcesses(contentRows)
+	}
 	layout := m.dashboardLayout()
 	var lines []string
 	if layout.summary > 0 {
@@ -96,6 +99,79 @@ func (m model) viewProcesses(contentRows int) string {
 		lines = append(lines, dashFit("", m.width, usagePanelColor))
 	}
 	return strings.Join(lines[:contentRows], "\n")
+}
+
+// idleBody is the centered message block of the idle Processes view, without
+// the recent-sessions list under it.
+func (m model) idleBody() []string {
+	message := "No agent sessions running"
+	if m.refreshedAt.IsZero() {
+		message = "Scanning for agent sessions…"
+	}
+	color := usageBrightColor
+	if m.processErr != "" {
+		message = "process scan failed: " + sanitizeProcessCommand(m.processErr)
+		color = dashRed
+	}
+	body := []string{
+		dashPaint(message, color, false),
+		dashPaint("Start codex, copilot or opencode in a terminal.", usageMutedColor, false),
+		dashPaint("Supported agents appear here automatically.", usageMutedColor, false),
+		dashPaint("Press Tab for Overview / Usage history.", usageMutedColor, false),
+	}
+	if m.processMetadataWarning != "" {
+		body = append(body, dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false))
+	}
+	if m.terminalStatus != "" {
+		body = append(body, dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false))
+	}
+	return body
+}
+
+// idleGeometry places the idle view's blocks in a content area of rows rows:
+// the first row of the message block and the number of recent-list rows
+// (heading included) under it.
+func (m model) idleGeometry(rows int) (start, recentRows int) {
+	body := m.idleBody()
+	recentRows = len(m.recentLines(min(rows-1-len(body)-2, recentSessionLimit+1)))
+	if recentRows > 0 {
+		recentRows++ // blank separator
+	}
+	return max(1, (rows-len(body)-recentRows)/2), recentRows
+}
+
+// viewIdleProcesses keeps empty discovery useful without empty panel frames.
+func (m model) viewIdleProcesses(rows int) string {
+	status := "Idle · Scanning every 2s"
+	if m.refreshedAt.IsZero() {
+		status = "Scanning every 2s · first scan pending"
+	} else {
+		status += " · last scan " + m.refreshedAt.Format("15:04:05")
+	}
+	if m.processErr != "" {
+		status = strings.Replace(status, "Idle · ", "", 1)
+	}
+	body := m.idleBody()
+	lines := make([]string, rows)
+	lines[0] = dashFit(dashPaint(status, usageMutedColor, false), m.width, usagePanelColor)
+	// Recent sessions take the space under the hint, which moves up to make room.
+	recent := m.recentLines(min(rows-1-len(body)-2, recentSessionLimit+1))
+	start, _ := m.idleGeometry(rows)
+	if len(recent) > 0 {
+		body = append(body, "")
+		body = append(body, recent...)
+	}
+	for i := 1; i < rows; i++ {
+		line := ""
+		if index := i - start; index >= 0 && index < len(body) {
+			line = body[index]
+			if index < len(body)-len(recent) || len(recent) == 0 {
+				line = dashPaint(strings.Repeat(" ", max(0, (m.width-ansi.StringWidth(line))/2)), usageTextColor, false) + line
+			}
+		}
+		lines[i] = dashFit(line, m.width, usagePanelColor)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) dashSessionsPanel(layout dashLayout) []string {
@@ -112,9 +188,9 @@ func (m model) dashSessionsPanel(layout dashLayout) []string {
 		body[0] = dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false)
 	}
 	if len(m.processGroups) == 0 && m.processErr == "" {
-		message := "No running Codex, Copilot, or OpenCode processes found."
+		message := "No agent sessions running"
 		if m.refreshedAt.IsZero() {
-			message = "Scanning for Codex, Copilot, and OpenCode processes…"
+			message = "Scanning for agent sessions…"
 		}
 		body = append(body, dashPaint(message, usageMutedColor, false))
 	} else if len(m.processGroups) > 0 {
@@ -144,7 +220,6 @@ type dashColumn struct {
 
 var dashColumns = []dashColumn{
 	{key: "ai", title: "AI", width: 8, drop: 1},
-	{key: "pid", title: "PID", width: 7, drop: 5},
 	{key: "project", title: "Project", width: 14, drop: 3},
 	{key: "session", title: "Session", width: 8, drop: 6},
 	{key: "directory", title: "Directory", drop: 0},
@@ -157,6 +232,8 @@ var dashColumns = []dashColumn{
 const (
 	dashMarkerWidth       = 2
 	dashDirectoryMinWidth = 24
+	// dashGrowMaxWidth caps how far the Project and Model columns grow.
+	dashGrowMaxWidth = 32
 )
 
 // dashFitColumns drops the lowest-priority columns until the table fits
@@ -180,6 +257,20 @@ func (m model) dashFitColumns(width int) []dashColumn {
 			fixed += column.width + 1
 		}
 		if fixed+dashDirectoryMinWidth <= width || len(columns) <= 1 {
+			// Long model and project names take spare width before Directory does.
+			slack := width - fixed - dashDirectoryMinWidth
+			for _, key := range []string{"model", "project"} {
+				for index := range columns {
+					if columns[index].key != key || slack <= 0 {
+						continue
+					}
+					grow := min(max(m.longestCell(key)-columns[index].width, 0), slack, dashGrowMaxWidth-columns[index].width)
+					grow = max(grow, 0)
+					columns[index].width += grow
+					fixed += grow
+					slack -= grow
+				}
+			}
 			for index := range columns {
 				if columns[index].key == "directory" {
 					columns[index].width = max(width-fixed, 1)
@@ -199,6 +290,21 @@ func (m model) dashFitColumns(width int) []dashColumn {
 		}
 		columns = append(columns[:worst], columns[worst+1:]...)
 	}
+}
+
+// longestCell is the widest project or model label across all sessions.
+func (m model) longestCell(key string) int {
+	longest := 0
+	for _, group := range m.processGroups {
+		for _, session := range group.sessions {
+			value := session.model
+			if key == "project" {
+				value = dashProjectName(session)
+			}
+			longest = max(longest, ansi.StringWidth(sanitizeProcessCommand(value)))
+		}
+	}
+	return longest
 }
 
 func dashHeaderRow(columns []dashColumn, width int) string {
@@ -265,8 +371,6 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		switch column.key {
 		case "ai":
 			value, color, bold = group.tool, dashToolColor(group.tool), true
-		case "pid":
-			value, color = fmt.Sprint(group.root.pid), usageMutedColor
 		case "project":
 			value, color, bold = dashProjectName(session), usageBrightColor, true
 			if !hasSession {
@@ -376,19 +480,23 @@ func dashGroupDetail(group processGroup) []string {
 }
 
 func (m model) dashSelectedDetail(width int) []string {
+	if len(m.processGroups) == 0 {
+		return []string{dashPaint("No sessions", usageMutedColor, false)}
+	}
 	if len(m.processGroups) == 0 || m.processCursor >= len(m.processGroups) {
-		return []string{dashPaint("Select a runtime to see its session details.", usageMutedColor, false)}
+		return []string{dashPaint("Select a session to see its details.", usageMutedColor, false)}
 	}
 	return dashGroupDetail(m.processGroups[m.processCursor])
 }
 
 // dashSummary aggregates the visible runtimes for the summary panels.
 type dashSummary struct {
-	sessions, processes int
-	states              map[sessionState]int
-	tokens              int64
-	tools               []dashToolSummary
-	projects            []dashProjectSummary
+	sessions  int
+	states    map[sessionState]int
+	tokens    int64
+	breakdown tokenBreakdown
+	tools     []dashToolSummary
+	projects  []dashProjectSummary
 }
 
 type dashToolSummary struct {
@@ -409,7 +517,6 @@ func (m model) dashSummarize() dashSummary {
 	projects := map[string]*dashProjectSummary{}
 	var projectOrder []string
 	for _, group := range m.processGroups {
-		summary.processes += len(group.processes)
 		tool := tools[group.tool]
 		if tool == nil {
 			tool = &dashToolSummary{tool: group.tool}
@@ -423,6 +530,10 @@ func (m model) dashSummarize() dashSummary {
 			summary.sessions++
 			summary.states[session.state]++
 			summary.tokens += sessionTokenTotal(session)
+			summary.breakdown.Input += session.tokens.Input
+			summary.breakdown.Output += session.tokens.Output
+			summary.breakdown.CacheRead += session.tokens.CacheRead
+			summary.breakdown.CacheWrite += session.tokens.CacheWrite
 			tool.tokens += sessionTokenTotal(session)
 			name := dashProjectName(session)
 			project := projects[name]
@@ -459,10 +570,10 @@ func (m model) dashSummaryPanels(height int) []string {
 		accent string
 		body   func(width int) []string
 	}{
-		{"¹summary", dashBlue, summary.summaryLines},
+		{"summary", dashBlue, summary.summaryLines},
 		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
-		{"³providers", dashPurple, summary.providerLines},
-		{"⁴projects", dashGreen, summary.projectLines},
+		{"providers", dashPurple, summary.providerLines},
+		{"projects", dashGreen, summary.projectLines},
 	}
 	count := 1
 	switch {
@@ -489,20 +600,55 @@ func (m model) dashSummaryPanels(height int) []string {
 }
 
 func (s dashSummary) summaryLines(width int) []string {
-	stat := func(name string, value int) string {
-		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(fmt.Sprintf("%-4d", value), usageBrightColor, true)
-	}
 	state := func(value sessionState, label string) string {
+		count := s.states[value]
+		if count == 0 {
+			return dashPaint(dashStateIcon(value)+" ", usageMutedColor, false) +
+				dashPaint(fmt.Sprintf("%d %-9s", count, label), usageMutedColor, false)
+		}
+		number := dashPaint(fmt.Sprintf("%d", count), dashStateColor(value), true)
+		if value == sessionStateNeedsInput {
+			// The state that needs the user stands out as a highlighted block.
+			number = usagePaint(fmt.Sprintf(" %d ", count), usagePanelColor, true, dashRed)
+		}
+		pad := strings.Repeat(" ", max(9-len(label), 0))
 		return dashPaint(dashStateIcon(value)+" ", dashStateColor(value), true) +
-			dashPaint(fmt.Sprintf("%d %-9s", s.states[value], label), usageTextColor, false)
+			number + dashPaint(" "+label+pad, dashStateColor(value), false)
 	}
 	return []string{
-		stat("Sessions", s.sessions) + stat("Procs", s.processes),
-		state(sessionStateActive, "active") + state(sessionStateWaiting, "waiting"),
-		state(sessionStateNeedsInput, "input") + state(sessionStateUnknown, "unknown"),
+		dashPaint("Sessions ", usageMutedColor, false) + dashPaint(fmt.Sprint(s.sessions), usageBrightColor, true),
+		state(sessionStateActive, "active"),
+		state(sessionStateWaiting, "waiting"),
+		state(sessionStateNeedsInput, "input"),
 		dashPaint("Tokens ", usageMutedColor, false) + dashPaint(formatTokenCount(s.tokens), dashYellow, true) +
-			dashPaint(" live", usageMutedColor, false),
+			dashPaint(" total", usageMutedColor, false),
+		s.splitLine(),
 	}
+}
+
+// splitLine shows how the running sessions' tokens divide into input, output
+// and cache, for sessions that report a breakdown.
+func (s dashSummary) splitLine() string {
+	total := s.breakdown.Total()
+	if total == 0 {
+		return dashPaint("no token split reported", usageMutedColor, false)
+	}
+	part := func(label string, value int64, color string) string {
+		return dashPaint(label+" ", usageMutedColor, false) + dashPaint(dashPercent(value, total), color, false)
+	}
+	dot := dashPaint(" · ", usageMutedColor, false)
+	return part("in", s.breakdown.Input, dashBlue) + dot +
+		part("out", s.breakdown.Output, dashGreen) + dot +
+		part("cache", s.breakdown.Cache(), dashPurple)
+}
+
+// dashPercent formats value as a share of total, showing <1% rather than 0%
+// for a part that exists.
+func dashPercent(value, total int64) string {
+	if value > 0 && value*200 < total {
+		return "<1%"
+	}
+	return fmt.Sprintf("%.0f%%", float64(value)*100/float64(total))
 }
 
 func (s dashSummary) providerLines(width int) []string {
@@ -579,7 +725,9 @@ func (m model) dashHeaderLine() string {
 		}
 	}
 	right := ""
-	if !m.refreshedAt.IsZero() {
+	if m.notice != "" {
+		right = dashPaint(sanitizeProcessCommand(m.notice)+" ", dashGreen, true)
+	} else if !m.refreshedAt.IsZero() {
 		summary := m.dashSummarize()
 		for _, state := range []sessionState{sessionStateActive, sessionStateWaiting, sessionStateNeedsInput} {
 			if count := summary.states[state]; count > 0 {
@@ -633,6 +781,12 @@ func renderFooterKeys(keys []footerKey, width int) string {
 }
 
 func (m model) processFooter() string {
+	if len(m.processGroups) == 0 {
+		if len(m.recentSessions) > 0 {
+			return renderFooterKeys([]footerKey{{"↑↓", "select"}, {"enter", "chat"}, {"R", "resume"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
+		}
+		return renderFooterKeys([]footerKey{{"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
+	}
 	keys := []footerKey{{"↑↓", "select"}}
 	if m.dashboardLayout().detail == 0 {
 		keys = append(keys, footerKey{"enter", "expand"})
@@ -840,14 +994,17 @@ func (m model) selectedSession() (processGroup, sessionInfo, bool) {
 func (m model) dashTokensTitle() string {
 	_, session, ok := m.selectedSession()
 	if !ok {
-		return "²tokens"
+		return "tokens"
 	}
-	return "²tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
+	return "tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
 }
 
 // dashTokenLines breaks down the selected session's tokens into input,
 // output, cache read, and cache write bars, each scaled to the session total.
 func (m model) dashTokenLines(width int) []string {
+	if len(m.processGroups) == 0 {
+		return []string{dashPaint("No sessions", usageMutedColor, false)}
+	}
 	_, session, ok := m.selectedSession()
 	if !ok {
 		return []string{dashPaint("Select a session to see its tokens.", usageMutedColor, false)}

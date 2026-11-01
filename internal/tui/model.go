@@ -144,6 +144,13 @@ type model struct {
 	helpOpen                bool
 	metadataMisses          map[int]int
 	chat                    chatState
+	mouse                   mouseState
+	menu                    *contextMenu
+	notice                  string
+	recentSessions          []recentSession
+	recentCursor            int
+	recentLoading           bool
+	recentLoadedAt          time.Time
 }
 
 // NewModel returns the dashboard's initial Bubble Tea model.
@@ -161,14 +168,29 @@ func pollProcesses() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
+
+	case copyResultMsg:
+		if msg.err != nil {
+			m.notice = "copy failed: " + sanitizeProcessCommand(msg.err.Error())
+		} else {
+			m.notice = fmt.Sprintf("copied %d characters", msg.chars)
+		}
+
 	case tea.KeyMsg:
+		m.notice = ""
+		m.clearSelection()
+		if m.menu != nil {
+			return m.updateMenuKey(msg)
+		}
 		if m.helpOpen {
 			return m.updateHelp(msg)
 		}
 		if m.chat.open {
 			return m.updateChat(msg)
 		}
-		if m.activeTab == processesTab && msg.String() != "s" {
+		if m.activeTab == processesTab && msg.String() != "s" && msg.String() != "R" {
 			m.terminalStatus = ""
 		}
 		switch msg.String() {
@@ -181,16 +203,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openChat()
 			}
 		case "tab", "shift+tab":
-			m.activeTab = (m.activeTab + 1) % tabCount
-			if m.activeTab == processesTab {
-				return m, refreshProcesses()
-			}
-			if m.activeTab == overviewTab {
-				return m, m.beginOverviewRefresh()
-			}
-			if m.activeTab == usageTab {
-				return m, m.beginUsageRefresh()
-			}
+			return m, m.switchTab((m.activeTab + 1) % tabCount)
 		case "left", "h":
 			if m.activeTab == usageTab {
 				return m, m.cycleUsageProvider(-1)
@@ -200,28 +213,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.cycleUsageProvider(1)
 			}
 		case "up", "k":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(-1)
+			} else if m.activeTab == processesTab {
 				m.processCursor--
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(-1)
 			}
 		case "down", "j":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(1)
+			} else if m.activeTab == processesTab {
 				m.processCursor++
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(1)
 			}
 		case "pgup":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(-recentPage)
+			} else if m.activeTab == processesTab {
 				m.processCursor -= max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
 				m.moveUsageCursor(-usageSessionPage)
 			}
 		case "pgdown":
-			if m.activeTab == processesTab {
+			if m.idleListActive() {
+				m.moveRecentCursor(recentPage)
+			} else if m.activeTab == processesTab {
 				m.processCursor += max(m.processPageSize()/2, 1)
 				m.clampProcessSelection()
 			} else if m.activeTab == usageTab {
@@ -242,6 +263,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.setUsageCursorEnd()
 			}
 		case "enter":
+			if m.idleListActive() {
+				return m, m.openRecentChat()
+			}
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
 				if m.dashboardLayout().detail == 0 {
 					rootPID := m.processGroups[m.processCursor].root.pid
@@ -253,6 +277,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			if m.activeTab == processesTab {
+				m.recentLoadedAt = time.Time{}
 				return m, refreshProcesses()
 			}
 			if m.activeTab == overviewTab {
@@ -260,6 +285,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.activeTab == usageTab {
 				return m, m.beginUsageRefresh()
+			}
+		case "R":
+			if m.idleListActive() {
+				return m, m.resumeRecent()
 			}
 		case "s":
 			if m.activeTab == processesTab && len(m.processGroups) > 0 {
@@ -299,6 +328,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.telemetry = msg.telemetry
 			m.ensureSelectedProcessVisible()
 		}
+		return m, m.maybeLoadRecent()
+
+	case resumeResultMsg:
+		m.terminalStatus = msg.status()
+
+	case recentSessionsMsg:
+		m.applyRecentSessions(msg)
 
 	case terminalSwitchResultMsg:
 		if msg.err != nil {
@@ -411,7 +447,23 @@ func (m *model) beginUsageRefresh() tea.Cmd {
 	return refreshCodexUsage()
 }
 
-func (m model) View() string {
+// switchTab shows t and starts the refresh that tab needs.
+func (m *model) switchTab(t tab) tea.Cmd {
+	m.activeTab = t
+	switch t {
+	case processesTab:
+		return refreshProcesses()
+	case overviewTab:
+		return m.beginOverviewRefresh()
+	case usageTab:
+		return m.beginUsageRefresh()
+	}
+	return nil
+}
+
+// screen renders the whole terminal as newline-joined rows, before any mouse
+// selection or context menu is drawn over it.
+func (m model) screen() string {
 	if m.width < 20 || m.height < 6 {
 		return "Terminal too small (need 20x6)\n"
 	}
@@ -774,19 +826,21 @@ func focusTerminalSession(tty, cwd string) (string, error) {
 		tty,
 		cwd,
 		runtime.GOOS,
-		func(script string, arguments ...string) (string, error) {
-			commandArguments := append([]string{"-e", script}, arguments...)
-			output, err := exec.Command("osascript", commandArguments...).CombinedOutput()
-			result := strings.TrimSpace(string(output))
-			if err != nil {
-				if result != "" {
-					return "", fmt.Errorf("%s: %w", sanitizeProcessCommand(result), err)
-				}
-				return "", err
-			}
-			return result, nil
-		},
+		runOsascript,
 	)
+}
+
+func runOsascript(script string, arguments ...string) (string, error) {
+	commandArguments := append([]string{"-e", script}, arguments...)
+	output, err := exec.Command("osascript", commandArguments...).CombinedOutput()
+	result := strings.TrimSpace(string(output))
+	if err != nil {
+		if result != "" {
+			return "", fmt.Errorf("%s: %w", sanitizeProcessCommand(result), err)
+		}
+		return "", err
+	}
+	return result, nil
 }
 
 func focusTerminalSessionWith(

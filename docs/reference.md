@@ -125,10 +125,22 @@ launch; set `FIREKEEPER_NO_UPDATE_CHECK=1` to disable that check.
 | `?` | Show all hotkeys; any key closes the list without running its action (Ctrl+C still quits) |
 | `q` / Ctrl+C | Quit |
 
+### Mouse
+
+The dashboard captures the mouse (cell-motion reporting). Clicks, double-clicks,
+the wheel, right-click menus, and drag or word selection map onto the keyboard
+actions listed in `?`; none adds behavior the keyboard lacks. Copying a
+selection writes the selected screen text to the clipboard, using the platform
+tool when present and OSC 52 otherwise. Hold Shift (Option in iTerm2) while
+dragging to bypass capture and use the terminal's own selection.
+
 ### Processes
 
 The Processes tab is laid out as a dashboard. Summary panels across the top
-count sessions by state, break the selected session's tokens into input,
+count sessions by state (zero counts are dimmed and sessions that need input
+are highlighted), show the running sessions' total tokens and an
+input/output/cache split, break the
+selected session's tokens into input,
 output, cache read, and cache write, and show live tokens per provider and
 the projects and branches in use. Input counts uncached input only. Codex
 reports cached input as cache read, so its cache write stays 0. Copilot's
@@ -142,7 +154,7 @@ harnesses show the total only. A Claude Code session that has subagent
 files warns that its measured total is likely low, because background
 summary calls are not in the transcript. See [Claude Code subagent
 undercount](#claude-code-subagent-undercount). Below them, the sessions
-table lists each collapsed runtime on one row with its provider, PID, project,
+table lists each collapsed runtime on one row with its provider, project,
 short session id, working directory, state, model, tokens, and uptime. A `+N`
 beside the session id indicates additional sessions in the same runtime. A
 detail panel at the bottom shows the selected runtime's session metadata and

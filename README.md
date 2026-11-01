@@ -75,8 +75,25 @@ Linux (amd64 and arm64) is best effort.
 | `?` | Show all keyboard shortcuts |
 | `q` | Quit from a main view; your agents keep running |
 
+The dashboard is also mouse-native. Click tabs, provider chips, and session
+rows; double-click a row to jump to its terminal (or open the chat for a recent
+or past session); scroll the wheel to move through lists and chats; and
+right-click for a menu of that row's actions. Drag to select text, or
+double-click a token and hold the second press to extend by whole words; the
+text is copied to your clipboard on release (via `pbcopy`, `wl-copy`, `xclip`,
+or `xsel` when present, otherwise the terminal's OSC 52 clipboard sequence).
+Because Firekeeper captures the mouse, use Shift (Option in iTerm2) with a drag
+to get your terminal's own selection. Every mouse action has a keyboard
+equivalent, and nothing is sent anywhere.
+
 Terminal switching supports Ghostty 1.3+, Terminal.app, and iTerm2 on macOS.
 On Windows it raises the window, not the tab; Linux has no terminal switching.
+When no agents are running, Processes shows a compact idle state with the last
+scan time, a launch hint, and your 10 most recent sessions across providers
+(last 30 days), centered. Use `↑↓` to select, `Enter` to read a session's chat, and
+`R` to resume it in a new tab of the current terminal (Ghostty, iTerm2, or Terminal.app on macOS;
+elsewhere the resume command is shown to copy). Terminal.app needs Accessibility permission to open the tab.
+Scans run every two seconds; session actions appear when sessions are available.
 An empty list usually means no supported agent is running where Firekeeper
 can see it. See the [missing-session checklist](https://firekeeper.ai/docs/troubleshooting/#missing-session).
 You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
