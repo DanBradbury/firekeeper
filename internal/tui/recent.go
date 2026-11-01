@@ -230,7 +230,7 @@ func (m model) recentLines(capacity int) []string {
 		}
 		lines = append(lines, pad+
 			dashPaint(marker, markerColor, true)+
-			dashPaint(padText(recent.tool, 9), dashToolColor(recent.tool), true)+
+			dashPaint(padText(toolLabel(recent.tool), 9+toolIconWidth()), dashToolColor(recent.tool), true)+
 			dashPaint(padText(sanitizeProcessCommand(emptyFallback(recent.project, "—")), 16), usageTextColor, false)+
 			dashPaint(padText(usageAgo(recent.last, now), 5), usageMutedColor, false)+
 			dashPaint(ansi.Truncate(recentTitle(recent), titleWidth, "…"), usageMutedColor, false))

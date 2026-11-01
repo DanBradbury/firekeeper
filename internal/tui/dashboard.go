@@ -241,6 +241,9 @@ const (
 func (m model) dashFitColumns(width int) []dashColumn {
 	columns := append([]dashColumn(nil), dashColumns...)
 	for index := range columns {
+		if columns[index].key == "ai" {
+			columns[index].width += toolIconWidth()
+		}
 		if columns[index].key == "session" {
 			for _, group := range m.processGroups {
 				if len(group.sessions) > 1 {
@@ -370,7 +373,7 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		value, color, bold := "", usageTextColor, false
 		switch column.key {
 		case "ai":
-			value, color, bold = group.tool, dashToolColor(group.tool), true
+			value, color, bold = toolLabel(group.tool), dashToolColor(group.tool), true
 		case "project":
 			value, color, bold = dashProjectName(session), usageBrightColor, true
 			if !hasSession {
@@ -426,7 +429,7 @@ func dashGroupDetail(group processGroup) []string {
 			message = "no Cursor CLI transcript found"
 		}
 		lines = append(lines,
-			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(group.tool, dashToolColor(group.tool), true)+
+			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(toolLabel(group.tool), dashToolColor(group.tool), true)+
 				dashPaint(" · "+message, usageMutedColor, false),
 		)
 	}
@@ -658,7 +661,7 @@ func (s dashSummary) providerLines(width int) []string {
 	if len(s.tools) == 1 {
 		tool := s.tools[0]
 		return []string{usageSplit(
-			dashPaint(dashCell(tool.tool, 8, false), dashToolColor(tool.tool), true)+
+			dashPaint(dashCell(toolLabel(tool.tool), 8+toolIconWidth(), false), dashToolColor(tool.tool), true)+
 				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false),
 			dashPaint(formatTokenCount(tool.tokens), usageTextColor, false),
 		)}
@@ -667,7 +670,7 @@ func (s dashSummary) providerLines(width int) []string {
 	for _, tool := range s.tools {
 		maximum = max(maximum, tool.tokens)
 	}
-	barWidth := max(width-8-4-8, 1)
+	barWidth := max(width-8-toolIconWidth()-4-8, 1)
 	var lines []string
 	for _, tool := range s.tools {
 		filled := 0
@@ -678,7 +681,7 @@ func (s dashSummary) providerLines(width int) []string {
 			}
 		}
 		lines = append(lines,
-			dashPaint(dashCell(tool.tool, 8, false), dashToolColor(tool.tool), true)+
+			dashPaint(dashCell(toolLabel(tool.tool), 8+toolIconWidth(), false), dashToolColor(tool.tool), true)+
 				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false)+
 				dashPaint(strings.Repeat("━", filled), dashToolColor(tool.tool), true)+
 				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+

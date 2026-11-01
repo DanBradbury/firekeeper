@@ -27,6 +27,7 @@ done | sort -u)
 	echo '| --- | --- |'
 	echo "| Go standard library and runtime | $(go env GOVERSION) |"
 	echo "$mods" | while read -r path version dir; do echo "| $path | $version |"; done
+	echo '| @lobehub/icons-static-svg (logo marks in the embedded icon font) | 1.101.0 |'
 	echo
 	echo '---'
 	echo
@@ -69,5 +70,20 @@ done | sort -u)
 			echo
 		done
 	done
+	# Not a Go module: the logo SVGs built into internal/iconfont's embedded
+	# font. The license text is kept, with the version, in the font's notice.
+	echo '## @lobehub/icons-static-svg 1.101.0'
+	echo
+	# shellcheck disable=SC2016
+	echo 'The logo marks in the embedded icon font (`internal/iconfont`) come from'
+	echo 'this package. The marks are trademarks of their owners; see NOTICE.'
+	echo
+	notice=scripts/icon-font/NOTICE.md
+	license=$(awk '/^```text$/{on=1} on{print} on&&/^```$/{exit}' "$notice")
+	if [ -z "$license" ]; then
+		echo "third-party-notices: no license block in $notice" >&2
+		exit 1
+	fi
+	echo "$license"
 } >"$out"
 echo "wrote $out"

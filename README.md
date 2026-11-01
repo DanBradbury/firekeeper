@@ -139,6 +139,32 @@ agent CLIs can change their on-disk formats between releases. The
 [reference](docs/reference.md#supported-providers) lists exactly what is read
 for each one, and what each version needs.
 
+### Logos in the dashboard
+
+The dashboard can put each agent's logo before its name. The logos live in a
+small font that ships inside the binary. Install it once:
+
+```sh
+firekeeper install-font          # firekeeper install-font --remove to undo
+```
+
+That copies `FirekeeperIcons.ttf` into your user font folder (`~/Library/Fonts`
+on macOS, `~/.local/share/fonts` on Linux). If you use Ghostty, it also adds one
+line to your Ghostty config that points only the logo codepoints at the font
+(`font-codepoint-map = U+E9A0-U+E9A6=FirekeeperIcons`), so your own font stays
+the main one; reload Ghostty (`Cmd+Shift+,`) and the logos appear. Pass
+`--no-terminal` to leave the config alone, and `--remove` undoes both. In
+iTerm2, set Profiles > Text > "Use a different font for non-ASCII text" to
+FirekeeperIcons yourself. Firekeeper never installs the font on its own, and
+updating Firekeeper does not install or change it. Run `install-font` again
+after an update to refresh the font.
+
+Until the font is installed the dashboard shows a plain `●` in its place.
+`FIREKEEPER_ICONS=font` forces the logos, `unicode` forces the dot, and `off`
+hides both. Terminal.app has no fallback-font setting, so use `unicode` or
+`off` there, and Windows has no `install-font` yet. The logos are the
+trademarks of their owners; see `scripts/icon-font/NOTICE.md`.
+
 ## Private by default
 
 - Plain `firekeeper` uploads no session data and starts no daemon. Provider

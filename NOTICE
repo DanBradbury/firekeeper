@@ -5,8 +5,9 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
 Binaries built from this repository include third-party
 software under its own licenses. Their notices and license texts are in
-THIRD_PARTY_NOTICES.md.
+THIRD_PARTY_NOTICES.md. That includes the MIT license of the logo marks in
+the embedded icon font (@lobehub/icons-static-svg, Copyright (c) 2023 LobeHub).
 
-Codex, GitHub Copilot, Claude Code, Kimi Code, OpenCode, Ghostty, Terminal.app
-and iTerm2 are trademarks of their respective owners. Firekeeper is not
-affiliated with or endorsed by them.
+Codex, GitHub Copilot, Claude Code, Cursor, Gemini, Kimi Code, OpenCode,
+Ghostty, Terminal.app and iTerm2 are trademarks of their respective owners.
+Firekeeper is not affiliated with or endorsed by them.
