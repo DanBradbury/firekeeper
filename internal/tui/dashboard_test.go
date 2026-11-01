@@ -335,7 +335,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	m.processCursor = 1
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"[ Processes ]", "¹summary", "³providers", "⁴projects", "sessions (3)",
+		"[ Processes ]", "summary", "providers", "projects", "sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "▲ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
@@ -345,7 +345,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}
 	}
-	if strings.Contains(view, "¹overview") {
+	if strings.Contains(view, "overview") {
 		t.Fatal("Processes panel still collides with the Overview tab name")
 	}
 }
@@ -561,7 +561,7 @@ func TestDashboardDropsColumnsAndPanelsWhenNarrow(t *testing.T) {
 	m := dashboardTestModel()
 	m.width, m.height = 60, 20
 	view := ansi.Strip(m.View())
-	if strings.Contains(view, "³providers") || strings.Contains(view, "Up ") {
+	if strings.Contains(view, "providers") || strings.Contains(view, "Up ") {
 		t.Fatalf("narrow dashboard kept wide-only content:\n%s", view)
 	}
 	if !strings.Contains(view, "Directory") || !strings.Contains(view, "/workspace/firekeeper") {
@@ -695,7 +695,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 	m.width, m.height = 140, 40
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"²tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
+		"tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
 		"Cache read", "900.0K", "Cache write", "100.0K",
 		"tokens 1.2M (in 50.0K · out 200.0K · cache read 900.0K · cache write 100.0K)",
 	} {
@@ -706,7 +706,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 
 	m.processCursor = 1
 	view = ansi.Strip(m.View())
-	for _, expected := range []string{"²tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
+	for _, expected := range []string{"tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}

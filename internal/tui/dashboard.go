@@ -543,10 +543,10 @@ func (m model) dashSummaryPanels(height int) []string {
 		accent string
 		body   func(width int) []string
 	}{
-		{"¹summary", dashBlue, summary.summaryLines},
+		{"summary", dashBlue, summary.summaryLines},
 		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
-		{"³providers", dashPurple, summary.providerLines},
-		{"⁴projects", dashGreen, summary.projectLines},
+		{"providers", dashPurple, summary.providerLines},
+		{"projects", dashGreen, summary.projectLines},
 	}
 	count := 1
 	switch {
@@ -930,9 +930,9 @@ func (m model) selectedSession() (processGroup, sessionInfo, bool) {
 func (m model) dashTokensTitle() string {
 	_, session, ok := m.selectedSession()
 	if !ok {
-		return "²tokens"
+		return "tokens"
 	}
-	return "²tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
+	return "tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
 }
 
 // dashTokenLines breaks down the selected session's tokens into input,
