@@ -80,10 +80,7 @@ func chipSpans(labels []string) [][2]int {
 	return spans
 }
 
-var (
-	tabLabels           = []string{"Processes", "Overview", "Usage"}
-	usageProviderLabels = []string{"CODEX", "COPILOT", "KIMI", "CLAUDE"}
-)
+var tabLabels = []string{"Processes", "Overview", "Usage"}
 
 func chipAt(labels []string, x int) (int, bool) {
 	for index, span := range chipSpans(labels) {
@@ -124,7 +121,7 @@ func (m model) hitTest(x, y int) hit {
 		}
 	case usageTab:
 		if row == 0 {
-			if index, ok := chipAt(usageProviderLabels, x); ok {
+			if index, ok := chipAt(usageProviderLabels(), x); ok {
 				return hit{hitUsageProvider, index}
 			}
 			return hit{}

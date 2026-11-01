@@ -1,0 +1,11 @@
+{
+  "name": "firekeeper-icon-font",
+  "private": true,
+  "description": "Builds FirekeeperIcons.ttf, the optional harness-logo font for FIREKEEPER_ICONS=font",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "fantasticon": "4.0.0"
+  }
+}

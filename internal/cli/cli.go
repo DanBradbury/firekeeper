@@ -32,6 +32,7 @@ var subcommands = []subcommand{
 	{"otel-reconcile", "experimental: compare an otel-listen file with transcript totals", runOtelReconcile},
 	{"telemetry", "opt-in Claude Code usage listener: enable, disable, status", runTelemetry},
 	{"claude-limits", "Claude 5-hour and weekly limits, on by default (enable, disable, status)", runClaudeLimits},
+	{"install-font", "install the logo font the dashboard uses (--remove to undo)", runInstallFont},
 	{"version", "print the version, commit and build date (also --version)", runVersion},
 }
 

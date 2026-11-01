@@ -455,6 +455,20 @@ func (m model) viewUsage(contentRows int) string {
 	return selector + "\n" + m.viewUsagePage(contentRows-1)
 }
 
+// usageProviderNames are the selector's providers in usageProvider order.
+var usageProviderNames = []string{"codex", "copilot", "kimi", "claude"}
+
+// usageProviderLabels are the selector's chip labels, each with its icon. The
+// mouse hit test measures the same labels.
+func usageProviderLabels() []string {
+	labels := make([]string, len(usageProviderNames))
+	for index, name := range usageProviderNames {
+		tool := strings.ToUpper(name[:1]) + name[1:]
+		labels[index] = toolIconPrefix(tool) + strings.ToUpper(name)
+	}
+	return labels
+}
+
 func (m model) usageProviderName() string {
 	switch m.usageProvider {
 	case copilotProvider:
@@ -472,8 +486,8 @@ func (m model) usageProviderName() string {
 // the active provider is a highlighted chip, the others are muted.
 func (m model) usageProviderSelectorLine() string {
 	line := dashPaint(" ", usageTextColor, false)
-	for _, name := range []string{"codex", "copilot", "kimi", "claude"} {
-		label := strings.ToUpper(name)
+	for index, name := range usageProviderNames {
+		label := usageProviderLabels()[index]
 		if name == m.usageProviderName() {
 			line += usagePaint("[ "+label+" ]", dashOrange, true, usageHighlightColor) + dashPaint(" ", usageTextColor, false)
 		} else {
