@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -62,7 +63,9 @@ func TestConfigureGhosttyKeepsExistingConfig(t *testing.T) {
 	if !strings.HasPrefix(string(got), "theme = dark\nfont-family = Mono\n") || !strings.Contains(string(got), ghosttyLine+"\n") {
 		t.Fatalf("config = %q", got)
 	}
-	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+	// Windows has no Unix permission bits (Go reports 0666), so only the
+	// content checks apply there.
+	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("mode changed to %v", info.Mode().Perm())
 	}
 
