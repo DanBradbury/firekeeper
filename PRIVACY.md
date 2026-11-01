@@ -42,7 +42,9 @@ described in section 1.3.
   session has files under `subagents/`. It uses that only to warn that token
   totals may be low, and it does not read those files' contents for the warning.
   The Claude limits lookup also reads Claude Code's existing OAuth sign-in
-  when available, as described in section 1.3.
+  when available, as described in section 1.3. So do `backfill
+  --claude-cloud` and, only when `[claude_cloud] enabled = true`, the daemon,
+  to import Claude Code on the web sessions (section 1.3).
   Sessions in repositories containing a `.firekeeper-ignore` file, or matching
   `exclude` in the config, are never read.
 - **Writes**, under `~/.firekeeper/`: `config.toml` (server address and, after
