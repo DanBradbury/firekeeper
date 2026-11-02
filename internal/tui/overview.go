@@ -66,7 +66,7 @@ func (m model) overviewProviders(now time.Time) []overviewProvider {
 func (m model) codexOverview(now time.Time) overviewProvider {
 	snapshot := m.codexUsage
 	provider := overviewProvider{
-		Name: "codex", Accent: dashBlue,
+		Name: "Codex", Accent: dashBlue,
 		Loading:  m.codexUsageLoading && !snapshot.hasData(),
 		Err:      m.codexUsageErr,
 		HasData:  snapshot.hasData(),
@@ -113,7 +113,7 @@ func (m model) codexOverview(now time.Time) overviewProvider {
 func (m model) copilotOverview(now time.Time) overviewProvider {
 	snapshot := m.copilotUsage
 	provider := overviewProvider{
-		Name: "copilot", Accent: dashPurple,
+		Name: "Copilot", Accent: dashPurple,
 		Loading:  m.copilotUsageLoading && !snapshot.hasData(),
 		Err:      m.copilotUsageErr,
 		HasData:  snapshot.hasData(),
@@ -143,7 +143,7 @@ func (m model) copilotOverview(now time.Time) overviewProvider {
 func (m model) claudeOverview(now time.Time) overviewProvider {
 	snapshot := m.claudeUsage
 	provider := overviewProvider{
-		Name: "claude", Accent: dashOrange,
+		Name: "Claude", Accent: dashOrange,
 		Loading:  m.claudeUsageLoading && !snapshot.hasData(),
 		Err:      m.claudeUsageErr,
 		HasData:  snapshot.hasData(),
@@ -173,7 +173,7 @@ func (m model) claudeOverview(now time.Time) overviewProvider {
 func (m model) kimiOverview(now time.Time) overviewProvider {
 	snapshot := m.kimiUsage
 	provider := overviewProvider{
-		Name: "kimi", Accent: dashTeal,
+		Name: "Kimi", Accent: dashTeal,
 		Loading:  m.kimiUsageLoading && !snapshot.hasData(),
 		Err:      m.kimiUsageErr,
 		HasData:  snapshot.hasData(),
@@ -275,6 +275,9 @@ func overviewBody(provider overviewProvider, inner int, now time.Time) []string 
 	for _, alert := range provider.Alerts {
 		lines = append(lines, dashPaint(alert, dashRed, true))
 	}
+	if len(lines) > 0 {
+		lines = append(lines, "")
+	}
 	lines = append(lines, overviewTokenLine(provider))
 	for _, note := range provider.Notes {
 		lines = append(lines, usageNote(note))
@@ -304,26 +307,59 @@ func (m model) viewOverview(contentRows int) string {
 	if len(shown) == 0 {
 		lines = dashBox("overview", []string{dashPaint("No provider usage found yet.", usageMutedColor, false)}, m.width, min(contentRows, 3), dashBlue)
 	} else {
-		inner := max(m.width-4, 1)
+		// Wide terminals show paired cards; smaller terminals keep full-width meters.
+		columns, gap := 1, 2
+		if m.width >= 150 {
+			columns = 2
+		}
+		cardWidth := (m.width - (columns-1)*gap) / columns
+		inner := max(cardWidth-4, 1)
 		bodies := make([][]string, len(shown))
 		heights := make([]int, len(shown))
-		total := 0
 		for index, provider := range shown {
 			bodies[index] = overviewBody(provider, inner, now)
 			heights[index] = len(bodies[index]) + 2
-			total += heights[index]
 		}
-		// Too tall: trim from the last panel up, but keep one body row each.
-		for index := len(shown) - 1; total > contentRows && index >= 0; index-- {
-			cut := min(total-contentRows, heights[index]-3)
-			heights[index] -= cut
+		// Equal-height cards per row keep borders aligned. Trim rows only when
+		// needed, preserving at least one body line per visible card.
+		rowHeights := make([]int, (len(shown)+columns-1)/columns)
+		total := 0
+		for index, height := range heights {
+			row := index / columns
+			rowHeights[row] = max(rowHeights[row], height)
+		}
+		for _, height := range rowHeights {
+			total += height
+		}
+		spacing := 0
+		if total+len(rowHeights)-1 <= contentRows {
+			spacing = 1
+			total += len(rowHeights) - 1
+		}
+		for row := len(rowHeights) - 1; total > contentRows && row >= 0; row-- {
+			cut := min(total-contentRows, rowHeights[row]-3)
+			rowHeights[row] -= cut
 			total -= cut
 		}
-		for index, provider := range shown {
-			if lines != nil && len(lines)+heights[index] > contentRows {
+		for row, height := range rowHeights {
+			if len(lines) > 0 && len(lines)+spacing+height > contentRows {
 				break
 			}
-			lines = append(lines, dashBox(provider.Name, bodies[index], m.width, heights[index], provider.Accent)...)
+			if row > 0 && spacing > 0 {
+				lines = append(lines, dashFit("", m.width, usagePanelColor))
+			}
+			cards := make([][]string, 0, columns)
+			for index := row * columns; index < min((row+1)*columns, len(shown)); index++ {
+				provider := shown[index]
+				cards = append(cards, dashBox(toolLabel(provider.Name), bodies[index], cardWidth, height, provider.Accent))
+			}
+			for line := 0; line < height; line++ {
+				parts := make([]string, len(cards))
+				for index, card := range cards {
+					parts[index] = card[line]
+				}
+				lines = append(lines, dashFit(strings.Join(parts, dashFit("", gap, usagePanelColor)), m.width, usagePanelColor))
+			}
 		}
 		if hidden > 0 && len(lines) < contentRows {
 			lines = append(lines, dashFit(dashPaint(fmt.Sprintf(" %d provider(s) with no local usage data are not shown", hidden), usageMutedColor, false), m.width, usagePanelColor))

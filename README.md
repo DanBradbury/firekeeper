@@ -106,7 +106,8 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
   its child processes and shows available state, model, directory, Git branch,
   and tokens. Check which session needs attention without visiting every tab.
 - **Understand usage.** Overview summarizes local tokens and available
-  provider limits; Usage breaks history down by model and lets you open past
+  provider limits in cards with agent logos, paired on wide terminals;
+  Usage breaks history down by model and lets you open past
   conversations. See [what each provider reports](https://firekeeper.ai/docs/usage/).
 - **Read without interrupting.** The chat view follows new prompts and replies
   live, read-only. Return to the agent's own terminal to reply or approve work.
