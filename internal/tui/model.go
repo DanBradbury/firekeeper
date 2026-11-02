@@ -146,6 +146,8 @@ type model struct {
 	claudeUsageRefreshedAt  time.Time
 	claudeHistoryCursor     int
 	helpOpen                bool
+	iconSetupOpen           bool
+	iconSetupNote           string
 	metadataMisses          map[int]int
 	chat                    chatState
 	mouse                   mouseState
@@ -163,7 +165,7 @@ func NewModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(pollProcesses(), refreshProcesses())
+	return tea.Batch(pollProcesses(), refreshProcesses(), checkIconSetup())
 }
 
 func pollProcesses() tea.Cmd {
@@ -201,7 +203,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
+		if m.iconSetupOpen {
+			return m, nil
+		}
 		return m.updateMouse(msg)
+
+	case iconSetupMsg:
+		m = m.applyIconSetup(msg)
 
 	case copyResultMsg:
 		if msg.err != nil {
@@ -213,6 +221,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		m.notice = ""
 		m.clearSelection()
+		if m.iconSetupOpen {
+			return m.updateIconSetup(msg)
+		}
 		if m.menu != nil {
 			return m.updateMenuKey(msg)
 		}
@@ -500,6 +511,9 @@ func (m model) screen() string {
 		return "Terminal too small (need 20x6)\n"
 	}
 	contentRows := m.height - chromeRows
+	if m.iconSetupOpen {
+		return strings.Join([]string{m.dashHeaderLine(), m.viewIconSetup(contentRows), m.iconSetupFooter()}, "\n")
+	}
 	if m.helpOpen {
 		help := m.helpFooter()
 		return strings.Join([]string{m.dashHeaderLine(), m.viewHelp(contentRows), help}, "\n")

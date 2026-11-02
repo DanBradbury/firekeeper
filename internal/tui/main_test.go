@@ -19,6 +19,7 @@ func TestMain(m *testing.M) {
 	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
 		return claudelimits.Limits{}, false, nil
 	}
+	iconSetupSource = func(context.Context) string { return "" }
 	claudeCloudStatusSource = func() string { return "" }
 	os.Exit(m.Run())
 }

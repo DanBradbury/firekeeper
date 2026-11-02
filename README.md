@@ -166,7 +166,11 @@ after an update to refresh the font.
 
 Until the font is installed the dashboard shows a plain `●` in its place.
 `FIREKEEPER_ICONS=font` forces the logos, `unicode` forces the dot, and `off`
-hides both. Terminal.app has no fallback-font setting, so use `unicode` or
+hides both. In iTerm2, a profile not set to use FirekeeperIcons for non-ASCII
+text gets a setup panel at startup that waits for you: change the setting, press
+`r` to check again (the panel also previews the logos), `enter` to continue, or
+`u` to use plain dots for that run. It is best effort; it reads the iTerm2
+preferences and writes nothing. Terminal.app has no fallback-font setting, so use `unicode` or
 `off` there, and Windows has no `install-font` yet. The logos are the
 trademarks of their owners; see `scripts/icon-font/NOTICE.md`.
 
