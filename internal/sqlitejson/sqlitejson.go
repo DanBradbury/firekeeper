@@ -42,9 +42,45 @@ var ErrArguments = errors.New("sqlitejson: expected -readonly -json <database> <
 // produced. In-process failures are sanitized: they never include the query.
 func Run(ctx context.Context, args ...string) ([]byte, error) {
 	if _, err := exec.LookPath("sqlite3"); err == nil {
-		return exec.CommandContext(ctx, "sqlite3", args...).Output()
+		output, err := exec.CommandContext(ctx, "sqlite3", args...).Output()
+		if err != nil && len(args) == 4 && cantOpen(err) && !hasWAL(args[2]) {
+			// A WAL database whose -shm file is missing cannot be opened
+			// read-only when its directory is not writable. Retry without
+			// the WAL machinery; nothing is lost while no -wal file exists.
+			retry := append([]string(nil), args...)
+			retry[2] = immutableURI(args[2])
+			if out, retryErr := exec.CommandContext(ctx, "sqlite3", retry...).Output(); retryErr == nil {
+				return out, nil
+			}
+		}
+		return output, err
 	}
 	return RunInProcess(ctx, args...)
+}
+
+// sqliteCantOpen is the sqlite3 shell's exit status for SQLITE_CANTOPEN.
+const sqliteCantOpen = 14
+
+func cantOpen(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == sqliteCantOpen
+}
+
+// hasWAL reports whether path has unmerged WAL content an immutable open
+// would ignore.
+func hasWAL(path string) bool {
+	info, err := os.Stat(path + "-wal")
+	return err == nil && info.Size() > 0
+}
+
+// immutableURI names path as a file: URI the sqlite3 shell opens without
+// touching or waiting on any WAL sidecar file.
+func immutableURI(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	u := url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: "immutable=1"}
+	return u.String()
 }
 
 // RunInProcess answers a Run request without the sqlite3 command line tool.

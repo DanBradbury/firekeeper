@@ -5,9 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/DanBradbury/firekeeper/internal/testenv"
 )
 
 // fixture creates a database with one table of mixed column types.
@@ -142,5 +147,34 @@ func TestReadOnlyDSNWindowsDrivePath(t *testing.T) {
 	}
 	if !strings.Contains(got, "mode=ro") {
 		t.Errorf("dsn %q is not read-only", got)
+	}
+}
+
+// A WAL database without its -shm file cannot be opened read-only from a
+// directory that is not writable; Run must still read it.
+func TestRunReadsWALDatabaseInReadOnlyDirectory(t *testing.T) {
+	testenv.NeedTool(t, "sqlite3")
+	if os.Getuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("directory permissions do not apply")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.db")
+	if out, err := exec.Command("sqlite3", path, "PRAGMA journal_mode=wal; CREATE TABLE x(a); INSERT INTO x VALUES (1);").CombinedOutput(); err != nil {
+		t.Fatalf("create: %v: %s", err, out)
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		os.Remove(path + suffix)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	out, err := Run(context.Background(), "-readonly", "-json", path, "SELECT a FROM x")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(string(out), `"a":1`) {
+		t.Fatalf("unexpected output %q", out)
 	}
 }
