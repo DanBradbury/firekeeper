@@ -1013,3 +1013,66 @@ func TestSummaryTokenSplit(t *testing.T) {
 		t.Errorf("split = %q", got)
 	}
 }
+
+func TestSubagentsListUnderTheirPrimarySession(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	m.processGroups = m.processGroups[:1]
+	primary := m.processGroups[0].sessions[0]
+	primary.tokens, primary.tokensUsed = tokenBreakdown{}, 858_000
+	m.processGroups[0].sessions = []sessionInfo{
+		primary,
+		{id: "01a199ab-4aea-79c1-890e-e8866f04d75b", state: sessionStateWaiting, subagent: true, parentID: primary.id, agentName: "Galileo", model: "gpt-6.1-sol", tokensUsed: 5_000},
+		{id: "01a1996c-e645-7781-8069-3e95a35b075d", state: sessionStateWaiting, subagent: true, tokensUsed: 137_000},
+	}
+
+	lines, offsets := m.processBodyLines()
+	if len(lines) != 3 || len(offsets) != 1 || offsets[0] != 0 {
+		t.Fatalf("body = %d lines, offsets %v; want the runtime row then two subagent rows", len(lines), offsets)
+	}
+	plain := make([]string, len(lines))
+	for index, line := range lines {
+		plain[index] = ansi.Strip(line)
+	}
+	if strings.Contains(plain[0], "+") || strings.Contains(plain[0], "└─") {
+		t.Fatalf("runtime row must not count or mark subagents: %q", plain[0])
+	}
+	for _, want := range []string{"Galileo", "6f04d75b"} {
+		if !strings.Contains(plain[1], want) {
+			t.Fatalf("subagent row %q missing %q", plain[1], want)
+		}
+	}
+	if !strings.Contains(plain[0], "1.0M") {
+		t.Fatalf("runtime row must total its own and its subagents' tokens: %q", plain[0])
+	}
+	if !strings.Contains(plain[1], "1% of this runtime's tokens") || !strings.Contains(plain[2], "14% of this runtime's tokens") {
+		t.Fatalf("subagent rows do not show their share of the runtime:\n%s\n%s", plain[1], plain[2])
+	}
+	for _, line := range plain[1:] {
+		if !strings.Contains(line, "└─ sub") {
+			t.Fatalf("subagent row is not marked as a child: %q", line)
+		}
+	}
+	for index, line := range lines {
+		if width := ansi.StringWidth(line); width > m.dashInnerWidth() {
+			t.Fatalf("line %d is %d cells wide, limit %d", index, width, m.dashInnerWidth())
+		}
+	}
+
+	detail := ansi.Strip(strings.Join(dashGroupDetail(m.processGroups[0]), "\n"))
+	for _, want := range []string{"SUBAGENT Galileo", " of " + dashShortID(primary.id), "+ 142.0K in 2 subagents", "% of runtime"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("detail missing %q:\n%s", want, detail)
+		}
+	}
+}
+
+func TestSubagentRowsDoNotChangeSelectionOrClicks(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	m.processGroups[0].sessions = append(m.processGroups[0].sessions, sessionInfo{id: "01a199ab-4aea", subagent: true})
+	_, offsets := m.processBodyLines()
+	if len(offsets) != 3 || offsets[1] != 2 {
+		t.Fatalf("offsets = %v, want the next runtime after the subagent row", offsets)
+	}
+}

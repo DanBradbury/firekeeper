@@ -77,11 +77,6 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			if !ok {
 				continue
 			}
-			// A background server (no terminal) also hosts subagent threads,
-			// such as the guardian review; they are not a session to switch to.
-			if group.Root.TTY == "" && strings.HasPrefix(row.Source, "{") {
-				continue
-			}
 			name := d.sanitizeProcessCommand(row.Name)
 			if name == "" {
 				name = row.ID
@@ -94,6 +89,9 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				CWD:         d.sanitizeProcessCommand(row.CWD),
 				Model:       d.sanitizeProcessCommand(row.Model),
 				Source:      d.sanitizeProcessCommand(row.Source),
+				Subagent:    row.isSubagent(),
+				ParentID:    row.parentThreadID(),
+				AgentName:   d.sanitizeProcessCommand(row.agentNickname()),
 				GitBranch:   d.sanitizeProcessCommand(row.GitBranch),
 				RolloutPath: rolloutPath,
 				UpdatedAt:   time.UnixMilli(row.UpdatedAtMS),
@@ -105,7 +103,109 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			return group.Sessions[i].UpdatedAt.After(group.Sessions[j].UpdatedAt)
 		})
 	}
+	attachCodexSubagents(groups)
 	return nil
+}
+
+// attachCodexSubagents gives each subagent thread to the runtime that owns its
+// primary session and lists it right after that session. A background server
+// hosts the subagents of a CLI, so they are moved to the CLI's group; a
+// subagent whose primary session is on no runtime is dropped, because it is not
+// something to switch to.
+func attachCodexSubagents(groups []ProcessGroup) {
+	var orphans []Info
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" {
+			continue
+		}
+		kept := group.Sessions[:0:0]
+		for _, info := range group.Sessions {
+			if !info.Subagent {
+				kept = append(kept, info)
+				continue
+			}
+			orphans = append(orphans, info)
+		}
+		group.Sessions = kept
+	}
+	for _, sub := range orphans {
+		if target := codexSubagentOwner(groups, sub); target != nil {
+			target.Sessions = append(target.Sessions, sub)
+		}
+	}
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" || len(group.Sessions) < 2 {
+			continue
+		}
+		group.Sessions = orderSubagentsUnderParents(group.Sessions)
+	}
+}
+
+// codexSubagentOwner finds the group whose primary session spawned sub: the
+// one named by ParentID, or, when the provider names none, a runtime with a
+// terminal (then any runtime) whose primary session shares sub's directory.
+func codexSubagentOwner(groups []ProcessGroup, sub Info) *ProcessGroup {
+	var byCWD, byCWDTTY *ProcessGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" || len(group.Sessions) == 0 || group.Sessions[0].Subagent {
+			continue
+		}
+		for _, info := range group.Sessions {
+			if sub.ParentID != "" && info.ID == sub.ParentID {
+				return group
+			}
+		}
+		if sub.ParentID == "" && sameDirectory(group.Sessions[0].CWD, sub.CWD) {
+			if byCWD == nil {
+				byCWD = group
+			}
+			if byCWDTTY == nil && group.Root.TTY != "" {
+				byCWDTTY = group
+			}
+		}
+	}
+	if byCWDTTY != nil {
+		return byCWDTTY
+	}
+	return byCWD
+}
+
+// orderSubagentsUnderParents keeps primary sessions in their order and lists
+// each subagent after its parent, newest first, with parentless ones after the
+// first primary session.
+func orderSubagentsUnderParents(sessions []Info) []Info {
+	var primaries, subs []Info
+	for _, info := range sessions {
+		if info.Subagent {
+			subs = append(subs, info)
+		} else {
+			primaries = append(primaries, info)
+		}
+	}
+	sort.SliceStable(subs, func(i, j int) bool { return subs[i].UpdatedAt.After(subs[j].UpdatedAt) })
+	out := make([]Info, 0, len(sessions))
+	used := make([]bool, len(subs))
+	for primaryIndex, primary := range primaries {
+		out = append(out, primary)
+		for subIndex, sub := range subs {
+			if used[subIndex] {
+				continue
+			}
+			if sub.ParentID == primary.ID || (sub.ParentID == "" && primaryIndex == 0) {
+				used[subIndex] = true
+				out = append(out, sub)
+			}
+		}
+	}
+	for subIndex, sub := range subs {
+		if !used[subIndex] {
+			out = append(out, sub)
+		}
+	}
+	return out
 }
 
 // unmatchedCodexGroups returns the Codex groups with no open rollout file,
@@ -237,7 +337,7 @@ func (d *discoverer) matchCodexGroupsByCWD(groups, unmatched []ProcessGroup, can
 		var best ThreadMetadataRow
 		for id := range candidates {
 			row, ok := metadata[id]
-			if !ok || claimed[id] || !sameDirectory(row.CWD, cwd) || row.RolloutPath == "" || strings.HasPrefix(row.Source, "{") {
+			if !ok || claimed[id] || !sameDirectory(row.CWD, cwd) || row.RolloutPath == "" || row.isSubagent() {
 				continue
 			}
 			if best.ID == "" || row.UpdatedAtMS > best.UpdatedAtMS {
@@ -389,6 +489,7 @@ func (d *discoverer) readThreadMetadata(threadIDs map[string]bool) (map[string]T
 			cwd,
 			COALESCE(model, '') AS model,
 			COALESCE(thread_source, source, '') AS source,
+			COALESCE(source, '') AS raw_source,
 			COALESCE(git_branch, '') AS git_branch,
 			COALESCE(updated_at_ms, updated_at * 1000) AS updated_at_ms,
 			tokens_used,
@@ -466,3 +567,36 @@ func normalizeDirectory(path string) string {
 	path = strings.TrimRight(slashPath(path), "/")
 	return strings.ToLower(path)
 }
+
+// isSubagent reports whether the thread was spawned by another one rather than
+// started by a person: a subagent, or the guardian review.
+func (r ThreadMetadataRow) isSubagent() bool {
+	switch r.Source {
+	case "subagent", "guardian_review":
+		return true
+	}
+	return strings.HasPrefix(r.Source, "{") || strings.HasPrefix(r.RawSource, "{")
+}
+
+// spawnSource decodes the JSON the source column holds for a spawned thread.
+func (r ThreadMetadataRow) spawnSource() (parent, nickname string) {
+	raw := r.RawSource
+	if !strings.HasPrefix(raw, "{") {
+		raw = r.Source
+	}
+	var decoded struct {
+		Subagent struct {
+			ThreadSpawn struct {
+				ParentThreadID string `json:"parent_thread_id"`
+				AgentNickname  string `json:"agent_nickname"`
+			} `json:"thread_spawn"`
+		} `json:"subagent"`
+	}
+	if json.Unmarshal([]byte(raw), &decoded) != nil {
+		return "", ""
+	}
+	return decoded.Subagent.ThreadSpawn.ParentThreadID, decoded.Subagent.ThreadSpawn.AgentNickname
+}
+
+func (r ThreadMetadataRow) parentThreadID() string { parent, _ := r.spawnSource(); return parent }
+func (r ThreadMetadataRow) agentNickname() string  { _, nickname := r.spawnSource(); return nickname }

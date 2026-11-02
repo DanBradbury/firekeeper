@@ -79,6 +79,9 @@ type sessionInfo struct {
 	telemetryOn       bool
 	undercountWarning string
 	telemetryHint     bool
+	subagent          bool
+	parentID          string
+	agentName         string
 }
 
 type tokenBreakdown = session.TokenBreakdown

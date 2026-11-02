@@ -347,6 +347,11 @@ func (m model) processBodyLines() ([]string, []int) {
 			background = usageHighlightColor
 		}
 		lines = append(lines, dashGroupRow(group, columns, width, selected, expanded, background))
+		for _, sub := range group.sessions {
+			if sub.subagent {
+				lines = append(lines, dashSubagentRow(sub, groupTokenTotal(group), columns, width, selected))
+			}
+		}
 		if !expanded {
 			continue
 		}
@@ -396,7 +401,7 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 			value, color = emptyFallback(session.model, "—"), usageMutedColor
 		case "tokens":
 			value, color = "—", usageMutedColor
-			if total := sessionTokenTotal(session); total > 0 {
+			if total := groupTokenTotal(group); total > 0 {
 				value, color = formatTokenCount(total), usageBrightColor
 			}
 		case "up":
@@ -405,6 +410,99 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		row.WriteString(usagePaint(dashCell(sanitizeProcessCommand(value), column.width, column.right)+" ", color, bold, background))
 	}
 	return dashFit(row.String(), width, background)
+}
+
+// dashSubagentRow is the line under a runtime for a subagent it spawned. It
+// sits in the same columns, indented with a tree branch, and belongs to the
+// runtime above it: selecting either selects that runtime.
+func dashSubagentRow(sub sessionInfo, groupTotal int64, columns []dashColumn, width int, selected bool) string {
+	background := usagePanelColor
+	if selected {
+		background = usageHighlightColor
+	}
+	var row strings.Builder
+	row.WriteString(usagePaint("  ", dashOrange, true, background))
+	for _, column := range columns {
+		value, color, bold := "", usageMutedColor, false
+		switch column.key {
+		case "ai":
+			value = "└─ sub"
+		case "project":
+			value = subagentLabel(sub)
+		case "session":
+			// Spawned threads share the parent's time-ordered id prefix, so the
+			// tail is what tells them apart.
+			value, color = dashIDTail(sub.id), dashOrange
+		case "directory":
+			if total := sessionTokenTotal(sub); total > 0 && groupTotal > 0 {
+				value = fmt.Sprintf("%d%% of this runtime's tokens", (total*100+groupTotal/2)/groupTotal)
+			}
+		case "status":
+			value, color = dashStateIcon(sub.state)+" "+sub.state.String(), dashStateColor(sub.state)
+		case "model":
+			value = emptyFallback(sub.model, "—")
+		case "tokens":
+			value = "—"
+			if total := sessionTokenTotal(sub); total > 0 {
+				value, color = formatTokenCount(total), usageTextColor
+			}
+		}
+		row.WriteString(usagePaint(dashCell(sanitizeProcessCommand(value), column.width, column.right)+" ", color, bold, background))
+	}
+	return dashFit(row.String(), width, background)
+}
+
+// dashSubagentRollup adds what the subagents spent to the primary session's
+// own token line, so the row total can be read as own plus subagents.
+func dashSubagentRollup(total int64, count int) string {
+	if count == 0 {
+		return ""
+	}
+	noun := "subagent"
+	if count > 1 {
+		noun += "s"
+	}
+	return dashPaint(fmt.Sprintf("  + %s in %d %s", formatTokenCount(total), count, noun), usageMutedColor, false)
+}
+
+// groupTokenTotal is everything a runtime has spent: its sessions and the
+// subagents they spawned.
+func groupTokenTotal(group processGroup) int64 {
+	var total int64
+	for _, session := range group.sessions {
+		total += sessionTokenTotal(session)
+	}
+	return total
+}
+
+// subagentTokenTotal is the part of groupTokenTotal spent by subagents.
+func subagentTokenTotal(group processGroup) (total int64, count int) {
+	for _, session := range group.sessions {
+		if session.subagent {
+			total += sessionTokenTotal(session)
+			count++
+		}
+	}
+	return total, count
+}
+
+// subagentLabel names a subagent: its nickname, else its title when it has one.
+func subagentLabel(sub sessionInfo) string {
+	if sub.agentName != "" {
+		return sub.agentName
+	}
+	if sub.name != "" && sub.name != sub.id {
+		return sub.name
+	}
+	return "subagent"
+}
+
+func dashIDTail(id string) string {
+	if id == "" {
+		return "—"
+	}
+	runes := []rune(id)
+	return string(runes[max(len(runes)-8, 0):])
 }
 
 // dashGroupDetail describes every session and process of one runtime. It backs
@@ -433,13 +531,33 @@ func dashGroupDetail(group processGroup) []string {
 				dashPaint(" · "+message, usageMutedColor, false),
 		)
 	}
+	subTotal, subCount := subagentTokenTotal(group)
 	for _, session := range group.sessions {
+		if session.subagent {
+			share := ""
+			if total := groupTokenTotal(group); total > 0 && sessionTokenTotal(session) > 0 {
+				share = fmt.Sprintf(" · %d%% of runtime", (sessionTokenTotal(session)*100+total/2)/total)
+			}
+			lines = append(lines,
+				dashPaint("└─ SUBAGENT ", usageBrightColor, true)+dashPaint(subagentLabel(session)+" ", usageBrightColor, true)+
+					dashPaint(emptyFallback(session.id, "unknown"), dashOrange, false)+
+					dashPaint(" of "+emptyFallback(dashShortID(session.parentID), "this runtime"), usageMutedColor, false),
+				dashPaint("   ", usageMutedColor, false)+
+					dashPaint(dashStateIcon(session.state)+" "+session.state.String()+"   ", dashStateColor(session.state), true)+
+					label("model", emptyFallback(session.model, "unknown"))+
+					dashPaint("tokens ", usageMutedColor, false)+
+					dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
+					dashTokenBreakdownText(session.tokens)+dashPaint(share, usageMutedColor, false),
+			)
+			continue
+		}
 		originLabel, origin := "source", session.source
 		if session.repository != "" {
 			originLabel, origin = "repo", session.repository
 		}
+		heading := "SESSION "
 		lines = append(lines,
-			dashPaint("SESSION ", usageBrightColor, true)+dashPaint(emptyFallback(session.id, "unknown"), dashOrange, true)+
+			dashPaint(heading, usageBrightColor, true)+dashPaint(emptyFallback(session.id, "unknown"), dashOrange, true)+
 				dashPaint(" · "+sanitizeProcessCommand(emptyFallback(session.cwd, "unknown cwd")), usageTextColor, false),
 			dashPaint("title ", usageMutedColor, false)+dashPaint(sanitizeProcessCommand(emptyFallback(session.name, "—")), usageBrightColor, true),
 			dashPaint("state ", usageMutedColor, false)+
@@ -449,8 +567,9 @@ func dashGroupDetail(group processGroup) []string {
 				label("branch", emptyFallback(session.gitBranch, "none")),
 			dashPaint("tokens ", usageMutedColor, false)+
 				dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
-				dashTokenBreakdownText(session.tokens),
+				dashTokenBreakdownText(session.tokens)+dashSubagentRollup(subTotal, subCount),
 		)
+		subTotal, subCount = 0, 0
 		if session.telemetryLine != "" {
 			lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
 			lines = append(lines, dashPaint("transcripts ", usageMutedColor, false)+dashPaint(formatTokenCount(session.transcriptTokens), usageTextColor, false))
@@ -882,7 +1001,13 @@ func dashShortID(id string) string {
 func dashSessionLabel(group processGroup) string {
 	session, _ := firstSession(group)
 	label := dashShortID(session.id)
-	if extra := len(group.sessions) - 1; extra > 0 {
+	primaries := 0
+	for _, session := range group.sessions {
+		if !session.subagent {
+			primaries++
+		}
+	}
+	if extra := primaries - 1; extra > 0 {
 		label += fmt.Sprintf(" +%d", extra)
 	}
 	return label

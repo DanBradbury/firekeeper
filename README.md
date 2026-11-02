@@ -129,6 +129,10 @@ Local token totals can be incomplete and are not an account-wide bill.
 | Gemini CLI | Yes | Yes |
 | Cursor CLI | Yes | Yes |
 
+Codex subagents (spawned threads and the guardian review) are listed as `└─ sub`
+rows under the Codex session that owns them. Selecting a subagent row selects
+its runtime, so `s` switches to that runtime's terminal.
+
 A Claude Code session that has subagents warns that its token total is likely
 low: background summary calls are not written to the transcript. The warning
 has no count. See the

@@ -112,6 +112,12 @@ type Info struct {
 	// UndercountWarning is set for a Claude Code session that has subagent
 	// transcripts. It is not included in Tokens or TokensUsed.
 	UndercountWarning string
+	// Subagent marks a thread another session spawned (a Codex subagent or the
+	// guardian review). ParentID is the spawning thread when the provider says
+	// which, and AgentName its nickname, such as "Galileo".
+	Subagent  bool
+	ParentID  string
+	AgentName string
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,
@@ -147,11 +153,14 @@ type ProcessGroup struct {
 }
 
 type ThreadMetadataRow struct {
-	ID          string `json:"id"`
-	Name        string `json:"display_name"`
-	CWD         string `json:"cwd"`
-	Model       string `json:"model"`
-	Source      string `json:"source"`
+	ID     string `json:"id"`
+	Name   string `json:"display_name"`
+	CWD    string `json:"cwd"`
+	Model  string `json:"model"`
+	Source string `json:"source"`
+	// RawSource is the thread's own source column. For a spawned thread it is
+	// JSON naming the parent; Source prefers the shorter thread_source label.
+	RawSource   string `json:"raw_source"`
 	GitBranch   string `json:"git_branch"`
 	UpdatedAtMS int64  `json:"updated_at_ms"`
 	TokensUsed  int64  `json:"tokens_used"`
