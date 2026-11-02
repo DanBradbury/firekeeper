@@ -43,7 +43,7 @@ var ErrArguments = errors.New("sqlitejson: expected -readonly -json <database> <
 func Run(ctx context.Context, args ...string) ([]byte, error) {
 	if _, err := exec.LookPath("sqlite3"); err == nil {
 		output, err := exec.CommandContext(ctx, "sqlite3", args...).Output()
-		if err != nil && len(args) == 4 && cantOpen(err) && !hasWAL(args[2]) {
+		if err != nil && len(args) == 4 && cantOpenWAL(err) && !hasWAL(args[2]) {
 			// A WAL database whose -shm file is missing cannot be opened
 			// read-only when its directory is not writable. Retry without
 			// the WAL machinery; nothing is lost while no -wal file exists.
@@ -58,12 +58,22 @@ func Run(ctx context.Context, args ...string) ([]byte, error) {
 	return RunInProcess(ctx, args...)
 }
 
-// sqliteCantOpen is the sqlite3 shell's exit status for SQLITE_CANTOPEN.
-const sqliteCantOpen = 14
+// The sqlite3 shell exits with the SQLite result code. A read-only open of a
+// WAL database that cannot create its -shm file fails with SQLITE_CANTOPEN
+// on some versions (macOS's, for example) and SQLITE_READONLY ("attempt to
+// write a readonly database") on others, such as 3.50.
+const (
+	sqliteReadOnly = 8
+	sqliteCantOpen = 14
+)
 
-func cantOpen(err error) bool {
+func cantOpenWAL(err error) bool {
 	var exitErr *exec.ExitError
-	return errors.As(err, &exitErr) && exitErr.ExitCode() == sqliteCantOpen
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	code := exitErr.ExitCode()
+	return code == sqliteCantOpen || code == sqliteReadOnly
 }
 
 // hasWAL reports whether path has unmerged WAL content an immutable open
