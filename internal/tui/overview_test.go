@@ -39,21 +39,22 @@ func overviewTestModel(now time.Time) model {
 }
 
 func TestOverviewShowsQuotaMetersResetsAndTokenTotals(t *testing.T) {
+	withIconMode(t, iconsOff)
 	now := time.Now()
 	m := overviewTestModel(now)
 	view := ansi.Strip(m.viewOverview(30))
 	for _, expected := range []string{
-		"╭─codex", "5-hour", "42%", "↻ 1h", "Weekly", "85%", "↻ 2d",
+		"╭─Codex", "5-hour", "42%", "↻ 1h", "Weekly", "85%", "↻ 2d",
 		"today 1.2K", "7d 2.0K", "lifetime 5.0M",
-		"╭─copilot", "AI credits", "20%", "300 / 1,500",
-		"╭─claude", "Limits: firekeeper claude-limits enable", "today 1.2K",
+		"╭─Copilot", "AI credits", "20%", "300 / 1,500",
+		"╭─Claude", "Limits: firekeeper claude-limits enable", "today 1.2K",
 		"1 provider(s) with no local usage data are not shown",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("overview missing %q:\n%s", expected, view)
 		}
 	}
-	if strings.Contains(view, "╭─kimi") {
+	if strings.Contains(view, "╭─Kimi") {
 		t.Fatalf("provider without data got a panel:\n%s", view)
 	}
 }
@@ -90,7 +91,7 @@ func TestOverviewMeterLineIsWidthSafeAndDropsBarWhenNarrow(t *testing.T) {
 
 func TestOverviewViewFitsTerminalAtAnySize(t *testing.T) {
 	now := time.Now()
-	for _, size := range [][2]int{{20, 6}, {40, 10}, {80, 24}, {120, 50}} {
+	for _, size := range [][2]int{{20, 6}, {40, 10}, {80, 24}, {120, 50}, {150, 24}, {151, 12}, {200, 40}} {
 		m := overviewTestModel(now)
 		m.width, m.height = size[0], size[1]
 		lines := strings.Split(m.View(), "\n")
@@ -106,6 +107,7 @@ func TestOverviewViewFitsTerminalAtAnySize(t *testing.T) {
 }
 
 func TestOverviewEmptyLoadingAndErrorStates(t *testing.T) {
+	withIconMode(t, iconsOff)
 	m := NewModel()
 	m.width, m.height = 100, 30
 	m.activeTab = overviewTab
@@ -115,7 +117,7 @@ func TestOverviewEmptyLoadingAndErrorStates(t *testing.T) {
 	m.codexUsageLoading = true
 	m.claudeUsageErr = "boom"
 	view := ansi.Strip(m.viewOverview(20))
-	for _, expected := range []string{"╭─codex", "Loading…", "╭─claude", "Unavailable: boom"} {
+	for _, expected := range []string{"╭─Codex", "Loading…", "╭─Claude", "Unavailable: boom"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("missing %q:\n%s", expected, view)
 		}
@@ -145,6 +147,7 @@ func TestOverviewFooterMatchesFooterWidth(t *testing.T) {
 }
 
 func TestOverviewShowsClaudeLimitsWhenEnabled(t *testing.T) {
+	withIconMode(t, iconsOff)
 	now := time.Now()
 	m := overviewTestModel(now)
 	m.claudeUsage.LimitsOn = true
@@ -153,7 +156,7 @@ func TestOverviewShowsClaudeLimitsWhenEnabled(t *testing.T) {
 		SevenDay: &claudelimits.Window{UsedPercent: 12, ResetsAt: now.Add(4 * 24 * time.Hour)},
 	}
 	view := ansi.Strip(m.viewOverview(30))
-	for _, expected := range []string{"╭─claude", "5-hour", "64%", "↻ 2h", "Weekly", "12%", "↻ 4d"} {
+	for _, expected := range []string{"╭─Claude", "5-hour", "64%", "↻ 2h", "Weekly", "12%", "↻ 4d"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("missing %q:\n%s", expected, view)
 		}
@@ -256,5 +259,32 @@ func TestOverviewShowsClaudeCloudSyncWarning(t *testing.T) {
 	}
 	if msg := refreshClaudeUsage()().(claudeUsageResultMsg); msg.snapshot.CloudSyncWarn != "boom" {
 		t.Fatalf("snapshot = %+v", msg.snapshot)
+	}
+}
+
+func TestOverviewProviderIcons(t *testing.T) {
+	for _, mode := range []iconMode{iconsFont, iconsUnicode, iconsOff} {
+		withIconMode(t, mode)
+		m := overviewTestModel(time.Now())
+		m.kimiUsage.Summary.Sessions = 1
+		for _, width := range []int{80, 150} {
+			m.width = width
+			view := ansi.Strip(m.viewOverview(40))
+			for _, name := range []string{"Codex", "Copilot", "Claude", "Kimi"} {
+				if !strings.Contains(view, "╭─"+toolLabel(name)) {
+					t.Fatalf("mode %d width %d: missing %s header", mode, width, name)
+				}
+			}
+		}
+	}
+}
+
+func TestOverviewWideCardsShareRows(t *testing.T) {
+	withIconMode(t, iconsOff)
+	m := overviewTestModel(time.Now())
+	m.width = 151
+	lines := strings.Split(ansi.Strip(m.viewOverview(30)), "\n")
+	if !strings.Contains(lines[0], "╭─Codex") || !strings.Contains(lines[0], "╭─Copilot") {
+		t.Fatal("wide layout must pair provider cards")
 	}
 }
