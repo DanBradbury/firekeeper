@@ -590,6 +590,9 @@ func mergeLive(meta, live session.Meta) session.Meta {
 	if meta.ParentID == "" && live.ParentID != "" {
 		meta.ParentID, meta.AgentName, meta.AgentRole = live.ParentID, live.AgentName, live.AgentRole
 	}
+	if meta.ForkedFromID == "" {
+		meta.ForkedFromID = live.ForkedFromID
+	}
 	if meta.StartedAt == nil {
 		meta.StartedAt = live.StartedAt
 	}

@@ -248,6 +248,10 @@ func TestSubagentMeta(t *testing.T) {
 		`"parent_session_id":"","agent_name":"","agent_role":""`,
 		`"parent_session_id":null,"agent_name":null,"agent_role":null`,
 		`"agent_name":"Galileo"`,
+		`"forked_from_session_id":"p"`,
+		`"parent_session_id":"p","forked_from_session_id":"p"`,
+		`"forked_from_session_id":""`,
+		`"forked_from_session_id":null`,
 	} {
 		if err := ValidateBatch(originBatch(extra)); err != nil {
 			t.Errorf("meta %s: %v", extra, err)
@@ -259,6 +263,9 @@ func TestSubagentMeta(t *testing.T) {
 		{`"agent_name":true`, "meta.agent_name"},
 		{`"agent_role":["explorer"]`, "meta.agent_role"},
 		{`"parent_session_id":"s"`, "meta.parent_session_id: names the session itself"},
+		{`"forked_from_session_id":"s"`, "meta.forked_from_session_id: names the session itself"},
+		{`"forked_from_session_id":1`, "meta.forked_from_session_id: want a string or null"},
+		{`"Forked_From_Session_ID":"p"`, "only in case"},
 		{`"Parent_Session_ID":"p"`, "only in case"},
 		{`"Agent_Name":"Galileo"`, "only in case"},
 	} {
@@ -270,6 +277,7 @@ func TestSubagentMeta(t *testing.T) {
 	for _, name := range []string{
 		"batch.valid.subagent",
 		"batch.invalid.parent_is_self",
+		"batch.invalid.forked_from_self",
 		"batch.invalid.subagent_type",
 	} {
 		if Fixture(name) == nil {

@@ -58,7 +58,7 @@
     },
     "tokens": {
       "type": "object",
-      "description": "Tokens this event spent in its own session only. A subagent's usage is in the subagent session's events, never repeated in its parent's, so summing a session's events gives its own total (see sessions[].meta.parent_session_id in docs/api.md). Known exception: a forked Codex thread's copied token records (see Event in docs/api.md).",
+      "description": "Tokens this event spent in its own session only. A subagent's usage is in the subagent session's events, never repeated in its parent's, so summing a session's events gives its own total (see sessions[].meta.parent_session_id in docs/api.md). Known exception: a forked Codex thread repeats its source's token records, so it is flagged with sessions[].meta.forked_from_session_id and never added into another session's totals (see Event in docs/api.md).",
       "additionalProperties": false,
       "required": ["input", "output", "cache"],
       "properties": {

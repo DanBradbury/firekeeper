@@ -146,7 +146,12 @@ the newer file.
   extraction does. The copied `token_count` records are still read as the
   fork's own events, so a fork's own tokens include the source's usage up to
   the fork (docs/api.md, "Event"). Nothing in the rollout marks where the copy
-  ends.
+  ends, so instead the thread is flagged: its own (first) `session_meta`'s
+  `forked_from_id` is uploaded as `forked_from_session_id`, and a server
+  never adds a flagged session into another session's totals. The state
+  database has no column for it (`attached_thread_parent_id` covers only
+  attached threads), so even a thread whose row has every other field has
+  its first line read.
 - **Mid-file reads cost a prefix scan.** A read from offset N reads N bytes to
   rebuild seq and state. That stays cheap at the sizes seen locally (about
   1 MiB), but it grows with the rollout. The source could cache parser state by

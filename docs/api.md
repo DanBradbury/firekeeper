@@ -33,7 +33,7 @@ Every error is a JSON object with a standard HTTP status:
 | Status | `code` | When |
 | --- | --- | --- |
 | 400 | `bad_request` | Malformed JSON. |
-| 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, state, or origin, a `parent_session_id` that is not a string or names the session itself, or an event whose `machine_id`/`session_id` does not match its batch. |
+| 400 | `invalid_request` | Well-formed body that breaks a rule: missing `machine.id` or `session_id`, unknown provider, role, state, or origin, a `parent_session_id` or `forked_from_session_id` that is not a string or null, or names the session itself, or an event whose `machine_id`/`session_id` does not match its batch. |
 | 401 | `unauthorized` | Missing, malformed, expired or revoked credentials. |
 | 403 | `forbidden` | The token is bound to a different machine, or its scope does not permit the request. |
 | 404 | `link_invalid` | A link code that is unknown, expired, or already used. |
@@ -164,9 +164,12 @@ One known exception: a forked Codex thread (a user's fork, or a subagent
 spawned with the parent's context) starts its rollout with a copy of the
 source thread's records, including its `token_count` records. Those copied
 records are uploaded as the fork's own events, so a fork's own total
-includes the source thread's usage up to the fork, and a combined total over
-a fork and its source counts that prefix twice. Codex writes the copy
-without a marker that says where it ends, so the client cannot drop it yet.
+includes the source thread's usage up to the fork. Codex writes the copy
+without a marker that says where it ends, so the client cannot drop it.
+Instead the client flags such a session with `forked_from_session_id` (see
+"Subagents and forks" under the ingest endpoint), and a server MUST NOT add
+a flagged session's tokens into any other session's totals, so a combined
+total never counts the copied prefix twice.
 
 ## Write endpoints
 
@@ -225,29 +228,40 @@ transaction.
   file-changing tool calls in newly stored events. `TouchedFiles` in
   `pkg/event` does this the same way the client does. Re-sent events are not
   scanned again.
-- Subagents (optional): a session another session spawned (a Codex subagent
-  thread, for example) carries `parent_session_id`, the provider-native id of
-  the session that spawned it. `agent_name` is the name the provider gave the
-  agent (Codex's nickname, such as `Galileo`) and `agent_role` the role it was
-  spawned with (such as `explorer`). All three are strings, set only when the
-  provider records them. A session without `parent_session_id` is a
-  top-level session, or one whose provider does not say who spawned it. A
-  server that does not know these fields ignores them. A server that does
-  follows these rules:
+- Subagents and forks (optional): a session another session spawned (a
+  Codex subagent thread, for example) carries `parent_session_id`, the
+  provider-native id of the session that spawned it. `agent_name` is the
+  name the provider gave the agent (Codex's nickname, such as `Galileo`) and
+  `agent_role` the role it was spawned with (such as `explorer`).
+  `forked_from_session_id` is the provider-native id of the session whose
+  history this session's transcript starts with a copy of: a user's fork
+  of a thread, or a subagent spawned with its parent's context (which then
+  has both fields, usually naming the same session). All four are strings
+  (JSON `null` is accepted and means absent), sent only when the provider
+  records them. A session without `parent_session_id` is a top-level
+  session, or one whose provider does not say who spawned it; a session
+  without `forked_from_session_id` is not a fork, or its provider does not
+  say. A server that does not know these fields ignores them. A server that
+  does follows these rules:
 
-  - **Self-parent.** A `parent_session_id` equal to the session's own
-    `session_id` (compared exactly) MUST be rejected with 400
-    `invalid_request`. The client never sends one: Firekeeper drops a
-    self-parent before upload.
+  - **Self-reference.** A `parent_session_id` or `forked_from_session_id`
+    equal to the session's own `session_id` (compared exactly) MUST be
+    rejected with 400 `invalid_request`. The client never sends one:
+    Firekeeper drops either before upload.
   - **Scope.** A parent is looked up only among sessions stored for the same
     account and the same `machine.id`, by exact id. A session with that id
     under another machine or account is never the parent, and its existence
     and totals MUST NOT be revealed through the child. The parent is usually
-    of the same provider, but providers are not compared.
+    of the same provider, but providers are not compared. An id that names
+    no session in scope is still stored as sent: it is an unknown parent
+    (below) and resolves if a session with that id is later stored in scope.
+    `forked_from_session_id` is stored the same way; a server MAY show the
+    source session it resolves to.
   - **Changing, never clearing.** A non-empty value replaces the stored one,
-    so a parent can change; a server MUST accept the change unless it is a
-    self-parent. An empty string, JSON `null`, or a missing key keeps the
-    stored value (none for a new session), so a parent can never be cleared.
+    so a parent or fork source can change; a server MUST accept the change
+    unless it is a self-reference. An empty string, JSON `null`, or a
+    missing key keeps the stored value (none for a new session), so neither
+    can be cleared.
   - **Unknown parents.** A child whose parent is not stored (not uploaded
     yet, or never uploaded) keeps its `parent_session_id` and is shown as a
     top-level session; a server MAY mark it as having an unknown parent. Its
@@ -262,20 +276,30 @@ transaction.
     the starting session as top level. Every session whose chain of links
     revisits a session is shown top level, and its tokens are counted in no
     other session's totals.
-  - **Depth.** A server follows at most 32 links (`contract.MaxSubagentDepth`)
-    from a session. A session whose chain has not reached a session without a
-    stored parent within 32 links is shown top level, as for a cycle.
-  - **Display.** `agent_name`, `agent_role` and `parent_session_id` are
-    untrusted text. The client redacts secrets in the name and role but
+  - **Depth.** A server MUST follow at most 32 links
+    (`contract.MaxSubagentDepth`) from a session. Every session whose chain
+    has not reached a session without a stored parent within 32 links is
+    shown top level, each on its own (not under another too-deep session),
+    and its tokens are counted in no other session's totals, as for a
+    cycle.
+  - **Forks.** A server MUST NOT add the tokens of a session that has
+    `forked_from_session_id` into any other session's child or combined
+    totals, even when it is shown under a parent, because its own total
+    already repeats the source's usage up to the fork. It SHOULD show that
+    session's own total as including inherited history. Sessions shown
+    below a fork are counted as usual: in the fork's totals, and in its
+    ancestors' totals through the fork, unless they are forks themselves.
+  - **Display.** `agent_name`, `agent_role`, `parent_session_id` and
+    `forked_from_session_id` are untrusted text. The client redacts secrets in the name and role but
     does not otherwise limit them. A server MUST escape them for the context
     it displays them in (HTML, terminal, and so on), and MAY truncate them
     for display.
 
-  A session's events hold only its own tokens (see "Event", including the
-  exception for forked Codex threads), so a server can total a tree without
-  double counting: own is the sum of the session's events, child is the sum
-  of the own totals of every session shown below it under the rules above
-  (any depth), and combined is own plus child.
+  A session's events hold only its own tokens, except a fork's (see
+  "Event"), so a server can total a tree without double counting: own is
+  the sum of the session's events, child is the sum of the own totals of
+  every session shown below it under the rules above (any depth) other than
+  forks, and combined is own plus child.
 - Git files (optional): with `files_source` `git`, `files` replaces the
   session's Git change list, even when empty. Paths are absolute or relative
   to `cwd`, at most 5,000 of them, each non-blank and at most 4,096 bytes.

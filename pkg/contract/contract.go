@@ -197,10 +197,11 @@ var (
 		"session_id", "provider", "cwd", "project", "branch", "commit", "model",
 		"state", "title", "started_at", "last_activity_at", "origin",
 		"files_source", "files", "parent_session_id", "agent_name", "agent_role",
+		"forked_from_session_id",
 	}
 	// subagentKeys are the optional subagent fields: a string, or null or
 	// absent when the provider records none.
-	subagentKeys = []string{"parent_session_id", "agent_name", "agent_role"}
+	subagentKeys = []string{"parent_session_id", "agent_name", "agent_role", "forked_from_session_id"}
 )
 
 // Origin says where a session ran. It is optional on ingest session metadata
@@ -323,8 +324,8 @@ func ValidateBatch(data []byte) error {
 				add("%s.meta.origin: not a known origin", p)
 			}
 		}
-		// Subagent fields: absent, null, or a string. A session cannot be
-		// its own parent.
+		// Subagent and fork fields: absent, null, or a string. A session
+		// cannot be its own parent or forked from itself.
 		for _, key := range subagentKeys {
 			if raw, present := meta[key]; present && raw != nil {
 				if _, ok := raw.(string); !ok {
@@ -332,8 +333,10 @@ func ValidateBatch(data []byte) error {
 				}
 			}
 		}
-		if parent, _ := meta["parent_session_id"].(string); parent != "" && parent == sessionID {
-			add("%s.meta.parent_session_id: names the session itself", p)
+		for _, key := range []string{"parent_session_id", "forked_from_session_id"} {
+			if id, _ := meta[key].(string); id != "" && id == sessionID {
+				add("%s.meta.%s: names the session itself", p, key)
+			}
 		}
 		source, _ := meta["files_source"].(string)
 		if _, present := meta["files_source"]; present && source != "" && !contains(validFiles, source) {

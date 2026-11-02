@@ -520,7 +520,8 @@ production repository), the same files are served from `B/latest` (JSON with
 For each allowed provider, per session, Firekeeper sends metadata (provider,
 session id, working directory, project name, branch, model, state, title,
 timestamps, event count, token totals; for a Codex subagent also its parent
-session id and the agent's name and role) and every transcript event: prompts,
+session id and the agent's name and role, and for a forked Codex thread the
+session id it was forked from) and every transcript event: prompts,
 assistant replies, tool calls and their output, plus each event's original
 record (`raw`). Tool output over 64 KiB is cut in `text` but kept in `raw`.
 Machine details (machine id, host name, and OS) go with each request.

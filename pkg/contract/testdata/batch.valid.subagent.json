@@ -26,7 +26,27 @@
         "provider": "codex",
         "parent_session_id": "0199-child",
         "agent_name": "",
-        "agent_role": null
+        "agent_role": null,
+        "forked_from_session_id": null
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-forked-child",
+        "provider": "codex",
+        "parent_session_id": "0199-root",
+        "agent_name": "Noether",
+        "agent_role": "worker",
+        "forked_from_session_id": "0199-root"
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-user-fork",
+        "provider": "codex",
+        "forked_from_session_id": "0199-root"
       },
       "events": []
     }

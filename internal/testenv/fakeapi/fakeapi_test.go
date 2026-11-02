@@ -416,3 +416,76 @@ func TestSubagentTree(t *testing.T) {
 	body := []byte(`{"machine":{"id":"m1"},"sessions":[{"meta":{"session_id":"s","provider":"codex","parent_session_id":"s"},"events":[]}]}`)
 	wantError(t, "self parent", call(t, h, "POST", "/v1/ingest", "", body), "invalid_request")
 }
+
+// TestSubagentForks checks the forked_from_session_id rule: a fork's own
+// total includes the history it copied, so it is counted in no other
+// session's child or combined total, while sessions below it still are. The
+// field is kept when a later batch omits it or sends "" or null.
+func TestSubagentForks(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	var sample map[string]any
+	if err := json.Unmarshal(contract.Fixture("event.valid.user"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	post := func(id string, meta map[string]any, tokens int) {
+		t.Helper()
+		meta["session_id"], meta["provider"] = id, "codex"
+		e := map[string]any{}
+		for k, v := range sample {
+			e[k] = v
+		}
+		e["machine_id"], e["session_id"], e["seq"] = "m1", id, 0
+		e["tokens"] = map[string]any{"input": tokens, "output": 0, "cache": 0}
+		body, _ := json.Marshal(map[string]any{"machine": map[string]string{"id": "m1"}, "sessions": []any{map[string]any{"meta": meta, "events": []any{e}}}})
+		if rec := call(t, h, "POST", "/v1/ingest", "", body); rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", id, rec.Code, rec.Body)
+		}
+	}
+	wantTokens := func(id string, own, child int64) {
+		t.Helper()
+		o, c, sum := api.Tokens("m1", id)
+		if o != own || c != child || sum != own+child {
+			t.Errorf("Tokens(%s) = %d %d %d, want %d %d %d", id, o, c, sum, own, child, own+child)
+		}
+	}
+
+	post("root", map[string]any{}, 100)
+	// A plain subagent counts toward root.
+	post("plain", map[string]any{"parent_session_id": "root"}, 10)
+	// A subagent spawned with root's context: its 130 include root's 100
+	// copied, so root must not count it (no double count).
+	post("forked", map[string]any{"parent_session_id": "root", "agent_name": "Noether", "forked_from_session_id": "root"}, 130)
+	// A subagent of the fork did its own work and still counts, in the fork
+	// and in root.
+	post("grandchild", map[string]any{"parent_session_id": "forked"}, 5)
+	// A user fork of root has no parent: top level, counted nowhere else.
+	post("userfork", map[string]any{"forked_from_session_id": "root"}, 120)
+
+	if p, ok := api.Parent("m1", "forked"); !ok || p != "root" {
+		t.Errorf("forked is shown under %q %v, want root", p, ok)
+	}
+	if _, ok := api.Parent("m1", "userfork"); ok {
+		t.Error("user fork has a parent")
+	}
+	wantTokens("root", 100, 15)
+	wantTokens("forked", 130, 5)
+	wantTokens("userfork", 120, 0)
+
+	// Keep on empty.
+	post("forked", map[string]any{"forked_from_session_id": ""}, 130)
+	post("forked", map[string]any{"forked_from_session_id": nil}, 130)
+	post("forked", map[string]any{}, 130)
+	if sess, _ := api.Session("m1", "forked"); sess.ForkedFromSessionID != "root" {
+		t.Errorf("forked_from_session_id = %q after empty batches, want root", sess.ForkedFromSessionID)
+	}
+	var got map[string]any
+	rec := call(t, h, "GET", "/v1/sessions/m1:forked", "", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["forked_from_session_id"] != "root" {
+		t.Errorf("GET session: %v (%v)", got, err)
+	}
+	wantTokens("root", 100, 15)
+
+	// A self-fork is rejected.
+	wantError(t, "self fork", call(t, h, "POST", "/v1/ingest", "", contract.Fixture("batch.invalid.forked_from_self")), "invalid_request")
+}

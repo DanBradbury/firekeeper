@@ -185,3 +185,69 @@ func TestReadHeadFirstMetaWithoutID(t *testing.T) {
 		t.Errorf("head = %+v, want the first session_meta", h)
 	}
 }
+
+// TestEnumerateForkedFrom checks that forked_from_id is read only from the
+// rollout's own session_meta, also when the database row is complete and
+// the rest of the head is not needed, and never from the copied headers a
+// fork embeds.
+func TestEnumerateForkedFrom(t *testing.T) {
+	const (
+		root     = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		sub      = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		spawned  = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		userFork = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+		plain    = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+		older    = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+	)
+	line := func(id, forked, source string) string {
+		f := ""
+		if forked != "" {
+			f = `"forked_from_id":"` + forked + `",`
+		}
+		return `{"timestamp":"2026-01-02T03:04:05.000Z","type":"session_meta","payload":{"id":"` + id + `",` + f + `"timestamp":"2026-01-02T03:04:05.000Z","cwd":"/w","source":` + source + `,"git":{"branch":"main"}}}` + "\n"
+	}
+	spawnSrc := `{"subagent":{"thread_spawn":{"parent_thread_id":"` + root + `","depth":1,"agent_nickname":"Noether","agent_role":"worker"}}}`
+	// What a fork of sub embeds: sub's own header, itself a fork of older.
+	copied := line(sub, older, `"cli"`) + turnContext("gpt-5")
+
+	home := t.TempDir()
+	rollout := func(id string) string {
+		return filepath.Join(home, "sessions", "2026", "01", "02", "rollout-2026-01-02T03-04-05-"+id+".jsonl")
+	}
+	writeFile(t, rollout(spawned), line(spawned, root, spawnSrc)+line(root, "", `"cli"`)+turnContext("gpt-5"), day(3))
+	writeFile(t, rollout(userFork), line(userFork, sub, `"cli"`)+copied, day(3))
+	writeFile(t, rollout(plain), line(plain, "", `"cli"`)+copied, day(3))
+	writeFile(t, filepath.Join(home, "state_5.sqlite"), "", day(1))
+	// Every row is complete, so only the own header is read for the fork.
+	full := func(id, source string) threadRow {
+		return threadRow{ID: id, CWD: "/w", Model: "gpt-5", Branch: "main", CreatedMS: day(2).UnixMilli(), Source: source}
+	}
+	rows := []threadRow{full(spawned, spawnSrc), full(userFork, "cli"), full(plain, "cli")}
+	source := &Source{CodexHome: home, run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if strings.HasPrefix(args[3], "PRAGMA") {
+			return []byte(`[{"name":"id"},{"name":"title"},{"name":"cwd"},{"name":"model"},{"name":"git_branch"},{"name":"created_at_ms"},{"name":"updated_at_ms"},{"name":"source"}]`), nil
+		}
+		return json.Marshal(rows)
+	}}
+	metas, err := source.Enumerate(context.Background(), reader.EnumerateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]session.Meta{}
+	for _, m := range metas {
+		byID[m.ID] = m
+	}
+	for _, tc := range []struct{ id, parent, forked string }{
+		{spawned, root, root},
+		{userFork, "", sub},
+		{plain, "", ""},
+	} {
+		m, ok := byID[tc.id]
+		if !ok {
+			t.Fatalf("%s not enumerated", tc.id)
+		}
+		if m.ParentID != tc.parent || m.ForkedFromID != tc.forked {
+			t.Errorf("%s: parent %q forked from %q, want %q %q", tc.id, m.ParentID, m.ForkedFromID, tc.parent, tc.forked)
+		}
+	}
+}

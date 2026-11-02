@@ -187,12 +187,14 @@ func TestEnumerate(t *testing.T) {
 	}
 
 	// The store supplied the excluded session's directory, so its rollout is
-	// never opened; the complete store row needs no rollout either.
+	// never opened. The complete store row's rollout is read only for its
+	// first line, the thread's own session_meta, which alone says whether
+	// the thread is a fork.
 	if o.opened(paths[idExcluded]) {
 		t.Error("excluded session's rollout was opened")
 	}
-	if o.opened(paths[idStore]) {
-		t.Error("rollout opened although the store supplied every field")
+	if n := o.bytes[paths[idStore]]; n > reader.HeadBytes {
+		t.Errorf("read %d bytes of the complete store row's rollout, want at most %d", n, reader.HeadBytes)
 	}
 	if o.opened(paths[idEmpty]) {
 		t.Error("empty rollout was opened")

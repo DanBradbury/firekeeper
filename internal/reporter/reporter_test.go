@@ -671,9 +671,10 @@ func TestIngestSubagentMeta(t *testing.T) {
 		{ID: "s1", Provider: "codex"},
 		{ID: "s1", Provider: "codex", ParentID: "s1", AgentName: "Loop", AgentRole: "worker"},
 		{ID: "s1", Provider: "codex", AgentName: "Orphan"},
+		{ID: "s1", Provider: "codex", ForkedFromID: "s1"},
 	} {
 		raw := marshal(m)
-		for _, key := range []string{"parent_session_id", "agent_name", "agent_role"} {
+		for _, key := range []string{"parent_session_id", "agent_name", "agent_role", "forked_from_session_id"} {
 			if strings.Contains(raw, key) {
 				t.Errorf("%+v: ingest metadata has %s: %s", m, key, raw)
 			}
@@ -686,6 +687,19 @@ func TestIngestSubagentMeta(t *testing.T) {
 	}
 	if got["parent_session_id"] != "s1" || got["agent_name"] != "Galileo" || got["agent_role"] != "explorer" {
 		t.Errorf("subagent metadata = %s", raw)
+	}
+	if _, ok := got["forked_from_session_id"]; ok {
+		t.Errorf("non-fork sends forked_from_session_id: %s", raw)
+	}
+	// A subagent spawned with its parent's context, and a user fork with no
+	// parent, send forked_from_session_id.
+	raw = marshal(session.Meta{ID: "s3", Provider: "codex", ParentID: "s1", AgentName: "Noether", ForkedFromID: "s1"})
+	if !strings.Contains(raw, `"parent_session_id":"s1"`) || !strings.Contains(raw, `"forked_from_session_id":"s1"`) {
+		t.Errorf("forked subagent metadata = %s", raw)
+	}
+	raw = marshal(session.Meta{ID: "s4", Provider: "codex", ForkedFromID: "s1"})
+	if !strings.Contains(raw, `"forked_from_session_id":"s1"`) || strings.Contains(raw, "parent_session_id") {
+		t.Errorf("user fork metadata = %s", raw)
 	}
 	// A subagent with a parent but no name or role sends only the parent.
 	raw = marshal(session.Meta{ID: "s2", Provider: "codex", ParentID: "s1"})

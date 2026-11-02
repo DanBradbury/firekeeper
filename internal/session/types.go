@@ -120,6 +120,10 @@ type Info struct {
 	ParentID  string
 	AgentName string
 	AgentRole string
+	// ForkedFrom is the thread a forked Codex thread was forked from, read
+	// from the rollout's own session_meta. Its rollout starts with a copy of
+	// that thread's records, so its tokens include inherited usage.
+	ForkedFrom string
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,

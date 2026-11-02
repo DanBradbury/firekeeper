@@ -48,7 +48,10 @@ type Session struct {
 	// ParentSessionID, AgentName and AgentRole are the optional subagent
 	// fields; once set, a batch without them keeps them.
 	ParentSessionID, AgentName, AgentRole string
-	StartedAt, LastActivityAt             *time.Time
+	// ForkedFromSessionID is the session a fork was forked from, kept the
+	// same way. A fork is counted in no other session's totals.
+	ForkedFromSessionID       string
+	StartedAt, LastActivityAt *time.Time
 }
 
 // File is one changed file of a session.
@@ -215,7 +218,10 @@ func (s *Server) parentLocked(machine, session string) (string, bool) {
 
 // Tokens returns a session's own token total (the sum of its events' input,
 // cache and output tokens), the total of the sessions shown below it at any
-// depth, and their sum, as docs/api.md defines them.
+// depth, and their sum, as docs/api.md defines them. A fork (a session with
+// forked_from_session_id) is never counted in another session's totals,
+// because its own total includes the history it copied; sessions below a
+// fork still are.
 func (s *Server) Tokens(machine, session string) (own, child, combined int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -232,7 +238,7 @@ func (s *Server) Tokens(machine, session string) (own, child, combined int64) {
 	prefix := key(machine, "")
 	for k := range s.sessions {
 		id, found := strings.CutPrefix(k, prefix)
-		if !found || id == session {
+		if !found || id == session || s.sessions[k].meta.ForkedFromSessionID != "" {
 			continue
 		}
 		// id is below session when session is on its resolved chain.
@@ -370,6 +376,7 @@ type metaBody struct {
 	ParentSession  string     `json:"parent_session_id"`
 	AgentName      string     `json:"agent_name"`
 	AgentRole      string     `json:"agent_role"`
+	ForkedFrom     string     `json:"forked_from_session_id"`
 }
 
 func (s *Server) touchMachine(m machineBody) {
@@ -544,6 +551,7 @@ func mergeMeta(dst *Session, m metaBody) {
 	set(&dst.ParentSessionID, m.ParentSession)
 	set(&dst.AgentName, m.AgentName)
 	set(&dst.AgentRole, m.AgentRole)
+	set(&dst.ForkedFromSessionID, m.ForkedFrom)
 	if dst.Commit == "" {
 		dst.Commit = m.Commit
 	}
@@ -725,6 +733,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		"model": sess.Model, "state": sess.State, "title": sess.Title,
 		"files_source": sess.FilesSource, "origin": sess.Origin, "event_count": len(s.Events(machine, id)),
 		"parent_session_id": sess.ParentSessionID, "agent_name": sess.AgentName, "agent_role": sess.AgentRole,
+		"forked_from_session_id": sess.ForkedFromSessionID,
 	})
 }
 
