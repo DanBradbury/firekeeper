@@ -644,14 +644,20 @@ func (m model) dashSummarize() dashSummary {
 			summary.states[sessionStateUnknown]++
 		}
 		for _, session := range group.sessions {
-			summary.sessions++
-			summary.states[session.state]++
+			// Subagent tokens are spent by their runtime, so they count toward
+			// the totals. A subagent is not a session of its own: it is left out
+			// of the session, state and project counts.
 			summary.tokens += sessionTokenTotal(session)
 			summary.breakdown.Input += session.tokens.Input
 			summary.breakdown.Output += session.tokens.Output
 			summary.breakdown.CacheRead += session.tokens.CacheRead
 			summary.breakdown.CacheWrite += session.tokens.CacheWrite
 			tool.tokens += sessionTokenTotal(session)
+			if session.subagent {
+				continue
+			}
+			summary.sessions++
+			summary.states[session.state]++
 			name := dashProjectName(session)
 			project := projects[name]
 			if project == nil {

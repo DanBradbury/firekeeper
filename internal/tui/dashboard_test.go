@@ -1127,3 +1127,25 @@ func TestSubagentRowsDoNotChangeSelectionOrClicks(t *testing.T) {
 		t.Fatalf("offsets = %v, want the next runtime after the subagent row", offsets)
 	}
 }
+
+func TestSummaryCountsSubagentTokensButNotSubagentSessions(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = []processGroup{{
+		tool: "Codex",
+		root: processInfo{pid: 100, tty: "ttys001"},
+		sessions: []sessionInfo{
+			{id: "01a19a1a-0000-0000-0000-000000000001", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, tokensUsed: 285_000},
+			{id: "01a19a1a-0000-0000-0000-0000000000e1", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, subagent: true, tokensUsed: 65_000},
+		},
+	}}
+	summary := m.dashSummarize()
+	if summary.sessions != 1 || summary.states[sessionStateWaiting] != 1 {
+		t.Fatalf("sessions = %d, waiting = %d; a subagent is not its own session", summary.sessions, summary.states[sessionStateWaiting])
+	}
+	if len(summary.projects) != 1 || summary.projects[0].sessions != 1 {
+		t.Fatalf("projects = %+v, want one project with one session", summary.projects)
+	}
+	if summary.tokens != 350_000 || summary.tools[0].tokens != 350_000 || summary.tools[0].runtimes != 1 {
+		t.Fatalf("tokens = %d, tool = %+v; subagent tokens are still spent by the runtime", summary.tokens, summary.tools[0])
+	}
+}
