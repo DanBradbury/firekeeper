@@ -70,3 +70,57 @@ func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
 
 // jsonPath escapes a path for use inside a JSON string.
 func jsonPath(path string) string { return strings.ReplaceAll(path, `\`, `\\`) }
+
+// The app-server daemon behind the Codex app holds the rollout of a CLI's
+// thread open, and its own guardian subagent thread too. The CLI in a terminal
+// must get its thread (so switching goes to its TTY) and the daemon must not
+// show the subagent.
+func TestEnrichCodexSessionsCLITakesThreadHeldByAppServerDaemon(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "state_5.sqlite"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		cliThread = "01a1996c-e4af-7af1-851c-69404a420242"
+		guardian  = "01a1996c-e645-7781-8069-3e95a35b075d"
+	)
+	rolloutCLI := filepath.Join(codexHome, "sessions", "rollout-2026-11-01T15-23-32-"+cliThread+".jsonl")
+	rolloutGuardian := filepath.Join(codexHome, "sessions", "rollout-2026-11-01T15-23-33-"+guardian+".jsonl")
+	metadataJSON := `[
+	 {"id":"` + cliThread + `","display_name":"cli","cwd":"/work/repo","source":"vscode","updated_at_ms":20,"rollout_path":"` + jsonPath(rolloutCLI) + `"},
+	 {"id":"` + guardian + `","display_name":"Guardian review","cwd":"/work/repo","source":"{\"subagent\":{\"other\":\"guardian\"}}","updated_at_ms":30,"rollout_path":"` + jsonPath(rolloutGuardian) + `"}
+	]`
+	d := &discoverer{ctx: context.Background(), opts: Options{Home: home, CodexHome: codexHome, Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		switch {
+		case name == "lsof" && strings.Contains(joined, "-d cwd"):
+			return []byte("p100\nn/work/repo\n"), nil
+		case name == "lsof":
+			return []byte("p200\nn" + rolloutCLI + "\nn" + rolloutGuardian + "\n"), nil
+		case name == "sqlite3":
+			return []byte(metadataJSON), nil
+		}
+		return nil, os.ErrNotExist
+	}}}
+
+	groups := d.groupProcesses(d.parseProcesses("100 1 ttys006 01:00 codex\n200 1 ?? 02:00 codex app-server --listen unix://"))
+	if err := d.enrichCodexSessions(groups); err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range groups {
+		switch group.Root.PID {
+		case 100:
+			if len(group.Sessions) != 1 || group.Sessions[0].ID != cliThread {
+				t.Errorf("CLI sessions = %+v, want thread %s", group.Sessions, cliThread)
+			}
+		case 200:
+			if len(group.Sessions) != 0 {
+				t.Errorf("app-server sessions = %+v, want none", group.Sessions)
+			}
+		}
+	}
+}

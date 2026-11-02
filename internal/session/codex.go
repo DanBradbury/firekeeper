@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,7 +60,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	if err != nil {
 		return err
 	}
-	d.matchCodexGroupsByCWD(unmatched, candidates, metadata, rollouts)
+	d.matchCodexGroupsByCWD(groups, unmatched, candidates, metadata, rollouts)
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
 		if group.Tool != "Codex" {
@@ -74,6 +75,11 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			seen[threadID] = true
 			row, ok := metadata[threadID]
 			if !ok {
+				continue
+			}
+			// A background server (no terminal) also hosts subagent threads,
+			// such as the guardian review; they are not a session to switch to.
+			if group.Root.TTY == "" && strings.HasPrefix(row.Source, "{") {
 				continue
 			}
 			name := d.sanitizeProcessCommand(row.Name)
@@ -200,9 +206,23 @@ func (d *discoverer) discoverRecentCodexThreads() map[string]bool {
 
 // matchCodexGroupsByCWD assigns each unmatched group the newest held,
 // unclaimed, non-subagent thread that shares its working directory.
-func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+//
+// A background server (an app-server daemon, no terminal) often holds the
+// rollout of a CLI's thread open, because the CLI talks to it. Those threads
+// stay claimable: the CLI with a terminal takes its thread from the server,
+// so switching goes to the terminal that runs it.
+func (d *discoverer) matchCodexGroupsByCWD(groups, unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+	serverPIDs := make(map[int]bool)
+	for _, group := range groups {
+		if group.Tool == "Codex" && group.Root.TTY == "" {
+			serverPIDs[group.Root.PID] = true
+		}
+	}
 	claimed := make(map[string]bool)
-	for _, paths := range rollouts {
+	for pid, paths := range rollouts {
+		if serverPIDs[pid] {
+			continue
+		}
 		for _, path := range paths {
 			if id, ok := d.threadIDFromRolloutPath(path); ok {
 				claimed[id] = true
@@ -228,6 +248,14 @@ func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates 
 			continue
 		}
 		claimed[best.ID] = true
+		if group.Root.TTY != "" {
+			for pid := range serverPIDs {
+				rollouts[pid] = slices.DeleteFunc(rollouts[pid], func(path string) bool {
+					id, ok := d.threadIDFromRolloutPath(path)
+					return ok && id == best.ID
+				})
+			}
+		}
 		rollouts[group.Root.PID] = append(rollouts[group.Root.PID], best.RolloutPath)
 	}
 }
