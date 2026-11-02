@@ -216,6 +216,7 @@ type dashColumn struct {
 var dashColumns = []dashColumn{
 	{key: "ai", title: "AI", width: 8, drop: 1},
 	{key: "project", title: "Project", width: 14, drop: 3},
+	{key: "title", title: "Title", width: 16, drop: 8},
 	{key: "session", title: "Session", width: 8, drop: 6},
 	{key: "directory", title: "Directory", drop: 0},
 	{key: "status", title: "Status", width: 13, drop: 2},
@@ -226,7 +227,7 @@ var dashColumns = []dashColumn{
 
 const (
 	dashMarkerWidth       = 2
-	dashDirectoryMinWidth = 24
+	dashDirectoryMinWidth = 28
 	// dashGrowMaxWidth caps how far the Project and Model columns grow.
 	dashGrowMaxWidth = 32
 )
@@ -238,6 +239,15 @@ func (m model) dashFitColumns(width int) []dashColumn {
 	for index := range columns {
 		if columns[index].key == "ai" {
 			columns[index].width += toolIconWidth()
+		}
+		if columns[index].key == "title" {
+			for _, group := range m.processGroups {
+				for _, session := range group.sessions {
+					if session.subagent {
+						columns[index].width = max(columns[index].width, ansi.StringWidth(subagentShare(session, groupTokenTotal(group))))
+					}
+				}
+			}
 		}
 		if columns[index].key == "session" {
 			for _, group := range m.processGroups {
@@ -257,7 +267,7 @@ func (m model) dashFitColumns(width int) []dashColumn {
 		if fixed+dashDirectoryMinWidth <= width || len(columns) <= 1 {
 			// Long model and project names take spare width before Directory does.
 			slack := width - fixed - dashDirectoryMinWidth
-			for _, key := range []string{"model", "project"} {
+			for _, key := range []string{"model", "project", "title"} {
 				for index := range columns {
 					if columns[index].key != key || slack <= 0 {
 						continue
@@ -296,8 +306,11 @@ func (m model) longestCell(key string) int {
 	for _, group := range m.processGroups {
 		for _, session := range group.sessions {
 			value := session.model
-			if key == "project" {
+			switch key {
+			case "project":
 				value = dashProjectName(session)
+			case "title":
+				value = session.name
 			}
 			longest = max(longest, ansi.StringWidth(sanitizeProcessCommand(value)))
 		}
@@ -379,6 +392,11 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 			if !hasSession {
 				value, color, bold = "—", usageMutedColor, false
 			}
+		case "title":
+			value, color = emptyFallback(session.name, "—"), usageTextColor
+			if !hasSession {
+				color = usageMutedColor
+			}
 		case "session":
 			value, color = dashSessionLabel(group), dashOrange
 		case "directory":
@@ -428,10 +446,8 @@ func dashSubagentRow(sub sessionInfo, groupTotal int64, columns []dashColumn, wi
 			// Spawned threads share the parent's time-ordered id prefix, so the
 			// tail is what tells them apart.
 			value, color = dashIDTail(sub.id), dashOrange
-		case "directory":
-			if total := sessionTokenTotal(sub); total > 0 && groupTotal > 0 {
-				value = fmt.Sprintf("%d%% of this runtime's tokens", (total*100+groupTotal/2)/groupTotal)
-			}
+		case "title":
+			value = subagentShare(sub, groupTotal)
 		case "status":
 			value, color = dashStateIcon(sub.state)+" "+sub.state.String(), dashStateColor(sub.state)
 		case "model":
@@ -445,6 +461,16 @@ func dashSubagentRow(sub sessionInfo, groupTotal int64, columns []dashColumn, wi
 		row.WriteString(usagePaint(dashCell(sanitizeProcessCommand(value), column.width, column.right)+" ", color, bold, background))
 	}
 	return dashFit(row.String(), width, background)
+}
+
+// subagentShare is the indented note under a runtime's title saying how much
+// of its tokens a subagent spent; the indent marks it as the subagent's.
+func subagentShare(sub sessionInfo, groupTotal int64) string {
+	total := sessionTokenTotal(sub)
+	if total <= 0 || groupTotal <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d%% of total tokens)", (total*100+groupTotal/2)/groupTotal)
 }
 
 // dashSubagentRollup adds what the subagents spent to the primary session's

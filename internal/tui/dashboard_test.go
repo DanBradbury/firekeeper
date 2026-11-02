@@ -410,12 +410,12 @@ func TestDashboardProcessRowsKeepDirectoryOnOneLine(t *testing.T) {
 	m.processGroups[1].sessions[0].cwd = ""
 
 	header := ansi.Strip(dashHeaderRow(m.dashFitColumns(m.dashInnerWidth()), m.dashInnerWidth()))
-	for _, column := range []string{"Project", "Session", "Directory"} {
+	for _, column := range []string{"Project", "Title", "Session", "Directory"} {
 		if !strings.Contains(header, column) {
 			t.Errorf("missing column %q in %q", column, header)
 		}
 	}
-	for _, column := range []string{"Summary", "Title", "Branch"} {
+	for _, column := range []string{"Summary", "Branch"} {
 		if strings.Contains(header, column) {
 			t.Errorf("unexpected column %q in %q", column, header)
 		}
@@ -433,12 +433,12 @@ func TestDashboardProcessRowsKeepDirectoryOnOneLine(t *testing.T) {
 			t.Errorf("runtime %d does not fit on one line", index)
 		}
 	}
-	for _, expected := range []string{"Codex", "019fb33c +1", "/workspace/firekeeper"} {
+	for _, expected := range []string{"Codex", "Dashboard first pass", "019fb33c +1", "/workspace/firekeeper"} {
 		if !strings.Contains(ansi.Strip(lines[0]), expected) {
 			t.Errorf("first runtime row missing %q: %q", expected, ansi.Strip(lines[0]))
 		}
 	}
-	for _, unwanted := range []string{"Dashboard first pass", "main", "+1 sessions"} {
+	for _, unwanted := range []string{"main", "+1 sessions"} {
 		if strings.Contains(ansi.Strip(lines[0]), unwanted) {
 			t.Errorf("first runtime row contains %q: %q", unwanted, ansi.Strip(lines[0]))
 		}
@@ -1096,7 +1096,7 @@ func TestSubagentsListUnderTheirPrimarySession(t *testing.T) {
 	if !strings.Contains(plain[0], "1.0M") {
 		t.Fatalf("runtime row must total its own and its subagents' tokens: %q", plain[0])
 	}
-	if !strings.Contains(plain[1], "1% of this runtime's tokens") || !strings.Contains(plain[2], "14% of this runtime's tokens") {
+	if !strings.Contains(plain[1], "  (1% of total tokens)") || !strings.Contains(plain[2], "  (14% of total tokens)") {
 		t.Fatalf("subagent rows do not show their share of the runtime:\n%s\n%s", plain[1], plain[2])
 	}
 	for _, line := range plain[1:] {
