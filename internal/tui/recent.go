@@ -217,9 +217,9 @@ func (m model) recentLines(capacity int) []string {
 		titleWidth = max(titleWidth, ansi.StringWidth(recentTitle(recent)))
 	}
 	titleWidth = min(titleWidth, 32, max(m.width-fixed-2, 0))
-	pad := strings.Repeat(" ", max((m.width-fixed-titleWidth)/2, 0))
+	pad := dashPaint(strings.Repeat(" ", max((m.width-fixed-titleWidth)/2, 0)), usageTextColor, false)
 	heading := "Recent sessions"
-	lines := []string{strings.Repeat(" ", max((m.width-len(heading))/2, 0)) + dashPaint(heading, usageBrightColor, true)}
+	lines := []string{dashPaint(strings.Repeat(" ", max((m.width-len(heading))/2, 0)), usageTextColor, false) + dashPaint(heading, usageBrightColor, true)}
 	start, end := usageSessionWindow(len(m.recentSessions), m.recentCursor, capacity-1)
 	now := time.Now()
 	for index := start; index < end; index++ {
