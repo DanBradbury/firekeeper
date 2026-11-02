@@ -44,7 +44,13 @@ type Session struct {
 	MachineID, ID, Provider, CWD, Project, Branch, Commit, Model, State, Title string
 	// Origin is where the session ran, "local" or "cloud" (contract.Origin).
 	// A new session is "local" until a batch names another origin.
-	FilesSource, Origin       string
+	FilesSource, Origin string
+	// ParentSessionID, AgentName and AgentRole are the optional subagent
+	// fields; once set, a batch without them keeps them.
+	ParentSessionID, AgentName, AgentRole string
+	// ForkedFromSessionID is the session a fork was forked from, kept the
+	// same way. A fork is counted in no other session's totals.
+	ForkedFromSessionID       string
 	StartedAt, LastActivityAt *time.Time
 }
 
@@ -174,6 +180,83 @@ func (s *Server) Session(machine, session string) (Session, bool) {
 	return st.meta, true
 }
 
+// Parent returns the session a session is shown under, following the rules
+// in docs/api.md: the stored parent_session_id counts only when that session
+// is stored for the same machine, and the chain of such links from the
+// session reaches a session without one within contract.MaxSubagentDepth
+// links and without revisiting a session. Otherwise, or for a session with
+// no parent, ok is false and the session is top level.
+func (s *Server) Parent(machine, session string) (parent string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parentLocked(machine, session)
+}
+
+func (s *Server) parentLocked(machine, session string) (string, bool) {
+	st := s.sessions[key(machine, session)]
+	if st == nil {
+		return "", false
+	}
+	seen := map[string]bool{session: true}
+	id := session
+	for links := 0; ; links++ {
+		p := s.sessions[key(machine, id)].meta.ParentSessionID
+		if p == "" || s.sessions[key(machine, p)] == nil {
+			// id is a root: top level, or its parent is not uploaded.
+			if links == 0 {
+				return "", false
+			}
+			return st.meta.ParentSessionID, true
+		}
+		if seen[p] || links == contract.MaxSubagentDepth {
+			return "", false
+		}
+		seen[p] = true
+		id = p
+	}
+}
+
+// Tokens returns a session's own token total (the sum of its events' input,
+// cache and output tokens), the total of the sessions shown below it at any
+// depth, and their sum, as docs/api.md defines them. A fork (a session with
+// forked_from_session_id) is never counted in another session's totals,
+// because its own total includes the history it copied; sessions below a
+// fork still are.
+func (s *Server) Tokens(machine, session string) (own, child, combined int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sum := func(id string) int64 {
+		var n int64
+		if st := s.sessions[key(machine, id)]; st != nil {
+			for _, e := range st.events {
+				n += e.Tokens.Input + e.Tokens.Cache + e.Tokens.Output
+			}
+		}
+		return n
+	}
+	own = sum(session)
+	prefix := key(machine, "")
+	for k := range s.sessions {
+		id, found := strings.CutPrefix(k, prefix)
+		if !found || id == session || s.sessions[k].meta.ForkedFromSessionID != "" {
+			continue
+		}
+		// id is below session when session is on its resolved chain.
+		for cur, depth := id, 0; depth <= contract.MaxSubagentDepth; depth++ {
+			p, ok := s.parentLocked(machine, cur)
+			if !ok {
+				break
+			}
+			if p == session {
+				child += sum(id)
+				break
+			}
+			cur = p
+		}
+	}
+	return own, child, own + child
+}
+
 // Files returns a session's changed files ordered by path.
 func (s *Server) Files(machine, session string) []File {
 	s.mu.Lock()
@@ -290,6 +373,10 @@ type metaBody struct {
 	FilesSource    string     `json:"files_source"`
 	Origin         string     `json:"origin"`
 	Files          []string   `json:"files"`
+	ParentSession  string     `json:"parent_session_id"`
+	AgentName      string     `json:"agent_name"`
+	AgentRole      string     `json:"agent_role"`
+	ForkedFrom     string     `json:"forked_from_session_id"`
 }
 
 func (s *Server) touchMachine(m machineBody) {
@@ -461,6 +548,10 @@ func mergeMeta(dst *Session, m metaBody) {
 	// "" or null) keeps the stored value, so a later batch without origin
 	// never turns a cloud session back into a local one.
 	set(&dst.Origin, m.Origin)
+	set(&dst.ParentSessionID, m.ParentSession)
+	set(&dst.AgentName, m.AgentName)
+	set(&dst.AgentRole, m.AgentRole)
+	set(&dst.ForkedFromSessionID, m.ForkedFrom)
 	if dst.Commit == "" {
 		dst.Commit = m.Commit
 	}
@@ -641,6 +732,8 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		"cwd": sess.CWD, "project": sess.Project, "branch": sess.Branch, "commit": sess.Commit,
 		"model": sess.Model, "state": sess.State, "title": sess.Title,
 		"files_source": sess.FilesSource, "origin": sess.Origin, "event_count": len(s.Events(machine, id)),
+		"parent_session_id": sess.ParentSessionID, "agent_name": sess.AgentName, "agent_role": sess.AgentRole,
+		"forked_from_session_id": sess.ForkedFromSessionID,
 	})
 }
 

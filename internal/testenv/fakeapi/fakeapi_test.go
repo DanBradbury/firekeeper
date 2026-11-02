@@ -288,3 +288,204 @@ func TestRelToWindowsPaths(t *testing.T) {
 		}
 	}
 }
+
+// TestSubagentMeta checks the optional subagent fields: they are stored,
+// returned by the test-only session read, and kept by later batches that
+// omit them or send empty or null values.
+func TestSubagentMeta(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	post := func(extra string) {
+		t.Helper()
+		meta := `{"session_id":"child","provider":"codex"`
+		if extra != "" {
+			meta += "," + extra
+		}
+		body := `{"machine":{"id":"m1"},"sessions":[{"meta":` + meta + `},"events":[]}]}`
+		if rec := call(t, h, "POST", "/v1/ingest", "", []byte(body)); rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", extra, rec.Code, rec.Body)
+		}
+	}
+	post(`"parent_session_id":"root","agent_name":"Galileo","agent_role":"explorer"`)
+	post("")
+	post(`"parent_session_id":"","agent_name":null,"agent_role":""`)
+	sess, ok := api.Session("m1", "child")
+	if !ok || sess.ParentSessionID != "root" || sess.AgentName != "Galileo" || sess.AgentRole != "explorer" {
+		t.Fatalf("stored session = %+v", sess)
+	}
+	var got map[string]any
+	rec := call(t, h, "GET", "/v1/sessions/m1:child", "", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["parent_session_id"] != "root" || got["agent_name"] != "Galileo" || got["agent_role"] != "explorer" {
+		t.Fatalf("GET session: %v (%v)", got, err)
+	}
+}
+
+// TestSubagentTree checks the tree rules docs/api.md sets for
+// parent_session_id: roll-ups follow resolved links only, an unknown parent
+// leaves its child top level until it arrives, a parent can change but not
+// be cleared, a cycle (even one built across batches) and a chain longer
+// than contract.MaxSubagentDepth fall back to top level, and a parent is
+// looked up on the same machine only.
+func TestSubagentTree(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	var sample map[string]any
+	if err := json.Unmarshal(contract.Fixture("event.valid.user"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	post := func(machine, id, parent string, tokens int) {
+		t.Helper()
+		meta := map[string]any{"session_id": id, "provider": "codex"}
+		if parent != "" {
+			meta["parent_session_id"] = parent
+		}
+		events := []any{}
+		if tokens > 0 {
+			e := map[string]any{}
+			for k, v := range sample {
+				e[k] = v
+			}
+			e["machine_id"], e["session_id"], e["seq"] = machine, id, 0
+			e["tokens"] = map[string]any{"input": tokens, "output": 0, "cache": 0}
+			events = append(events, e)
+		}
+		body, _ := json.Marshal(map[string]any{"machine": map[string]string{"id": machine}, "sessions": []any{map[string]any{"meta": meta, "events": events}}})
+		if rec := call(t, h, "POST", "/v1/ingest", "", body); rec.Code != http.StatusOK {
+			t.Fatalf("%s/%s: %d %s", machine, id, rec.Code, rec.Body)
+		}
+	}
+	wantParent := func(machine, id, want string) {
+		t.Helper()
+		got, ok := api.Parent(machine, id)
+		if want == "" && ok || want != "" && got != want {
+			t.Errorf("Parent(%s, %s) = %q %v, want %q", machine, id, got, ok, want)
+		}
+	}
+	wantTokens := func(id string, own, child int64) {
+		t.Helper()
+		o, c, sum := api.Tokens("m1", id)
+		if o != own || c != child || sum != own+child {
+			t.Errorf("Tokens(%s) = %d %d %d, want %d %d %d", id, o, c, sum, own, child, own+child)
+		}
+	}
+
+	// The child arrives before its parent: an orphan, shown top level.
+	post("m1", "child", "root", 10)
+	post("m1", "grandchild", "child", 1)
+	wantParent("m1", "child", "")
+	wantParent("m1", "grandchild", "child")
+	wantTokens("child", 10, 1)
+	// The parent arrives later and the roll-up includes the child.
+	post("m1", "root", "", 100)
+	wantParent("m1", "child", "root")
+	wantTokens("root", 100, 11)
+
+	// A parent can change; an empty value keeps it.
+	post("m1", "other", "", 1000)
+	post("m1", "child", "other", 0)
+	post("m1", "child", "", 0)
+	wantParent("m1", "child", "other")
+	wantTokens("root", 100, 0)
+	wantTokens("other", 1000, 11)
+
+	// A same-id session on another machine is not a parent.
+	post("m2", "x", "root", 5)
+	wantParent("m2", "x", "")
+	wantTokens("root", 100, 0)
+
+	// A cycle built across batches: a -> b, then b -> a.
+	post("m1", "a", "b", 1)
+	post("m1", "b", "a", 2)
+	wantParent("m1", "a", "")
+	wantParent("m1", "b", "")
+	wantTokens("a", 1, 0)
+	wantTokens("b", 2, 0)
+
+	// A chain of MaxSubagentDepth links resolves; one more does not.
+	prev := "d0"
+	post("m1", prev, "", 0)
+	for i := 1; i <= contract.MaxSubagentDepth+1; i++ {
+		id := "d" + strings.Repeat("x", i)
+		post("m1", id, prev, 0)
+		prev = id
+	}
+	wantParent("m1", "d"+strings.Repeat("x", contract.MaxSubagentDepth), "d"+strings.Repeat("x", contract.MaxSubagentDepth-1))
+	wantParent("m1", prev, "")
+
+	// A self-parent is rejected.
+	body := []byte(`{"machine":{"id":"m1"},"sessions":[{"meta":{"session_id":"s","provider":"codex","parent_session_id":"s"},"events":[]}]}`)
+	wantError(t, "self parent", call(t, h, "POST", "/v1/ingest", "", body), "invalid_request")
+}
+
+// TestSubagentForks checks the forked_from_session_id rule: a fork's own
+// total includes the history it copied, so it is counted in no other
+// session's child or combined total, while sessions below it still are. The
+// field is kept when a later batch omits it or sends "" or null.
+func TestSubagentForks(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	var sample map[string]any
+	if err := json.Unmarshal(contract.Fixture("event.valid.user"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	post := func(id string, meta map[string]any, tokens int) {
+		t.Helper()
+		meta["session_id"], meta["provider"] = id, "codex"
+		e := map[string]any{}
+		for k, v := range sample {
+			e[k] = v
+		}
+		e["machine_id"], e["session_id"], e["seq"] = "m1", id, 0
+		e["tokens"] = map[string]any{"input": tokens, "output": 0, "cache": 0}
+		body, _ := json.Marshal(map[string]any{"machine": map[string]string{"id": "m1"}, "sessions": []any{map[string]any{"meta": meta, "events": []any{e}}}})
+		if rec := call(t, h, "POST", "/v1/ingest", "", body); rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", id, rec.Code, rec.Body)
+		}
+	}
+	wantTokens := func(id string, own, child int64) {
+		t.Helper()
+		o, c, sum := api.Tokens("m1", id)
+		if o != own || c != child || sum != own+child {
+			t.Errorf("Tokens(%s) = %d %d %d, want %d %d %d", id, o, c, sum, own, child, own+child)
+		}
+	}
+
+	post("root", map[string]any{}, 100)
+	// A plain subagent counts toward root.
+	post("plain", map[string]any{"parent_session_id": "root"}, 10)
+	// A subagent spawned with root's context: its 130 include root's 100
+	// copied, so root must not count it (no double count).
+	post("forked", map[string]any{"parent_session_id": "root", "agent_name": "Noether", "forked_from_session_id": "root"}, 130)
+	// A subagent of the fork did its own work and still counts, in the fork
+	// and in root.
+	post("grandchild", map[string]any{"parent_session_id": "forked"}, 5)
+	// A user fork of root has no parent: top level, counted nowhere else.
+	post("userfork", map[string]any{"forked_from_session_id": "root"}, 120)
+
+	if p, ok := api.Parent("m1", "forked"); !ok || p != "root" {
+		t.Errorf("forked is shown under %q %v, want root", p, ok)
+	}
+	if _, ok := api.Parent("m1", "userfork"); ok {
+		t.Error("user fork has a parent")
+	}
+	wantTokens("root", 100, 15)
+	wantTokens("forked", 130, 5)
+	wantTokens("userfork", 120, 0)
+
+	// Keep on empty.
+	post("forked", map[string]any{"forked_from_session_id": ""}, 130)
+	post("forked", map[string]any{"forked_from_session_id": nil}, 130)
+	post("forked", map[string]any{}, 130)
+	if sess, _ := api.Session("m1", "forked"); sess.ForkedFromSessionID != "root" {
+		t.Errorf("forked_from_session_id = %q after empty batches, want root", sess.ForkedFromSessionID)
+	}
+	var got map[string]any
+	rec := call(t, h, "GET", "/v1/sessions/m1:forked", "", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["forked_from_session_id"] != "root" {
+		t.Errorf("GET session: %v (%v)", got, err)
+	}
+	wantTokens("root", 100, 15)
+
+	// A self-fork is rejected.
+	wantError(t, "self fork", call(t, h, "POST", "/v1/ingest", "", contract.Fixture("batch.invalid.forked_from_self")), "invalid_request")
+}

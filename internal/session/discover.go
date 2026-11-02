@@ -51,7 +51,19 @@ type Meta struct {
 	Provider  string `json:"provider"`
 	// Origin is "cloud" for a session that ran on a hosted service and was
 	// imported, and empty for one that ran on this machine.
-	Origin         string       `json:"-"`
+	Origin string `json:"-"`
+	// ParentID is the session that spawned this one (a Codex subagent
+	// thread's parent), AgentName and AgentRole the agent's name and role.
+	// They are empty for a top-level session and when the provider does not
+	// record them, and are uploaded as parent_session_id, agent_name and
+	// agent_role.
+	ParentID  string `json:"-"`
+	AgentName string `json:"-"`
+	AgentRole string `json:"-"`
+	// ForkedFromID is the session a forked session was forked from (a Codex
+	// user fork, or a subagent spawned with its parent's context), uploaded
+	// as forked_from_session_id. Its tokens include the copied history.
+	ForkedFromID   string       `json:"-"`
 	Name           string       `json:"-"`
 	State          State        `json:"state"`
 	CWD            string       `json:"cwd"`
@@ -180,7 +192,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				}
 				projects[cwd] = project
 			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, Runtime: g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

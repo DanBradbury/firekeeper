@@ -655,3 +655,87 @@ func TestDiscoveryWarningsDoNotStopThePass(t *testing.T) {
 		t.Fatalf("summary = %+v, err %v", summary, err)
 	}
 }
+
+func TestIngestSubagentMeta(t *testing.T) {
+	marshal := func(m session.Meta) string {
+		t.Helper()
+		raw, err := json.Marshal((&run{}).sessionMeta(m, &SessionResult{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	// A top-level session, and a session that names itself, send none of
+	// the subagent keys, so servers that predate them see no change.
+	for _, m := range []session.Meta{
+		{ID: "s1", Provider: "codex"},
+		{ID: "s1", Provider: "codex", ParentID: "s1", AgentName: "Loop", AgentRole: "worker"},
+		{ID: "s1", Provider: "codex", AgentName: "Orphan"},
+		{ID: "s1", Provider: "codex", ForkedFromID: "s1"},
+	} {
+		raw := marshal(m)
+		for _, key := range []string{"parent_session_id", "agent_name", "agent_role", "forked_from_session_id"} {
+			if strings.Contains(raw, key) {
+				t.Errorf("%+v: ingest metadata has %s: %s", m, key, raw)
+			}
+		}
+	}
+	raw := marshal(session.Meta{ID: "s2", Provider: "codex", ParentID: "s1", AgentName: "Galileo", AgentRole: "explorer"})
+	var got map[string]any
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["parent_session_id"] != "s1" || got["agent_name"] != "Galileo" || got["agent_role"] != "explorer" {
+		t.Errorf("subagent metadata = %s", raw)
+	}
+	if _, ok := got["forked_from_session_id"]; ok {
+		t.Errorf("non-fork sends forked_from_session_id: %s", raw)
+	}
+	// A subagent spawned with its parent's context, and a user fork with no
+	// parent, send forked_from_session_id.
+	raw = marshal(session.Meta{ID: "s3", Provider: "codex", ParentID: "s1", AgentName: "Noether", ForkedFromID: "s1"})
+	if !strings.Contains(raw, `"parent_session_id":"s1"`) || !strings.Contains(raw, `"forked_from_session_id":"s1"`) {
+		t.Errorf("forked subagent metadata = %s", raw)
+	}
+	raw = marshal(session.Meta{ID: "s4", Provider: "codex", ForkedFromID: "s1"})
+	if !strings.Contains(raw, `"forked_from_session_id":"s1"`) || strings.Contains(raw, "parent_session_id") {
+		t.Errorf("user fork metadata = %s", raw)
+	}
+	// A subagent with a parent but no name or role sends only the parent.
+	raw = marshal(session.Meta{ID: "s2", Provider: "codex", ParentID: "s1"})
+	if !strings.Contains(raw, `"parent_session_id":"s1"`) || strings.Contains(raw, "agent_name") || strings.Contains(raw, "agent_role") {
+		t.Errorf("parent-only metadata = %s", raw)
+	}
+}
+
+// TestSubagentUploadKeepsOwnTokens uploads a Codex subagent session and
+// checks that the server stores its parent, name and role, and that its
+// events carry exactly the subagent's own token usage.
+func TestSubagentUploadKeepsOwnTokens(t *testing.T) {
+	f := newFixture(t)
+	const parent = "0199a1b2-c3d4-7e5f-8a9b-000000000000"
+	f.meta.ParentID, f.meta.AgentName, f.meta.AgentRole = parent, "Galileo", "explorer"
+	usage := func(in, cached, out int) string {
+		return fmt.Sprintf(`{"timestamp":"2026-01-02T03:04:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":%d,"cached_input_tokens":%d,"output_tokens":%d,"total_tokens":%d}}}}`+"\n", in, cached, out, in+out)
+	}
+	if err := os.WriteFile(f.rollout, []byte(line(0, "")+usage(100, 40, 10)+usage(50, 0, 5)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ts := newTestServer(t)
+	res := runOnce(t, f.config(ts.URL))
+	if res.Events != 3 {
+		t.Fatalf("uploaded %d events, want 3", res.Events)
+	}
+	sess, ok := ts.store.Session(testMachine, testSession)
+	if !ok || sess.ParentSessionID != parent || sess.AgentName != "Galileo" || sess.AgentRole != "explorer" {
+		t.Fatalf("stored session = %+v", sess)
+	}
+	var in, out, cache int64
+	for _, e := range ts.store.Events(testMachine, testSession) {
+		in, out, cache = in+e.Tokens.Input, out+e.Tokens.Output, cache+e.Tokens.Cache
+	}
+	// input excludes cached tokens: (100-40)+50, cache 40, output 15.
+	if in != 110 || cache != 40 || out != 15 {
+		t.Errorf("own tokens = in %d cache %d out %d, want 110/40/15", in, cache, out)
+	}
+}

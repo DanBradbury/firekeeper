@@ -33,6 +33,9 @@ type threadRow struct {
 	Branch    string `json:"git_branch"`
 	CreatedMS int64  `json:"created_ms"`
 	UpdatedMS int64  `json:"updated_ms"`
+	// Source is the thread's session source. For a subagent it is JSON
+	// naming the parent thread, the agent's nickname and its role.
+	Source string `json:"source"`
 }
 
 // Enumerate lists every rollout under sessions/*/*/*/ and archived_sessions/.
@@ -109,15 +112,22 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			continue
 		}
 		meta := session.Meta{ID: c.id, Provider: string(transcript.ProviderCodex), State: session.SessionStateEnded, RolloutPath: c.path}
+		// A row whose source column is filled says authoritatively whether
+		// the thread is a subagent; the rollout head is consulted only
+		// without one.
+		sourceKnown := false
 		if row, ok := rows[strings.ToLower(c.id)]; ok {
+			sourceKnown = strings.TrimSpace(row.Source) != ""
 			meta.Title = clean(row.Title)
 			meta.CWD = clean(row.CWD)
 			meta.Model = clean(row.Model)
 			meta.Branch = clean(row.Branch)
 			meta.StartedAt = millis(row.CreatedMS)
 			meta.LastActivityAt = millis(row.UpdatedMS)
+			setSpawn(&meta, session.ParseCodexSpawn([]byte(row.Source)))
 		}
 		checked := false
+		headRead, forkedFrom := false, ""
 		if meta.CWD != "" && opts.Skip != nil {
 			checked = true
 			if opts.Skip(finish(meta)) {
@@ -125,10 +135,19 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			}
 		}
 		if meta.CWD == "" || meta.Branch == "" || meta.Model == "" || meta.StartedAt == nil {
-			h, err := s.readHead(c.path)
+			h, err := s.readHead(c.path, c.id)
 			if err != nil {
 				bad++
 				continue
+			}
+			// A first line longer than the head (a large session_meta) leaves
+			// no header; it is read on its own below.
+			headRead = h.sawMeta
+			if h.forkedKnown {
+				forkedFrom = h.forkedFrom
+			}
+			if !sourceKnown {
+				setSpawn(&meta, h.spawn)
 			}
 			meta.CWD = session.FirstNonEmpty(meta.CWD, clean(h.cwd))
 			meta.Branch = session.FirstNonEmpty(meta.Branch, clean(h.branch))
@@ -137,6 +156,18 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 				started := h.started
 				meta.StartedAt = &started
 			}
+		}
+		// Only the rollout's own session_meta says whether the thread is a
+		// fork; the copies a fork embeds name other forks. The database does
+		// not record it, so a thread whose head was not read above has its
+		// first line, where Codex writes its own session_meta, read here.
+		if !headRead {
+			if own, ok := s.readOwnMeta(c.path, c.id); ok {
+				forkedFrom = own.ForkedFromID
+			}
+		}
+		if forkedFrom != "" && forkedFrom != meta.ID {
+			meta.ForkedFromID = clean(forkedFrom)
 		}
 		meta = finish(meta)
 		if !checked && opts.Skip != nil && opts.Skip(meta) {
@@ -153,6 +184,18 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		return metas, &session.Warning{Message: strings.Join(warnings, "; ")}
 	}
 	return metas, nil
+}
+
+// setSpawn records who spawned a subagent thread. A thread that names
+// itself as its parent is treated as top-level. Ids are compared exactly,
+// as the upload contract and the reporter compare them.
+func setSpawn(meta *session.Meta, spawn session.CodexSpawn) {
+	if spawn.ParentID == "" || spawn.ParentID == meta.ID {
+		return
+	}
+	meta.ParentID = clean(spawn.ParentID)
+	meta.AgentName = clean(spawn.AgentName)
+	meta.AgentRole = clean(spawn.AgentRole)
 }
 
 // finish fills the fields derived from the others, matching Discover.
@@ -209,9 +252,9 @@ func (s *Source) readThreads(ctx context.Context, home string) (map[string]threa
 	if !columns["id"] {
 		return nil, errors.New("codex: state database has no threads table")
 	}
-	query := fmt.Sprintf(`SELECT id, %s AS title, %s AS cwd, %s AS model, %s AS git_branch, %s AS created_ms, %s AS updated_ms FROM threads`,
+	query := fmt.Sprintf(`SELECT id, %s AS title, %s AS cwd, %s AS model, %s AS git_branch, %s AS created_ms, %s AS updated_ms, %s AS source FROM threads`,
 		textColumn(columns, "name", "title"), textColumn(columns, "cwd"), textColumn(columns, "model"),
-		textColumn(columns, "git_branch"), timeColumn(columns, "created"), timeColumn(columns, "updated"))
+		textColumn(columns, "git_branch"), timeColumn(columns, "created"), timeColumn(columns, "updated"), textColumn(columns, "source"))
 	output, err = s.sqlite(ctx, path, query)
 	if err != nil {
 		return nil, errors.New("codex: read state database failed")
@@ -259,14 +302,41 @@ func (s *Source) sqlite(ctx context.Context, path, query string) ([]byte, error)
 	return sqlitejson.Run(ctx, args...)
 }
 
+// readOwnMeta reads the thread's own session_meta from the first line of
+// its rollout.
+func (s *Source) readOwnMeta(path, id string) (session.CodexSessionMeta, bool) {
+	open := s.open
+	if open == nil {
+		open = func(name string) (io.ReadCloser, error) { return os.Open(name) }
+	}
+	file, err := open(path)
+	if err != nil {
+		return session.CodexSessionMeta{}, false
+	}
+	defer file.Close()
+	return session.ReadCodexSessionMeta(file, id)
+}
+
 type head struct {
 	cwd, branch, model string
 	started            time.Time
+	spawn              session.CodexSpawn
+	// forkedFrom is the own header's forked_from_id; forkedKnown says the
+	// own header was found.
+	forkedFrom  string
+	forkedKnown bool
+	// sawMeta says the head held a session_meta at all.
+	sawMeta bool
 }
 
 // readHead decodes the first reader.HeadBytes of a rollout. It is
 // corrupt when no complete line there is a JSON object.
-func (s *Source) readHead(path string) (head, error) {
+//
+// A forked rollout embeds copies of the source thread's session_meta lines
+// after its own, so the session_meta whose id is the thread's describes this
+// thread and the others are ignored, as Codex's own state extraction does.
+// Without one, the first session_meta is used.
+func (s *Source) readHead(path, id string) (head, error) {
 	open := s.open
 	if open == nil {
 		open = func(name string) (io.ReadCloser, error) { return os.Open(name) }
@@ -278,13 +348,24 @@ func (s *Source) readHead(path string) (head, error) {
 	defer file.Close()
 	scanner := bufio.NewScanner(io.LimitReader(file, reader.HeadBytes))
 	scanner.Buffer(make([]byte, 0, 64<<10), reader.HeadBytes)
+	type metaHead struct {
+		cwd, branch string
+		started     time.Time
+		spawn       session.CodexSpawn
+		forkedFrom  string
+		noID, ok    bool
+	}
 	var h head
+	var first, own metaHead
+	var turnCWD string
+	var lineTime time.Time
 	decoded := false
 	for scanner.Scan() {
 		var r struct {
 			Timestamp string `json:"timestamp"`
 			Type      string `json:"type"`
 			Payload   struct {
+				ID        string `json:"id"`
 				Timestamp string `json:"timestamp"`
 				CWD       string `json:"cwd"`
 				Model     string `json:"model"`
@@ -299,21 +380,29 @@ func (s *Source) readHead(path string) (head, error) {
 		decoded = true
 		switch r.Type {
 		case "session_meta":
-			h.cwd = session.FirstNonEmpty(h.cwd, r.Payload.CWD)
-			if r.Payload.Git != nil {
-				h.branch = session.FirstNonEmpty(h.branch, r.Payload.Git.Branch)
+			var raw struct {
+				Payload json.RawMessage `json:"payload"`
 			}
-			if t := parseTime(r.Payload.Timestamp); !t.IsZero() {
-				h.started = t
+			_ = json.Unmarshal(scanner.Bytes(), &raw)
+			parsed := session.ParseCodexSessionMeta(raw.Payload)
+			m := metaHead{cwd: r.Payload.CWD, started: parseTime(r.Payload.Timestamp), spawn: parsed.Spawn, forkedFrom: parsed.ForkedFromID, noID: parsed.ID == "", ok: true}
+			if r.Payload.Git != nil {
+				m.branch = r.Payload.Git.Branch
+			}
+			if !first.ok {
+				first = m
+			}
+			if !own.ok && id != "" && strings.EqualFold(r.Payload.ID, id) {
+				own = m
 			}
 		case "turn_context":
-			h.cwd = session.FirstNonEmpty(h.cwd, r.Payload.CWD)
+			turnCWD = session.FirstNonEmpty(turnCWD, r.Payload.CWD)
 			if r.Payload.Model != "" {
 				h.model = r.Payload.Model
 			}
 		}
-		if h.started.IsZero() {
-			h.started = parseTime(r.Timestamp)
+		if lineTime.IsZero() {
+			lineTime = parseTime(r.Timestamp)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, bufio.ErrTooLong) {
@@ -321,6 +410,23 @@ func (s *Source) readHead(path string) (head, error) {
 	}
 	if !decoded {
 		return head{}, errors.New("no decodable record")
+	}
+	h.sawMeta = first.ok
+	m := first
+	if own.ok {
+		m = own
+	}
+	h.cwd = session.FirstNonEmpty(m.cwd, turnCWD)
+	h.branch = m.branch
+	h.spawn = m.spawn
+	// A fork is known only from the thread's own header (or one without an
+	// id); a copied header names the source's fork, not this thread's.
+	if own.ok || m.noID {
+		h.forkedFrom, h.forkedKnown = m.forkedFrom, true
+	}
+	h.started = m.started
+	if h.started.IsZero() {
+		h.started = lineTime
 	}
 	return h, nil
 }

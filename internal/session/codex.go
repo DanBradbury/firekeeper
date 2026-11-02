@@ -1,11 +1,12 @@
 package session
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
-
+	"errors"
 	"fmt"
-
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -82,6 +83,10 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				name = row.ID
 			}
 			state, tokens, _ := d.readRolloutStatus(rolloutPath)
+			forkedFrom := ""
+			if own, ok := readCodexSessionMetaFile(rolloutPath, row.ID); ok && own.ForkedFromID != row.ID {
+				forkedFrom = d.sanitizeProcessCommand(own.ForkedFromID)
+			}
 			group.Sessions = append(group.Sessions, Info{
 				ID:          row.ID,
 				Name:        name,
@@ -92,6 +97,8 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				Subagent:    row.isSubagent(),
 				ParentID:    row.parentThreadID(),
 				AgentName:   d.sanitizeProcessCommand(row.agentNickname()),
+				AgentRole:   d.sanitizeProcessCommand(row.agentRole()),
+				ForkedFrom:  forkedFrom,
 				GitBranch:   d.sanitizeProcessCommand(row.GitBranch),
 				RolloutPath: rolloutPath,
 				UpdatedAt:   time.UnixMilli(row.UpdatedAtMS),
@@ -578,25 +585,153 @@ func (r ThreadMetadataRow) isSubagent() bool {
 	return strings.HasPrefix(r.Source, "{") || strings.HasPrefix(r.RawSource, "{")
 }
 
+// CodexSpawn is what a Codex subagent thread's source says about who spawned
+// it. Fields are empty when Codex did not record them.
+type CodexSpawn struct {
+	// ParentID is the thread that spawned this one.
+	ParentID string
+	// AgentName is the agent's nickname, such as "Galileo".
+	AgentName string
+	// AgentRole is the role it was spawned with, such as "explorer".
+	AgentRole string
+}
+
+// ParseCodexSpawn decodes a Codex session source, the JSON the state
+// database's source column holds as a string and a rollout's session_meta
+// holds as an object: {"subagent":{"thread_spawn":{"parent_thread_id":...,
+// "agent_nickname":...,"agent_role":...}}}. Older rollouts and rows name the
+// role agent_type, which Codex still accepts as an alias. Any other source,
+// such as "cli" or {"subagent":"review"}, gives the zero CodexSpawn.
+func ParseCodexSpawn(raw []byte) CodexSpawn {
+	spawn, _ := parseCodexSpawn(raw)
+	return spawn
+}
+
+// parseCodexSpawn is ParseCodexSpawn that also reports whether the source
+// marks a spawned subagent: a thread_spawn, or a subagent object of a shape
+// this version does not know (so a newer source still counts). Strings such
+// as "review" and {"other":...} are not spawns.
+func parseCodexSpawn(raw []byte) (CodexSpawn, bool) {
+	var decoded struct {
+		Subagent json.RawMessage `json:"subagent"`
+	}
+	if json.Unmarshal(raw, &decoded) != nil || len(decoded.Subagent) == 0 {
+		return CodexSpawn{}, false
+	}
+	var kinds map[string]json.RawMessage
+	if json.Unmarshal(decoded.Subagent, &kinds) != nil || kinds == nil {
+		return CodexSpawn{}, false
+	}
+	threadSpawn, ok := kinds["thread_spawn"]
+	if !ok {
+		_, other := kinds["other"]
+		return CodexSpawn{}, !other && len(kinds) > 0
+	}
+	var sub struct {
+		ParentThreadID string  `json:"parent_thread_id"`
+		AgentNickname  *string `json:"agent_nickname"`
+		AgentRole      *string `json:"agent_role"`
+		// AgentType is the older name Codex still reads as agent_role.
+		AgentType *string `json:"agent_type"`
+	}
+	if json.Unmarshal(threadSpawn, &sub) != nil {
+		return CodexSpawn{}, true
+	}
+	spawn := CodexSpawn{ParentID: strings.TrimSpace(sub.ParentThreadID)}
+	if sub.AgentNickname != nil {
+		spawn.AgentName = strings.TrimSpace(*sub.AgentNickname)
+	}
+	if sub.AgentRole != nil {
+		spawn.AgentRole = strings.TrimSpace(*sub.AgentRole)
+	}
+	if spawn.AgentRole == "" && sub.AgentType != nil {
+		spawn.AgentRole = strings.TrimSpace(*sub.AgentType)
+	}
+	return spawn, true
+}
+
+// CodexSessionMeta is what a rollout's own session_meta says about the
+// thread: who spawned it and which thread it was forked from.
+type CodexSessionMeta struct {
+	// ID is the thread id the session_meta describes.
+	ID string
+	// ForkedFromID is the thread this one was forked from (a user fork, or a
+	// subagent spawned with its parent's context). A forked rollout starts
+	// with a copy of that thread's records, token counts included.
+	ForkedFromID string
+	// Spawn is from source.subagent.thread_spawn, with the session_meta's own
+	// parent_thread_id, agent_nickname and agent_role (or agent_type) filling
+	// fields the source leaves empty, for spawned subagents only.
+	Spawn CodexSpawn
+}
+
+func readCodexSessionMetaFile(path, id string) (CodexSessionMeta, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return CodexSessionMeta{}, false
+	}
+	defer file.Close()
+	return ReadCodexSessionMeta(file, id)
+}
+
+// ParseCodexSessionMeta decodes a session_meta payload.
+func ParseCodexSessionMeta(payload []byte) CodexSessionMeta {
+	var p struct {
+		ID             string          `json:"id"`
+		ForkedFromID   string          `json:"forked_from_id"`
+		ParentThreadID string          `json:"parent_thread_id"`
+		AgentNickname  string          `json:"agent_nickname"`
+		AgentRole      string          `json:"agent_role"`
+		AgentType      string          `json:"agent_type"`
+		Source         json.RawMessage `json:"source"`
+	}
+	if json.Unmarshal(payload, &p) != nil {
+		return CodexSessionMeta{}
+	}
+	meta := CodexSessionMeta{ID: strings.TrimSpace(p.ID), ForkedFromID: strings.TrimSpace(p.ForkedFromID)}
+	spawn, spawned := parseCodexSpawn(p.Source)
+	if spawned {
+		spawn.ParentID = FirstNonEmpty(spawn.ParentID, strings.TrimSpace(p.ParentThreadID))
+		spawn.AgentName = FirstNonEmpty(spawn.AgentName, strings.TrimSpace(p.AgentNickname))
+		spawn.AgentRole = FirstNonEmpty(spawn.AgentRole, strings.TrimSpace(p.AgentRole), strings.TrimSpace(p.AgentType))
+	}
+	meta.Spawn = spawn
+	return meta
+}
+
+// ReadCodexSessionMeta reads the session_meta on the first line of a
+// rollout, where Codex writes the thread's own. A forked rollout repeats the
+// source thread's session_meta lines later; those are never read here. ok is
+// false when the first line is not a session_meta for id (an empty id in the
+// line is accepted).
+func ReadCodexSessionMeta(r io.Reader, id string) (CodexSessionMeta, bool) {
+	line, err := bufio.NewReaderSize(io.LimitReader(r, RolloutMetaHeadBytes), 64<<10).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return CodexSessionMeta{}, false
+	}
+	var record struct {
+		Type    string          `json:"type"`
+		Payload json.RawMessage `json:"payload"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(line), &record) != nil || record.Type != "session_meta" {
+		return CodexSessionMeta{}, false
+	}
+	meta := ParseCodexSessionMeta(record.Payload)
+	if meta.ID != "" && !strings.EqualFold(meta.ID, id) {
+		return CodexSessionMeta{}, false
+	}
+	return meta, true
+}
+
 // spawnSource decodes the JSON the source column holds for a spawned thread.
-func (r ThreadMetadataRow) spawnSource() (parent, nickname string) {
+func (r ThreadMetadataRow) spawnSource() CodexSpawn {
 	raw := r.RawSource
 	if !strings.HasPrefix(raw, "{") {
 		raw = r.Source
 	}
-	var decoded struct {
-		Subagent struct {
-			ThreadSpawn struct {
-				ParentThreadID string `json:"parent_thread_id"`
-				AgentNickname  string `json:"agent_nickname"`
-			} `json:"thread_spawn"`
-		} `json:"subagent"`
-	}
-	if json.Unmarshal([]byte(raw), &decoded) != nil {
-		return "", ""
-	}
-	return decoded.Subagent.ThreadSpawn.ParentThreadID, decoded.Subagent.ThreadSpawn.AgentNickname
+	return ParseCodexSpawn([]byte(raw))
 }
 
-func (r ThreadMetadataRow) parentThreadID() string { parent, _ := r.spawnSource(); return parent }
-func (r ThreadMetadataRow) agentNickname() string  { _, nickname := r.spawnSource(); return nickname }
+func (r ThreadMetadataRow) parentThreadID() string { return r.spawnSource().ParentID }
+func (r ThreadMetadataRow) agentNickname() string  { return r.spawnSource().AgentName }
+func (r ThreadMetadataRow) agentRole() string      { return r.spawnSource().AgentRole }

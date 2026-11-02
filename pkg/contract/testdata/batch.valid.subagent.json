@@ -1,0 +1,54 @@
+{
+  "machine": {
+    "id": "m1"
+  },
+  "sessions": [
+    {
+      "meta": {
+        "session_id": "0199-root",
+        "provider": "codex"
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-child",
+        "provider": "codex",
+        "parent_session_id": "0199-root",
+        "agent_name": "Galileo",
+        "agent_role": "explorer"
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-grandchild",
+        "provider": "codex",
+        "parent_session_id": "0199-child",
+        "agent_name": "",
+        "agent_role": null,
+        "forked_from_session_id": null
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-forked-child",
+        "provider": "codex",
+        "parent_session_id": "0199-root",
+        "agent_name": "Noether",
+        "agent_role": "worker",
+        "forked_from_session_id": "0199-root"
+      },
+      "events": []
+    },
+    {
+      "meta": {
+        "session_id": "0199-user-fork",
+        "provider": "codex",
+        "forked_from_session_id": "0199-root"
+      },
+      "events": []
+    }
+  ]
+}

@@ -530,6 +530,19 @@ type ingestMeta struct {
 	// Empty leaves the server's list as it is.
 	FilesSource string   `json:"files_source,omitempty"`
 	Files       []string `json:"files,omitempty"`
+	// ParentSessionID is the session that spawned this one, when it is a
+	// subagent whose provider records its parent (Codex). AgentName and
+	// AgentRole name the agent. All three are omitted when empty, so older
+	// servers and top-level sessions see no change. A session's events carry
+	// only its own tokens, apart from the history a fork copies (flagged by
+	// ForkedFromSessionID); see docs/api.md.
+	ParentSessionID string `json:"parent_session_id,omitempty"`
+	AgentName       string `json:"agent_name,omitempty"`
+	AgentRole       string `json:"agent_role,omitempty"`
+	// ForkedFromSessionID is the session a fork was forked from. A fork's
+	// events start with a copy of that session's history, token counts
+	// included; omitted when the session is not a fork.
+	ForkedFromSessionID string `json:"forked_from_session_id,omitempty"`
 
 	// gitFilesDone marks that addGitFiles already ran for this pass.
 	gitFilesDone bool
@@ -572,7 +585,7 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		return out
 	}
 	branch, commit := gitAtStart(meta.CWD, meta.StartedAt)
-	return ingestMeta{
+	sm := ingestMeta{
 		SessionID:      meta.ID,
 		Provider:       meta.Provider,
 		Origin:         meta.Origin,
@@ -587,6 +600,17 @@ func (r *run) sessionMeta(meta session.Meta, result *SessionResult) ingestMeta {
 		LastActivityAt: meta.LastActivityAt,
 		commitRaw:      commit,
 	}
+	// A session is never its own parent; the contract rejects that.
+	if meta.ParentID != "" && meta.ParentID != meta.ID {
+		sm.ParentSessionID = meta.ParentID
+		sm.AgentName = clean(meta.AgentName)
+		sm.AgentRole = clean(meta.AgentRole)
+	}
+	// Nor is it forked from itself.
+	if meta.ForkedFromID != "" && meta.ForkedFromID != meta.ID {
+		sm.ForkedFromSessionID = meta.ForkedFromID
+	}
+	return sm
 }
 
 // addGitFiles sets sm's file list from Git, once per session and pass, and

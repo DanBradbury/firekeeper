@@ -587,6 +587,12 @@ func mergeLive(meta, live session.Meta) session.Meta {
 	fill(&meta.Branch, live.Branch)
 	fill(&meta.Model, live.Model)
 	fill(&meta.Title, live.Title)
+	if meta.ParentID == "" && live.ParentID != "" {
+		meta.ParentID, meta.AgentName, meta.AgentRole = live.ParentID, live.AgentName, live.AgentRole
+	}
+	if meta.ForkedFromID == "" {
+		meta.ForkedFromID = live.ForkedFromID
+	}
 	if meta.StartedAt == nil {
 		meta.StartedAt = live.StartedAt
 	}

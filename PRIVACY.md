@@ -106,7 +106,12 @@ None sends session data, and none goes to me:
 to the server you configure. For each session they send:
 
 - **metadata:** provider, session id, working directory, project name, Git
-  branch, model, state, title, timestamps, event count, and token totals.
+  branch, model, state, title, timestamps, event count, and token totals,
+  and for a Codex subagent, the id of the session that spawned it and the
+  agent's name and role, and for a forked Codex thread, the id of the
+  session it was forked from. The parent's and fork source's ids are sent
+  even when that session itself is excluded or ignored locally and never
+  uploaded; each is only an opaque id, with nothing from that session.
 - **every transcript event:** your prompts, the assistant's replies, tool
   calls and their output (which can include source code, file contents, and
   command output), and each event's original record;

@@ -134,6 +134,24 @@ the newer file.
   samples.
 - **Seq is per file.** A forked thread starts a new rollout with its own uuid;
   the source does not link it to its parent (`session_meta.parent_thread_id`).
+- **Forks embed copies.** In legacy history mode (the default), a forked
+  rollout, whether from a user fork or a `spawn_agent` call with forked
+  context, writes its own `session_meta` and then a copy of the source
+  thread's items, including the source's `session_meta` lines and its
+  `event_msg` `token_count` records (Codex drops only `token_usage_record`
+  items and Compacted usage checkpoints from the copy; paginated history also
+  drops `token_count`; see codex-rs `core/src/agent/history.rs`
+  `keep_forked_rollout_item` and `prepare_forked_history`). Enumerate reads
+  only the `session_meta` whose id is the thread's, as Codex's state
+  extraction does. The copied `token_count` records are still read as the
+  fork's own events, so a fork's own tokens include the source's usage up to
+  the fork (docs/api.md, "Event"). Nothing in the rollout marks where the copy
+  ends, so instead the thread is flagged: its own (first) `session_meta`'s
+  `forked_from_id` is uploaded as `forked_from_session_id`, and a server
+  never adds a flagged session into another session's totals. The state
+  database has no column for it (`attached_thread_parent_id` covers only
+  attached threads), so even a thread whose row has every other field has
+  its first line read.
 - **Mid-file reads cost a prefix scan.** A read from offset N reads N bytes to
   rebuild seq and state. That stays cheap at the sizes seen locally (about
   1 MiB), but it grows with the rollout. The source could cache parser state by

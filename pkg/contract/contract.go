@@ -74,6 +74,9 @@ const (
 	MaxEventsPerReq = 500
 	MaxFiles        = 5000
 	MaxFilePathLen  = 4096
+	// MaxSubagentDepth is the most parent_session_id links a server follows
+	// from a session before treating it as top level.
+	MaxSubagentDepth = 32
 )
 
 //go:embed event.schema.json
@@ -193,8 +196,12 @@ var (
 	metaKeys = []string{
 		"session_id", "provider", "cwd", "project", "branch", "commit", "model",
 		"state", "title", "started_at", "last_activity_at", "origin",
-		"files_source", "files",
+		"files_source", "files", "parent_session_id", "agent_name", "agent_role",
+		"forked_from_session_id",
 	}
+	// subagentKeys are the optional subagent fields: a string, or null or
+	// absent when the provider records none.
+	subagentKeys = []string{"parent_session_id", "agent_name", "agent_role", "forked_from_session_id"}
 )
 
 // Origin says where a session ran. It is optional on ingest session metadata
@@ -315,6 +322,20 @@ func ValidateBatch(data []byte) error {
 			s, ok := raw.(string)
 			if !ok || (s != "" && !Origin(s).Valid()) {
 				add("%s.meta.origin: not a known origin", p)
+			}
+		}
+		// Subagent and fork fields: absent, null, or a string. A session
+		// cannot be its own parent or forked from itself.
+		for _, key := range subagentKeys {
+			if raw, present := meta[key]; present && raw != nil {
+				if _, ok := raw.(string); !ok {
+					add("%s.meta.%s: want a string or null", p, key)
+				}
+			}
+		}
+		for _, key := range []string{"parent_session_id", "forked_from_session_id"} {
+			if id, _ := meta[key].(string); id != "" && id == sessionID {
+				add("%s.meta.%s: names the session itself", p, key)
 			}
 		}
 		source, _ := meta["files_source"].(string)
