@@ -74,6 +74,9 @@ const (
 	MaxEventsPerReq = 500
 	MaxFiles        = 5000
 	MaxFilePathLen  = 4096
+	// MaxSubagentDepth is the most parent_session_id links a server follows
+	// from a session before treating it as top level.
+	MaxSubagentDepth = 32
 )
 
 //go:embed event.schema.json

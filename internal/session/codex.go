@@ -593,7 +593,8 @@ type CodexSpawn struct {
 // ParseCodexSpawn decodes a Codex session source, the JSON the state
 // database's source column holds as a string and a rollout's session_meta
 // holds as an object: {"subagent":{"thread_spawn":{"parent_thread_id":...,
-// "agent_nickname":...,"agent_role":...}}}. Any other source, such as "cli"
+// "agent_nickname":...,"agent_role":...}}}. Older rollouts and rows name the
+// role agent_type, which Codex still accepts as an alias. Any other source, such as "cli"
 // or {"subagent":"review"}, gives the zero CodexSpawn.
 func ParseCodexSpawn(raw []byte) CodexSpawn {
 	var decoded struct {
@@ -607,6 +608,8 @@ func ParseCodexSpawn(raw []byte) CodexSpawn {
 			ParentThreadID string  `json:"parent_thread_id"`
 			AgentNickname  *string `json:"agent_nickname"`
 			AgentRole      *string `json:"agent_role"`
+			// AgentType is the older name Codex still reads as agent_role.
+			AgentType *string `json:"agent_type"`
 		} `json:"thread_spawn"`
 	}
 	if json.Unmarshal(decoded.Subagent, &sub) != nil {
@@ -618,6 +621,9 @@ func ParseCodexSpawn(raw []byte) CodexSpawn {
 	}
 	if sub.ThreadSpawn.AgentRole != nil {
 		spawn.AgentRole = strings.TrimSpace(*sub.ThreadSpawn.AgentRole)
+	}
+	if spawn.AgentRole == "" && sub.ThreadSpawn.AgentType != nil {
+		spawn.AgentRole = strings.TrimSpace(*sub.ThreadSpawn.AgentType)
 	}
 	return spawn
 }

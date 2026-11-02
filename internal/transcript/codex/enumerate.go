@@ -112,7 +112,12 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			continue
 		}
 		meta := session.Meta{ID: c.id, Provider: string(transcript.ProviderCodex), State: session.SessionStateEnded, RolloutPath: c.path}
+		// A row whose source column is filled says authoritatively whether
+		// the thread is a subagent; the rollout head is consulted only
+		// without one.
+		sourceKnown := false
 		if row, ok := rows[strings.ToLower(c.id)]; ok {
+			sourceKnown = strings.TrimSpace(row.Source) != ""
 			meta.Title = clean(row.Title)
 			meta.CWD = clean(row.CWD)
 			meta.Model = clean(row.Model)
@@ -129,12 +134,12 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			}
 		}
 		if meta.CWD == "" || meta.Branch == "" || meta.Model == "" || meta.StartedAt == nil {
-			h, err := s.readHead(c.path)
+			h, err := s.readHead(c.path, c.id)
 			if err != nil {
 				bad++
 				continue
 			}
-			if meta.ParentID == "" {
+			if !sourceKnown {
 				setSpawn(&meta, h.spawn)
 			}
 			meta.CWD = session.FirstNonEmpty(meta.CWD, clean(h.cwd))
@@ -163,9 +168,10 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 }
 
 // setSpawn records who spawned a subagent thread. A thread that names
-// itself as its parent is treated as top-level.
+// itself as its parent is treated as top-level. Ids are compared exactly,
+// as the upload contract and the reporter compare them.
 func setSpawn(meta *session.Meta, spawn session.CodexSpawn) {
-	if spawn.ParentID == "" || strings.EqualFold(spawn.ParentID, meta.ID) {
+	if spawn.ParentID == "" || spawn.ParentID == meta.ID {
 		return
 	}
 	meta.ParentID = clean(spawn.ParentID)
@@ -285,7 +291,12 @@ type head struct {
 
 // readHead decodes the first reader.HeadBytes of a rollout. It is
 // corrupt when no complete line there is a JSON object.
-func (s *Source) readHead(path string) (head, error) {
+//
+// A forked rollout embeds copies of the source thread's session_meta lines
+// after its own, so the session_meta whose id is the thread's describes this
+// thread and the others are ignored, as Codex's own state extraction does.
+// Without one, the first session_meta is used.
+func (s *Source) readHead(path, id string) (head, error) {
 	open := s.open
 	if open == nil {
 		open = func(name string) (io.ReadCloser, error) { return os.Open(name) }
@@ -297,13 +308,23 @@ func (s *Source) readHead(path string) (head, error) {
 	defer file.Close()
 	scanner := bufio.NewScanner(io.LimitReader(file, reader.HeadBytes))
 	scanner.Buffer(make([]byte, 0, 64<<10), reader.HeadBytes)
+	type metaHead struct {
+		cwd, branch string
+		started     time.Time
+		spawn       session.CodexSpawn
+		ok          bool
+	}
 	var h head
+	var first, own metaHead
+	var turnCWD string
+	var lineTime time.Time
 	decoded := false
 	for scanner.Scan() {
 		var r struct {
 			Timestamp string `json:"timestamp"`
 			Type      string `json:"type"`
 			Payload   struct {
+				ID        string          `json:"id"`
 				Timestamp string          `json:"timestamp"`
 				CWD       string          `json:"cwd"`
 				Model     string          `json:"model"`
@@ -319,24 +340,24 @@ func (s *Source) readHead(path string) (head, error) {
 		decoded = true
 		switch r.Type {
 		case "session_meta":
-			h.cwd = session.FirstNonEmpty(h.cwd, r.Payload.CWD)
-			if h.spawn.ParentID == "" {
-				h.spawn = session.ParseCodexSpawn(r.Payload.Source)
-			}
+			m := metaHead{cwd: r.Payload.CWD, started: parseTime(r.Payload.Timestamp), spawn: session.ParseCodexSpawn(r.Payload.Source), ok: true}
 			if r.Payload.Git != nil {
-				h.branch = session.FirstNonEmpty(h.branch, r.Payload.Git.Branch)
+				m.branch = r.Payload.Git.Branch
 			}
-			if t := parseTime(r.Payload.Timestamp); !t.IsZero() {
-				h.started = t
+			if !first.ok {
+				first = m
+			}
+			if !own.ok && id != "" && strings.EqualFold(r.Payload.ID, id) {
+				own = m
 			}
 		case "turn_context":
-			h.cwd = session.FirstNonEmpty(h.cwd, r.Payload.CWD)
+			turnCWD = session.FirstNonEmpty(turnCWD, r.Payload.CWD)
 			if r.Payload.Model != "" {
 				h.model = r.Payload.Model
 			}
 		}
-		if h.started.IsZero() {
-			h.started = parseTime(r.Timestamp)
+		if lineTime.IsZero() {
+			lineTime = parseTime(r.Timestamp)
 		}
 	}
 	if err := scanner.Err(); err != nil && !errors.Is(err, bufio.ErrTooLong) {
@@ -344,6 +365,17 @@ func (s *Source) readHead(path string) (head, error) {
 	}
 	if !decoded {
 		return head{}, errors.New("no decodable record")
+	}
+	m := first
+	if own.ok {
+		m = own
+	}
+	h.cwd = session.FirstNonEmpty(m.cwd, turnCWD)
+	h.branch = m.branch
+	h.spawn = m.spawn
+	h.started = m.started
+	if h.started.IsZero() {
+		h.started = lineTime
 	}
 	return h, nil
 }

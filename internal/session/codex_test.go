@@ -196,6 +196,8 @@ func TestParseCodexSpawn(t *testing.T) {
 		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1","depth":1,"agent_path":null,"agent_nickname":"Galileo","agent_role":"explorer"}}}`, CodexSpawn{"p1", "Galileo", "explorer"}},
 		{`{"subagent":{"thread_spawn":{"parent_thread_id":" p1 ","depth":2,"agent_nickname":null,"agent_role":null}}}`, CodexSpawn{ParentID: "p1"}},
 		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1"}}}`, CodexSpawn{ParentID: "p1"}},
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1","agent_type":"worker"}}}`, CodexSpawn{ParentID: "p1", AgentRole: "worker"}},
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1","agent_role":"explorer","agent_type":"worker"}}}`, CodexSpawn{ParentID: "p1", AgentRole: "explorer"}},
 		{`{"subagent":"review"}`, CodexSpawn{}},
 		{`{"subagent":{"other":"guardian"}}`, CodexSpawn{}},
 		{`"cli"`, CodexSpawn{}},

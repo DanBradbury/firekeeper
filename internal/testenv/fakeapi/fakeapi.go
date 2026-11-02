@@ -177,6 +177,80 @@ func (s *Server) Session(machine, session string) (Session, bool) {
 	return st.meta, true
 }
 
+// Parent returns the session a session is shown under, following the rules
+// in docs/api.md: the stored parent_session_id counts only when that session
+// is stored for the same machine, and the chain of such links from the
+// session reaches a session without one within contract.MaxSubagentDepth
+// links and without revisiting a session. Otherwise, or for a session with
+// no parent, ok is false and the session is top level.
+func (s *Server) Parent(machine, session string) (parent string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parentLocked(machine, session)
+}
+
+func (s *Server) parentLocked(machine, session string) (string, bool) {
+	st := s.sessions[key(machine, session)]
+	if st == nil {
+		return "", false
+	}
+	seen := map[string]bool{session: true}
+	id := session
+	for links := 0; ; links++ {
+		p := s.sessions[key(machine, id)].meta.ParentSessionID
+		if p == "" || s.sessions[key(machine, p)] == nil {
+			// id is a root: top level, or its parent is not uploaded.
+			if links == 0 {
+				return "", false
+			}
+			return st.meta.ParentSessionID, true
+		}
+		if seen[p] || links == contract.MaxSubagentDepth {
+			return "", false
+		}
+		seen[p] = true
+		id = p
+	}
+}
+
+// Tokens returns a session's own token total (the sum of its events' input,
+// cache and output tokens), the total of the sessions shown below it at any
+// depth, and their sum, as docs/api.md defines them.
+func (s *Server) Tokens(machine, session string) (own, child, combined int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sum := func(id string) int64 {
+		var n int64
+		if st := s.sessions[key(machine, id)]; st != nil {
+			for _, e := range st.events {
+				n += e.Tokens.Input + e.Tokens.Cache + e.Tokens.Output
+			}
+		}
+		return n
+	}
+	own = sum(session)
+	prefix := key(machine, "")
+	for k := range s.sessions {
+		id, found := strings.CutPrefix(k, prefix)
+		if !found || id == session {
+			continue
+		}
+		// id is below session when session is on its resolved chain.
+		for cur, depth := id, 0; depth <= contract.MaxSubagentDepth; depth++ {
+			p, ok := s.parentLocked(machine, cur)
+			if !ok {
+				break
+			}
+			if p == session {
+				child += sum(id)
+				break
+			}
+			cur = p
+		}
+	}
+	return own, child, own + child
+}
+
 // Files returns a session's changed files ordered by path.
 func (s *Server) Files(machine, session string) []File {
 	s.mu.Lock()

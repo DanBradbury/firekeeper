@@ -319,3 +319,100 @@ func TestSubagentMeta(t *testing.T) {
 		t.Fatalf("GET session: %v (%v)", got, err)
 	}
 }
+
+// TestSubagentTree checks the tree rules docs/api.md sets for
+// parent_session_id: roll-ups follow resolved links only, an unknown parent
+// leaves its child top level until it arrives, a parent can change but not
+// be cleared, a cycle (even one built across batches) and a chain longer
+// than contract.MaxSubagentDepth fall back to top level, and a parent is
+// looked up on the same machine only.
+func TestSubagentTree(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	var sample map[string]any
+	if err := json.Unmarshal(contract.Fixture("event.valid.user"), &sample); err != nil {
+		t.Fatal(err)
+	}
+	post := func(machine, id, parent string, tokens int) {
+		t.Helper()
+		meta := map[string]any{"session_id": id, "provider": "codex"}
+		if parent != "" {
+			meta["parent_session_id"] = parent
+		}
+		events := []any{}
+		if tokens > 0 {
+			e := map[string]any{}
+			for k, v := range sample {
+				e[k] = v
+			}
+			e["machine_id"], e["session_id"], e["seq"] = machine, id, 0
+			e["tokens"] = map[string]any{"input": tokens, "output": 0, "cache": 0}
+			events = append(events, e)
+		}
+		body, _ := json.Marshal(map[string]any{"machine": map[string]string{"id": machine}, "sessions": []any{map[string]any{"meta": meta, "events": events}}})
+		if rec := call(t, h, "POST", "/v1/ingest", "", body); rec.Code != http.StatusOK {
+			t.Fatalf("%s/%s: %d %s", machine, id, rec.Code, rec.Body)
+		}
+	}
+	wantParent := func(machine, id, want string) {
+		t.Helper()
+		got, ok := api.Parent(machine, id)
+		if want == "" && ok || want != "" && got != want {
+			t.Errorf("Parent(%s, %s) = %q %v, want %q", machine, id, got, ok, want)
+		}
+	}
+	wantTokens := func(id string, own, child int64) {
+		t.Helper()
+		o, c, sum := api.Tokens("m1", id)
+		if o != own || c != child || sum != own+child {
+			t.Errorf("Tokens(%s) = %d %d %d, want %d %d %d", id, o, c, sum, own, child, own+child)
+		}
+	}
+
+	// The child arrives before its parent: an orphan, shown top level.
+	post("m1", "child", "root", 10)
+	post("m1", "grandchild", "child", 1)
+	wantParent("m1", "child", "")
+	wantParent("m1", "grandchild", "child")
+	wantTokens("child", 10, 1)
+	// The parent arrives later and the roll-up includes the child.
+	post("m1", "root", "", 100)
+	wantParent("m1", "child", "root")
+	wantTokens("root", 100, 11)
+
+	// A parent can change; an empty value keeps it.
+	post("m1", "other", "", 1000)
+	post("m1", "child", "other", 0)
+	post("m1", "child", "", 0)
+	wantParent("m1", "child", "other")
+	wantTokens("root", 100, 0)
+	wantTokens("other", 1000, 11)
+
+	// A same-id session on another machine is not a parent.
+	post("m2", "x", "root", 5)
+	wantParent("m2", "x", "")
+	wantTokens("root", 100, 0)
+
+	// A cycle built across batches: a -> b, then b -> a.
+	post("m1", "a", "b", 1)
+	post("m1", "b", "a", 2)
+	wantParent("m1", "a", "")
+	wantParent("m1", "b", "")
+	wantTokens("a", 1, 0)
+	wantTokens("b", 2, 0)
+
+	// A chain of MaxSubagentDepth links resolves; one more does not.
+	prev := "d0"
+	post("m1", prev, "", 0)
+	for i := 1; i <= contract.MaxSubagentDepth+1; i++ {
+		id := "d" + strings.Repeat("x", i)
+		post("m1", id, prev, 0)
+		prev = id
+	}
+	wantParent("m1", "d"+strings.Repeat("x", contract.MaxSubagentDepth), "d"+strings.Repeat("x", contract.MaxSubagentDepth-1))
+	wantParent("m1", prev, "")
+
+	// A self-parent is rejected.
+	body := []byte(`{"machine":{"id":"m1"},"sessions":[{"meta":{"session_id":"s","provider":"codex","parent_session_id":"s"},"events":[]}]}`)
+	wantError(t, "self parent", call(t, h, "POST", "/v1/ingest", "", body), "invalid_request")
+}
