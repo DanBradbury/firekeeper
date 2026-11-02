@@ -119,6 +119,7 @@ type model struct {
 	processErr              string
 	processMetadataWarning  string
 	terminalStatus          string
+	terminalStatusSeq       int
 	refreshedAt             time.Time
 	codexUsage              codexUsageSnapshot
 	codexUsageErr           string
@@ -169,7 +170,35 @@ func pollProcesses() tea.Cmd {
 	return tea.Tick(processPollInterval, func(t time.Time) tea.Msg { return processPollMsg(t) })
 }
 
+// terminalStatusLifetime is how long a status shows in the footer in place of
+// the shortcuts.
+const terminalStatusLifetime = 5 * time.Second
+
+// terminalStatusExpiredMsg ends the status with the same seq.
+type terminalStatusExpiredMsg struct{ seq int }
+
+// Update runs the model and gives any new terminalStatus a lifetime, so it
+// replaces the shortcuts in the footer for a few seconds and then goes.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if expired, ok := msg.(terminalStatusExpiredMsg); ok {
+		if expired.seq == m.terminalStatusSeq {
+			m.terminalStatus = ""
+		}
+		return m, nil
+	}
+	previous := m.terminalStatus
+	next, cmd := m.update(msg)
+	updated, ok := next.(model)
+	if !ok || updated.terminalStatus == "" || updated.terminalStatus == previous {
+		return next, cmd
+	}
+	updated.terminalStatusSeq++
+	seq := updated.terminalStatusSeq
+	expire := tea.Tick(terminalStatusLifetime, func(time.Time) tea.Msg { return terminalStatusExpiredMsg{seq} })
+	return updated, tea.Batch(cmd, expire)
+}
+
+func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		return m.updateMouse(msg)

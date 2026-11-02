@@ -185,7 +185,6 @@ func TestDashboardShowsOperationalMessagesInSessionsPanel(t *testing.T) {
 			m.processErr = "ps unavailable"
 			m.processGroups = nil
 		}, "process scan failed: ps unavailable", true},
-		{"terminal switch", func(m *model) { m.terminalStatus = "terminal switch failed: permission denied" }, "terminal switch failed: permission denied", false},
 		{"metadata warning", func(m *model) { m.processMetadataWarning = "timed out" }, "session metadata unavailable: timed out", false},
 	}
 	for _, tt := range tests {
@@ -231,9 +230,61 @@ func TestDashboardOperationalMessagesFitAndSanitize(t *testing.T) {
 		if !strings.Contains(ansi.Strip(view), "process scan") || strings.Contains(view, "\x1b[31m") {
 			t.Errorf("%v: scan failure was hidden or contained an unsafe escape", size)
 		}
-		if strings.Contains(ansi.Strip(view), "switch status") || strings.Contains(ansi.Strip(view), "metadata warning") {
+		if strings.Contains(ansi.Strip(view), "metadata warning") {
 			t.Errorf("%v: lower-priority feedback replaced the scan failure", size)
 		}
+		if strings.Contains(strings.Join(lines[:len(lines)-1], "\n"), "switch status") {
+			t.Errorf("%v: terminal status appeared above the footer", size)
+		}
+	}
+}
+
+func TestTerminalStatusReplacesShortcutsInFooterThenExpires(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 100, 30
+	updated, cmd := m.Update(terminalSwitchResultMsg{tty: "ttys001", app: "Ghostty"})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("a new status must schedule its expiry")
+	}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	footer := lines[len(lines)-1]
+	if !strings.Contains(footer, "switched to Ghostty ttys001") || strings.Contains(footer, "? help") {
+		t.Fatalf("footer = %q, want the status in place of the shortcuts", footer)
+	}
+	text := strings.TrimSpace(footer)
+	if left, right := strings.Index(footer, text), len(footer)-strings.Index(footer, text)-len(text); left-right > 1 || right-left > 1 {
+		t.Fatalf("status is not centered: %q", footer)
+	}
+	if strings.Contains(strings.Join(lines[:len(lines)-1], "\n"), "switched to") {
+		t.Fatal("status must not appear above the footer")
+	}
+
+	updated, _ = m.Update(terminalStatusExpiredMsg{seq: m.terminalStatusSeq})
+	m = updated.(model)
+	lines = strings.Split(ansi.Strip(m.View()), "\n")
+	if m.terminalStatus != "" || !strings.Contains(lines[len(lines)-1], "? help") {
+		t.Fatalf("status did not expire back to the shortcuts: %q", lines[len(lines)-1])
+	}
+}
+
+func TestStaleStatusExpiryDoesNotClearNewerStatus(t *testing.T) {
+	m := dashboardTestModel()
+	updated, _ := m.Update(terminalSwitchResultMsg{tty: "ttys001", app: "Ghostty"})
+	m = updated.(model)
+	firstSeq := m.terminalStatusSeq
+	updated, _ = m.Update(terminalSwitchResultMsg{tty: "ttys002", app: "Terminal.app"})
+	m = updated.(model)
+	updated, _ = m.Update(terminalStatusExpiredMsg{seq: firstSeq})
+	m = updated.(model)
+	if !strings.Contains(m.terminalStatus, "ttys002") {
+		t.Fatalf("an earlier timer cleared the newer status: %q", m.terminalStatus)
+	}
+}
+
+func TestTerminalStatusLifetimeIsFiveSeconds(t *testing.T) {
+	if terminalStatusLifetime != 5*time.Second {
+		t.Fatalf("lifetime = %v", terminalStatusLifetime)
 	}
 }
 

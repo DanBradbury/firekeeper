@@ -90,7 +90,7 @@ func TestResumeKeyOnIdleList(t *testing.T) {
 	}
 	m.recentSessions[0].id = "bad id"
 	next, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
-	if cmd != nil || !strings.Contains(next.(model).terminalStatus, "resume failed") {
+	if cmd == nil || !strings.Contains(next.(model).terminalStatus, "resume failed") {
 		t.Fatalf("bad id resumed: %q", next.(model).terminalStatus)
 	}
 	next, _ = next.(model).Update(resumeResultMsg{app: "Ghostty"})

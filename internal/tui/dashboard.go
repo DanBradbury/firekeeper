@@ -122,9 +122,6 @@ func (m model) idleBody() []string {
 	if m.processMetadataWarning != "" {
 		body = append(body, dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false))
 	}
-	if m.terminalStatus != "" {
-		body = append(body, dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false))
-	}
 	return body
 }
 
@@ -182,8 +179,6 @@ func (m model) dashSessionsPanel(layout dashLayout) []string {
 	switch {
 	case m.processErr != "":
 		body[0] = dashPaint("process scan failed: "+sanitizeProcessCommand(m.processErr), dashRed, false)
-	case m.terminalStatus != "":
-		body[0] = dashPaint(sanitizeProcessCommand(m.terminalStatus), dashYellow, false)
 	case m.processMetadataWarning != "":
 		body[0] = dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false)
 	}
@@ -902,7 +897,17 @@ func renderFooterKeys(keys []footerKey, width int) string {
 	return help + dashPaint(label, dashGreen, true) + dashPaint(" ", usageTextColor, false)
 }
 
+// statusFooter replaces the shortcuts with a centered, temporary status.
+func statusFooter(status string, width int) string {
+	text := ansi.Truncate(sanitizeProcessCommand(status), max(width-2, 0), "…")
+	left := max((width-ansi.StringWidth(text))/2, 0)
+	return dashFit(dashPaint(strings.Repeat(" ", left)+text, dashYellow, true), width, usagePanelColor)
+}
+
 func (m model) processFooter() string {
+	if m.terminalStatus != "" {
+		return statusFooter(m.terminalStatus, m.width)
+	}
 	if len(m.processGroups) == 0 {
 		if len(m.recentSessions) > 0 {
 			return renderFooterKeys([]footerKey{{"↑↓", "select"}, {"enter", "chat"}, {"R", "resume"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}, m.width)
