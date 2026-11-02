@@ -185,7 +185,6 @@ func TestDashboardShowsOperationalMessagesInSessionsPanel(t *testing.T) {
 			m.processErr = "ps unavailable"
 			m.processGroups = nil
 		}, "process scan failed: ps unavailable", true},
-		{"terminal switch", func(m *model) { m.terminalStatus = "terminal switch failed: permission denied" }, "terminal switch failed: permission denied", false},
 		{"metadata warning", func(m *model) { m.processMetadataWarning = "timed out" }, "session metadata unavailable: timed out", false},
 	}
 	for _, tt := range tests {
@@ -231,9 +230,61 @@ func TestDashboardOperationalMessagesFitAndSanitize(t *testing.T) {
 		if !strings.Contains(ansi.Strip(view), "process scan") || strings.Contains(view, "\x1b[31m") {
 			t.Errorf("%v: scan failure was hidden or contained an unsafe escape", size)
 		}
-		if strings.Contains(ansi.Strip(view), "switch status") || strings.Contains(ansi.Strip(view), "metadata warning") {
+		if strings.Contains(ansi.Strip(view), "metadata warning") {
 			t.Errorf("%v: lower-priority feedback replaced the scan failure", size)
 		}
+		if strings.Contains(strings.Join(lines[:len(lines)-1], "\n"), "switch status") {
+			t.Errorf("%v: terminal status appeared above the footer", size)
+		}
+	}
+}
+
+func TestTerminalStatusReplacesShortcutsInFooterThenExpires(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 100, 30
+	updated, cmd := m.Update(terminalSwitchResultMsg{tty: "ttys001", app: "Ghostty"})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("a new status must schedule its expiry")
+	}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	footer := lines[len(lines)-1]
+	if !strings.Contains(footer, "switched to Ghostty ttys001") || strings.Contains(footer, "? help") {
+		t.Fatalf("footer = %q, want the status in place of the shortcuts", footer)
+	}
+	text := strings.TrimSpace(footer)
+	if left, right := strings.Index(footer, text), len(footer)-strings.Index(footer, text)-len(text); left-right > 1 || right-left > 1 {
+		t.Fatalf("status is not centered: %q", footer)
+	}
+	if strings.Contains(strings.Join(lines[:len(lines)-1], "\n"), "switched to") {
+		t.Fatal("status must not appear above the footer")
+	}
+
+	updated, _ = m.Update(terminalStatusExpiredMsg{seq: m.terminalStatusSeq})
+	m = updated.(model)
+	lines = strings.Split(ansi.Strip(m.View()), "\n")
+	if m.terminalStatus != "" || !strings.Contains(lines[len(lines)-1], "? help") {
+		t.Fatalf("status did not expire back to the shortcuts: %q", lines[len(lines)-1])
+	}
+}
+
+func TestStaleStatusExpiryDoesNotClearNewerStatus(t *testing.T) {
+	m := dashboardTestModel()
+	updated, _ := m.Update(terminalSwitchResultMsg{tty: "ttys001", app: "Ghostty"})
+	m = updated.(model)
+	firstSeq := m.terminalStatusSeq
+	updated, _ = m.Update(terminalSwitchResultMsg{tty: "ttys002", app: "Terminal.app"})
+	m = updated.(model)
+	updated, _ = m.Update(terminalStatusExpiredMsg{seq: firstSeq})
+	m = updated.(model)
+	if !strings.Contains(m.terminalStatus, "ttys002") {
+		t.Fatalf("an earlier timer cleared the newer status: %q", m.terminalStatus)
+	}
+}
+
+func TestTerminalStatusLifetimeIsFiveSeconds(t *testing.T) {
+	if terminalStatusLifetime != 5*time.Second {
+		t.Fatalf("lifetime = %v", terminalStatusLifetime)
 	}
 }
 
@@ -1011,5 +1062,90 @@ func TestSummaryTokenSplit(t *testing.T) {
 	s := dashSummary{breakdown: tokenBreakdown{Input: 1, Output: 10, CacheRead: 989}}
 	if got := ansi.Strip(s.splitLine()); got != "in <1% · out 1% · cache 99%" {
 		t.Errorf("split = %q", got)
+	}
+}
+
+func TestSubagentsListUnderTheirPrimarySession(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	m.processGroups = m.processGroups[:1]
+	primary := m.processGroups[0].sessions[0]
+	primary.tokens, primary.tokensUsed = tokenBreakdown{}, 858_000
+	m.processGroups[0].sessions = []sessionInfo{
+		primary,
+		{id: "01a199ab-4aea-79c1-890e-e8866f04d75b", state: sessionStateWaiting, subagent: true, parentID: primary.id, agentName: "Galileo", model: "gpt-6.1-sol", tokensUsed: 5_000},
+		{id: "01a1996c-e645-7781-8069-3e95a35b075d", state: sessionStateWaiting, subagent: true, tokensUsed: 137_000},
+	}
+
+	lines, offsets := m.processBodyLines()
+	if len(lines) != 3 || len(offsets) != 1 || offsets[0] != 0 {
+		t.Fatalf("body = %d lines, offsets %v; want the runtime row then two subagent rows", len(lines), offsets)
+	}
+	plain := make([]string, len(lines))
+	for index, line := range lines {
+		plain[index] = ansi.Strip(line)
+	}
+	if strings.Contains(plain[0], "+") || strings.Contains(plain[0], "└─") {
+		t.Fatalf("runtime row must not count or mark subagents: %q", plain[0])
+	}
+	for _, want := range []string{"Galileo", "6f04d75b"} {
+		if !strings.Contains(plain[1], want) {
+			t.Fatalf("subagent row %q missing %q", plain[1], want)
+		}
+	}
+	if !strings.Contains(plain[0], "1.0M") {
+		t.Fatalf("runtime row must total its own and its subagents' tokens: %q", plain[0])
+	}
+	if !strings.Contains(plain[1], "1% of this runtime's tokens") || !strings.Contains(plain[2], "14% of this runtime's tokens") {
+		t.Fatalf("subagent rows do not show their share of the runtime:\n%s\n%s", plain[1], plain[2])
+	}
+	for _, line := range plain[1:] {
+		if !strings.Contains(line, "└─ sub") {
+			t.Fatalf("subagent row is not marked as a child: %q", line)
+		}
+	}
+	for index, line := range lines {
+		if width := ansi.StringWidth(line); width > m.dashInnerWidth() {
+			t.Fatalf("line %d is %d cells wide, limit %d", index, width, m.dashInnerWidth())
+		}
+	}
+
+	detail := ansi.Strip(strings.Join(dashGroupDetail(m.processGroups[0]), "\n"))
+	for _, want := range []string{"SUBAGENT Galileo", " of " + dashShortID(primary.id), "+ 142.0K in 2 subagents", "% of runtime"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("detail missing %q:\n%s", want, detail)
+		}
+	}
+}
+
+func TestSubagentRowsDoNotChangeSelectionOrClicks(t *testing.T) {
+	m := dashboardTestModel()
+	m.width, m.height = 140, 40
+	m.processGroups[0].sessions = append(m.processGroups[0].sessions, sessionInfo{id: "01a199ab-4aea", subagent: true})
+	_, offsets := m.processBodyLines()
+	if len(offsets) != 3 || offsets[1] != 2 {
+		t.Fatalf("offsets = %v, want the next runtime after the subagent row", offsets)
+	}
+}
+
+func TestSummaryCountsSubagentTokensButNotSubagentSessions(t *testing.T) {
+	m := dashboardTestModel()
+	m.processGroups = []processGroup{{
+		tool: "Codex",
+		root: processInfo{pid: 100, tty: "ttys001"},
+		sessions: []sessionInfo{
+			{id: "01a19a1a-0000-0000-0000-000000000001", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, tokensUsed: 285_000},
+			{id: "01a19a1a-0000-0000-0000-0000000000e1", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, subagent: true, tokensUsed: 65_000},
+		},
+	}}
+	summary := m.dashSummarize()
+	if summary.sessions != 1 || summary.states[sessionStateWaiting] != 1 {
+		t.Fatalf("sessions = %d, waiting = %d; a subagent is not its own session", summary.sessions, summary.states[sessionStateWaiting])
+	}
+	if len(summary.projects) != 1 || summary.projects[0].sessions != 1 {
+		t.Fatalf("projects = %+v, want one project with one session", summary.projects)
+	}
+	if summary.tokens != 350_000 || summary.tools[0].tokens != 350_000 || summary.tools[0].runtimes != 1 {
+		t.Fatalf("tokens = %d, tool = %+v; subagent tokens are still spent by the runtime", summary.tokens, summary.tools[0])
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,7 +60,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	if err != nil {
 		return err
 	}
-	d.matchCodexGroupsByCWD(unmatched, candidates, metadata, rollouts)
+	d.matchCodexGroupsByCWD(groups, unmatched, candidates, metadata, rollouts)
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
 		if group.Tool != "Codex" {
@@ -88,6 +89,9 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				CWD:         d.sanitizeProcessCommand(row.CWD),
 				Model:       d.sanitizeProcessCommand(row.Model),
 				Source:      d.sanitizeProcessCommand(row.Source),
+				Subagent:    row.isSubagent(),
+				ParentID:    row.parentThreadID(),
+				AgentName:   d.sanitizeProcessCommand(row.agentNickname()),
 				GitBranch:   d.sanitizeProcessCommand(row.GitBranch),
 				RolloutPath: rolloutPath,
 				UpdatedAt:   time.UnixMilli(row.UpdatedAtMS),
@@ -99,7 +103,109 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			return group.Sessions[i].UpdatedAt.After(group.Sessions[j].UpdatedAt)
 		})
 	}
+	attachCodexSubagents(groups)
 	return nil
+}
+
+// attachCodexSubagents gives each subagent thread to the runtime that owns its
+// primary session and lists it right after that session. A background server
+// hosts the subagents of a CLI, so they are moved to the CLI's group; a
+// subagent whose primary session is on no runtime is dropped, because it is not
+// something to switch to.
+func attachCodexSubagents(groups []ProcessGroup) {
+	var orphans []Info
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" {
+			continue
+		}
+		kept := group.Sessions[:0:0]
+		for _, info := range group.Sessions {
+			if !info.Subagent {
+				kept = append(kept, info)
+				continue
+			}
+			orphans = append(orphans, info)
+		}
+		group.Sessions = kept
+	}
+	for _, sub := range orphans {
+		if target := codexSubagentOwner(groups, sub); target != nil {
+			target.Sessions = append(target.Sessions, sub)
+		}
+	}
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" || len(group.Sessions) < 2 {
+			continue
+		}
+		group.Sessions = orderSubagentsUnderParents(group.Sessions)
+	}
+}
+
+// codexSubagentOwner finds the group whose primary session spawned sub: the
+// one named by ParentID, or, when the provider names none, a runtime with a
+// terminal (then any runtime) whose primary session shares sub's directory.
+func codexSubagentOwner(groups []ProcessGroup, sub Info) *ProcessGroup {
+	var byCWD, byCWDTTY *ProcessGroup
+	for index := range groups {
+		group := &groups[index]
+		if group.Tool != "Codex" || len(group.Sessions) == 0 || group.Sessions[0].Subagent {
+			continue
+		}
+		for _, info := range group.Sessions {
+			if sub.ParentID != "" && info.ID == sub.ParentID {
+				return group
+			}
+		}
+		if sub.ParentID == "" && sameDirectory(group.Sessions[0].CWD, sub.CWD) {
+			if byCWD == nil {
+				byCWD = group
+			}
+			if byCWDTTY == nil && group.Root.TTY != "" {
+				byCWDTTY = group
+			}
+		}
+	}
+	if byCWDTTY != nil {
+		return byCWDTTY
+	}
+	return byCWD
+}
+
+// orderSubagentsUnderParents keeps primary sessions in their order and lists
+// each subagent after its parent, newest first, with parentless ones after the
+// first primary session.
+func orderSubagentsUnderParents(sessions []Info) []Info {
+	var primaries, subs []Info
+	for _, info := range sessions {
+		if info.Subagent {
+			subs = append(subs, info)
+		} else {
+			primaries = append(primaries, info)
+		}
+	}
+	sort.SliceStable(subs, func(i, j int) bool { return subs[i].UpdatedAt.After(subs[j].UpdatedAt) })
+	out := make([]Info, 0, len(sessions))
+	used := make([]bool, len(subs))
+	for primaryIndex, primary := range primaries {
+		out = append(out, primary)
+		for subIndex, sub := range subs {
+			if used[subIndex] {
+				continue
+			}
+			if sub.ParentID == primary.ID || (sub.ParentID == "" && primaryIndex == 0) {
+				used[subIndex] = true
+				out = append(out, sub)
+			}
+		}
+	}
+	for subIndex, sub := range subs {
+		if !used[subIndex] {
+			out = append(out, sub)
+		}
+	}
+	return out
 }
 
 // unmatchedCodexGroups returns the Codex groups with no open rollout file,
@@ -200,9 +306,23 @@ func (d *discoverer) discoverRecentCodexThreads() map[string]bool {
 
 // matchCodexGroupsByCWD assigns each unmatched group the newest held,
 // unclaimed, non-subagent thread that shares its working directory.
-func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+//
+// A background server (an app-server daemon, no terminal) often holds the
+// rollout of a CLI's thread open, because the CLI talks to it. Those threads
+// stay claimable: the CLI with a terminal takes its thread from the server,
+// so switching goes to the terminal that runs it.
+func (d *discoverer) matchCodexGroupsByCWD(groups, unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+	serverPIDs := make(map[int]bool)
+	for _, group := range groups {
+		if group.Tool == "Codex" && group.Root.TTY == "" {
+			serverPIDs[group.Root.PID] = true
+		}
+	}
 	claimed := make(map[string]bool)
-	for _, paths := range rollouts {
+	for pid, paths := range rollouts {
+		if serverPIDs[pid] {
+			continue
+		}
 		for _, path := range paths {
 			if id, ok := d.threadIDFromRolloutPath(path); ok {
 				claimed[id] = true
@@ -217,7 +337,7 @@ func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates 
 		var best ThreadMetadataRow
 		for id := range candidates {
 			row, ok := metadata[id]
-			if !ok || claimed[id] || !sameDirectory(row.CWD, cwd) || row.RolloutPath == "" || strings.HasPrefix(row.Source, "{") {
+			if !ok || claimed[id] || !sameDirectory(row.CWD, cwd) || row.RolloutPath == "" || row.isSubagent() {
 				continue
 			}
 			if best.ID == "" || row.UpdatedAtMS > best.UpdatedAtMS {
@@ -228,6 +348,14 @@ func (d *discoverer) matchCodexGroupsByCWD(unmatched []ProcessGroup, candidates 
 			continue
 		}
 		claimed[best.ID] = true
+		if group.Root.TTY != "" {
+			for pid := range serverPIDs {
+				rollouts[pid] = slices.DeleteFunc(rollouts[pid], func(path string) bool {
+					id, ok := d.threadIDFromRolloutPath(path)
+					return ok && id == best.ID
+				})
+			}
+		}
 		rollouts[group.Root.PID] = append(rollouts[group.Root.PID], best.RolloutPath)
 	}
 }
@@ -361,6 +489,7 @@ func (d *discoverer) readThreadMetadata(threadIDs map[string]bool) (map[string]T
 			cwd,
 			COALESCE(model, '') AS model,
 			COALESCE(thread_source, source, '') AS source,
+			COALESCE(source, '') AS raw_source,
 			COALESCE(git_branch, '') AS git_branch,
 			COALESCE(updated_at_ms, updated_at * 1000) AS updated_at_ms,
 			tokens_used,
@@ -438,3 +567,36 @@ func normalizeDirectory(path string) string {
 	path = strings.TrimRight(slashPath(path), "/")
 	return strings.ToLower(path)
 }
+
+// isSubagent reports whether the thread was spawned by another one rather than
+// started by a person: a subagent, or the guardian review.
+func (r ThreadMetadataRow) isSubagent() bool {
+	switch r.Source {
+	case "subagent", "guardian_review":
+		return true
+	}
+	return strings.HasPrefix(r.Source, "{") || strings.HasPrefix(r.RawSource, "{")
+}
+
+// spawnSource decodes the JSON the source column holds for a spawned thread.
+func (r ThreadMetadataRow) spawnSource() (parent, nickname string) {
+	raw := r.RawSource
+	if !strings.HasPrefix(raw, "{") {
+		raw = r.Source
+	}
+	var decoded struct {
+		Subagent struct {
+			ThreadSpawn struct {
+				ParentThreadID string `json:"parent_thread_id"`
+				AgentNickname  string `json:"agent_nickname"`
+			} `json:"thread_spawn"`
+		} `json:"subagent"`
+	}
+	if json.Unmarshal([]byte(raw), &decoded) != nil {
+		return "", ""
+	}
+	return decoded.Subagent.ThreadSpawn.ParentThreadID, decoded.Subagent.ThreadSpawn.AgentNickname
+}
+
+func (r ThreadMetadataRow) parentThreadID() string { parent, _ := r.spawnSource(); return parent }
+func (r ThreadMetadataRow) agentNickname() string  { _, nickname := r.spawnSource(); return nickname }

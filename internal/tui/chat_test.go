@@ -151,7 +151,7 @@ func TestChatWithoutSessionMetadataShowsStatus(t *testing.T) {
 	m.processGroups = []processGroup{{tool: "OpenCode", root: processInfo{pid: 7}}}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	m = updated.(model)
-	if m.chat.open || cmd != nil || !strings.Contains(m.terminalStatus, "no session metadata") {
+	if m.chat.open || cmd == nil || !strings.Contains(m.terminalStatus, "no session metadata") {
 		t.Fatalf("chat opened without metadata: open=%v status=%q", m.chat.open, m.terminalStatus)
 	}
 }
