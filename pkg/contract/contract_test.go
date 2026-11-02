@@ -236,6 +236,48 @@ func originBatch(extra string) []byte {
 	return []byte(`{"machine":{"id":"m1"},"sessions":[{"meta":` + meta + `,"events":[]}]}`)
 }
 
+// TestSubagentMeta covers the optional subagent fields of sessions[].meta:
+// absent, empty and null are accepted (older clients and providers that do
+// not record them), strings are accepted, anything else is rejected, and a
+// session cannot name itself as its parent.
+func TestSubagentMeta(t *testing.T) {
+	for _, extra := range []string{
+		"",
+		`"parent_session_id":"p"`,
+		`"parent_session_id":"p","agent_name":"Galileo","agent_role":"explorer"`,
+		`"parent_session_id":"","agent_name":"","agent_role":""`,
+		`"parent_session_id":null,"agent_name":null,"agent_role":null`,
+		`"agent_name":"Galileo"`,
+	} {
+		if err := ValidateBatch(originBatch(extra)); err != nil {
+			t.Errorf("meta %s: %v", extra, err)
+		}
+	}
+	for _, tc := range []struct{ extra, field string }{
+		{`"parent_session_id":7`, "meta.parent_session_id"},
+		{`"parent_session_id":{}`, "meta.parent_session_id"},
+		{`"agent_name":true`, "meta.agent_name"},
+		{`"agent_role":["explorer"]`, "meta.agent_role"},
+		{`"parent_session_id":"s"`, "meta.parent_session_id: names the session itself"},
+		{`"Parent_Session_ID":"p"`, "only in case"},
+		{`"Agent_Name":"Galileo"`, "only in case"},
+	} {
+		err := ValidateBatch(originBatch(tc.extra))
+		if err == nil || !strings.Contains(err.Error(), tc.field) || strings.Contains(err.Error(), "Galileo") || strings.Contains(err.Error(), "explorer") {
+			t.Errorf("meta %s: %v, want an error naming %s", tc.extra, err, tc.field)
+		}
+	}
+	for _, name := range []string{
+		"batch.valid.subagent",
+		"batch.invalid.parent_is_self",
+		"batch.invalid.subagent_type",
+	} {
+		if Fixture(name) == nil {
+			t.Errorf("missing fixture %s", name)
+		}
+	}
+}
+
 func TestTooManyEvents(t *testing.T) {
 	var e map[string]any
 	_ = json.Unmarshal(mustFixture(t, "event.valid.user"), &e)

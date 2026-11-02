@@ -44,8 +44,11 @@ type Session struct {
 	MachineID, ID, Provider, CWD, Project, Branch, Commit, Model, State, Title string
 	// Origin is where the session ran, "local" or "cloud" (contract.Origin).
 	// A new session is "local" until a batch names another origin.
-	FilesSource, Origin       string
-	StartedAt, LastActivityAt *time.Time
+	FilesSource, Origin string
+	// ParentSessionID, AgentName and AgentRole are the optional subagent
+	// fields; once set, a batch without them keeps them.
+	ParentSessionID, AgentName, AgentRole string
+	StartedAt, LastActivityAt             *time.Time
 }
 
 // File is one changed file of a session.
@@ -290,6 +293,9 @@ type metaBody struct {
 	FilesSource    string     `json:"files_source"`
 	Origin         string     `json:"origin"`
 	Files          []string   `json:"files"`
+	ParentSession  string     `json:"parent_session_id"`
+	AgentName      string     `json:"agent_name"`
+	AgentRole      string     `json:"agent_role"`
 }
 
 func (s *Server) touchMachine(m machineBody) {
@@ -461,6 +467,9 @@ func mergeMeta(dst *Session, m metaBody) {
 	// "" or null) keeps the stored value, so a later batch without origin
 	// never turns a cloud session back into a local one.
 	set(&dst.Origin, m.Origin)
+	set(&dst.ParentSessionID, m.ParentSession)
+	set(&dst.AgentName, m.AgentName)
+	set(&dst.AgentRole, m.AgentRole)
 	if dst.Commit == "" {
 		dst.Commit = m.Commit
 	}
@@ -641,6 +650,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 		"cwd": sess.CWD, "project": sess.Project, "branch": sess.Branch, "commit": sess.Commit,
 		"model": sess.Model, "state": sess.State, "title": sess.Title,
 		"files_source": sess.FilesSource, "origin": sess.Origin, "event_count": len(s.Events(machine, id)),
+		"parent_session_id": sess.ParentSessionID, "agent_name": sess.AgentName, "agent_role": sess.AgentRole,
 	})
 }
 

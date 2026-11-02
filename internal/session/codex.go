@@ -92,6 +92,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				Subagent:    row.isSubagent(),
 				ParentID:    row.parentThreadID(),
 				AgentName:   d.sanitizeProcessCommand(row.agentNickname()),
+				AgentRole:   d.sanitizeProcessCommand(row.agentRole()),
 				GitBranch:   d.sanitizeProcessCommand(row.GitBranch),
 				RolloutPath: rolloutPath,
 				UpdatedAt:   time.UnixMilli(row.UpdatedAtMS),
@@ -578,25 +579,58 @@ func (r ThreadMetadataRow) isSubagent() bool {
 	return strings.HasPrefix(r.Source, "{") || strings.HasPrefix(r.RawSource, "{")
 }
 
+// CodexSpawn is what a Codex subagent thread's source says about who spawned
+// it. Fields are empty when Codex did not record them.
+type CodexSpawn struct {
+	// ParentID is the thread that spawned this one.
+	ParentID string
+	// AgentName is the agent's nickname, such as "Galileo".
+	AgentName string
+	// AgentRole is the role it was spawned with, such as "explorer".
+	AgentRole string
+}
+
+// ParseCodexSpawn decodes a Codex session source, the JSON the state
+// database's source column holds as a string and a rollout's session_meta
+// holds as an object: {"subagent":{"thread_spawn":{"parent_thread_id":...,
+// "agent_nickname":...,"agent_role":...}}}. Any other source, such as "cli"
+// or {"subagent":"review"}, gives the zero CodexSpawn.
+func ParseCodexSpawn(raw []byte) CodexSpawn {
+	var decoded struct {
+		Subagent json.RawMessage `json:"subagent"`
+	}
+	if json.Unmarshal(raw, &decoded) != nil || len(decoded.Subagent) == 0 {
+		return CodexSpawn{}
+	}
+	var sub struct {
+		ThreadSpawn struct {
+			ParentThreadID string  `json:"parent_thread_id"`
+			AgentNickname  *string `json:"agent_nickname"`
+			AgentRole      *string `json:"agent_role"`
+		} `json:"thread_spawn"`
+	}
+	if json.Unmarshal(decoded.Subagent, &sub) != nil {
+		return CodexSpawn{}
+	}
+	spawn := CodexSpawn{ParentID: strings.TrimSpace(sub.ThreadSpawn.ParentThreadID)}
+	if sub.ThreadSpawn.AgentNickname != nil {
+		spawn.AgentName = strings.TrimSpace(*sub.ThreadSpawn.AgentNickname)
+	}
+	if sub.ThreadSpawn.AgentRole != nil {
+		spawn.AgentRole = strings.TrimSpace(*sub.ThreadSpawn.AgentRole)
+	}
+	return spawn
+}
+
 // spawnSource decodes the JSON the source column holds for a spawned thread.
-func (r ThreadMetadataRow) spawnSource() (parent, nickname string) {
+func (r ThreadMetadataRow) spawnSource() CodexSpawn {
 	raw := r.RawSource
 	if !strings.HasPrefix(raw, "{") {
 		raw = r.Source
 	}
-	var decoded struct {
-		Subagent struct {
-			ThreadSpawn struct {
-				ParentThreadID string `json:"parent_thread_id"`
-				AgentNickname  string `json:"agent_nickname"`
-			} `json:"thread_spawn"`
-		} `json:"subagent"`
-	}
-	if json.Unmarshal([]byte(raw), &decoded) != nil {
-		return "", ""
-	}
-	return decoded.Subagent.ThreadSpawn.ParentThreadID, decoded.Subagent.ThreadSpawn.AgentNickname
+	return ParseCodexSpawn([]byte(raw))
 }
 
-func (r ThreadMetadataRow) parentThreadID() string { parent, _ := r.spawnSource(); return parent }
-func (r ThreadMetadataRow) agentNickname() string  { _, nickname := r.spawnSource(); return nickname }
+func (r ThreadMetadataRow) parentThreadID() string { return r.spawnSource().ParentID }
+func (r ThreadMetadataRow) agentNickname() string  { return r.spawnSource().AgentName }
+func (r ThreadMetadataRow) agentRole() string      { return r.spawnSource().AgentRole }

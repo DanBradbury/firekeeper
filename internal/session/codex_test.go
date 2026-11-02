@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,7 +149,7 @@ func TestEnrichCodexSessionsListsSubagentUnderItsParent(t *testing.T) {
 	metadataJSON := `[
 	 {"id":"` + parentA + `","display_name":"A","cwd":"/work/a","source":"user","raw_source":"cli","updated_at_ms":10,"rollout_path":"` + jsonPath(rollout(parentA)) + `"},
 	 {"id":"` + parentB + `","display_name":"B","cwd":"/work/b","source":"user","raw_source":"cli","updated_at_ms":20,"rollout_path":"` + jsonPath(rollout(parentB)) + `"},
-	 {"id":"` + subOfA + `","display_name":"sub","cwd":"/work/b","source":"subagent","raw_source":"{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"` + parentA + `\",\"agent_nickname\":\"Galileo\"}}}","updated_at_ms":30,"rollout_path":"` + jsonPath(rollout(subOfA)) + `"}
+	 {"id":"` + subOfA + `","display_name":"sub","cwd":"/work/b","source":"subagent","raw_source":"{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"` + parentA + `\",\"agent_nickname\":\"Galileo\",\"agent_role\":\"explorer\"}}}","updated_at_ms":30,"rollout_path":"` + jsonPath(rollout(subOfA)) + `"}
 	]`
 	d := &discoverer{ctx: context.Background(), opts: Options{Home: home, CodexHome: codexHome, Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
@@ -171,7 +172,8 @@ func TestEnrichCodexSessionsListsSubagentUnderItsParent(t *testing.T) {
 		switch group.Root.PID {
 		case 100:
 			if len(group.Sessions) != 2 || group.Sessions[0].ID != parentA || group.Sessions[1].ID != subOfA ||
-				group.Sessions[1].ParentID != parentA || group.Sessions[1].AgentName != "Galileo" {
+				group.Sessions[1].ParentID != parentA || group.Sessions[1].AgentName != "Galileo" ||
+				group.Sessions[1].AgentRole != "explorer" || group.Sessions[0].ParentID != "" {
 				t.Errorf("parent A sessions = %+v", group.Sessions)
 			}
 		case 101:
@@ -183,5 +185,82 @@ func TestEnrichCodexSessionsListsSubagentUnderItsParent(t *testing.T) {
 				t.Errorf("app-server sessions = %+v, want none", group.Sessions)
 			}
 		}
+	}
+}
+
+func TestParseCodexSpawn(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want CodexSpawn
+	}{
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1","depth":1,"agent_path":null,"agent_nickname":"Galileo","agent_role":"explorer"}}}`, CodexSpawn{"p1", "Galileo", "explorer"}},
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":" p1 ","depth":2,"agent_nickname":null,"agent_role":null}}}`, CodexSpawn{ParentID: "p1"}},
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":"p1"}}}`, CodexSpawn{ParentID: "p1"}},
+		{`{"subagent":"review"}`, CodexSpawn{}},
+		{`{"subagent":{"other":"guardian"}}`, CodexSpawn{}},
+		{`"cli"`, CodexSpawn{}},
+		{`cli`, CodexSpawn{}},
+		{``, CodexSpawn{}},
+		{`{"subagent":{"thread_spawn":{"parent_thread_id":7}}}`, CodexSpawn{}},
+	} {
+		if got := ParseCodexSpawn([]byte(tc.raw)); got != tc.want {
+			t.Errorf("ParseCodexSpawn(%s) = %+v, want %+v", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// TestDiscoverCodexSubagentMeta checks that Discover hands a Codex subagent's
+// parent, name and role to session.Meta, which the reporter uploads, and
+// leaves them empty on the top-level thread.
+func TestDiscoverCodexSubagentMeta(t *testing.T) {
+	home := t.TempDir()
+	codexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(codexHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(codexHome, "state_5.sqlite"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		parent = "01a10000-0000-7000-8000-00000000000a"
+		sub    = "01a10000-0000-7000-8000-0000000000a1"
+	)
+	rollout := func(id string) string {
+		return filepath.Join(codexHome, "sessions", "rollout-2026-11-01T10-00-00-"+id+".jsonl")
+	}
+	metadataJSON := `[
+	 {"id":"` + parent + `","display_name":"A","cwd":"/work/a","source":"user","raw_source":"cli","updated_at_ms":10,"rollout_path":"` + jsonPath(rollout(parent)) + `"},
+	 {"id":"` + sub + `","display_name":"sub","cwd":"/work/a","source":"subagent","raw_source":"{\"subagent\":{\"thread_spawn\":{\"parent_thread_id\":\"` + parent + `\",\"depth\":1,\"agent_nickname\":\"Galileo\",\"agent_role\":\"explorer\"}}}","updated_at_ms":30,"rollout_path":"` + jsonPath(rollout(sub)) + `"}
+	]`
+	opts := Options{Home: home, CodexHome: codexHome, Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte("100 1 ttys001 01:00 codex\n"), nil
+		case "lsof":
+			if strings.Contains(strings.Join(args, " "), "-d cwd") {
+				return nil, os.ErrNotExist
+			}
+			return []byte("p100\nn" + rollout(parent) + "\nn" + rollout(sub) + "\n"), nil
+		case "sqlite3":
+			return []byte(metadataJSON), nil
+		}
+		return nil, os.ErrNotExist
+	}}
+	metas, err := Discover(context.Background(), opts)
+	if err != nil {
+		var warning *Warning
+		if !errors.As(err, &warning) {
+			t.Fatal(err)
+		}
+	}
+	byID := map[string]Meta{}
+	for _, m := range metas {
+		byID[m.ID] = m
+	}
+	if m, ok := byID[sub]; !ok || m.ParentID != parent || m.AgentName != "Galileo" || m.AgentRole != "explorer" {
+		t.Errorf("subagent meta = %+v (found %v)", m, ok)
+	}
+	if m, ok := byID[parent]; !ok || m.ParentID != "" || m.AgentName != "" || m.AgentRole != "" {
+		t.Errorf("parent meta = %+v (found %v)", m, ok)
 	}
 }

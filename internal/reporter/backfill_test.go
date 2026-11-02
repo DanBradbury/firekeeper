@@ -574,3 +574,16 @@ func TestMergeFileState(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeLiveFillsSubagentFields(t *testing.T) {
+	live := session.Meta{ID: "s2", Provider: "codex", ParentID: "s1", AgentName: "Galileo", AgentRole: "explorer"}
+	got := mergeLive(session.Meta{ID: "s2", Provider: "codex"}, live)
+	if got.ParentID != "s1" || got.AgentName != "Galileo" || got.AgentRole != "explorer" {
+		t.Errorf("merged = %+v", got)
+	}
+	// The enumerated parent wins, with its own name and role.
+	got = mergeLive(session.Meta{ID: "s2", Provider: "codex", ParentID: "s0", AgentName: "Noether"}, live)
+	if got.ParentID != "s0" || got.AgentName != "Noether" || got.AgentRole != "" {
+		t.Errorf("merged over enumerated = %+v", got)
+	}
+}

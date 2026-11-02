@@ -155,6 +155,11 @@ One normalized transcript record. The JSON shape is pinned by
 Events are keyed by `(machine_id, session_id, seq)`. `seq` must not be
 negative.
 
+`tokens` count what the event spent in its own session. A subagent's usage is
+in the events of the subagent's session and is never repeated in its parent's
+events, so summing a session's events gives that session's own total. See
+"Subagents" under `POST /v1/ingest` for child and combined totals.
+
 ## Write endpoints
 
 ### `POST /v1/ingest`
@@ -171,7 +176,8 @@ transaction.
         "session_id": "0199-abc", "provider": "codex", "cwd": "/repo", "project": "repo",
         "branch": "main", "commit": "4f5ef2f…", "model": "gpt-5", "state": "ACTIVE", "title": "Fix parser",
         "started_at": "2026-10-07T12:00:00Z", "last_activity_at": "2026-10-07T12:05:00Z",
-        "origin": "local", "files_source": "git", "files": ["/repo/src/main.go", "/repo/src/gen.go"]
+        "origin": "local", "files_source": "git", "files": ["/repo/src/main.go", "/repo/src/gen.go"],
+        "parent_session_id": "0199-root", "agent_name": "Galileo", "agent_role": "explorer"
       },
       "events": [ { "provider": "codex", "seq": 0, "role": "user", "text": "...", "tokens": {"input": 0, "output": 0, "cache": 0}, "raw": {} } ]
     }
@@ -211,6 +217,26 @@ transaction.
   file-changing tool calls in newly stored events. `TouchedFiles` in
   `pkg/event` does this the same way the client does. Re-sent events are not
   scanned again.
+- Subagents (optional): a session another session spawned (a Codex subagent
+  thread, for example) carries `parent_session_id`, the provider-native id of
+  the session that spawned it. It is on the same machine and of the same
+  provider, and may be a subagent itself, so links form a tree. `agent_name`
+  is the name the provider gave the agent (Codex's nickname, such as
+  `Galileo`) and `agent_role` the role it was spawned with (such as
+  `explorer`); both are display text. All three are strings, set only when
+  the provider records them; an empty string, JSON `null`, or a missing key
+  keeps the stored value (none for a new session), so a session never loses
+  its parent. `parent_session_id` must differ from `session_id`, or the
+  request is rejected with 400. A session without `parent_session_id` is a
+  top-level session, or one whose provider does not say who spawned it.
+
+  A session's events hold only its own tokens (see "Event"), so a server can
+  total a tree without double counting: own is the sum of the session's
+  events, child is the sum of the own totals of every session below it
+  (following `parent_session_id`, any depth), and combined is own plus child.
+  A parent that has not been uploaded yet simply has no row; its children
+  still say whose they are. A server that does not know these fields ignores
+  them.
 - Git files (optional): with `files_source` `git`, `files` replaces the
   session's Git change list, even when empty. Paths are absolute or relative
   to `cwd`, at most 5,000 of them, each non-blank and at most 4,096 bytes.

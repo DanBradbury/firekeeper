@@ -33,6 +33,9 @@ type threadRow struct {
 	Branch    string `json:"git_branch"`
 	CreatedMS int64  `json:"created_ms"`
 	UpdatedMS int64  `json:"updated_ms"`
+	// Source is the thread's session source. For a subagent it is JSON
+	// naming the parent thread, the agent's nickname and its role.
+	Source string `json:"source"`
 }
 
 // Enumerate lists every rollout under sessions/*/*/*/ and archived_sessions/.
@@ -116,6 +119,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			meta.Branch = clean(row.Branch)
 			meta.StartedAt = millis(row.CreatedMS)
 			meta.LastActivityAt = millis(row.UpdatedMS)
+			setSpawn(&meta, session.ParseCodexSpawn([]byte(row.Source)))
 		}
 		checked := false
 		if meta.CWD != "" && opts.Skip != nil {
@@ -129,6 +133,9 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			if err != nil {
 				bad++
 				continue
+			}
+			if meta.ParentID == "" {
+				setSpawn(&meta, h.spawn)
 			}
 			meta.CWD = session.FirstNonEmpty(meta.CWD, clean(h.cwd))
 			meta.Branch = session.FirstNonEmpty(meta.Branch, clean(h.branch))
@@ -153,6 +160,17 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		return metas, &session.Warning{Message: strings.Join(warnings, "; ")}
 	}
 	return metas, nil
+}
+
+// setSpawn records who spawned a subagent thread. A thread that names
+// itself as its parent is treated as top-level.
+func setSpawn(meta *session.Meta, spawn session.CodexSpawn) {
+	if spawn.ParentID == "" || strings.EqualFold(spawn.ParentID, meta.ID) {
+		return
+	}
+	meta.ParentID = clean(spawn.ParentID)
+	meta.AgentName = clean(spawn.AgentName)
+	meta.AgentRole = clean(spawn.AgentRole)
 }
 
 // finish fills the fields derived from the others, matching Discover.
@@ -209,9 +227,9 @@ func (s *Source) readThreads(ctx context.Context, home string) (map[string]threa
 	if !columns["id"] {
 		return nil, errors.New("codex: state database has no threads table")
 	}
-	query := fmt.Sprintf(`SELECT id, %s AS title, %s AS cwd, %s AS model, %s AS git_branch, %s AS created_ms, %s AS updated_ms FROM threads`,
+	query := fmt.Sprintf(`SELECT id, %s AS title, %s AS cwd, %s AS model, %s AS git_branch, %s AS created_ms, %s AS updated_ms, %s AS source FROM threads`,
 		textColumn(columns, "name", "title"), textColumn(columns, "cwd"), textColumn(columns, "model"),
-		textColumn(columns, "git_branch"), timeColumn(columns, "created"), timeColumn(columns, "updated"))
+		textColumn(columns, "git_branch"), timeColumn(columns, "created"), timeColumn(columns, "updated"), textColumn(columns, "source"))
 	output, err = s.sqlite(ctx, path, query)
 	if err != nil {
 		return nil, errors.New("codex: read state database failed")
@@ -262,6 +280,7 @@ func (s *Source) sqlite(ctx context.Context, path, query string) ([]byte, error)
 type head struct {
 	cwd, branch, model string
 	started            time.Time
+	spawn              session.CodexSpawn
 }
 
 // readHead decodes the first reader.HeadBytes of a rollout. It is
@@ -285,9 +304,10 @@ func (s *Source) readHead(path string) (head, error) {
 			Timestamp string `json:"timestamp"`
 			Type      string `json:"type"`
 			Payload   struct {
-				Timestamp string `json:"timestamp"`
-				CWD       string `json:"cwd"`
-				Model     string `json:"model"`
+				Timestamp string          `json:"timestamp"`
+				CWD       string          `json:"cwd"`
+				Model     string          `json:"model"`
+				Source    json.RawMessage `json:"source"`
 				Git       *struct {
 					Branch string `json:"branch"`
 				} `json:"git"`
@@ -300,6 +320,9 @@ func (s *Source) readHead(path string) (head, error) {
 		switch r.Type {
 		case "session_meta":
 			h.cwd = session.FirstNonEmpty(h.cwd, r.Payload.CWD)
+			if h.spawn.ParentID == "" {
+				h.spawn = session.ParseCodexSpawn(r.Payload.Source)
+			}
 			if r.Payload.Git != nil {
 				h.branch = session.FirstNonEmpty(h.branch, r.Payload.Git.Branch)
 			}

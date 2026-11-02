@@ -288,3 +288,34 @@ func TestRelToWindowsPaths(t *testing.T) {
 		}
 	}
 }
+
+// TestSubagentMeta checks the optional subagent fields: they are stored,
+// returned by the test-only session read, and kept by later batches that
+// omit them or send empty or null values.
+func TestSubagentMeta(t *testing.T) {
+	api := New()
+	h := api.Handler()
+	post := func(extra string) {
+		t.Helper()
+		meta := `{"session_id":"child","provider":"codex"`
+		if extra != "" {
+			meta += "," + extra
+		}
+		body := `{"machine":{"id":"m1"},"sessions":[{"meta":` + meta + `},"events":[]}]}`
+		if rec := call(t, h, "POST", "/v1/ingest", "", []byte(body)); rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", extra, rec.Code, rec.Body)
+		}
+	}
+	post(`"parent_session_id":"root","agent_name":"Galileo","agent_role":"explorer"`)
+	post("")
+	post(`"parent_session_id":"","agent_name":null,"agent_role":""`)
+	sess, ok := api.Session("m1", "child")
+	if !ok || sess.ParentSessionID != "root" || sess.AgentName != "Galileo" || sess.AgentRole != "explorer" {
+		t.Fatalf("stored session = %+v", sess)
+	}
+	var got map[string]any
+	rec := call(t, h, "GET", "/v1/sessions/m1:child", "", nil)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got["parent_session_id"] != "root" || got["agent_name"] != "Galileo" || got["agent_role"] != "explorer" {
+		t.Fatalf("GET session: %v (%v)", got, err)
+	}
+}

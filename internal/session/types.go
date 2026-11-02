@@ -114,10 +114,12 @@ type Info struct {
 	UndercountWarning string
 	// Subagent marks a thread another session spawned (a Codex subagent or the
 	// guardian review). ParentID is the spawning thread when the provider says
-	// which, and AgentName its nickname, such as "Galileo".
+	// which, AgentName its nickname, such as "Galileo", and AgentRole the
+	// role it was spawned with, such as "explorer".
 	Subagent  bool
 	ParentID  string
 	AgentName string
+	AgentRole string
 }
 
 // TokenBreakdown splits a session's token usage into uncached input, output,
