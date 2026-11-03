@@ -381,6 +381,13 @@ The reporter and daemon keep per-file read offsets in `~/.firekeeper/state.json`
 ## Testing style
 
 - Prefer deterministic table-driven or focused unit tests.
+- Every test of new or changed behavior covers both the happy path (valid,
+  expected input produces the right result) and the error path (invalid,
+  missing, malformed, or look-alike input fails safely: rejected, skipped,
+  unlinked, or returned as an error, never a panic or a wrong result).
+- Every new or changed parser of untrusted input (command lines, provider
+  files, database rows, tool output) also gets a fuzz test that checks
+  properties that must always hold, such as no panic and only valid output.
 - Test pure parsers with strings/readers and synthetic provider records.
 - Test model behavior by sending Bubble Tea messages and inspecting returned model/view.
 - Test errors without exposing machine-specific absolute paths or terminal escape sequences.
