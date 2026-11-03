@@ -35,6 +35,10 @@ type Options struct {
 	// CURSOR_CONFIG_DIR or ~/.cursor.
 	CursorDir string
 	Run       func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Args overrides reading a process's argument list from the operating
+	// system, for tests. When it is nil and Run is set, arguments are split
+	// from the ps command line, so fixture runs never read live processes.
+	Args func(pid int) ([]string, error)
 }
 
 // Meta describes one observable session. Runtimes without metadata have an
