@@ -12,6 +12,7 @@ import (
 // Claude limits are on by default, so no test may reach the real config,
 // Keychain or network through refreshClaudeUsage.
 func TestMain(m *testing.M) {
+	runCodexUsageHelper()
 	// Existing layout tests assert plain names; icon tests set their own mode.
 	activeIconMode = iconsOff
 	fontInstalled = func() bool { return false }

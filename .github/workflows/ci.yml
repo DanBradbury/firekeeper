@@ -117,8 +117,8 @@ jobs:
       - name: Windows-specific tests must run, not skip
         shell: bash
         run: |
-          tests="TestWindowsProcessListReportsChildren TestWindowsProcessListFeedsDiscovery TestWindowsProcessCWD TestWindowsLockIsExclusiveAndReadable TestWindowsTryLockIsExclusive TestTaskSchedulerRoundTrip TestSnapshotListsThisProcess TestFocusWithNoWindowReportsIt TestWindowsZipInstall"
-          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" ./internal/session ./internal/daemon ./internal/reporter ./internal/winterm ./internal/serverinstall | tee windows-tests.log
+          tests="TestWindowsProcessListReportsChildren TestWindowsProcessListFeedsDiscovery TestWindowsProcessCWD TestWindowsLockIsExclusiveAndReadable TestWindowsTryLockIsExclusive TestTaskSchedulerRoundTrip TestSnapshotListsThisProcess TestFocusWithNoWindowReportsIt TestWindowsZipInstall TestFetchCopilotUsageFromLocalStore TestReadCopilotHistoricalSessionsFromLocalStore TestCodexUsageExecutableWithoutShell TestUsageProviderFailuresRemainIndependent TestFetchKimiUsageAggregatesLocalWireEvents TestFetchClaudeUsageCountsEachMessageOnce"
+          go test -count=1 -v -run "^($(echo $tests | tr ' ' '|'))\$" ./internal/session ./internal/daemon ./internal/reporter ./internal/winterm ./internal/serverinstall ./internal/tui | tee windows-tests.log
           if grep -q -- '--- SKIP' windows-tests.log; then
             echo "a Windows-specific test was skipped" >&2
             exit 1
