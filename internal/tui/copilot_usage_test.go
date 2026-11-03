@@ -1,24 +1,55 @@
 package tui
 
 import (
+	"bytes"
+	"database/sql"
 	"github.com/charmbracelet/x/ansi"
-	"os/exec"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/DanBradbury/firekeeper/internal/testenv"
 )
 
+func writeUsageDatabase(t *testing.T, path, schema string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(schema); err != nil {
+		t.Fatalf("create usage fixture: %v", err)
+	}
+}
+
+func unavailableCopilotPlan(t *testing.T) {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("COPILOT_GITHUB_TOKEN", "test-token")
+	t.Setenv("GITHUB_API_URL", server.URL)
+}
+
 func TestFetchCopilotUsageFromLocalStore(t *testing.T) {
-	sqlite := testenv.NeedTool(t, "sqlite3")
-	home := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	unavailableCopilotPlan(t)
+	home := filepath.Join(t.TempDir(), "Copilot home #1")
 	path := filepath.Join(home, "session-store.db")
 	schema := `
-		CREATE TABLE sessions (id TEXT PRIMARY KEY);
+		CREATE TABLE sessions (
+			id TEXT PRIMARY KEY, summary TEXT, cwd TEXT, repository TEXT,
+			host_type TEXT, branch TEXT, created_at TEXT, updated_at TEXT
+		);
 		CREATE TABLE assistant_usage_events (
 			id INTEGER PRIMARY KEY,
 			session_id TEXT,
@@ -29,22 +60,27 @@ func TestFetchCopilotUsageFromLocalStore(t *testing.T) {
 			initiator TEXT,
 			created_at TEXT
 		);
-		INSERT INTO sessions VALUES ('session-1'), ('session-2');
+		INSERT INTO sessions VALUES
+			('session-1', 'First session', 'C:\work\one', '', 'local', 'main', '2026-07-31T10:00:00Z', '2026-07-31T10:01:00Z'),
+			('session-2', 'Second session', 'C:\work\two', '', 'local', 'main', '2026-08-01T10:00:00Z', '2026-08-01T10:01:00Z');
 		INSERT INTO assistant_usage_events VALUES
 			(1, 'session-1', 'claude-sonnet', 100, 20, 1.0, 'user', '2026-07-31T10:00:00Z'),
 			(2, 'session-1', 'claude-sonnet', 200, 30, 1.0, 'agent', '2026-07-31T10:01:00Z'),
 			(3, 'session-2', 'gpt-5', 50, 10, 0.0, 'compaction', '2026-08-01T10:00:00Z'),
 			(4, 'session-2', 'gpt-5', 400, 40, 1.5, 'user', '2026-08-01T10:01:00Z');
 	`
-	if output, err := exec.Command(sqlite, path, schema).CombinedOutput(); err != nil {
-		t.Fatalf("create Copilot usage fixture: %v: %s", err, output)
-	}
+	writeUsageDatabase(t, path, schema)
 	t.Setenv("COPILOT_HOME", home)
-
-	snapshot, err := fetchCopilotUsage()
+	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	msg := refreshCopilotUsage()().(copilotUsageResultMsg)
+	if msg.err != nil || msg.historyErr != nil {
+		t.Fatalf("refresh errors: usage %v, history %v", msg.err, msg.historyErr)
+	}
+	snapshot := msg.snapshot
 	if snapshot.Summary.Sessions != 2 || snapshot.Summary.ModelCalls != 4 {
 		t.Fatalf("sessions/calls = %d/%d", snapshot.Summary.Sessions, snapshot.Summary.ModelCalls)
 	}
@@ -59,6 +95,30 @@ func TestFetchCopilotUsageFromLocalStore(t *testing.T) {
 	}
 	if snapshot.Models[0].Model != "gpt-5" || snapshot.Models[0].Tokens != 500 {
 		t.Fatalf("top model = %#v", snapshot.Models[0])
+	}
+	if snapshot.Plan.Available || !strings.Contains(snapshot.PlanErr, "HTTP 503") {
+		t.Fatalf("plan failure should not hide local usage: %q", snapshot.PlanErr)
+	}
+	if len(snapshot.History) != 2 || snapshot.History[0].WorkDir != `C:\work\two` ||
+		snapshot.History[0].LifetimeTokens != 500 {
+		t.Fatalf("history = %+v", snapshot.History)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("usage refresh modified the provider database")
+	}
+	m := testModel()
+	m.width, m.height = 108, 40
+	m.activeTab, m.usageProvider = usageTab, copilotProvider
+	updated, _ := m.Update(msg)
+	view := ansi.Strip(updated.(model).View())
+	for _, want := range []string{"850", "Second session", "GPT 5", "CLAUDE SONNET"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("refreshed Usage view missing %q", want)
+		}
 	}
 }
 
@@ -118,8 +178,8 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 }
 
 func TestReadCopilotHistoricalSessionsFromLocalStore(t *testing.T) {
-	sqlite := testenv.NeedTool(t, "sqlite3")
-	home := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	home := filepath.Join(t.TempDir(), "Copilot home #1")
 	t.Setenv("COPILOT_HOME", home)
 	path := filepath.Join(home, "session-store.db")
 	schema := `
@@ -151,9 +211,7 @@ func TestReadCopilotHistoricalSessionsFromLocalStore(t *testing.T) {
 			(2, 'newer', 'gpt-5', 200, 30, 0.0, 'agent', '2026-08-11T10:30:00Z'),
 			(3, 'newer', 'claude-opus', 300, 40, 1.5, 'user', '2026-08-11T12:00:00Z');
 	`
-	if output, err := exec.Command(sqlite, path, schema).CombinedOutput(); err != nil {
-		t.Fatalf("create Copilot history fixture: %v: %s", err, output)
-	}
+	writeUsageDatabase(t, path, schema)
 
 	sessions, err := readCopilotHistoricalSessions()
 	if err != nil {
