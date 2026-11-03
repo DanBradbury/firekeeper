@@ -100,8 +100,14 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Get-Command sqlite3 -ErrorAction SilentlyContinue)) {
-            choco install sqlite --no-progress -y
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $maxAttempts = 3
+            for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+              choco install sqlite --no-progress -y
+              if ($LASTEXITCODE -eq 0) { break }
+              if ($attempt -eq $maxAttempts) { exit $LASTEXITCODE }
+              Write-Warning "SQLite installation failed on attempt $attempt; retrying"
+              Start-Sleep -Seconds (15 * $attempt)
+            }
           }
           Get-Command sqlite3
       - name: use a temp directory without 8.3 short names
