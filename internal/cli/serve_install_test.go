@@ -88,9 +88,9 @@ func setupInstall(t *testing.T, url, stdin string) *installSetup {
 	exe := filepath.Join(s.exeDir, "firekeeper")
 	os.WriteFile(exe, []byte("x"), 0o755)
 	defaultLookup = serverLookup{
-		getenv:     func(k string) string { return s.env[k] },
-		executable: func() (string, error) { return exe, nil },
-		lookPath:   func(string) (string, error) { return "", exec.ErrNotFound },
+		Getenv:     func(k string) string { return s.env[k] },
+		Executable: func() (string, error) { return exe, nil },
+		LookPath:   func(string) (string, error) { return "", exec.ErrNotFound },
 	}
 	installOffer = installEnv{
 		interactive: func() bool { return s.tty },
@@ -249,7 +249,7 @@ func TestInstallFallsBackToHomeLocalBin(t *testing.T) {
 	s := setupInstall(t, rel.srv.URL, "y\n")
 	// A directory that does not exist is unwritable even for root.
 	gone := filepath.Join(s.exeDir, "gone", "firekeeper")
-	defaultLookup.executable = func() (string, error) { return gone, nil }
+	defaultLookup.Executable = func() (string, error) { return gone, nil }
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 0 {
 		t.Fatalf("exit %d\n%s", code, stderr.String())
@@ -271,7 +271,7 @@ func TestInstallFallbackNoHintWhenOnPath(t *testing.T) {
 	os.MkdirAll(cellar, 0o755)
 	exe := filepath.Join(cellar, "firekeeper")
 	os.WriteFile(exe, []byte("x"), 0o755)
-	defaultLookup.executable = func() (string, error) { return exe, nil }
+	defaultLookup.Executable = func() (string, error) { return exe, nil }
 	bin := filepath.Join(s.home, ".local", "bin")
 	s.env["PATH"] = "/usr/bin" + string(os.PathListSeparator) + bin
 	var stderr bytes.Buffer
@@ -295,8 +295,8 @@ func TestInstallHomebrewBranch(t *testing.T) {
 	exe := filepath.Join(cellar, "firekeeper")
 	os.WriteFile(exe, []byte("x"), 0o755)
 	brew := fakeBinary(t, brewDir, "brew")
-	defaultLookup.executable = func() (string, error) { return exe, nil }
-	defaultLookup.lookPath = func(n string) (string, error) {
+	defaultLookup.Executable = func() (string, error) { return exe, nil }
+	defaultLookup.LookPath = func(n string) (string, error) {
 		if n == "brew" {
 			return brew, nil
 		}
@@ -307,7 +307,7 @@ func TestInstallHomebrewBranch(t *testing.T) {
 		ran = append(ran, path)
 		// brew "installs" the server into the PATH.
 		fakeBinary(t, brewDir, serverBinName)
-		defaultLookup.lookPath = func(n string) (string, error) {
+		defaultLookup.LookPath = func(n string) (string, error) {
 			return filepath.Join(brewDir, n), nil
 		}
 		return nil
@@ -337,8 +337,8 @@ func TestInstallHomebrewDeclined(t *testing.T) {
 	os.MkdirAll(cellar, 0o755)
 	exe := filepath.Join(cellar, "firekeeper")
 	os.WriteFile(exe, []byte("x"), 0o755)
-	defaultLookup.executable = func() (string, error) { return exe, nil }
-	defaultLookup.lookPath = func(n string) (string, error) { return "/fake/brew", nil }
+	defaultLookup.Executable = func() (string, error) { return exe, nil }
+	defaultLookup.LookPath = func(n string) (string, error) { return "/fake/brew", nil }
 	var stderr bytes.Buffer
 	if code := runServe(nil, nil, &stderr); code != 2 {
 		t.Fatalf("exit %d", code)

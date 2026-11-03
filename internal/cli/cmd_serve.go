@@ -5,20 +5,18 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strings"
+
+	"github.com/DanBradbury/firekeeper/internal/serverbin"
 )
 
 // The dashboard server is not part of this program. It ships as the separate,
 // commercial firekeeper-server binary, and `firekeeper serve` hands the
 // process over to it.
 const (
-	serverBinName = "firekeeper-server"
+	serverBinName = serverbin.Name
 	// ServerBinEnv names the environment variable that points at the server
 	// binary, ahead of every other place firekeeper looks.
-	ServerBinEnv = "FIREKEEPER_SERVER_BIN"
+	ServerBinEnv = serverbin.Env
 	// exitServerMissing is the exit status when there is no server to run.
 	exitServerMissing = 2
 	// exitCannotExec is the exit status when the server was found but could
@@ -28,87 +26,20 @@ const (
 
 // serverLookup is everything resolving the server binary reads from the
 // process. Tests replace it.
-type serverLookup struct {
-	getenv     func(string) string
-	executable func() (string, error)
-	lookPath   func(string) (string, error)
-}
+type serverLookup = serverbin.Lookup
 
-var defaultLookup = serverLookup{getenv: os.Getenv, executable: os.Executable, lookPath: exec.LookPath}
+var defaultLookup = serverbin.Default()
 
 // startServer runs the server binary with argv and env. On Unix it replaces
 // this process; elsewhere it runs a child and returns its exit status. Tests
 // replace it.
 var startServer = runServerProcess
 
-// serverUsable reports whether path names an existing, executable, regular
-// file (after following symlinks).
-func serverUsable(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	return runtime.GOOS == "windows" || info.Mode().Perm()&0o111 != 0
-}
-
-// errServerNotFound is returned when no place firekeeper looks has the server.
-var errServerNotFound = errors.New("firekeeper-server not found")
-
-// resolveServer finds the server binary, in this order:
-//
-//  1. $FIREKEEPER_SERVER_BIN. When it is set it is authoritative: if it does
-//     not name an executable file that is an error, not a reason to look
-//     elsewhere. A value without a path separator is looked up on PATH.
-//  2. A firekeeper-server file next to the running executable, with symlinks
-//     resolved so a bin directory of links (Homebrew's) finds the sibling in
-//     the real install directory. The directory of the path as invoked is
-//     tried second.
-//  3. PATH.
-//  4. ~/.local/bin, where the install offer puts the server when the
-//     firekeeper directory is not writable. It is looked at even when it is not
-//     on PATH, so a server installed there is found by the next `firekeeper
-//     serve`.
-func resolveServer(l serverLookup) (string, error) {
-	suffix := ""
-	if runtime.GOOS == "windows" {
-		suffix = ".exe"
-	}
-	if v := strings.TrimSpace(l.getenv(ServerBinEnv)); v != "" {
-		if !strings.ContainsRune(v, filepath.Separator) && !strings.ContainsRune(v, '/') {
-			if p, err := l.lookPath(v); err == nil && serverUsable(p) {
-				return p, nil
-			}
-		} else if serverUsable(v) {
-			return v, nil
-		}
-		return "", fmt.Errorf("%s=%s is not an executable file", ServerBinEnv, v)
-	}
-	if exe, err := l.executable(); err == nil {
-		var dirs []string
-		if real, err := filepath.EvalSymlinks(exe); err == nil {
-			dirs = append(dirs, filepath.Dir(real))
-		}
-		if d := filepath.Dir(exe); len(dirs) == 0 || dirs[0] != d {
-			dirs = append(dirs, d)
-		}
-		for _, dir := range dirs {
-			if p := filepath.Join(dir, serverBinName+suffix); serverUsable(p) {
-				return p, nil
-			}
-		}
-	}
-	if p, err := l.lookPath(serverBinName); err == nil && serverUsable(p) {
-		return p, nil
-	} else if err != nil && !errors.Is(err, exec.ErrNotFound) && !errors.Is(err, exec.ErrDot) {
-		return "", err
-	}
-	if home := strings.TrimSpace(l.getenv("HOME")); home != "" {
-		if p := filepath.Join(home, ".local", "bin", serverBinName+suffix); serverUsable(p) {
-			return p, nil
-		}
-	}
-	return "", errServerNotFound
-}
+var (
+	serverUsable      = serverbin.Usable
+	errServerNotFound = serverbin.ErrNotFound
+	resolveServer     = serverbin.Resolve
+)
 
 // runServe hands over to `firekeeper-server serve args...`: same arguments,
 // same environment, and the server's exit status becomes ours. Nothing about

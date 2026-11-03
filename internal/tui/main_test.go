@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -13,6 +14,7 @@ import (
 // Keychain or network through refreshClaudeUsage.
 func TestMain(m *testing.M) {
 	runCodexUsageHelper()
+	runShareServerHelper()
 	// Existing layout tests assert plain names; icon tests set their own mode.
 	activeIconMode = iconsOff
 	fontInstalled = func() bool { return false }
@@ -22,5 +24,8 @@ func TestMain(m *testing.M) {
 	}
 	iconSetupSource = func(context.Context) string { return "" }
 	claudeCloudStatusSource = func() string { return "" }
+	exportLookup = noServerLookup
+	openLocalFile = func(string) error { panic("a test opened a file without replacing openLocalFile") }
+	exportHome = func() (string, error) { return "", errors.New("test did not set exportHome") }
 	os.Exit(m.Run())
 }

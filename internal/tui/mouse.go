@@ -280,6 +280,11 @@ func (m model) leftPress(at cell) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if at.y == m.height-1 {
+		if cmd := m.openShownExport(); cmd != nil {
+			return m, cmd
+		}
+	}
 	m.clearSelection()
 	now := mouseNow()
 	target := m.hitTest(at.x, at.y)
