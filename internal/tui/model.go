@@ -76,6 +76,8 @@ type sessionInfo struct {
 	exactTokens       int64
 	transcriptTokens  int64
 	telemetryLine     string
+	backgroundTokens  int64
+	backgroundCalls   []string
 	telemetryOn       bool
 	undercountWarning string
 	telemetryHint     bool
@@ -159,6 +161,7 @@ type model struct {
 	recentCursor            int
 	recentLoading           bool
 	recentLoadedAt          time.Time
+	marqueeFrame            int
 }
 
 // NewModel returns the dashboard's initial Bubble Tea model.
@@ -167,7 +170,7 @@ func NewModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(pollProcesses(), refreshProcesses(), checkIconSetup())
+	return tea.Batch(pollProcesses(), refreshProcesses(), checkIconSetup(), tickMarquee())
 }
 
 func pollProcesses() tea.Cmd {
@@ -363,6 +366,10 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.chat.open {
 			m.clampChatScroll()
 		}
+
+	case marqueeTickMsg:
+		m.marqueeFrame++
+		return m, tickMarquee()
 
 	case processPollMsg:
 		return m, tea.Batch(refreshProcesses(), pollProcesses(), m.refreshChat())
