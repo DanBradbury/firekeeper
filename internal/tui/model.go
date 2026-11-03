@@ -76,6 +76,8 @@ type sessionInfo struct {
 	exactTokens       int64
 	transcriptTokens  int64
 	telemetryLine     string
+	backgroundTokens  int64
+	backgroundCalls   []string
 	telemetryOn       bool
 	undercountWarning string
 	telemetryHint     bool
@@ -110,16 +112,18 @@ type terminalSwitchResultMsg struct {
 }
 
 type model struct {
-	width, height           int
-	activeTab               tab
-	processGroups           []processGroup
-	processCursor           int
-	processScroll           int
-	expandedGroups          map[int]bool
-	processErr              string
-	processMetadataWarning  string
-	terminalStatus          string
-	terminalStatusSeq       int
+	width, height          int
+	activeTab              tab
+	processGroups          []processGroup
+	processCursor          int
+	processScroll          int
+	expandedGroups         map[int]bool
+	processErr             string
+	processMetadataWarning string
+	terminalStatus         string
+	terminalStatusSeq      int
+	// exportedPath is the last HTML export; clicking its notice opens it.
+	exportedPath            string
 	refreshedAt             time.Time
 	codexUsage              codexUsageSnapshot
 	codexUsageErr           string
@@ -157,6 +161,7 @@ type model struct {
 	recentCursor            int
 	recentLoading           bool
 	recentLoadedAt          time.Time
+	marqueeFrame            int
 }
 
 // NewModel returns the dashboard's initial Bubble Tea model.
@@ -165,7 +170,7 @@ func NewModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(pollProcesses(), refreshProcesses(), checkIconSetup())
+	return tea.Batch(pollProcesses(), refreshProcesses(), checkIconSetup(), tickMarquee())
 }
 
 func pollProcesses() tea.Cmd {
@@ -175,6 +180,9 @@ func pollProcesses() tea.Cmd {
 // terminalStatusLifetime is how long a status shows in the footer in place of
 // the shortcuts.
 const terminalStatusLifetime = 5 * time.Second
+
+// exportNoticeLifetime is longer, leaving time to click the notice.
+const exportNoticeLifetime = 15 * time.Second
 
 // terminalStatusExpiredMsg ends the status with the same seq.
 type terminalStatusExpiredMsg struct{ seq int }
@@ -196,7 +204,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	updated.terminalStatusSeq++
 	seq := updated.terminalStatusSeq
-	expire := tea.Tick(terminalStatusLifetime, func(time.Time) tea.Msg { return terminalStatusExpiredMsg{seq} })
+	lifetime := terminalStatusLifetime
+	if updated.exportedPath != "" && updated.terminalStatus == exportSavedStatus(updated.exportedPath) {
+		lifetime = exportNoticeLifetime
+	}
+	expire := tea.Tick(lifetime, func(time.Time) tea.Msg { return terminalStatusExpiredMsg{seq} })
 	return updated, tea.Batch(cmd, expire)
 }
 
@@ -232,6 +244,11 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.open {
 			return m.updateChat(msg)
+		}
+		if msg.String() == "o" {
+			if cmd := m.openShownExport(); cmd != nil {
+				return m, cmd
+			}
 		}
 		if m.activeTab == processesTab && msg.String() != "s" && msg.String() != "R" {
 			m.terminalStatus = ""
@@ -350,11 +367,23 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clampChatScroll()
 		}
 
+	case marqueeTickMsg:
+		m.marqueeFrame++
+		return m, tickMarquee()
+
 	case processPollMsg:
 		return m, tea.Batch(refreshProcesses(), pollProcesses(), m.refreshChat())
 
 	case chatResultMsg:
 		m.applyChatResult(msg)
+
+	case exportResultMsg:
+		m.applyExportResult(msg)
+
+	case exportOpenedMsg:
+		if msg.err != nil {
+			m.terminalStatus = "could not open the export: " + sanitizeProcessCommand(msg.err.Error())
+		}
 
 	case processResultMsg:
 		m.refreshedAt = msg.refreshed

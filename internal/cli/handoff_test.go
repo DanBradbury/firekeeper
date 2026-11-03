@@ -73,11 +73,11 @@ func exeSuffix() string {
 // firekeeper-server or from replacing the test process by running it.
 func isolateServerLookup() {
 	defaultLookup = serverLookup{
-		getenv: func(string) string { return "" },
-		executable: func() (string, error) {
+		Getenv: func(string) string { return "" },
+		Executable: func() (string, error) {
 			return filepath.Join(os.TempDir(), "firekeeper-no-such-dir", "firekeeper"), nil
 		},
-		lookPath: func(string) (string, error) { return "", exec.ErrNotFound },
+		LookPath: func(string) (string, error) { return "", exec.ErrNotFound },
 	}
 	startServer = func(string, []string, []string, io.Writer) int {
 		panic("a test started the server without replacing startServer")
@@ -89,7 +89,7 @@ func TestRunServeArguments(t *testing.T) {
 	var gotArgv, gotEnv []string
 	oldLookup, oldStart := defaultLookup, startServer
 	t.Cleanup(func() { defaultLookup, startServer = oldLookup, oldStart })
-	defaultLookup.getenv = func(k string) string {
+	defaultLookup.Getenv = func(k string) string {
 		if k == ServerBinEnv {
 			return fakeBinary(t, t.TempDir(), serverBinName)
 		}

@@ -70,7 +70,7 @@ var installOffer = defaultInstallEnv
 // and never asks when the feature is off or the session is not interactive.
 func offerInstall(stderr io.Writer) string {
 	l := defaultLookup
-	src, enabled, err := serverinstall.Resolve(l.getenv)
+	src, enabled, err := serverinstall.Resolve(l.Getenv)
 	if !enabled {
 		return ""
 	}
@@ -78,12 +78,12 @@ func offerInstall(stderr io.Writer) string {
 		fmt.Fprintf(stderr, "firekeeper serve: %v\n", err)
 		return ""
 	}
-	if l.getenv("CI") != "" || l.getenv(NoPromptEnv) != "" || !installOffer.interactive() {
+	if l.Getenv("CI") != "" || l.Getenv(NoPromptEnv) != "" || !installOffer.interactive() {
 		return ""
 	}
 
 	exe := ""
-	if p, err := l.executable(); err == nil {
+	if p, err := l.Executable(); err == nil {
 		exe = p
 		if real, err := filepath.EvalSymlinks(p); err == nil {
 			exe = real
@@ -91,7 +91,7 @@ func offerInstall(stderr io.Writer) string {
 	}
 
 	if exe != "" && serverinstall.IsHomebrew(exe) {
-		if brew, err := l.lookPath("brew"); err == nil {
+		if brew, err := l.LookPath("brew"); err == nil {
 			return offerBrew(brew, stderr)
 		}
 	}
@@ -115,7 +115,7 @@ func offerInstall(stderr io.Writer) string {
 		fmt.Fprintf(stderr, "firekeeper serve: install failed: %v\n", err)
 		return ""
 	}
-	if fallback && !serverinstall.OnPath(dir, l.getenv("PATH")) {
+	if fallback && !serverinstall.OnPath(dir, l.Getenv("PATH")) {
 		if runtime.GOOS == "windows" {
 			fmt.Fprintf(stderr, "Note: %s is not on your PATH. Add it, for example in PowerShell:\n  $env:Path = \"%s;$env:Path\"\n", dir, dir)
 		} else {

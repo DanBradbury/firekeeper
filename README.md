@@ -111,6 +111,9 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
   conversations. See [what each provider reports](https://firekeeper.ai/docs/usage/).
 - **Read without interrupting.** The chat view follows new prompts and replies
   live, read-only. Return to the agent's own terminal to reply or approve work.
+  With `firekeeper-server` installed, `e` saves the session as a standalone
+  HTML page in `~/Downloads`; press `o` or click the notice to open it
+  ([details](docs/reference.md#exporting-a-session-as-html)).
 - **Take your history with you.** `firekeeper snapshot --json` prints discovered
   sessions for scripts. Transcript exports and server reporting are separate,
   optional commands in the [reference](docs/reference.md#reporting).
@@ -222,7 +225,8 @@ operator can read what you send.
 
 `firekeeper-server` is a separate commercial product from Lucky Daisy LLC
 for browsing, searching, and charting reported sessions in a browser. It is
-not part of this repository or required by the terminal dashboard.
+not part of this repository or required by the terminal dashboard, which
+uses it only to render a session as HTML when you press `e` in the chat view.
 **It is free to run for yourself on this machine** without a license key;
 team, remote, or hosted use requires a license.
 

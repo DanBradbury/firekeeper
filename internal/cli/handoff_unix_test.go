@@ -20,9 +20,9 @@ import (
 
 func lookupFor(env map[string]string, exe string, pathDirs ...string) serverLookup {
 	return serverLookup{
-		getenv:     func(k string) string { return env[k] },
-		executable: func() (string, error) { return exe, nil },
-		lookPath: func(name string) (string, error) {
+		Getenv:     func(k string) string { return env[k] },
+		Executable: func() (string, error) { return exe, nil },
+		LookPath: func(name string) (string, error) {
 			for _, d := range pathDirs {
 				if p := filepath.Join(d, name); serverUsable(p) {
 					return p, nil

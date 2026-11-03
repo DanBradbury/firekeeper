@@ -115,7 +115,7 @@ func TestUnlinkedSessionMessages(t *testing.T) {
 		"Copilot": "no Copilot session metadata found", "Gemini": "no Gemini CLI session log found",
 		"Cursor": "no Cursor CLI transcript found", "Other": "no session metadata adapter",
 	} {
-		lines := dashGroupDetail(processGroup{tool: tool, root: processInfo{pid: 1}})
+		lines := dashGroupDetail(processGroup{tool: tool, root: processInfo{pid: 1}}, 1000)
 		if len(lines) == 0 || !strings.Contains(ansi.Strip(lines[0]), want) {
 			t.Errorf("%s message = %q, want %q", tool, lines, want)
 		}

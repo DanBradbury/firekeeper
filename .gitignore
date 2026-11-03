@@ -28,3 +28,6 @@ go.work.sum
 # Operating systems
 .DS_Store
 Thumbs.db
+
+# Wrangler (Cloudflare) local dev state
+.wrangler/
