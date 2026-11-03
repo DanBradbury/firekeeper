@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -69,4 +70,13 @@ func startHelper(t *testing.T, dir, name string, args ...string) *exec.Cmd {
 		_ = cmd.Wait()
 	})
 	return cmd
+}
+
+// fixtureDiscoverer parses synthetic ps output without ever reading a live
+// process's argument list: the PIDs in fixtures may belong to real
+// processes on the machine running the tests.
+func fixtureDiscoverer() *discoverer {
+	return &discoverer{ctx: context.Background(), opts: Options{Args: func(int) ([]string, error) {
+		return nil, errTestNoArgs
+	}}}
 }

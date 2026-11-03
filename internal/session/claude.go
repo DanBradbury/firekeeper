@@ -21,28 +21,6 @@ const (
 	ClaudeTranscriptHeadBytes = int64(64 << 10)
 )
 
-// claudeHelperCommands are Claude Code subcommands that run as background
-// helpers or one-off tools rather than as a session.
-var claudeHelperCommands = map[string]bool{
-	"daemon": true, "mcp": true, "config": true, "update": true, "upgrade": true,
-	"doctor": true, "install": true, "setup-token": true, "migrate-installer": true,
-	"plugin": true, "auth": true,
-}
-
-// isClaudeCodeCommand reports whether command runs a Claude Code session. It
-// looks at the executable, not substrings, so paths such as ~/.claude in other
-// commands and the Claude desktop app do not match.
-func (d *discoverer) isClaudeCodeCommand(command string) bool {
-	args := d.claudeCodeArgs(command)
-	if args == nil {
-		return false
-	}
-	if len(args) > 0 && (claudeHelperCommands[args[0]] || strings.HasPrefix(args[0], "bg-")) {
-		return false
-	}
-	return true
-}
-
 // isClaudeDesktopWindows reports whether the command is the Claude desktop
 // app or one of its Electron helpers, which are not Claude Code sessions.
 // The app installs under AnthropicClaude (Squirrel) or WindowsApps (MSIX),

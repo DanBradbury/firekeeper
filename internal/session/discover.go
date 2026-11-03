@@ -152,9 +152,18 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	for _, a := range adapters {
 		var own []*ProcessGroup
 		for i := range groups {
-			if groups[i].Tool == toolName(a.Provider()) {
-				own = append(own, &groups[i])
+			g := &groups[i]
+			if g.Provider != a.Provider() {
+				continue // another provider's group (step 4)
 			}
+			switch g.Role {
+			case RoleSession, RoleServer:
+			case RoleTool, RoleUnknown:
+				continue // never linked (invariant 8)
+			default:
+				continue // an invalid value: like RoleUnknown
+			}
+			own = append(own, g)
 		}
 		if len(own) == 0 {
 			continue
@@ -170,6 +179,9 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	var metas []Meta
 	projects := make(map[string]string)
 	for _, g := range groups {
+		if !emitted(g) {
+			continue
+		}
 		sessions := g.Sessions
 		if len(sessions) == 0 {
 			sessions = []Info{{}}
@@ -292,4 +304,17 @@ func optionalTime(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// emitted applies the output rule (invariant 6) to a linked group: tool
+// groups and groups whose role was never set are never emitted.
+func emitted(g ProcessGroup) bool {
+	switch g.Role {
+	case RoleSession, RoleServer:
+		return true
+	case RoleTool, RoleUnknown:
+		return false
+	default:
+		return false
+	}
 }

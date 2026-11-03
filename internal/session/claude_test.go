@@ -19,7 +19,6 @@ const (
 )
 
 func TestClassifyClaudeCode(t *testing.T) {
-	d := &discoverer{}
 	tests := []struct {
 		command string
 		want    string
@@ -29,9 +28,9 @@ func TestClassifyClaudeCode(t *testing.T) {
 		{"/opt/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe --session-id " + claudeIDA, "Claude"},
 		{"node /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js -p hello", "Claude"},
 		{"claude --resume /home/u/.claude/projects/-home-u-codex/" + claudeIDA + ".jsonl", "Claude"},
-		{"claude bg-pty-host --bg-pty-host /tmp/x.sock", ""},
-		{"claude.exe daemon run --origin transient", ""},
-		{"claude mcp serve", ""},
+		{"claude bg-pty-host --bg-pty-host /tmp/x.sock", "Claude/tool"},
+		{"claude.exe daemon run --origin transient", "Claude/tool"},
+		{"claude mcp serve", "Claude/server"},
 		{"/usr/lib/claude-desktop/claude-desktop --type=renderer", ""},
 		{"/Applications/Claude.app/Contents/MacOS/Claude", ""},
 		{"/Applications/Claude.app/Contents/Frameworks/Claude Helper.app/Contents/MacOS/Claude Helper --type=gpu-process", ""},
@@ -39,11 +38,12 @@ func TestClassifyClaudeCode(t *testing.T) {
 		{"vim /home/u/.claude/settings.json", ""},
 		{"node /srv/claude-tools/index.js", ""},
 		{"codex", "Codex"},
-		{"node /home/u/.claude/hooks/codex-notify.js", "Codex"},
+		// Step 0 row 1: a hook script that names codex is not Codex.
+		{"node /home/u/.claude/hooks/codex-notify.js", ""},
 	}
 	for _, tt := range tests {
-		if got := d.classifyProcess(tt.command); got != tt.want {
-			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		if got := classifyLine(tt.command); got != tt.want {
+			t.Errorf("classify(%q) = %q, want %q", tt.command, got, tt.want)
 		}
 	}
 }

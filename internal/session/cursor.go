@@ -29,25 +29,6 @@ const (
 // CursorSource is the Source value for Cursor CLI sessions.
 const CursorSource = "Cursor CLI"
 
-// cursorHelperCommands are Cursor CLI subcommands that manage the account or
-// installation rather than run a session.
-var cursorHelperCommands = map[string]bool{
-	"login": true, "logout": true, "status": true, "whoami": true, "update": true,
-	"upgrade": true, "mcp": true, "about": true, "help": true, "create-chat": true,
-	"install-shell-integration": true, "uninstall-shell-integration": true,
-}
-
-// isCursorCommand reports whether command runs a Cursor CLI session. It looks
-// at the executable and script, not substrings, so the Cursor editor and paths
-// such as ~/.cursor in other commands do not match.
-func (d *discoverer) isCursorCommand(command string) bool {
-	args := d.cursorArgs(command)
-	if args == nil {
-		return false
-	}
-	return len(args) == 0 || !cursorHelperCommands[args[0]]
-}
-
 // cursorArgs returns the arguments after the Cursor CLI executable, or nil
 // when command is not Cursor CLI. The installer puts a cursor-agent launcher
 // script (also linked as agent) in ~/.local/bin, which runs a bundled node on

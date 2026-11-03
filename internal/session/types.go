@@ -2,6 +2,8 @@ package session
 
 import (
 	"time"
+
+	"github.com/DanBradbury/firekeeper/pkg/event"
 )
 
 const (
@@ -84,6 +86,15 @@ type KimiLatestSession struct {
 }
 
 type ProcessInfo struct {
+	// Provider is the process's provider, set by the classifier from the
+	// adapter whose signature matched.
+	Provider event.Provider
+	// Role is what the process does, from its subcommand path.
+	Role Role
+	// Invocation is the parsed argument list the classifier used.
+	Invocation invocation
+	// Tool is Provider's display name, toolName(Provider). The follow-up
+	// moves its readers to Provider and removes it.
 	Tool    string
 	PID     int
 	PPID    int
@@ -152,6 +163,9 @@ func (t TokenBreakdown) add(other TokenBreakdown) TokenBreakdown {
 }
 
 type ProcessGroup struct {
+	// Provider and Role are the root process's.
+	Provider  event.Provider
+	Role      Role
 	Tool      string
 	Root      ProcessInfo
 	Processes []ProcessInfo

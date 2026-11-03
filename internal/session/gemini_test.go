@@ -19,7 +19,6 @@ const (
 )
 
 func TestClassifyGeminiProcess(t *testing.T) {
-	d := &discoverer{}
 	for _, tt := range []struct {
 		command, want string
 	}{
@@ -30,9 +29,9 @@ func TestClassifyGeminiProcess(t *testing.T) {
 		{"/usr/local/bin/node --max-old-space-size=8192 --no-warnings=DEP0040 /usr/local/lib/node_modules/@google/gemini-cli/bundle/gemini.js", "Gemini"},
 		{"node /home/u/.npm/_npx/1/node_modules/@google/gemini-cli/dist/index.js", "Gemini"},
 		{"gemini.exe --session-id abc", "Gemini"},
-		// Configuration subcommands are not sessions.
-		{"gemini mcp list", ""},
-		{"gemini extensions install x", ""},
+		// Configuration subcommands are tools, not sessions.
+		{"gemini mcp list", "Gemini/tool"},
+		{"gemini extensions install x", "Gemini/tool"},
 		// A Gemini model in another harness's flags stays with that harness.
 		{"opencode -m google/gemini-2.5-pro", "OpenCode"},
 		{"codex --model gemini-3-pro", "Codex"},
@@ -41,8 +40,8 @@ func TestClassifyGeminiProcess(t *testing.T) {
 		{"/Applications/Gemini.app/Contents/MacOS/gemini", ""},
 		{"firekeeper daemon --provider gemini", ""},
 	} {
-		if got := d.classifyProcess(tt.command); got != tt.want {
-			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		if got := classifyLine(tt.command); got != tt.want {
+			t.Errorf("classify(%q) = %q, want %q", tt.command, got, tt.want)
 		}
 	}
 }

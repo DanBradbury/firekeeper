@@ -25,7 +25,6 @@ const (
 const cursorNode = "/home/u/.local/share/cursor-agent/versions/2026.09.02-abc123/node --use-system-ca /home/u/.local/share/cursor-agent/versions/2026.09.02-abc123/index.js"
 
 func TestClassifyCursorProcess(t *testing.T) {
-	d := &discoverer{}
 	for _, tt := range []struct {
 		command, want string
 	}{
@@ -39,10 +38,10 @@ func TestClassifyCursorProcess(t *testing.T) {
 		// A model that names another harness stays with Cursor CLI.
 		{"cursor-agent --model gpt-5-codex", "Cursor"},
 		{cursorNode + " --model gpt-5-codex", "Cursor"},
-		// Account and installation helpers are not sessions.
-		{"cursor-agent login", ""},
-		{cursorNode + " update", ""},
-		{cursorNode + " mcp list", ""},
+		// Account and installation helpers are tools, not sessions.
+		{"cursor-agent login", "Cursor/tool"},
+		{cursorNode + " update", "Cursor/tool"},
+		{cursorNode + " mcp list", "Cursor/tool"},
 		// The bare agent name is too generic, and the editor is not the CLI.
 		{"agent", ""},
 		{"/Applications/Cursor.app/Contents/MacOS/Cursor", ""},
@@ -51,8 +50,8 @@ func TestClassifyCursorProcess(t *testing.T) {
 		{"node server.js cursor-agent", ""},
 		{"firekeeper daemon --provider cursor", ""},
 	} {
-		if got := d.classifyProcess(tt.command); got != tt.want {
-			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		if got := classifyLine(tt.command); got != tt.want {
+			t.Errorf("classify(%q) = %q, want %q", tt.command, got, tt.want)
 		}
 	}
 }

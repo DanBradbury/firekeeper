@@ -15,7 +15,6 @@ import (
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
 
 func TestClassifyCopilot(t *testing.T) {
-	d := &discoverer{}
 	tests := []struct {
 		command string
 		want    string
@@ -30,8 +29,8 @@ func TestClassifyCopilot(t *testing.T) {
 		{"/Applications/Microsoft Teams.app/Contents/Helpers/Microsoft Teams WebView.app/Contents/MacOS/Microsoft Teams WebView --embedded-browser-webview=1 --isolate-origins=https://copilot.teams.cloud.microsoft,https://m365copilotapp.svc.cloud.microsoft --user-data-dir=/Users/test/Library/Containers/com.microsoft.teams2/Data/Library/Application Support/Microsoft/MSTeams/EBWebView", ""},
 	}
 	for _, tt := range tests {
-		if got := d.classifyProcess(tt.command); got != tt.want {
-			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		if got := classifyLine(tt.command); got != tt.want {
+			t.Errorf("classify(%q) = %q, want %q", tt.command, got, tt.want)
 		}
 	}
 }

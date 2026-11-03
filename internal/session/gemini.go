@@ -30,24 +30,6 @@ const (
 // GeminiSource is the Source value for Gemini CLI sessions.
 const GeminiSource = "Gemini CLI"
 
-// geminiHelperCommands are Gemini CLI subcommands that manage configuration
-// rather than run a session.
-var geminiHelperCommands = map[string]bool{
-	"mcp": true, "extensions": true, "extension": true, "skills": true, "skill": true,
-	"hooks": true, "hook": true, "gemma": true,
-}
-
-// isGeminiCommand reports whether command runs a Gemini CLI session. Like
-// Claude Code, it looks at the executable and script, not substrings, so
-// model names such as gemini-2.5-pro in other harnesses' flags do not match.
-func (d *discoverer) isGeminiCommand(command string) bool {
-	args := d.geminiArgs(command)
-	if args == nil {
-		return false
-	}
-	return len(args) == 0 || !geminiHelperCommands[args[0]]
-}
-
 // geminiArgs returns the arguments after the Gemini CLI executable, or nil
 // when command is not Gemini CLI. The npm package runs as a node script
 // (bin/gemini, bundle/gemini.js, or a path inside @google/gemini-cli), and it
