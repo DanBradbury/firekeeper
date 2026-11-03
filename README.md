@@ -139,6 +139,14 @@ low: background summary calls are not written to the transcript. The warning
 has no count. See the
 [reference](docs/reference.md#claude-code-subagent-undercount).
 
+Firekeeper recognizes each agent by its program, so helper commands such as
+`login` or `doctor`, and background servers with nothing to show, are not
+listed. A session that can't be linked to its session file is still listed,
+with a "not found" message. If a session you started doesn't appear at all,
+it was probably started through a launcher Firekeeper doesn't recognize yet:
+please open an issue with its command line (paths and ids scrubbed). See
+[how session discovery works](docs/reference.md#how-session-discovery-works).
+
 States describe the latest event Firekeeper can see, not ground truth, and
 agent CLIs can change their on-disk formats between releases. The
 [reference](docs/reference.md#supported-providers) lists exactly what is read

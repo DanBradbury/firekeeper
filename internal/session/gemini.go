@@ -84,7 +84,9 @@ func ValidGeminiSessionID(id string) bool {
 func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "Gemini" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if groups[index].Tool == "Gemini" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

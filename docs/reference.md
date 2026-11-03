@@ -53,7 +53,8 @@ What differs from macOS and Linux:
   another user's is listed by name only. There is no TTY, so the TTY column
   shows `—`.
 - **Open files cannot be listed**, which Codex discovery uses elsewhere to tell
-  which thread a runtime holds. On Windows a Codex runtime is matched to the
+  which thread a runtime holds. On Windows a Codex session, and after the
+  sessions a Codex app-server, is matched to the
   newest thread in its working directory that changed in the last 24 hours, so
   a session you closed a moment ago in the same directory can be shown for a
   runtime still open there. The other providers match by command line, logs,
@@ -292,45 +293,102 @@ lines, and working directories through the Windows API instead; see
 that are not running are not discovered this way; past sessions reach the
 dashboard only through [`backfill`](#backfill).
 
-- **Codex:** locates open rollout files with `lsof` and queries
-  `~/.codex/state_5.sqlite` read-only for available session metadata.
-- **Kimi Code:** maps runtime PIDs to their working directory and picks the
-  most recently updated session for that directory from session `state.json`
-  files under `KIMI_CODE_HOME`, read without modifying them. Several Kimi
-  runtimes in one directory are all matched to the newest session.
-- **Copilot CLI:** maps runtime PIDs to `~/.copilot/session-state` and reads
-  `workspace.yaml`, `events.jsonl`, and `session-store.db` without modifying
-  them.
+Each process is recognized by its program or entry point (for example
+`codex`, `kimi`, or `node` running the `@moonshot-ai/kimi-code` package), never
+by a name that appears somewhere else in its command line. Firekeeper reads
+the real argument list where the system provides one (macOS `kern.procargs2`
+and Linux `/proc/<pid>/cmdline`, arguments only, never the environment) and
+otherwise splits the `ps` command line; Windows command lines are split with
+the system's quoting rules. The subcommand gives each process a role:
+
+- **Session:** what you work in. Always listed; a session that can't be linked
+  to its session file is listed with a "not found" message.
+- **Server:** hosts sessions for other clients (`codex app-server`,
+  `opencode serve`, `web` and `acp`, `kimi web` and `acp`, `claude mcp serve`).
+  Listed only while it holds a session no session row claimed, such as a
+  Codex Desktop chat; an empty server is not listed.
+- **Tool:** a one-off command such as `login`, `doctor`, `export`, `mcp` or
+  `update`. Never listed and never linked.
+
+A session started by a server or tool gets its own row; servers and tools a
+session starts are part of its row. When an unrecognized flag comes before
+the subcommand, Firekeeper can't tell whether the next word is that flag's
+value, so the process is treated as a session rather than hidden. A session
+started some other way, such as through a wrapper script or `node -e`, is not
+recognized and not shown: please report it with its command line (with paths
+and ids scrubbed) so its launcher can be added.
+
+A running session is linked to its session file in this order: an explicit
+id on its command line, which is never replaced by a guess, even when no
+session with that id exists (the row then shows "not found"); open files,
+where the provider keeps one open; and otherwise the most recent unclaimed
+session in the process's working directory. The directory match is a guess,
+made only for session rows, and each session goes to one row; two sessions
+started in one directory can be paired the wrong way round. Servers are
+linked only to sessions they hold open themselves.
+
+- **Codex:** uses `codex resume <id>` and `codex exec resume <id>` when the id
+  is a UUID (a session name, `--last` and the picker are matched by
+  directory; `codex fork <id>` names the session being forked from, so it is
+  never used as the fork's id). It locates open rollout files and
+  thread-writer locks with `lsof` and queries `~/.codex/state_5.sqlite`
+  read-only for session metadata. A CLI claims the thread its app-server
+  holds, by working directory, and the server then doesn't show it.
+  Codex.app's window and helpers are not Codex sessions; its app-server is
+  listed while it holds a chat no CLI claimed. On Windows, where open files
+  can't be listed, recently updated threads are matched by directory,
+  session rows first and then servers, so a server can show the wrong recent
+  chat and Firekeeper's own usage probe can briefly show a Desktop chat
+  during a Usage refresh.
+- **Kimi Code:** maps session rows to their working directory and reads the
+  session `state.json` files under `KIMI_CODE_HOME` without modifying them.
+  `kimi` and `kimi -p` are linked only to a session updated after the
+  process started, so an old session isn't shown as `ACTIVE`; `kimi -c` is
+  linked to the newest session that existed when it started, Kimi Code's
+  rule for `--continue`. Each session goes to one row, newest process first.
+  `kimi -S <id>` is matched by directory for now, because Kimi Code's session
+  id format isn't documented. `kimi web` and `kimi acp` are servers and are
+  not listed, because Firekeeper reads no evidence of the sessions they host.
+  The archived Python Kimi CLI (`~/.kimi`) is not recognized; `kimi migrate`
+  copies its sessions into Kimi Code.
+- **Copilot CLI:** uses an explicit `--session-id` or `--resume` id when the
+  command line has one, and otherwise maps runtime PIDs to
+  `~/.copilot/session-state` and reads `workspace.yaml`, `events.jsonl`, and
+  `session-store.db` without modifying them. The Copilot desktop app and the
+  Copilot SDK's background runtime are not the CLI.
 - **Claude Code:** uses an explicit `--session-id` or `--resume` id when the
   command line has one, and otherwise maps the runtime's working directory to
   its project folder under `~/.claude/projects` and picks the most recently
-  written transcript there. Several Claude Code runtimes in one directory may
-  be matched to the wrong transcript. Transcripts are read, never modified.
+  written unclaimed transcript there. Several Claude Code runtimes in one
+  directory may be matched to the wrong transcript. Transcripts are read,
+  never modified. `claude mcp serve` is a server; `daemon`, `mcp`, `doctor`
+  and the other helper subcommands are tools.
 - **OpenCode:** uses an explicit `--session`/`-s` id when the command line has
   one, and otherwise matches the runtime's working directory to the session
   directories in OpenCode's database and picks the most recently updated
   session there. Several OpenCode runtimes in one directory, or one started
   with a directory argument from elsewhere, may be matched to the wrong
-  session. `opencode serve` and the other helper subcommands are listed
-  without a session. The database is read, never modified, with
+  session. `opencode serve`, `web` and `acp` are servers and are not listed,
+  because Firekeeper reads no evidence of the sessions they host; the other
+  helper subcommands are tools. The database is read, never modified, with
   `sqlite3 -readonly` when `sqlite3` is on `PATH` and in-process otherwise.
   `NEEDS INPUT` is never reported
   for OpenCode, because its permission prompts are not in the database.
 - **Gemini CLI:** recognizes `gemini` and the node process it relaunches as
-  one runtime, and lists the `mcp`, `extensions`, `skills`, `hooks`, and
-  `gemma` subcommands without a session. It uses an explicit `--session-id`,
-  or a `--resume` session id, when the command line has one, and otherwise
-  maps the runtime's working directory to its project folder under
-  `~/.gemini/tmp` (through `~/.gemini/projects.json`) and picks the most
+  one runtime; the `mcp`, `extensions`, `skills`, `hooks`, and `gemma`
+  subcommands are tools and are not listed. It uses an explicit
+  `--session-id`, or a `--resume` session id, when the command line has one,
+  and otherwise maps the runtime's working directory to its project folder
+  under `~/.gemini/tmp` (through `~/.gemini/projects.json`) and picks the most
   recently written session log there. Several Gemini CLI runtimes in one
   directory may be matched to the wrong log. Logs are read, never modified.
   Gemini CLI records tool calls only after they finish, so a tool call
   waiting for approval shows as `ACTIVE`, and `NEEDS INPUT` is never reported.
 - **Cursor CLI:** recognizes `cursor-agent` and the bundled node process it
-  runs (under `~/.local/share/cursor-agent/versions`) as one runtime, and
-  lists `login`, `status`, `update`, `mcp`, and the other helper subcommands
-  without a session. It uses a `--resume` chat id when the command line has
-  one, and otherwise maps the runtime's working directory to its project
+  runs (under `~/.local/share/cursor-agent/versions`) as one runtime;
+  `login`, `status`, `update`, `mcp`, and the other helper subcommands are
+  tools and are not listed. It uses a `--resume` chat id when the command line
+  has one, and otherwise maps the runtime's working directory to its project
   folder under `~/.cursor/projects` and its chat folder under
   `~/.cursor/chats`, and picks the most recently written chat there. Several
   Cursor CLI runtimes in one directory may be matched to the wrong chat.
@@ -344,13 +402,13 @@ dashboard only through [`backfill`](#backfill).
 `~/.local/share/opencode/opencode.db`), `GEMINI_CLI_HOME` (for Gemini
 CLI's `~/.gemini`), and `CURSOR_CONFIG_DIR` (for Cursor CLI's `~/.cursor`)
 overrides are honored. Provider events
-supply best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states. Codex
-Desktop helper processes that cannot be matched to rollout metadata are not
-shown as sessions.
+supply best-effort `ACTIVE`, `WAITING`, and `NEEDS INPUT` states.
 
 Discovery is also callable without the TUI through
 `internal/session.Discover(ctx, opts)` and, from the shell, through
-`firekeeper snapshot --json`. Both return normalized session metadata,
+`firekeeper snapshot --json`. Both list the same rows as the dashboard
+(sessions, and servers only while they hold an unclaimed session; never
+tools or empty servers) and return normalized session metadata,
 including the project basename (Git root or working directory) and a stable
 UUID stored in `~/.firekeeper/machine-id`, created on first use. Provider
 enrichment failures return usable runtime metadata with a warning.

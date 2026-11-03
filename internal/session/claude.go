@@ -90,7 +90,9 @@ func (d *discoverer) claudeProjectDirName(cwd string) string {
 func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "Claude" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if groups[index].Tool == "Claude" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

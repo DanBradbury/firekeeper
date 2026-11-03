@@ -59,7 +59,9 @@ func (d *discoverer) cursorSessionIDFromArgs(args []string) (string, bool) {
 func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "Cursor" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if groups[index].Tool == "Cursor" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

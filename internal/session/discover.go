@@ -156,19 +156,16 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 			if g.Provider != a.Provider() {
 				continue // another provider's group (step 4)
 			}
-			switch g.Role {
-			case RoleSession:
+			link, explicit := linkRole(g.Role)
+			if !link {
+				continue
+			}
+			if explicit {
 				// Explicit ids first, the same way for every provider: Link
 				// gives the group exactly that session (step 7).
 				if id, ok := a.SessionID(g.Root.Invocation); ok {
 					g.explicitID = id
 				}
-			case RoleServer:
-				// Linked only from evidence (invariant 8).
-			case RoleTool, RoleUnknown:
-				continue // never linked (invariant 8)
-			default:
-				continue // an invalid value: like RoleUnknown
 			}
 			own = append(own, g)
 		}
@@ -328,5 +325,22 @@ func emitted(g ProcessGroup) bool {
 		return false
 	default:
 		return false
+	}
+}
+
+// linkRole says whether Discover passes a group with role r to its adapter's
+// Link, and whether it reads the group's explicit session id first: session
+// groups both; servers are linked from evidence only (invariant 8); tools and
+// unset roles never.
+func linkRole(r Role) (link, explicit bool) {
+	switch r {
+	case RoleSession:
+		return true, true
+	case RoleServer:
+		return true, false
+	case RoleTool, RoleUnknown:
+		return false, false
+	default:
+		return false, false
 	}
 }

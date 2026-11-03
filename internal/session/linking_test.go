@@ -463,3 +463,70 @@ func TestDiscoverAdapterContract(t *testing.T) {
 		t.Errorf("emitted %v, want the sessions %v", emittedPIDs, want)
 	}
 }
+
+// Output rule through Discover (invariant 6): an unlinked session is
+// emitted; a server holding a session no session group claimed is emitted
+// with it; an empty server and a tool are not.
+func TestDiscoverOutputRule(t *testing.T) {
+	setOpenFilesListable(t, true)
+	f := newCodexFixture(t)
+	f.thread(threadX, "/desktop", 30)
+	f.cwd = map[int]string{100: "/work", 300: "/desktop", 400: "/work"}
+	f.locks[300] = []string{threadX}
+	ps := "100 1 ttys001 01:00 codex\n300 1 ?? 05:00 /Applications/Codex.app/Contents/Resources/codex app-server\n400 1 ?? 00:05 codex app-server --listen stdio://\n500 1 ttys002 00:01 codex doctor"
+	metas, err := Discover(context.Background(), Options{Home: filepath.Dir(f.codexHome), CodexHome: f.codexHome, Run: func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		if name == "ps" {
+			return []byte(ps), nil
+		}
+		return f.run(ctx, name, args...)
+	}})
+	var warning *Warning
+	if err != nil && !errors.As(err, &warning) {
+		t.Fatal(err)
+	}
+	got := map[int]string{}
+	for _, m := range metas {
+		got[m.PID] = m.ID
+	}
+	want := map[int]string{100: "", 300: threadX}
+	if len(got) != len(want) || got[100] != "" || got[300] != threadX {
+		t.Fatalf("emitted %v, want %v (unlinked session, and the server holding the unclaimed chat)", got, want)
+	}
+}
+
+// A Claude server (claude mcp serve) beside a transcript in its directory
+// gets nothing and isn't emitted; a Claude session there gets the
+// transcript (invariant 8, through Discover).
+func TestClaudeServerNeverGuesses(t *testing.T) {
+	home := t.TempDir()
+	cwd := filepath.Join(home, "project")
+	claudeHome := filepath.Join(home, "claude")
+	fixtureFile(t, filepath.Join(claudeHome, "projects", standalone().claudeProjectDirName(cwd), sessionUUID+".jsonl"), `{"type":"user","sessionId":"`+sessionUUID+`","cwd":"`+jsonPath(cwd)+`","message":{"role":"user","content":"hi"}}`+"\n")
+	run := func(ps string) []Meta {
+		metas, err := Discover(context.Background(), Options{Home: home, ClaudeHome: claudeHome, Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			switch name {
+			case "ps":
+				return []byte(ps), nil
+			case "lsof":
+				var b strings.Builder
+				for _, p := range strings.Split(args[len(args)-1], ",") {
+					fmt.Fprintf(&b, "p%s\nn%s\n", p, cwd)
+				}
+				return []byte(b.String()), nil
+			}
+			return nil, os.ErrNotExist
+		}})
+		var warning *Warning
+		if err != nil && !errors.As(err, &warning) {
+			t.Fatal(err)
+		}
+		return metas
+	}
+	if metas := run("30 1 ? 00:01 claude mcp serve\n"); len(metas) != 0 {
+		t.Fatalf("server alone emitted %+v, want nothing", metas)
+	}
+	metas := run("30 1 ? 00:01 claude mcp serve\n31 1 ttys001 00:01 claude\n")
+	if len(metas) != 1 || metas[0].PID != 31 || metas[0].ID != sessionUUID {
+		t.Fatalf("emitted %+v, want only the session 31 with the transcript", metas)
+	}
+}

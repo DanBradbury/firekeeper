@@ -46,7 +46,9 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
-		if group.Tool != "Copilot" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if group.Tool != "Copilot" || group.Role != RoleSession {
 			continue
 		}
 		groupIndexes = append(groupIndexes, groupIndex)

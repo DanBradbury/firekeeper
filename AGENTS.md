@@ -174,10 +174,45 @@ When adding a harness, separate these concerns:
 
 One adapter failing must not block other providers or base process discovery.
 
+Concerns 1–3 are one `providerAdapter` in `internal/session/adapters.go`.
+Checklist for a new harness:
+
+1. Implement `providerAdapter` and register it in `adapters`.
+2. Its `Signature()`: programs, entry points, value and boolean flags, path
+   exclusions, and the role of each subcommand path (default session), with
+   real command lines added to the signature corpus test.
+3. Its `SessionID()`: the provider's explicit session id format, if any. It
+   only parses and validates.
+4. Its `Link`: evidence first (open files), guessing by directory only for
+   session groups, each guessed session claimed once (on Windows, a server
+   may then be matched by directory, after the session groups). It never
+   receives tool groups (`Discover` filters them). The shared adapter tests
+   must pass.
+5. Add the `event.Provider` constant, its display name in `toolName`
+   (`internal/session`; a missing name leaves `Tool` empty and fails the
+   registry test), and the provider's UI cases (name, colour, icon, message).
+6. Add its transcript reader in `internal/transcript/reader`.
+
 ## Session semantics
 
 - `processGroup` represents one discovered runtime root plus child processes.
 - `sessionInfo` carries normalized cross-provider metadata.
+- Every process has a provider, from its program or entry point only, and a
+  role, from its subcommand path: session (the user works in it), server
+  (hosts sessions for clients) or tool (a one-off command). An unknown flag
+  followed by a word before the subcommand makes the role the default,
+  session. Unset roles (`RoleUnknown`) are never shown or linked.
+- Grouping never climbs from a session into a server or tool: a session is
+  always the root of its own group there.
+- Output rule, the same for every provider and every consumer of `Discover`:
+  session groups always, linked or not; server groups only while they hold a
+  session no session group claimed; tool groups never.
+- Linking: an explicit id on the command line wins and never falls back to a
+  guess; then evidence (open files); then the directory guess, for session
+  groups only, each session claimed once. Servers keep only sessions they
+  hold themselves (on Windows, they are matched by directory after session
+  groups). Tools are never linked. A session claimed by a session group is
+  removed from the server that holds it.
 - State values describe latest observable provider event, not guaranteed ground truth.
 - Existing Codex session counts use running Codex process groups. They include waiting/unknown runtimes, not only `sessionStateActive` entries.
 - Never imply Firekeeper can detect every session state perfectly without provider cooperation.
@@ -246,6 +281,8 @@ Go does not have native Rust-style enums with associated data or compiler-enforc
 - Do not assume that a closed interface guarantees exhaustive handling. Go does not natively enforce exhaustive type switches.
 
 Use the struct/interface pattern when the variants carry genuinely different data or when preventing invalid combinations is worth the complexity. Do not apply it to every finite set of strings.
+
+`session.Role` switches: every `switch` on `Role` handles all four constants and has a `default` that acts like `RoleUnknown`. A new `switch` on `Role` comes with a table test over every role plus `Role(99)` (see `roles_test.go`, happy and error path). A new `Role` constant goes in `roleNames` there and in every such table; `TestAllRolesMatchesSource` fails until it does. Until the `exhaustive` linter is added, these tests are the check.
 
 ### Exhaustive checking
 
