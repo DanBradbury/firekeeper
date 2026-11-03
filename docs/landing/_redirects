@@ -1,11 +1,14 @@
 # Cloudflare Pages redirects (deployed with the site).
 #
 # The Buy buttons on the pricing section point at /buy/<sku>. Each line below
-# sends that path to a Stripe Payment Link. Until you paste a link, the button
-# goes to the contact form, so no button is ever dead.
-#
-# To go live: replace /contact on a line with the Payment Link
-# (https://buy.stripe.com/...) and merge. See docs/payments.md in the
+# sends that path to a live Stripe Payment Link. The redirects are 302s, not
+# 301s, so browsers do not cache them and a target can be changed later by
+# editing this file and merging. See docs/payments.md in the
 # firekeeper-server repository for how each link is set up.
-/buy/personal       /contact  302
-/buy/team-annual    /contact  302
+#
+# /buy/personal goes to the $29 launch price, a Payment Link that closes
+# itself after 100 sales. When it closes, swap /buy/personal to the $49
+# Personal link:
+#   /buy/personal       https://buy.stripe.com/6oU7sE8f48hA0ukcDI4ow00  302
+/buy/personal       https://buy.stripe.com/14A5kw7b0cxQ1yodHM4ow01  302
+/buy/team-annual    https://buy.stripe.com/fZu9AM3YO69s0uk0V04ow02  302
