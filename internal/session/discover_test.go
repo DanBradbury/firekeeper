@@ -42,6 +42,9 @@ func TestDiscoverFixtureTree(t *testing.T) {
 	fixtureFile(t, filepath.Join(home, "copilot", "session-state", copilotID, "workspace.yaml"), fmt.Sprintf("id: %s\ncwd: %s\nname: fixture\n", copilotID, cwd))
 	fixtureFile(t, filepath.Join(home, "copilot", "session-state", copilotID, "events.jsonl"), "{\"type\":\"assistant.turn_start\",\"data\":{\"model\":\"fixture-model\"}}\nmalformed\n")
 	fixtureFile(t, filepath.Join(home, "kimi", "sessions", "work", "kimi-id", "state.json"), fmt.Sprintf(`{"title":"Kimi fixture","workDir":%q,"updatedAt":"2026-10-07T12:00:00Z"}`, cwd))
+	// The kimi process (etime 00:03) started just before the session was
+	// last updated, so the session is fresh for it.
+	setKimiNow(t, time.Date(2026, 10, 7, 12, 0, 2, 0, time.UTC))
 	fixtureFile(t, filepath.Join(home, "kimi", "sessions", "work", "broken", "state.json"), "{")
 	opts := Options{Home: home, CodexHome: filepath.Join(home, "codex"), CopilotHome: filepath.Join(home, "copilot"), KimiHome: filepath.Join(home, "kimi")}
 	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -268,6 +271,9 @@ func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
 	cwd := filepath.Join(home, "project")
 	sessionDir := filepath.Join(home, "kimi", "sessions", "wd_project_0123456789ab", "session_abc")
 	fixtureFile(t, filepath.Join(sessionDir, "state.json"), fmt.Sprintf(`{"id":"session_abc","cwd":%q,"createdAt":1791460800000,"updatedAt":1791460860000,"title":"Kimi now"}`, cwd))
+	// Session updated at 1791460860000 ms; the kimi process (etime 00:01)
+	// started a second before.
+	setKimiNow(t, time.UnixMilli(1791460860000))
 	var kimiPIDs []string
 	metas, err := Discover(context.Background(), Options{Home: home, KimiHome: filepath.Join(home, "kimi"), ClaudeHome: filepath.Join(home, "claude"), Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {

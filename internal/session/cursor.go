@@ -29,48 +29,11 @@ const (
 // CursorSource is the Source value for Cursor CLI sessions.
 const CursorSource = "Cursor CLI"
 
-// cursorArgs returns the arguments after the Cursor CLI executable, or nil
-// when command is not Cursor CLI. The installer puts a cursor-agent launcher
-// script (also linked as agent) in ~/.local/bin, which runs a bundled node on
-// index.js under ~/.local/share/cursor-agent/versions/<version>/. The bare
-// name agent is too generic to match on its own, so only the launcher's
-// cursor-agent name and the versioned install directory are recognized.
-func (d *discoverer) cursorArgs(command string) []string {
-	fields := commandFields(command)
-	if len(fields) == 0 {
-		return nil
-	}
-	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
-		return nil
-	}
-	switch strings.ToLower(baseName(fields[0])) {
-	case "cursor-agent", "cursor-agent.exe":
-		return append([]string{}, fields[1:]...)
-	case "node", "node.exe", "bun", "bun.exe", "sh", "bash", "zsh":
-		for i := 1; i < len(fields); i++ {
-			if strings.HasPrefix(fields[i], "-") {
-				continue // interpreter flags such as --use-system-ca
-			}
-			if isCursorScript(fields[i]) {
-				return append([]string{}, fields[i+1:]...)
-			}
-			return nil
-		}
-	}
-	return nil
-}
-
 func isCursorScript(path string) bool {
 	if baseName(path) == "cursor-agent" {
 		return true
 	}
 	return strings.Contains(slashPath(path), "/cursor-agent/versions/")
-}
-
-// cursorSessionIDFromCommand reads the chat id from --resume. Bare --resume,
-// and the resume subcommand, pick the latest chat and name none.
-func (d *discoverer) cursorSessionIDFromCommand(command string) (string, bool) {
-	return d.cursorSessionIDFromArgs(d.cursorArgs(command))
 }
 
 // cursorSessionIDFromArgs reads the same id from the arguments after the
@@ -88,15 +51,6 @@ func (d *discoverer) cursorSessionIDFromArgs(args []string) (string, bool) {
 		}
 		if value = strings.Trim(value, "'\""); d.validUUID(value) {
 			return value, true
-		}
-	}
-	return "", false
-}
-
-func (d *discoverer) cursorSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.cursorSessionIDFromCommand(process.Command); ok {
-			return id, true
 		}
 	}
 	return "", false
@@ -125,7 +79,7 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	byDir := make(map[string][]int)
 	for _, index := range groupIndexes {
-		if id, ok := d.cursorSessionIDFromGroupCommands(groups[index]); ok {
+		if id, ok := groups[index].explicitSessionID(); ok {
 			ids[index] = id
 			claimed[id] = true
 			continue

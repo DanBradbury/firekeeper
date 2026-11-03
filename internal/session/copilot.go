@@ -62,7 +62,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	mapped := make(map[int]string, len(groupIndexes))
 	for _, groupIndex := range groupIndexes {
 		group := &groups[groupIndex]
-		if id, ok := d.copilotSessionIDFromGroupCommands(*group); ok {
+		if id, ok := group.explicitSessionID(); ok {
 			mapped[groupIndex] = id
 			continue
 		}
@@ -198,19 +198,6 @@ func (d *discoverer) copilotSessionIDFromStatePath(path string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-func (d *discoverer) copilotSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.copilotSessionIDFromCommand(process.Command); ok {
-			return id, true
-		}
-	}
-	return "", false
-}
-
-func (d *discoverer) copilotSessionIDFromCommand(command string) (string, bool) {
-	return d.copilotSessionIDFromArgs(strings.Fields(command))
 }
 
 // copilotSessionIDFromArgs reads the same ids from an argument list.

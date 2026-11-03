@@ -62,8 +62,11 @@ func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
 				t.Errorf("CLI sessions = %+v, want thread %s", group.Sessions, threadB)
 			}
 		case 200:
-			if len(group.Sessions) != 0 {
-				t.Errorf("app-server sessions = %+v, want none", group.Sessions)
+			// The server holds thread A's lock and no session group claimed
+			// A, so the server keeps it (evidence; invariants 6 and 8). B is
+			// the CLI's, so the server doesn't show it too.
+			if len(group.Sessions) != 1 || group.Sessions[0].ID != threadA {
+				t.Errorf("app-server sessions = %+v, want only the unclaimed thread %s", group.Sessions, threadA)
 			}
 		}
 	}

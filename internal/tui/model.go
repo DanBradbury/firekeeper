@@ -364,7 +364,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedPID := m.selectedProcessRootPID()
 			var groups []processGroup
 			groups, m.metadataMisses = retainKnownSessionMetadata(m.processGroups, msg.groups, m.metadataMisses)
-			m.processGroups = filterUnidentifiedCodexGroups(groups)
+			m.processGroups = groups
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
@@ -635,38 +635,6 @@ func hasSessionMetadataAdapter(tool string) bool {
 		return true
 	}
 	return false
-}
-
-func filterUnidentifiedCodexGroups(groups []processGroup) []processGroup {
-	return filterUnidentifiedCodexGroupsFor(runtime.GOOS, groups)
-}
-
-// filterUnidentifiedCodexGroupsFor drops Codex runtimes that could not be
-// matched to a session: they are Codex Desktop helpers, not something to
-// switch to. On Windows the match is weaker, because open files cannot be
-// listed, so a runtime that looks like an interactive CLI stays in the list
-// without a session instead of vanishing when the guess misses.
-func filterUnidentifiedCodexGroupsFor(goos string, groups []processGroup) []processGroup {
-	visible := make([]processGroup, 0, len(groups))
-	for _, group := range groups {
-		if group.tool == "Codex" && len(group.sessions) == 0 && !(goos == "windows" && looksLikeCodexCLI(group)) {
-			continue
-		}
-		visible = append(visible, group)
-	}
-	return visible
-}
-
-// looksLikeCodexCLI reports whether no process in the group is a background
-// server or an Electron helper of the desktop app.
-func looksLikeCodexCLI(group processGroup) bool {
-	for _, process := range append([]processInfo{group.root}, group.processes...) {
-		command := strings.ToLower(strings.ReplaceAll(process.command, `\`, "/"))
-		if strings.Contains(command, " app-server") || strings.Contains(command, "--type=") || strings.Contains(command, "/windowsapps/") {
-			return false
-		}
-	}
-	return true
 }
 
 func refreshProcesses() tea.Cmd {

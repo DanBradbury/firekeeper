@@ -38,36 +38,6 @@ func isClaudeDesktopWindows(fields []string) bool {
 	return false
 }
 
-// claudeCodeArgs returns the arguments after the Claude Code executable, or
-// nil when command is not Claude Code. Both the native binary and the npm
-// package run through node are recognized.
-func (d *discoverer) claudeCodeArgs(command string) []string {
-	fields := commandFields(command)
-	if len(fields) == 0 {
-		return nil
-	}
-	// The desktop app and its helpers live inside a .app bundle and are
-	// named "Claude"; the CLI binary is lowercase.
-	if strings.Contains(slashPath(fields[0]), ".app/Contents/") || isClaudeDesktopWindows(fields) {
-		return nil
-	}
-	switch base := baseName(fields[0]); base {
-	case "claude", "claude.exe":
-		return append([]string{}, fields[1:]...)
-	case "node", "node.exe", "bun", "bun.exe":
-		if len(fields) > 1 && strings.Contains(slashPath(fields[1]), "@anthropic-ai/claude-code/") {
-			return append([]string{}, fields[2:]...)
-		}
-	}
-	return nil
-}
-
-// claudeSessionIDFromCommand reads an explicit session id from --session-id,
-// or from --resume when the session is not being forked to a new id.
-func (d *discoverer) claudeSessionIDFromCommand(command string) (string, bool) {
-	return d.claudeSessionIDFromArgs(d.claudeCodeArgs(command))
-}
-
 // claudeSessionIDFromArgs reads the same ids from the arguments after the
 // Claude Code program.
 func (d *discoverer) claudeSessionIDFromArgs(args []string) (string, bool) {
@@ -139,7 +109,7 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	var unmapped []int
 	for _, index := range groupIndexes {
-		id, ok := d.claudeSessionIDFromGroupCommands(groups[index])
+		id, ok := groups[index].explicitSessionID()
 		if !ok {
 			unmapped = append(unmapped, index)
 			continue
@@ -197,15 +167,6 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)
 	}
 	return nil
-}
-
-func (d *discoverer) claudeSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.claudeSessionIDFromCommand(process.Command); ok {
-			return id, true
-		}
-	}
-	return "", false
 }
 
 // claudeWorkDirs returns the current directory of each group's root process.

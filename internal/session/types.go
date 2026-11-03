@@ -164,12 +164,16 @@ func (t TokenBreakdown) add(other TokenBreakdown) TokenBreakdown {
 
 type ProcessGroup struct {
 	// Provider and Role are the root process's.
-	Provider  event.Provider
-	Role      Role
-	Tool      string
-	Root      ProcessInfo
-	Processes []ProcessInfo
-	Sessions  []Info
+	Provider event.Provider
+	Role     Role
+	Tool     string
+	Root     ProcessInfo
+	// explicitID is the session id the root's command line names, set by
+	// Discover from the adapter's SessionID before Link (session groups
+	// only). Link gives such a group exactly that session, never a guess.
+	explicitID string
+	Processes  []ProcessInfo
+	Sessions   []Info
 }
 
 type ThreadMetadataRow struct {
@@ -222,4 +226,9 @@ type RolloutStatusEvent struct {
 			} `json:"total_token_usage"`
 		} `json:"info"`
 	} `json:"payload"`
+}
+
+// explicitSessionID returns the session id the group's command line names.
+func (g ProcessGroup) explicitSessionID() (string, bool) {
+	return g.explicitID, g.explicitID != ""
 }

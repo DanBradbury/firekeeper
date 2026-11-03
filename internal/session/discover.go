@@ -157,7 +157,14 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				continue // another provider's group (step 4)
 			}
 			switch g.Role {
-			case RoleSession, RoleServer:
+			case RoleSession:
+				// Explicit ids first, the same way for every provider: Link
+				// gives the group exactly that session (step 7).
+				if id, ok := a.SessionID(g.Root.Invocation); ok {
+					g.explicitID = id
+				}
+			case RoleServer:
+				// Linked only from evidence (invariant 8).
 			case RoleTool, RoleUnknown:
 				continue // never linked (invariant 8)
 			default:
@@ -306,12 +313,17 @@ func optionalTime(t time.Time) *time.Time {
 	return &t
 }
 
-// emitted applies the output rule (invariant 6) to a linked group: tool
-// groups and groups whose role was never set are never emitted.
+// emitted applies the output rule (invariant 6) to a linked group: session
+// groups always, linked or not; server groups only while they hold a session
+// no session group claimed (claimed ones were removed during linking), so
+// there are no empty server rows; tool groups and groups whose role was
+// never set, never.
 func emitted(g ProcessGroup) bool {
 	switch g.Role {
-	case RoleSession, RoleServer:
+	case RoleSession:
 		return true
+	case RoleServer:
+		return len(g.Sessions) > 0
 	case RoleTool, RoleUnknown:
 		return false
 	default:

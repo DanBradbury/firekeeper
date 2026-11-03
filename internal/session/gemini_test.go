@@ -47,7 +47,6 @@ func TestClassifyGeminiProcess(t *testing.T) {
 }
 
 func TestGeminiSessionIDFromCommand(t *testing.T) {
-	d := &discoverer{}
 	for _, tt := range []struct {
 		command, want string
 	}{
@@ -65,9 +64,9 @@ func TestGeminiSessionIDFromCommand(t *testing.T) {
 		{"node /usr/local/bin/gemini --session-id abc", "abc"},
 		{"codex --session-id abc", ""},
 	} {
-		got, ok := d.geminiSessionIDFromCommand(tt.command)
+		got, ok := (geminiAdapter{}).SessionID(parseInvocation(fallbackArgs(tt.command)))
 		if got != tt.want || ok != (tt.want != "") {
-			t.Errorf("geminiSessionIDFromCommand(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
+			t.Errorf("geminiAdapter.SessionID(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
 		}
 	}
 }

@@ -17,16 +17,6 @@ import (
 // See internal/transcript/opencode/NOTES.md for the tables read.
 const openCodePathSeparator = "#"
 
-// openCodeHelperCommands are OpenCode subcommands that do not run a session
-// of their own, such as the shared background server and account tools.
-var openCodeHelperCommands = map[string]bool{
-	"upgrade": true, "update": true, "uninstall": true, "acp": true, "api": true,
-	"debug": true, "auth": true, "mcp": true, "plugin": true, "models": true,
-	"stats": true, "session": true, "service": true, "reload": true, "pair": true,
-	"serve": true, "web": true, "export": true, "import": true, "github": true,
-	"agent": true,
-}
-
 // ValidOpenCodeSessionID reports whether id looks like an OpenCode session
 // id: "ses" followed by letters, digits, '_' or '-'. Ids that pass are safe to
 // quote into SQL.
@@ -96,38 +86,6 @@ func (d *discoverer) openCodeDatabase() (string, error) {
 	}
 }
 
-// openCodeArgs returns the arguments after the OpenCode executable, or nil
-// when command does not run it.
-func (d *discoverer) openCodeArgs(command string) []string {
-	fields := commandFields(command)
-	for i, field := range fields {
-		base := strings.ToLower(baseName(field))
-		if base == "opencode" || base == "opencode.exe" {
-			return append([]string{}, fields[i+1:]...)
-		}
-	}
-	return nil
-}
-
-// openCodeRunsSession reports whether command runs an OpenCode session: the
-// interactive default command, run, or mini, but not a helper subcommand.
-func (d *discoverer) openCodeRunsSession(command string) bool {
-	args := d.openCodeArgs(command)
-	if args == nil {
-		return false
-	}
-	return len(args) == 0 || !openCodeHelperCommands[args[0]]
-}
-
-// openCodeSessionIDFromCommand reads an explicit --session/-s id. A forked
-// continuation writes a new session, so --fork drops the id.
-func (d *discoverer) openCodeSessionIDFromCommand(command string) (string, bool) {
-	if !d.openCodeRunsSession(command) {
-		return "", false
-	}
-	return d.openCodeSessionIDFromArgs(d.openCodeArgs(command))
-}
-
 // openCodeSessionIDFromArgs reads the same id from the arguments after the
 // OpenCode program.
 func (d *discoverer) openCodeSessionIDFromArgs(args []string) (string, bool) {
@@ -153,19 +111,10 @@ func (d *discoverer) openCodeSessionIDFromArgs(args []string) (string, bool) {
 	return id, true
 }
 
-func (d *discoverer) openCodeSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.openCodeSessionIDFromCommand(process.Command); ok {
-			return id, true
-		}
-	}
-	return "", false
-}
-
 func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "OpenCode" && d.openCodeRunsSession(groups[index].Root.Command) {
+		if groups[index].Tool == "OpenCode" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}
@@ -188,7 +137,7 @@ func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	var unmapped []int
 	for _, index := range groupIndexes {
-		if id, ok := d.openCodeSessionIDFromGroupCommands(groups[index]); ok {
+		if id, ok := groups[index].explicitSessionID(); ok {
 			ids[index], claimed[id] = id, true
 			continue
 		}

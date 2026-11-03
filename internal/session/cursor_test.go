@@ -57,7 +57,6 @@ func TestClassifyCursorProcess(t *testing.T) {
 }
 
 func TestCursorSessionIDFromCommand(t *testing.T) {
-	d := &discoverer{}
 	for _, tt := range []struct {
 		command, want string
 	}{
@@ -72,9 +71,9 @@ func TestCursorSessionIDFromCommand(t *testing.T) {
 		{"cursor-agent --resume *", ""},
 		{"claude --resume " + cursorIDA, ""},
 	} {
-		got, ok := d.cursorSessionIDFromCommand(tt.command)
+		got, ok := (cursorAdapter{}).SessionID(parseInvocation(fallbackArgs(tt.command)))
 		if got != tt.want || ok != (tt.want != "") {
-			t.Errorf("cursorSessionIDFromCommand(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
+			t.Errorf("cursorAdapter.SessionID(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
 		}
 	}
 }

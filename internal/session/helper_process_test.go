@@ -80,3 +80,12 @@ func fixtureDiscoverer() *discoverer {
 		return nil, errTestNoArgs
 	}}}
 }
+
+// setKimiNow fixes the clock Kimi linking compares process start times
+// with, for the length of the test.
+func setKimiNow(t *testing.T, now time.Time) {
+	t.Helper()
+	old := kimiNow
+	kimiNow = func() time.Time { return now }
+	t.Cleanup(func() { kimiNow = old })
+}

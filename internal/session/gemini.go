@@ -30,48 +30,12 @@ const (
 // GeminiSource is the Source value for Gemini CLI sessions.
 const GeminiSource = "Gemini CLI"
 
-// geminiArgs returns the arguments after the Gemini CLI executable, or nil
-// when command is not Gemini CLI. The npm package runs as a node script
-// (bin/gemini, bundle/gemini.js, or a path inside @google/gemini-cli), and it
-// relaunches itself as a node child with extra node flags.
-func (d *discoverer) geminiArgs(command string) []string {
-	fields := commandFields(command)
-	if len(fields) == 0 {
-		return nil
-	}
-	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
-		return nil
-	}
-	switch strings.ToLower(baseName(fields[0])) {
-	case "gemini", "gemini.exe":
-		return append([]string{}, fields[1:]...)
-	case "node", "node.exe", "nodejs", "bun", "bun.exe":
-		for i := 1; i < len(fields); i++ {
-			if strings.HasPrefix(fields[i], "-") {
-				continue // node flags such as --max-old-space-size=8192
-			}
-			if isGeminiScript(fields[i]) {
-				return append([]string{}, fields[i+1:]...)
-			}
-			return nil
-		}
-	}
-	return nil
-}
-
 func isGeminiScript(path string) bool {
 	switch baseName(path) {
 	case "gemini", "gemini.js", "gemini.mjs":
 		return true
 	}
 	return strings.Contains(slashPath(path), "/@google/gemini-cli/")
-}
-
-// geminiSessionIDFromCommand reads an explicit session id from --session-id,
-// or from --resume when it names a session id rather than "latest" or a list
-// index.
-func (d *discoverer) geminiSessionIDFromCommand(command string) (string, bool) {
-	return d.geminiSessionIDFromArgs(d.geminiArgs(command))
 }
 
 // geminiSessionIDFromArgs reads the same ids from the arguments after the
@@ -94,15 +58,6 @@ func (d *discoverer) geminiSessionIDFromArgs(args []string) (string, bool) {
 			if v, ok := value(index, field, flag); ok && d.validUUID(v) {
 				return v, true
 			}
-		}
-	}
-	return "", false
-}
-
-func (d *discoverer) geminiSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.geminiSessionIDFromCommand(process.Command); ok {
-			return id, true
 		}
 	}
 	return "", false
@@ -147,7 +102,7 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	var unmapped []int
 	for _, index := range groupIndexes {
-		if id, ok := d.geminiSessionIDFromGroupCommands(groups[index]); ok {
+		if id, ok := groups[index].explicitSessionID(); ok {
 			if path := FindGeminiTranscript(dirs, id); path != "" {
 				paths[index] = path
 				claimed[path] = true

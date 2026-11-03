@@ -254,3 +254,24 @@ func matchCommand(args []string, spec flagSpec, known func(path string) bool) (p
 	}
 	return "", false
 }
+
+// hasFlag reports whether any of names appears among args as a flag, before
+// "--", skipping the values of the spec's value flags so a prompt such as
+// kimi -p "-c" doesn't count.
+func hasFlag(args []string, spec flagSpec, names ...string) bool {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return false
+		}
+		for _, name := range names {
+			if arg == name {
+				return true
+			}
+		}
+		if spec.value[arg] {
+			i++
+		}
+	}
+	return false
+}

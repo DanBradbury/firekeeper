@@ -49,7 +49,6 @@ func TestClassifyClaudeCode(t *testing.T) {
 }
 
 func TestClaudeSessionIDFromCommand(t *testing.T) {
-	d := &discoverer{}
 	tests := []struct {
 		command string
 		want    string
@@ -69,9 +68,9 @@ func TestClaudeSessionIDFromCommand(t *testing.T) {
 		{"codex --session-id " + claudeIDA, ""},
 	}
 	for _, tt := range tests {
-		got, ok := d.claudeSessionIDFromCommand(tt.command)
+		got, ok := (claudeAdapter{}).SessionID(parseInvocation(fallbackArgs(tt.command)))
 		if got != tt.want || ok != (tt.want != "") {
-			t.Errorf("claudeSessionIDFromCommand(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
+			t.Errorf("claudeAdapter.SessionID(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
 		}
 	}
 }

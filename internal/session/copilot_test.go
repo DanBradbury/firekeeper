@@ -48,7 +48,6 @@ func TestCopilotSessionIDFromStatePath(t *testing.T) {
 }
 
 func TestCopilotSessionIDFromCommand(t *testing.T) {
-	d := &discoverer{}
 	commands := []string{
 		"copilot --resume=" + testCopilotSessionID,
 		"copilot --resume " + testCopilotSessionID,
@@ -56,12 +55,12 @@ func TestCopilotSessionIDFromCommand(t *testing.T) {
 		"copilot -r " + testCopilotSessionID,
 	}
 	for _, command := range commands {
-		id, ok := d.copilotSessionIDFromCommand(command)
+		id, ok := (copilotAdapter{}).SessionID(parseInvocation(fallbackArgs(command)))
 		if !ok || id != testCopilotSessionID {
 			t.Fatalf("%q produced ID %q, ok=%v", command, id, ok)
 		}
 	}
-	if _, ok := d.copilotSessionIDFromCommand("copilot --continue"); ok {
+	if _, ok := (copilotAdapter{}).SessionID(parseInvocation(fallbackArgs("copilot --continue"))); ok {
 		t.Fatal("command without explicit session ID produced one")
 	}
 }
