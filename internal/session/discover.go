@@ -149,12 +149,18 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	}
 	groups := d.groupProcesses(d.parseProcesses(string(output)))
 	var warnings []string
-	for _, p := range []struct {
-		name   string
-		enrich func([]ProcessGroup) error
-	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}, {"Gemini", d.enrichGeminiSessions}, {"Cursor", d.enrichCursorSessions}} {
-		if err := p.enrich(groups); err != nil {
-			warnings = append(warnings, p.name+": "+d.sanitizeProcessCommand(err.Error()))
+	for _, a := range adapters {
+		var own []*ProcessGroup
+		for i := range groups {
+			if groups[i].Tool == toolName(a.Provider()) {
+				own = append(own, &groups[i])
+			}
+		}
+		if len(own) == 0 {
+			continue
+		}
+		if err := a.Link(d, own); err != nil {
+			warnings = append(warnings, toolName(a.Provider())+": "+d.sanitizeProcessCommand(err.Error()))
 		}
 	}
 	machine, err := machineID(opts.Home)

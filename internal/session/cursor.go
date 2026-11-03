@@ -89,7 +89,12 @@ func isCursorScript(path string) bool {
 // cursorSessionIDFromCommand reads the chat id from --resume. Bare --resume,
 // and the resume subcommand, pick the latest chat and name none.
 func (d *discoverer) cursorSessionIDFromCommand(command string) (string, bool) {
-	args := d.cursorArgs(command)
+	return d.cursorSessionIDFromArgs(d.cursorArgs(command))
+}
+
+// cursorSessionIDFromArgs reads the same id from the arguments after the
+// Cursor CLI program or script.
+func (d *discoverer) cursorSessionIDFromArgs(args []string) (string, bool) {
 	for index, field := range args {
 		var value string
 		switch {

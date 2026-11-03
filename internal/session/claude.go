@@ -87,7 +87,12 @@ func (d *discoverer) claudeCodeArgs(command string) []string {
 // claudeSessionIDFromCommand reads an explicit session id from --session-id,
 // or from --resume when the session is not being forked to a new id.
 func (d *discoverer) claudeSessionIDFromCommand(command string) (string, bool) {
-	args := d.claudeCodeArgs(command)
+	return d.claudeSessionIDFromArgs(d.claudeCodeArgs(command))
+}
+
+// claudeSessionIDFromArgs reads the same ids from the arguments after the
+// Claude Code program.
+func (d *discoverer) claudeSessionIDFromArgs(args []string) (string, bool) {
 	value := func(index int, field, flag string) (string, bool) {
 		if strings.HasPrefix(field, flag+"=") {
 			return strings.TrimPrefix(field, flag+"="), true

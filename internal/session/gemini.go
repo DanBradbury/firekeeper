@@ -89,7 +89,12 @@ func isGeminiScript(path string) bool {
 // or from --resume when it names a session id rather than "latest" or a list
 // index.
 func (d *discoverer) geminiSessionIDFromCommand(command string) (string, bool) {
-	args := d.geminiArgs(command)
+	return d.geminiSessionIDFromArgs(d.geminiArgs(command))
+}
+
+// geminiSessionIDFromArgs reads the same ids from the arguments after the
+// Gemini CLI program or script.
+func (d *discoverer) geminiSessionIDFromArgs(args []string) (string, bool) {
 	value := func(index int, field, flag string) (string, bool) {
 		if strings.HasPrefix(field, flag+"=") {
 			return strings.Trim(strings.TrimPrefix(field, flag+"="), "'\""), true

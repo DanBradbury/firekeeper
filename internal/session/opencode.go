@@ -125,7 +125,12 @@ func (d *discoverer) openCodeSessionIDFromCommand(command string) (string, bool)
 	if !d.openCodeRunsSession(command) {
 		return "", false
 	}
-	args := d.openCodeArgs(command)
+	return d.openCodeSessionIDFromArgs(d.openCodeArgs(command))
+}
+
+// openCodeSessionIDFromArgs reads the same id from the arguments after the
+// OpenCode program.
+func (d *discoverer) openCodeSessionIDFromArgs(args []string) (string, bool) {
 	id, fork := "", false
 	for i, field := range args {
 		switch {

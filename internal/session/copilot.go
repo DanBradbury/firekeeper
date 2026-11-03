@@ -210,7 +210,11 @@ func (d *discoverer) copilotSessionIDFromGroupCommands(group ProcessGroup) (stri
 }
 
 func (d *discoverer) copilotSessionIDFromCommand(command string) (string, bool) {
-	fields := strings.Fields(command)
+	return d.copilotSessionIDFromArgs(strings.Fields(command))
+}
+
+// copilotSessionIDFromArgs reads the same ids from an argument list.
+func (d *discoverer) copilotSessionIDFromArgs(fields []string) (string, bool) {
 	for index, field := range fields {
 		for _, prefix := range []string{"--session-id=", "--resume=", "--resume:", "-r="} {
 			if strings.HasPrefix(field, prefix) {
