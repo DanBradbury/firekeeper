@@ -152,7 +152,7 @@ never check.
 
 ## From source
 
-Building from source requires Go 1.26 or newer. From a repository checkout:
+Building from source requires Go 1.27.3 or newer. From a repository checkout:
 
 ```sh
 go build -o firekeeper .
