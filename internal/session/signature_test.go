@@ -240,6 +240,9 @@ func TestSessionIDPerAdapter(t *testing.T) {
 		{adapter: codexAdapter{}, line: "codex resume " + sessionUUID, want: sessionUUID},
 		{adapter: codexAdapter{}, line: "codex resume -m o3 " + sessionUUID, want: sessionUUID},
 		{adapter: codexAdapter{}, line: "codex exec resume " + sessionUUID, want: sessionUUID},
+		{adapter: codexAdapter{}, line: "codex exec --json resume " + sessionUUID, want: sessionUUID},
+		{adapter: codexAdapter{}, line: "codex e -o out.txt --ephemeral resume --last-not-a-flag " + sessionUUID},
+		{adapter: codexAdapter{}, line: "codex exec -o out.txt resume -m o3 " + sessionUUID, want: sessionUUID},
 		{adapter: claudeAdapter{}, line: "claude --resume " + sessionUUID, want: sessionUUID},
 		{adapter: claudeAdapter{}, line: "claude --session-id " + sessionUUID, want: sessionUUID},
 		{adapter: openCodeAdapter{}, line: "opencode -s ses_ffe9a1b2c3d4Abc123XYZ789", want: "ses_ffe9a1b2c3d4Abc123XYZ789"},
@@ -253,6 +256,10 @@ func TestSessionIDPerAdapter(t *testing.T) {
 		{adapter: codexAdapter{}, line: "codex resume"},
 		{adapter: codexAdapter{}, line: "codex fork " + sessionUUID},
 		{adapter: codexAdapter{}, line: "codex exec fork " + sessionUUID},
+		{adapter: codexAdapter{}, line: "codex exec --json fork " + sessionUUID},
+		{adapter: codexAdapter{}, line: "codex exec --unknown resume " + sessionUUID},
+		{adapter: codexAdapter{}, line: "codex exec resume my-thread-name"},
+		{adapter: codexAdapter{}, line: "codex exec review " + sessionUUID},
 		{adapter: codexAdapter{}, line: "codex app-server"},
 		{adapter: codexAdapter{}, line: "codex " + sessionUUID},
 		{adapter: codexAdapter{}, line: "codex --unknown resume " + sessionUUID},
@@ -311,4 +318,37 @@ func FuzzSessionID(f *testing.F) {
 			}
 		}
 	})
+}
+
+// Every corpus case through both inputs: a ps line split as the fallback
+// splits it, and an argument list joined back into the ps line it would
+// produce. Where no argument has a space, both give the same result; where
+// one does, ps loses the quoting, and the fallback must fail safe: the same
+// result, or no provider, never another provider or role.
+func TestSignatureCorpusBothPaths(t *testing.T) {
+	for _, tt := range signatureCorpus {
+		if tt.args == nil {
+			if strings.ContainsRune(tt.line, '"') {
+				continue // Windows quoting: the fallback is the argument list
+			}
+			p1, r1, ok1 := classifyWith(t, adapters, strings.Fields(tt.line))
+			p2, r2, ok2 := classifyWith(t, adapters, fallbackArgs(tt.line))
+			if p1 != p2 || r1 != r2 || ok1 != ok2 {
+				t.Errorf("%q: argument list %q %s, ps fallback %q %s", tt.line, p1, r1, p2, r2)
+			}
+			continue
+		}
+		pa, ra, oka := classifyWith(t, adapters, tt.args)
+		pf, rf, okf := classifyWith(t, adapters, fallbackArgs(strings.Join(tt.args, " ")))
+		spaced := false
+		for _, a := range tt.args {
+			spaced = spaced || strings.ContainsAny(a, " \t")
+		}
+		switch {
+		case !spaced && (pa != pf || ra != rf || oka != okf):
+			t.Errorf("%q: argument list %q %s, ps fallback %q %s", tt.args, pa, ra, pf, rf)
+		case spaced && okf && (pa != pf || ra != rf):
+			t.Errorf("%q: ps fallback %q %s, argument list %q %s; the fallback must fail safe", tt.args, pf, rf, pa, ra)
+		}
+	}
 }

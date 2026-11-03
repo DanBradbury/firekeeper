@@ -189,6 +189,26 @@ var codexSignature = signature{
 	),
 }
 
+// codexExecFlags are Codex's flags plus codex exec's own (codex-rs/exec/src/
+// cli.rs at rust-v0.166.0), for reading `codex exec … resume <id>`.
+var codexExecFlags = flagSpec{
+	value: mergeSets(codexSignature.flags.value, set("--thread-source", "--cyber-access-program",
+		"--output-schema", "-o", "--output-last-message", "--color")),
+	multi: codexSignature.flags.multi,
+	boolean: mergeSets(codexSignature.flags.boolean, set("--skip-git-repo-check", "--ephemeral",
+		"--ignore-user-config", "--ignore-rules", "--json", "--experimental-json", "--bypass-hook-trust")),
+}
+
+func mergeSets(sets ...map[string]bool) map[string]bool {
+	out := make(map[string]bool)
+	for _, s := range sets {
+		for k := range s {
+			out[k] = true
+		}
+	}
+	return out
+}
+
 // kimiSignature comes from Kimi Code's documentation (ASSUMED: the package's
 // bundled definitions couldn't be read). vis, provider and app stay sessions
 // until a capture confirms them; there is no desktop app exclusion until its

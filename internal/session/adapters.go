@@ -93,14 +93,22 @@ func (codexAdapter) SessionID(inv invocation) (string, bool) {
 		return "", false
 	}
 	after := args[cw.Index+1:]
-	switch {
-	case cw.Words[0] == "resume":
-	case (cw.Words[0] == "exec" || cw.Words[0] == "e") && len(cw.Words) == 2 && cw.Words[1] == "resume":
-		after = args[cw.Index+2:]
+	spec := codexSignature.flags
+	switch cw.Words[0] {
+	case "resume":
+	case "exec", "e":
+		// exec has flags of its own before its resume subcommand
+		// (codex exec --json resume <id>).
+		spec = codexExecFlags
+		sub := scanCommand(after, spec)
+		if sub.Uncertain || len(sub.Words) == 0 || sub.Words[0] != "resume" {
+			return "", false
+		}
+		after = after[sub.Index+1:]
 	default:
 		return "", false
 	}
-	id := scanCommand(after, codexSignature.flags)
+	id := scanCommand(after, spec)
 	if id.Uncertain || len(id.Words) == 0 || !standalone().validUUID(id.Words[0]) {
 		return "", false
 	}
