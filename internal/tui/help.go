@@ -39,7 +39,7 @@ var helpSections = []helpSection{
 		{"↑ ↓ / j k", "Scroll a line"},
 		{"PgUp / PgDn", "Scroll a page"},
 		{"g / G", "Jump to the first or latest message"},
-		{"r", "Reload the transcript"},
+		{"r / e / o", "Reload / save as HTML / open the saved page"},
 		{"Esc / c / q", "Back"},
 	}},
 	{"Mouse", []helpKey{

@@ -9,7 +9,7 @@
 - Current harness support: Codex, GitHub Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI process discovery, each with a session metadata adapter.
 - Current platform focus: macOS. Terminal switching supports Ghostty, Terminal.app, and iTerm2. Windows (10 1809+, amd64 and arm64) is a supported platform with its own process discovery, window switching, login service, and installer; Linux is best effort.
 
-Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `login`. `serve` is only a handoff: it execs the separate, commercial `firekeeper-server` binary (see `internal/cli/cmd_serve.go`), whose source is not in this repository. It is not part of the client and must not be needed by it. Do not make agent CLIs depend on any of them.
+Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `login`. `serve` is only a handoff: it execs the separate, commercial `firekeeper-server` binary (see `internal/cli/cmd_serve.go`), whose source is not in this repository. It is not part of the client and must not be needed by it. The dashboard's HTML export (`e` in the chat view, `internal/tui/export.go`) also runs it, as `firekeeper-server share` with the session on stdin, only on that key press, and fails with a message when it is missing; it never offers to install it. Do not make agent CLIs depend on any of them.
 
 `internal/serverinstall` (standard library only) can download `firekeeper-server` for `serve`. It is disabled unless a release source is configured: release builds set it with `-X ...serverinstall.ReleasesURL` in `.goreleaser.yaml` (the public `DanBradbury/firekeeper-server-releases` repository, equal to `serverinstall.ProductionBase`), and `FIREKEEPER_SERVER_RELEASES_URL` overrides it at run time. Plain `go build` and `go run` builds leave it off. `serve` also offers to update a server it found (`internal/cli/serve_update.go`: 1 update, 2 not now, 3 skip), and undoes an update the license does not cover. Rule: nothing in this repository downloads anything without an explicit interactive yes, and only from `serve`; the update check is one GET for the latest tag and is silenced by `FIREKEEPER_NO_UPDATE_CHECK`. Never prompt when stdin or stderr is not a terminal, or `CI` or `FIREKEEPER_NO_PROMPT` is set. The release layout is documented in `docs/reference.md`.
 
@@ -64,6 +64,8 @@ firekeeper/
 │   └── Entry point: runs a subcommand from internal/cli, otherwise starts
 │       the dashboard from internal/tui
 ├── internal/
+│   ├── serverbin/
+│   │   └── Finding the firekeeper-server binary, for `serve` and HTML export
 │   ├── cli/
 │   │   ├── cli.go: subcommand dispatch and usage
 │   │   └── cmd_*.go: one file per subcommand (report, daemon, login, version, ...)
@@ -73,6 +75,8 @@ firekeeper/
 │   │   │   session metadata, macOS terminal switching
 │   │   ├── dashboard.go: dashboard layout for the Processes tab
 │   │   ├── chat.go: the c view, the selected session's chat history
+│   │   ├── export.go: e in the chat view, the session as HTML through
+│   │   │   `firekeeper-server share` (local, never installs the server)
 │   │   ├── help.go: the ? overlay listing every keyboard shortcut
 │   │   ├── herdr.go: terminal switching through herdr
 │   │   ├── codex_usage.go: short-lived Codex app-server requests and Codex usage UI

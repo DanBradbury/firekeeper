@@ -93,11 +93,11 @@ func startsDashboard(args []string) bool {
 // nothing without a "1" at the prompt.
 func offerServerUpdate(path string, stderr io.Writer) string {
 	l := defaultLookup
-	if l.getenv(ServerBinEnv) != "" || l.getenv("CI") != "" || l.getenv(NoPromptEnv) != "" ||
-		l.getenv(noUpdateCheckEnv) != "" || !installOffer.interactive() {
+	if l.Getenv(ServerBinEnv) != "" || l.Getenv("CI") != "" || l.Getenv(NoPromptEnv) != "" ||
+		l.Getenv(noUpdateCheckEnv) != "" || !installOffer.interactive() {
 		return path
 	}
-	src, enabled, err := serverinstall.Resolve(l.getenv)
+	src, enabled, err := serverinstall.Resolve(l.Getenv)
 	if !enabled || err != nil {
 		return path
 	}
@@ -155,7 +155,7 @@ func offerServerUpdate(path string, stderr io.Writer) string {
 
 // updateWithBrew upgrades a Homebrew-managed server through brew.
 func updateWithBrew(path string, stderr io.Writer) string {
-	brew, err := defaultLookup.lookPath("brew")
+	brew, err := defaultLookup.LookPath("brew")
 	if err != nil {
 		fmt.Fprintf(stderr, "firekeeper serve: brew was not found. Run `brew upgrade %s` yourself. Continuing with the current version.\n", brewFormula)
 		return path

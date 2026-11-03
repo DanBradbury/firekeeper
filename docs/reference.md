@@ -186,6 +186,50 @@ scroll, Page Up/Page Down move a page, `g`/`G` jump to the first or latest
 message, `r` reloads, and Esc, `c`, or `q` return to Processes. The view keeps
 the latest 1,000 messages. An OpenCode reply appears once it finishes.
 
+##### Exporting a session as HTML
+
+Press `e` in the chat view to save the whole session as one standalone HTML
+page, the same page the dashboard server's **Export HTML** button gives. The
+page holds every event (tool calls and output included), the files the
+session changed, and the session's metadata; it opens offline and loads
+nothing from the network. It is saved to `~/Downloads`, or to
+`~/.firekeeper/exports` when there is no Downloads folder, as
+`firekeeper-<provider>-<session id>.html`, replacing an earlier export of the
+same session. The footer shows where it went for 15 seconds; press `o` or
+click that notice to open the page in your default browser (`open` on macOS,
+`xdg-open` on Linux, the file's associated app on Windows).
+
+The page is rendered by `firekeeper-server share`, so export needs the
+[dashboard server](#installing-the-server-from-serve) installed, found the
+same way `firekeeper serve` finds it (`FIREKEEPER_SERVER_BIN`, beside
+`firekeeper`, `PATH`, or `~/.local/bin`). Export works without a license key
+and never downloads or installs anything: without the server, or with one too
+old to have `share`, the footer says to run `firekeeper serve`. Nothing is
+uploaded; the transcript goes only to that local process.
+
+Every event and the session's paths pass through redaction, with your home
+directory shortened to `~`, before the server sees them, and the server
+redacts each event again. Original records are left out of the page.
+Redaction is best effort, so read the page before you share it.
+
+`firekeeper-server share` reads JSON values, one per line, on stdin and writes
+the page to stdout. The first line is a header:
+
+```json
+{"session": {"session_id": "…", "provider": "claude", "origin": "local",
+  "cwd": "~/src/app", "project": "app", "branch": "main", "model": "…",
+  "state": "ENDED", "title": "…", "started_at": "RFC3339 or null",
+  "last_activity_at": "RFC3339 or null", "event_count": 0,
+  "tokens": {"input": 0, "output": 0, "cache": 0}},
+ "files": [{"path": "main.go", "absolute": false, "first_seq": 0,
+  "last_seq": 0, "changes": 1}]}
+```
+
+Every later line is one [event](event.schema.json), in order. The server
+ignores header fields it does not know. It exits 0 with a finished page, 1
+when the input is bad (a page cut short is marked incomplete), and 2 for a
+usage error, which is also what a server from before `share` returns.
+
 Terminal switching supports Ghostty (1.3+), Terminal.app, and iTerm2 on macOS.
 Ghostty sessions are matched by working directory; Terminal.app and iTerm2 are
 matched by TTY. macOS may request Automation permission on first use. Sessions

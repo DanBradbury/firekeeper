@@ -50,6 +50,8 @@ type chatState struct {
 	err      string
 	scroll   int
 	follow   bool
+	// exporting is set while an HTML export of this session runs.
+	exporting bool
 }
 
 type chatResultMsg struct {
@@ -80,7 +82,12 @@ func (m *model) openChat() tea.Cmd {
 		meta: session.Meta{
 			ID:          info.id,
 			Provider:    strings.ToLower(group.tool),
+			Name:        info.name,
+			State:       info.state,
 			CWD:         info.cwd,
+			Model:       info.model,
+			Repository:  info.repository,
+			GitBranch:   info.gitBranch,
 			RolloutPath: info.rolloutPath,
 		},
 		title:   dashProjectName(info) + "/" + dashShortID(info.id),
@@ -220,6 +227,10 @@ func (m model) updateChat(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.chat.loading = true
 			return m, loadChat(m.chat.rootPID, m.chat.meta, nil, nil)
 		}
+	case "e":
+		return m, m.exportChat()
+	case "o":
+		return m, m.openShownExport()
 	}
 	return m, nil
 }
@@ -324,8 +335,11 @@ func (m model) viewChat(contentRows int) string {
 }
 
 func (m model) chatFooter() string {
+	if m.terminalStatus != "" {
+		return statusFooter(m.terminalStatus, m.width)
+	}
 	keys := []footerKey{
-		{"↑↓", "scroll"}, {"pgup/pgdn", "page"}, {"g/G", "top/latest"}, {"r", "reload"}, {"esc", "back"},
+		{"↑↓", "scroll"}, {"pgup/pgdn", "page"}, {"g/G", "top/latest"}, {"r", "reload"}, {"e", "export html"}, {"esc", "back"},
 	}
 	return renderFooterKeys(keys, m.width)
 }

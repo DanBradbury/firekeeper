@@ -333,7 +333,7 @@ func TestUpdateHomebrewUsesBrewUpgrade(t *testing.T) {
 	os.WriteFile(server, []byte(serverScript(t, "0.4.0", "")), 0o755)
 	brewDir := t.TempDir()
 	brew := fakeBinary(t, brewDir, "brew")
-	defaultLookup.lookPath = func(n string) (string, error) {
+	defaultLookup.LookPath = func(n string) (string, error) {
 		switch n {
 		case "brew":
 			return brew, nil
