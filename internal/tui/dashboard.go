@@ -1076,18 +1076,23 @@ func dashShortPath(path string) string {
 	return path
 }
 
+// dashStateIcon returns the glyph for a state. Terminals draw these from
+// whatever font has them, and macOS falls back to a different font per glyph
+// (iTerm2 always does with FirekeeperIcons as its non-ASCII font), so the set
+// is picked to stay close in size that way too: ◌, ▲ and ✕ come out up to
+// twice the size of ●.
 func dashStateIcon(state sessionState) string {
 	switch state {
 	case sessionStateActive:
 		return "●"
 	case sessionStateWaiting:
-		return "◌"
-	case sessionStateNeedsInput:
-		return "▲"
-	case session.SessionStateEnded:
-		return "✕"
-	default:
 		return "○"
+	case sessionStateNeedsInput:
+		return "◆"
+	case session.SessionStateEnded:
+		return "×"
+	default:
+		return "◇"
 	}
 }
 
