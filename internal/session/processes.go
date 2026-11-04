@@ -4,8 +4,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
 	"unicode"
+
+	"github.com/DanBradbury/firekeeper/pkg/event"
 )
 
 // Unlimited command width prevents long installation paths hiding harness names.
@@ -14,6 +15,13 @@ func (d *discoverer) discoverProcesses() ([]byte, error) {
 	return d.command("ps", "-ww", "-axo", "pid=,ppid=,tty=,etime=,command=").Output()
 }
 
+// groupProcesses groups each process under its topmost parent with the same
+// provider (invariant 7): the walk climbs from servers and tools into the
+// session that started them, directly or through its other servers and
+// tools, but never from a session into a server or a tool, so a session is
+// the root of its own group there. A session started by another session of
+// the same provider joins that session's group, as before. A group's
+// Provider, Role and Tool are its root's.
 func (d *discoverer) groupProcesses(processes []ProcessInfo) []ProcessGroup {
 	byPID := make(map[int]ProcessInfo, len(processes))
 	for _, process := range processes {
@@ -27,7 +35,8 @@ func (d *discoverer) groupProcesses(processes []ProcessInfo) []ProcessGroup {
 		seen := map[int]bool{root.PID: true}
 		for {
 			parent, ok := byPID[root.PPID]
-			if !ok || parent.Tool != process.Tool || seen[parent.PID] {
+			if !ok || parent.Provider != process.Provider || seen[parent.PID] ||
+				(root.Role == RoleSession && parent.Role != RoleSession) {
 				break
 			}
 			seen[parent.PID] = true
@@ -40,17 +49,20 @@ func (d *discoverer) groupProcesses(processes []ProcessInfo) []ProcessGroup {
 	groups := make([]ProcessGroup, 0, len(grouped))
 	for rootPID, members := range grouped {
 		sort.Slice(members, func(i, j int) bool { return members[i].PID < members[j].PID })
+		root := roots[rootPID]
 		groups = append(groups, ProcessGroup{
-			Tool:      roots[rootPID].Tool,
-			Root:      roots[rootPID],
+			Provider:  root.Provider,
+			Role:      root.Role,
+			Tool:      root.Tool,
+			Root:      root,
 			Processes: members,
 		})
 	}
 	sort.Slice(groups, func(i, j int) bool {
-		if groups[i].Tool == groups[j].Tool {
+		if groups[i].Provider == groups[j].Provider {
 			return groups[i].Root.PID < groups[j].Root.PID
 		}
-		return groups[i].Tool < groups[j].Tool
+		return groups[i].Provider < groups[j].Provider
 	})
 	return groups
 }
@@ -60,6 +72,21 @@ func (d *discoverer) emptyFallback(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// providerMarkers are substrings every provider's program or entry point
+// contains. A ps line without one can't match any signature, so its argument
+// list isn't read; this only saves work, it doesn't classify.
+var providerMarkers = []string{"codex", "kimi", "claude", "gemini", "cursor-agent", "opencode", "copilot"}
+
+func mayBeProvider(command string) bool {
+	lower := strings.ToLower(command)
+	for _, marker := range providerMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (d *discoverer) parseProcesses(output string) []ProcessInfo {
@@ -77,25 +104,32 @@ func (d *discoverer) parseProcesses(output string) []ProcessInfo {
 		}
 
 		command := d.sanitizeProcessCommand(strings.Join(fields[4:], " "))
-		tool := d.classifyProcess(command)
-		if tool == "" {
+		if !mayBeProvider(command) {
+			continue
+		}
+		inv := parseInvocation(d.processArgs(pid, command))
+		provider, role, ok := d.classifyProcess(inv)
+		if !ok {
 			continue
 		}
 		processes = append(processes, ProcessInfo{
-			Tool:    tool,
-			PID:     pid,
-			PPID:    ppid,
-			TTY:     d.normalizeTTY(fields[2]),
-			Elapsed: fields[3],
-			Command: command,
+			Provider:   provider,
+			Role:       role,
+			Invocation: inv,
+			Tool:       toolName(provider),
+			PID:        pid,
+			PPID:       ppid,
+			TTY:        d.normalizeTTY(fields[2]),
+			Elapsed:    fields[3],
+			Command:    command,
 		})
 	}
 
 	sort.Slice(processes, func(i, j int) bool {
-		if processes[i].Tool == processes[j].Tool {
+		if processes[i].Provider == processes[j].Provider {
 			return processes[i].PID < processes[j].PID
 		}
-		return processes[i].Tool < processes[j].Tool
+		return processes[i].Provider < processes[j].Provider
 	})
 	return processes
 }
@@ -108,45 +142,25 @@ func (d *discoverer) normalizeTTY(value string) string {
 	return value
 }
 
-func (d *discoverer) classifyProcess(command string) string {
-	lower := strings.ToLower(command)
-	switch {
-	case isFirekeeperCommand(command):
-		// Firekeeper's own subcommands name harnesses in their flags, such
-		// as daemon --provider copilot, but are never agent runtimes.
-		return ""
-	case isMicrosoftTeamsCommand(lower):
-		// Teams helpers name Microsoft 365 Copilot hosts in their flags.
-		return ""
-	case d.isClaudeCodeCommand(command):
-		// Checked first: Claude Code command lines can name other
-		// harnesses in resumed transcript paths.
-		return "Claude"
-	case d.isGeminiCommand(command):
-		// Matched on the executable, so a Gemini model named in another
-		// harness's flags stays with that harness.
-		return "Gemini"
-	case d.isCursorCommand(command):
-		// Matched on the executable before the substring checks below, so
-		// a model such as gpt-5-codex in Cursor CLI's flags stays here.
-		return "Cursor"
-	case strings.Contains(lower, "opencode"):
-		return "OpenCode"
-	case isCopilotDesktopCommand(lower):
-		// The desktop app is not the Copilot CLI and has no CLI session.
-		return ""
-	case isCopilotSDKCommand(lower):
-		// Background SDK runtime spawned by other apps, with no terminal.
-		return ""
-	case strings.Contains(lower, "copilot"):
-		return "Copilot"
-	case strings.Contains(lower, "codex"):
-		return "Codex"
-	case strings.Contains(lower, "kimi"):
-		return "Kimi"
-	default:
-		return ""
+// classifyProcess returns the provider and role of an invocation, from the
+// adapters' signatures, or ok false when no provider matches (most
+// processes: shells, editors). Firekeeper itself, whose subcommands name
+// providers in their flags, and Microsoft Teams, whose helpers name
+// Microsoft 365 Copilot hosts, are excluded first.
+func (d *discoverer) classifyProcess(inv invocation) (provider event.Provider, role Role, ok bool) {
+	switch inv.programName() {
+	case "", "firekeeper", "firekeeper.exe":
+		return "", RoleUnknown, false
 	}
+	if isMicrosoftTeamsCommand(strings.ToLower(strings.Join(inv.Args, " "))) {
+		return "", RoleUnknown, false
+	}
+	for _, a := range adapters {
+		if r, matched := a.Signature().classify(inv); matched {
+			return a.Provider(), r, true
+		}
+	}
+	return "", RoleUnknown, false
 }
 
 func (d *discoverer) sanitizeProcessCommand(command string) string {
@@ -156,40 +170,6 @@ func (d *discoverer) sanitizeProcessCommand(command string) string {
 		}
 		return r
 	}, command)
-}
-
-// isFirekeeperCommand reports whether command runs the firekeeper executable,
-// directly or through the console host the Windows login service starts it
-// with (conhost.exe --headless firekeeper.exe daemon ...).
-func isFirekeeperCommand(command string) bool {
-	fields := commandFields(command)
-	if len(fields) > 0 && strings.EqualFold(baseName(fields[0]), "conhost.exe") {
-		// Drop the host and its flags as text, so a quoted executable path
-		// after them is still read as one field.
-		rest := strings.TrimSpace(command)
-		if strings.HasPrefix(rest, `"`) {
-			end := strings.IndexByte(rest[1:], '"')
-			rest = rest[end+2:]
-		} else if _, after, ok := strings.Cut(rest, " "); ok {
-			rest = after
-		} else {
-			rest = ""
-		}
-		rest = strings.TrimSpace(rest)
-		for strings.HasPrefix(rest, "--") {
-			_, after, _ := strings.Cut(rest, " ")
-			rest = strings.TrimSpace(after)
-		}
-		fields = commandFields(rest)
-	}
-	if len(fields) == 0 {
-		return false
-	}
-	switch strings.ToLower(baseName(fields[0])) {
-	case "firekeeper", "firekeeper.exe":
-		return true
-	}
-	return false
 }
 
 // commandFields splits a process command line into fields. Windows quotes an

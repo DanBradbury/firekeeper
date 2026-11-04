@@ -71,7 +71,6 @@ func TestOpenCodeDatabase(t *testing.T) {
 }
 
 func TestOpenCodeSessionIDFromCommand(t *testing.T) {
-	d := &discoverer{}
 	const id = "ses_ffe9a1b2c3d4Abc123XYZ789"
 	tests := []struct {
 		command string
@@ -93,9 +92,9 @@ func TestOpenCodeSessionIDFromCommand(t *testing.T) {
 		{"codex -s " + id, ""},
 	}
 	for _, tt := range tests {
-		got, ok := d.openCodeSessionIDFromCommand(tt.command)
+		got, ok := (openCodeAdapter{}).SessionID(parseInvocation(fallbackArgs(tt.command)))
 		if got != tt.want || ok != (tt.want != "") {
-			t.Errorf("openCodeSessionIDFromCommand(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
+			t.Errorf("openCodeAdapter.SessionID(%q) = %q, %v; want %q", tt.command, got, ok, tt.want)
 		}
 	}
 }
@@ -193,8 +192,10 @@ func TestDiscoverOpenCodeSessions(t *testing.T) {
 	for _, m := range metas {
 		byPID[m.PID] = m
 	}
-	if len(metas) != 5 || byPID[80].ID != "" {
-		t.Fatalf("got %d runtimes; the background server must not get a session", len(metas))
+	// The background server holds no session (no evidence), so it gets none
+	// and, being empty, isn't emitted at all (invariants 6 and 8).
+	if _, server := byPID[80]; len(metas) != 4 || server {
+		t.Fatalf("got %d runtimes (server emitted: %v); want the 4 sessions and no empty server row", len(metas), server)
 	}
 	tests := []struct {
 		pid   int

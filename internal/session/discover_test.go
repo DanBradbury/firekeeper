@@ -42,6 +42,9 @@ func TestDiscoverFixtureTree(t *testing.T) {
 	fixtureFile(t, filepath.Join(home, "copilot", "session-state", copilotID, "workspace.yaml"), fmt.Sprintf("id: %s\ncwd: %s\nname: fixture\n", copilotID, cwd))
 	fixtureFile(t, filepath.Join(home, "copilot", "session-state", copilotID, "events.jsonl"), "{\"type\":\"assistant.turn_start\",\"data\":{\"model\":\"fixture-model\"}}\nmalformed\n")
 	fixtureFile(t, filepath.Join(home, "kimi", "sessions", "work", "kimi-id", "state.json"), fmt.Sprintf(`{"title":"Kimi fixture","workDir":%q,"updatedAt":"2026-10-07T12:00:00Z"}`, cwd))
+	// The kimi process (etime 00:03) started just before the session was
+	// last updated, so the session is fresh for it.
+	setKimiNow(t, time.Date(2026, 10, 7, 12, 0, 2, 0, time.UTC))
 	fixtureFile(t, filepath.Join(home, "kimi", "sessions", "work", "broken", "state.json"), "{")
 	opts := Options{Home: home, CodexHome: filepath.Join(home, "codex"), CopilotHome: filepath.Join(home, "copilot"), KimiHome: filepath.Join(home, "kimi")}
 	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -239,7 +242,6 @@ func TestMetaReportingContract(t *testing.T) {
 }
 
 func TestClassifyIgnoresFirekeeperProcesses(t *testing.T) {
-	d := &discoverer{}
 	tests := []struct {
 		command string
 		want    string
@@ -249,12 +251,55 @@ func TestClassifyIgnoresFirekeeperProcesses(t *testing.T) {
 		{"firekeeper", ""},
 		{"/tmp/go-build123/b001/exe/firekeeper serve", ""},
 		{"copilot --resume", "Copilot"},
-		{"node /opt/copilot/index.js --log-dir /home/u/firekeeper-logs", "Copilot"},
+		// Step 0 row 3: the fixture names the real npm entry point.
+		{"node /opt/homebrew/lib/node_modules/@github/copilot/index.js --log-dir /home/u/firekeeper-logs", "Copilot"},
+		{"node /opt/copilot/index.js --log-dir /home/u/firekeeper-logs", ""},
 		{"codex resume", "Codex"},
 	}
 	for _, tt := range tests {
-		if got := d.classifyProcess(tt.command); got != tt.want {
-			t.Errorf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+		if got := classifyLine(tt.command); got != tt.want {
+			t.Errorf("classify(%q) = %q, want %q", tt.command, got, tt.want)
+		}
+	}
+}
+
+// Tools are never linked and never emitted (invariants 6 and 8): a Kimi
+// tool in the same directory as a Kimi session neither gets the session nor
+// appears, and a Claude tool doesn't appear.
+func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
+	home := t.TempDir()
+	cwd := filepath.Join(home, "project")
+	sessionDir := filepath.Join(home, "kimi", "sessions", "wd_project_0123456789ab", "session_abc")
+	fixtureFile(t, filepath.Join(sessionDir, "state.json"), fmt.Sprintf(`{"id":"session_abc","cwd":%q,"createdAt":1791460800000,"updatedAt":1791460860000,"title":"Kimi now"}`, cwd))
+	// Session updated at 1791460860000 ms; the kimi process (etime 00:01)
+	// started a second before.
+	setKimiNow(t, time.UnixMilli(1791460860000))
+	var kimiPIDs []string
+	metas, err := Discover(context.Background(), Options{Home: home, KimiHome: filepath.Join(home, "kimi"), ClaudeHome: filepath.Join(home, "claude"), Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte("30 1 ttys001 00:01 kimi\n31 1 ttys002 00:01 kimi export\n32 1 ? 00:01 claude mcp list\n"), nil
+		case "lsof":
+			for i, a := range args {
+				if a == "-p" && i+1 < len(args) && strings.Contains(args[len(args)-4], "cwd") {
+					kimiPIDs = append(kimiPIDs, args[i+1])
+				}
+			}
+			return []byte("p30\nn" + cwd + "\np31\nn" + cwd + "\n"), nil
+		default:
+			return nil, errors.New("not a repository")
+		}
+	}})
+	var warning *Warning
+	if err != nil && !errors.As(err, &warning) {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].PID != 30 || metas[0].ID != "session_abc" {
+		t.Fatalf("metas = %+v, want only the Kimi session 30 linked to session_abc", metas)
+	}
+	for _, pids := range kimiPIDs {
+		if strings.Contains(pids, "31") {
+			t.Fatalf("Kimi's Link looked up the tool's directory: -p %s", pids)
 		}
 	}
 }

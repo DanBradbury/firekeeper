@@ -29,56 +29,6 @@ const (
 // CursorSource is the Source value for Cursor CLI sessions.
 const CursorSource = "Cursor CLI"
 
-// cursorHelperCommands are Cursor CLI subcommands that manage the account or
-// installation rather than run a session.
-var cursorHelperCommands = map[string]bool{
-	"login": true, "logout": true, "status": true, "whoami": true, "update": true,
-	"upgrade": true, "mcp": true, "about": true, "help": true, "create-chat": true,
-	"install-shell-integration": true, "uninstall-shell-integration": true,
-}
-
-// isCursorCommand reports whether command runs a Cursor CLI session. It looks
-// at the executable and script, not substrings, so the Cursor editor and paths
-// such as ~/.cursor in other commands do not match.
-func (d *discoverer) isCursorCommand(command string) bool {
-	args := d.cursorArgs(command)
-	if args == nil {
-		return false
-	}
-	return len(args) == 0 || !cursorHelperCommands[args[0]]
-}
-
-// cursorArgs returns the arguments after the Cursor CLI executable, or nil
-// when command is not Cursor CLI. The installer puts a cursor-agent launcher
-// script (also linked as agent) in ~/.local/bin, which runs a bundled node on
-// index.js under ~/.local/share/cursor-agent/versions/<version>/. The bare
-// name agent is too generic to match on its own, so only the launcher's
-// cursor-agent name and the versioned install directory are recognized.
-func (d *discoverer) cursorArgs(command string) []string {
-	fields := commandFields(command)
-	if len(fields) == 0 {
-		return nil
-	}
-	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
-		return nil
-	}
-	switch strings.ToLower(baseName(fields[0])) {
-	case "cursor-agent", "cursor-agent.exe":
-		return append([]string{}, fields[1:]...)
-	case "node", "node.exe", "bun", "bun.exe", "sh", "bash", "zsh":
-		for i := 1; i < len(fields); i++ {
-			if strings.HasPrefix(fields[i], "-") {
-				continue // interpreter flags such as --use-system-ca
-			}
-			if isCursorScript(fields[i]) {
-				return append([]string{}, fields[i+1:]...)
-			}
-			return nil
-		}
-	}
-	return nil
-}
-
 func isCursorScript(path string) bool {
 	if baseName(path) == "cursor-agent" {
 		return true
@@ -86,10 +36,9 @@ func isCursorScript(path string) bool {
 	return strings.Contains(slashPath(path), "/cursor-agent/versions/")
 }
 
-// cursorSessionIDFromCommand reads the chat id from --resume. Bare --resume,
-// and the resume subcommand, pick the latest chat and name none.
-func (d *discoverer) cursorSessionIDFromCommand(command string) (string, bool) {
-	args := d.cursorArgs(command)
+// cursorSessionIDFromArgs reads the same id from the arguments after the
+// Cursor CLI program or script.
+func (d *discoverer) cursorSessionIDFromArgs(args []string) (string, bool) {
 	for index, field := range args {
 		var value string
 		switch {
@@ -107,19 +56,12 @@ func (d *discoverer) cursorSessionIDFromCommand(command string) (string, bool) {
 	return "", false
 }
 
-func (d *discoverer) cursorSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.cursorSessionIDFromCommand(process.Command); ok {
-			return id, true
-		}
-	}
-	return "", false
-}
-
 func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "Cursor" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if groups[index].Tool == "Cursor" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}
@@ -139,7 +81,7 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	byDir := make(map[string][]int)
 	for _, index := range groupIndexes {
-		if id, ok := d.cursorSessionIDFromGroupCommands(groups[index]); ok {
+		if id, ok := groups[index].explicitSessionID(); ok {
 			ids[index] = id
 			claimed[id] = true
 			continue

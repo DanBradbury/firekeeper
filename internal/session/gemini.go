@@ -30,53 +30,6 @@ const (
 // GeminiSource is the Source value for Gemini CLI sessions.
 const GeminiSource = "Gemini CLI"
 
-// geminiHelperCommands are Gemini CLI subcommands that manage configuration
-// rather than run a session.
-var geminiHelperCommands = map[string]bool{
-	"mcp": true, "extensions": true, "extension": true, "skills": true, "skill": true,
-	"hooks": true, "hook": true, "gemma": true,
-}
-
-// isGeminiCommand reports whether command runs a Gemini CLI session. Like
-// Claude Code, it looks at the executable and script, not substrings, so
-// model names such as gemini-2.5-pro in other harnesses' flags do not match.
-func (d *discoverer) isGeminiCommand(command string) bool {
-	args := d.geminiArgs(command)
-	if args == nil {
-		return false
-	}
-	return len(args) == 0 || !geminiHelperCommands[args[0]]
-}
-
-// geminiArgs returns the arguments after the Gemini CLI executable, or nil
-// when command is not Gemini CLI. The npm package runs as a node script
-// (bin/gemini, bundle/gemini.js, or a path inside @google/gemini-cli), and it
-// relaunches itself as a node child with extra node flags.
-func (d *discoverer) geminiArgs(command string) []string {
-	fields := commandFields(command)
-	if len(fields) == 0 {
-		return nil
-	}
-	if strings.Contains(slashPath(fields[0]), ".app/Contents/") {
-		return nil
-	}
-	switch strings.ToLower(baseName(fields[0])) {
-	case "gemini", "gemini.exe":
-		return append([]string{}, fields[1:]...)
-	case "node", "node.exe", "nodejs", "bun", "bun.exe":
-		for i := 1; i < len(fields); i++ {
-			if strings.HasPrefix(fields[i], "-") {
-				continue // node flags such as --max-old-space-size=8192
-			}
-			if isGeminiScript(fields[i]) {
-				return append([]string{}, fields[i+1:]...)
-			}
-			return nil
-		}
-	}
-	return nil
-}
-
 func isGeminiScript(path string) bool {
 	switch baseName(path) {
 	case "gemini", "gemini.js", "gemini.mjs":
@@ -85,11 +38,9 @@ func isGeminiScript(path string) bool {
 	return strings.Contains(slashPath(path), "/@google/gemini-cli/")
 }
 
-// geminiSessionIDFromCommand reads an explicit session id from --session-id,
-// or from --resume when it names a session id rather than "latest" or a list
-// index.
-func (d *discoverer) geminiSessionIDFromCommand(command string) (string, bool) {
-	args := d.geminiArgs(command)
+// geminiSessionIDFromArgs reads the same ids from the arguments after the
+// Gemini CLI program or script.
+func (d *discoverer) geminiSessionIDFromArgs(args []string) (string, bool) {
 	value := func(index int, field, flag string) (string, bool) {
 		if strings.HasPrefix(field, flag+"=") {
 			return strings.Trim(strings.TrimPrefix(field, flag+"="), "'\""), true
@@ -107,15 +58,6 @@ func (d *discoverer) geminiSessionIDFromCommand(command string) (string, bool) {
 			if v, ok := value(index, field, flag); ok && d.validUUID(v) {
 				return v, true
 			}
-		}
-	}
-	return "", false
-}
-
-func (d *discoverer) geminiSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.geminiSessionIDFromCommand(process.Command); ok {
-			return id, true
 		}
 	}
 	return "", false
@@ -142,7 +84,9 @@ func ValidGeminiSessionID(id string) bool {
 func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "Gemini" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if groups[index].Tool == "Gemini" && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}
@@ -160,7 +104,7 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	claimed := make(map[string]bool)
 	var unmapped []int
 	for _, index := range groupIndexes {
-		if id, ok := d.geminiSessionIDFromGroupCommands(groups[index]); ok {
+		if id, ok := groups[index].explicitSessionID(); ok {
 			if path := FindGeminiTranscript(dirs, id); path != "" {
 				paths[index] = path
 				claimed[path] = true

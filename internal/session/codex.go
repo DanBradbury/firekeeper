@@ -40,12 +40,27 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			}
 		}
 	}
+	// Explicit ids (codex resume <UUID>) win: that group gets exactly that
+	// thread, whatever it holds, and is never given a guess.
+	explicit := make(map[int]string)
+	for _, group := range groups {
+		if id, ok := group.explicitSessionID(); ok && group.Tool == "Codex" {
+			explicit[group.Root.PID] = id
+			threadIDs[id] = true
+		}
+	}
 	// Recent Codex builds keep no rollout open in the TUI process: an
-	// app-server holds the thread, so match the remaining runtimes by cwd.
-	unmatched := d.unmatchedCodexGroups(groups, rollouts)
+	// app-server holds the thread, so session groups are matched by cwd to
+	// the threads Codex processes hold. A server keeps only the threads its
+	// own processes hold (evidence). Where open files can't be listed,
+	// recent threads stand in, and servers are matched by cwd after the
+	// session groups (the Windows exception, invariant 8).
+	unmatched := d.unmatchedCodexGroups(groups, rollouts, explicit)
+	servers := emptyCodexServers(groups, rollouts)
 	candidates := make(map[string]bool)
-	if len(unmatched) > 0 {
-		candidates = d.discoverHeldCodexThreads(groups)
+	var heldBy map[int]map[string]bool
+	if len(unmatched) > 0 || len(servers) > 0 {
+		candidates, heldBy = d.discoverHeldCodexThreads(groups)
 		if len(candidates) == 0 && !openFilesListable {
 			candidates = d.discoverRecentCodexThreads()
 		}
@@ -61,7 +76,11 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	if err != nil {
 		return err
 	}
+	applyExplicitCodexThreads(groups, explicit, metadata, rollouts)
 	d.matchCodexGroupsByCWD(groups, unmatched, candidates, metadata, rollouts)
+	if openFilesListable {
+		d.giveCodexServersHeldThreads(groups, servers, heldBy, metadata, rollouts)
+	}
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
 		if group.Tool != "Codex" {
@@ -215,16 +234,38 @@ func orderSubagentsUnderParents(sessions []Info) []Info {
 	return out
 }
 
-// unmatchedCodexGroups returns the Codex groups with no open rollout file,
-// runtimes with a terminal first so a CLI wins over a background server.
-func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[int][]string) []ProcessGroup {
+// unmatchedCodexGroups returns the Codex groups that may be given a thread by
+// working directory: session groups with no open rollout file and no
+// explicit id (invariant 8), and, only where open files can't be listed,
+// servers too, after every session group (the Windows exception). Within a
+// role, runtimes with a terminal come first.
+func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[int][]string, explicit map[int]string) []ProcessGroup {
 	var unmatched []ProcessGroup
 	for _, group := range groups {
-		if group.Tool == "Codex" && len(rollouts[group.Root.PID]) == 0 {
-			unmatched = append(unmatched, group)
+		if group.Tool != "Codex" || len(rollouts[group.Root.PID]) != 0 {
+			continue
 		}
+		if _, ok := explicit[group.Root.PID]; ok {
+			continue
+		}
+		switch group.Role {
+		case RoleSession:
+		case RoleServer:
+			if openFilesListable {
+				continue // servers never guess where evidence can be read
+			}
+		case RoleTool, RoleUnknown:
+			continue
+		default:
+			continue
+		}
+		unmatched = append(unmatched, group)
 	}
 	sort.SliceStable(unmatched, func(i, j int) bool {
+		iSession, jSession := unmatched[i].Role == RoleSession, unmatched[j].Role == RoleSession
+		if iSession != jSession {
+			return iSession
+		}
 		iTTY, jTTY := unmatched[i].Root.TTY != "", unmatched[j].Root.TTY != ""
 		if iTTY != jTTY {
 			return iTTY
@@ -234,9 +275,105 @@ func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[in
 	return unmatched
 }
 
+// emptyCodexServers returns the Codex server groups whose root holds no
+// rollout file. Their evidence is the threads their processes hold.
+func emptyCodexServers(groups []ProcessGroup, rollouts map[int][]string) []ProcessGroup {
+	var servers []ProcessGroup
+	for _, group := range groups {
+		if group.Tool == "Codex" && group.Role == RoleServer && len(rollouts[group.Root.PID]) == 0 {
+			servers = append(servers, group)
+		}
+	}
+	return servers
+}
+
+// codexServerPIDs returns the root PIDs of the Codex server groups.
+func codexServerPIDs(groups []ProcessGroup) map[int]bool {
+	servers := make(map[int]bool)
+	for _, group := range groups {
+		if group.Tool == "Codex" && group.Role == RoleServer {
+			servers[group.Root.PID] = true
+		}
+	}
+	return servers
+}
+
+// removeCodexThread takes thread id off every server's rollouts: a session
+// group claimed it, so it is not the server's unclaimed session.
+func removeCodexThread(rollouts map[int][]string, servers map[int]bool, id string) {
+	for pid := range servers {
+		rollouts[pid] = slices.DeleteFunc(rollouts[pid], func(path string) bool {
+			held, ok := standalone().threadIDFromRolloutPath(path)
+			return ok && held == id
+		})
+	}
+}
+
+// applyExplicitCodexThreads gives each group with an explicit id exactly
+// that thread. An id with no known thread (a typo, a deleted or another
+// machine's session) leaves the group unlinked, with no fallback guess. Two
+// groups naming the same id both get it. Servers lose the thread: a session
+// group claimed it.
+func applyExplicitCodexThreads(groups []ProcessGroup, explicit map[int]string, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+	servers := codexServerPIDs(groups)
+	for pid, id := range explicit {
+		rollouts[pid] = nil
+		if row, ok := metadata[id]; ok && row.RolloutPath != "" {
+			rollouts[pid] = []string{row.RolloutPath}
+		}
+		removeCodexThread(rollouts, servers, id)
+	}
+}
+
+// giveCodexServersHeldThreads gives each server group with no rollout of its
+// own the threads its processes hold open (rollout files or thread-writer
+// locks), except threads a session group already has: evidence, never a
+// guess (invariant 8).
+func (d *discoverer) giveCodexServersHeldThreads(groups, servers []ProcessGroup, heldBy map[int]map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
+	if len(servers) == 0 {
+		return
+	}
+	serverPIDs := codexServerPIDs(groups)
+	claimed := make(map[string]bool)
+	for pid, paths := range rollouts {
+		if serverPIDs[pid] {
+			continue
+		}
+		for _, path := range paths {
+			if id, ok := d.threadIDFromRolloutPath(path); ok {
+				claimed[id] = true
+			}
+		}
+	}
+	for _, server := range servers {
+		held := make(map[string]bool)
+		for _, process := range server.Processes {
+			for id := range heldBy[process.PID] {
+				held[id] = true
+			}
+		}
+		ids := make([]string, 0, len(held))
+		for id := range held {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			row, ok := metadata[id]
+			if !ok || claimed[id] || row.RolloutPath == "" || slices.Contains(rollouts[server.Root.PID], row.RolloutPath) {
+				continue
+			}
+			if pathID, ok := d.threadIDFromRolloutPath(row.RolloutPath); ok && claimed[pathID] {
+				continue
+			}
+			rollouts[server.Root.PID] = append(rollouts[server.Root.PID], row.RolloutPath)
+		}
+	}
+}
+
 // discoverHeldCodexThreads returns the thread IDs that any Codex process
-// holds open, either as a rollout file or as a thread-writer lock.
-func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) map[string]bool {
+// holds open, either as a rollout file or as a thread-writer lock, and the
+// same ids by the PID holding them.
+func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) (map[string]bool, map[int]map[string]bool) {
 	var pids []string
 	for _, group := range groups {
 		if group.Tool != "Codex" {
@@ -247,11 +384,17 @@ func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) map[string]
 		}
 	}
 	held := make(map[string]bool)
+	byPID := make(map[int]map[string]bool)
 	if len(pids) == 0 {
-		return held
+		return held, byPID
 	}
 	output, _ := d.command("lsof", "-Fn", "-p", strings.Join(pids, ",")).Output()
+	currentPID := 0
 	for _, line := range strings.Split(string(output), "\n") {
+		if len(line) >= 2 && line[0] == 'p' {
+			currentPID, _ = strconv.Atoi(line[1:])
+			continue
+		}
 		if len(line) < 2 || line[0] != 'n' {
 			continue
 		}
@@ -265,9 +408,15 @@ func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) map[string]
 		}
 		if id, ok := d.threadIDFromRolloutPath(path); ok {
 			held[id] = true
+			if currentPID != 0 {
+				if byPID[currentPID] == nil {
+					byPID[currentPID] = make(map[string]bool)
+				}
+				byPID[currentPID][id] = true
+			}
 		}
 	}
-	return held
+	return held, byPID
 }
 
 // openFilesListable reports whether discovery can list the files a process
@@ -319,12 +468,7 @@ func (d *discoverer) discoverRecentCodexThreads() map[string]bool {
 // stay claimable: the CLI with a terminal takes its thread from the server,
 // so switching goes to the terminal that runs it.
 func (d *discoverer) matchCodexGroupsByCWD(groups, unmatched []ProcessGroup, candidates map[string]bool, metadata map[string]ThreadMetadataRow, rollouts map[int][]string) {
-	serverPIDs := make(map[int]bool)
-	for _, group := range groups {
-		if group.Tool == "Codex" && group.Root.TTY == "" {
-			serverPIDs[group.Root.PID] = true
-		}
-	}
+	serverPIDs := codexServerPIDs(groups)
 	claimed := make(map[string]bool)
 	for pid, paths := range rollouts {
 		if serverPIDs[pid] {
@@ -355,13 +499,12 @@ func (d *discoverer) matchCodexGroupsByCWD(groups, unmatched []ProcessGroup, can
 			continue
 		}
 		claimed[best.ID] = true
-		if group.Root.TTY != "" {
-			for pid := range serverPIDs {
-				rollouts[pid] = slices.DeleteFunc(rollouts[pid], func(path string) bool {
-					id, ok := d.threadIDFromRolloutPath(path)
-					return ok && id == best.ID
-				})
-			}
+		// A claim by a session group takes the thread off the servers that
+		// hold it, so it isn't also shown as a server's session (invariant
+		// 6). The condition is the role, not a terminal: codex exec run by
+		// a script is a session too.
+		if group.Role == RoleSession {
+			removeCodexThread(rollouts, serverPIDs, best.ID)
 		}
 		rollouts[group.Root.PID] = append(rollouts[group.Root.PID], best.RolloutPath)
 	}

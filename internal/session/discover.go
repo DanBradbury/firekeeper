@@ -35,6 +35,10 @@ type Options struct {
 	// CURSOR_CONFIG_DIR or ~/.cursor.
 	CursorDir string
 	Run       func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Args overrides reading a process's argument list from the operating
+	// system, for tests. When it is nil and Run is set, arguments are split
+	// from the ps command line, so fixture runs never read live processes.
+	Args func(pid int) ([]string, error)
 }
 
 // Meta describes one observable session. Runtimes without metadata have an
@@ -145,12 +149,31 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	}
 	groups := d.groupProcesses(d.parseProcesses(string(output)))
 	var warnings []string
-	for _, p := range []struct {
-		name   string
-		enrich func([]ProcessGroup) error
-	}{{"Codex", d.enrichCodexSessions}, {"Copilot", d.enrichCopilotSessions}, {"Kimi", d.enrichKimiSessions}, {"Claude", d.enrichClaudeSessions}, {"OpenCode", d.enrichOpenCodeSessions}, {"Gemini", d.enrichGeminiSessions}, {"Cursor", d.enrichCursorSessions}} {
-		if err := p.enrich(groups); err != nil {
-			warnings = append(warnings, p.name+": "+d.sanitizeProcessCommand(err.Error()))
+	for _, a := range adapters {
+		var own []*ProcessGroup
+		for i := range groups {
+			g := &groups[i]
+			if g.Provider != a.Provider() {
+				continue // another provider's group (step 4)
+			}
+			link, explicit := linkRole(g.Role)
+			if !link {
+				continue
+			}
+			if explicit {
+				// Explicit ids first, the same way for every provider: Link
+				// gives the group exactly that session (step 7).
+				if id, ok := a.SessionID(g.Root.Invocation); ok {
+					g.explicitID = id
+				}
+			}
+			own = append(own, g)
+		}
+		if len(own) == 0 {
+			continue
+		}
+		if err := a.Link(d, own); err != nil {
+			warnings = append(warnings, toolName(a.Provider())+": "+d.sanitizeProcessCommand(err.Error()))
 		}
 	}
 	machine, err := machineID(opts.Home)
@@ -160,6 +183,9 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	var metas []Meta
 	projects := make(map[string]string)
 	for _, g := range groups {
+		if !emitted(g) {
+			continue
+		}
 		sessions := g.Sessions
 		if len(sessions) == 0 {
 			sessions = []Info{{}}
@@ -282,4 +308,39 @@ func optionalTime(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// emitted applies the output rule (invariant 6) to a linked group: session
+// groups always, linked or not; server groups only while they hold a session
+// no session group claimed (claimed ones were removed during linking), so
+// there are no empty server rows; tool groups and groups whose role was
+// never set, never.
+func emitted(g ProcessGroup) bool {
+	switch g.Role {
+	case RoleSession:
+		return true
+	case RoleServer:
+		return len(g.Sessions) > 0
+	case RoleTool, RoleUnknown:
+		return false
+	default:
+		return false
+	}
+}
+
+// linkRole says whether Discover passes a group with role r to its adapter's
+// Link, and whether it reads the group's explicit session id first: session
+// groups both; servers are linked from evidence only (invariant 8); tools and
+// unset roles never.
+func linkRole(r Role) (link, explicit bool) {
+	switch r {
+	case RoleSession:
+		return true, true
+	case RoleServer:
+		return true, false
+	case RoleTool, RoleUnknown:
+		return false, false
+	default:
+		return false, false
+	}
 }

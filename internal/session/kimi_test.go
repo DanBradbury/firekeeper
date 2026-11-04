@@ -57,7 +57,9 @@ func TestEnrichKimiSessionsCurrentStateLayout(t *testing.T) {
 		}
 		return []byte("p30\nn" + cwd + "\n"), nil
 	}}}
-	groups := []ProcessGroup{{Tool: "Kimi", Root: ProcessInfo{PID: 30}}}
+	// The process started 30 s before the newest session's last update.
+	setKimiNow(t, time.UnixMilli(1791460860000).Add(10*time.Second))
+	groups := []ProcessGroup{{Tool: "Kimi", Role: RoleSession, Root: ProcessInfo{PID: 30, Elapsed: "00:40"}}}
 	if err := d.enrichKimiSessions(groups); err != nil {
 		t.Fatal(err)
 	}

@@ -12,7 +12,6 @@ import (
 // platform: classification is string matching and must not depend on the
 // separator of the machine running the tests.
 func TestClassifyWindowsCommandLines(t *testing.T) {
-	d := &discoverer{}
 	tests := []struct {
 		name    string
 		command string
@@ -21,7 +20,7 @@ func TestClassifyWindowsCommandLines(t *testing.T) {
 		{"claude native", `C:\Users\me\.local\bin\claude.exe --resume`, "Claude"},
 		{"claude native quoted path", `"C:\Users\me dev\.local\bin\claude.exe" --model opus`, "Claude"},
 		{"claude via node", `"C:\Program Files\nodejs\node.exe" C:\Users\me\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\cli.js`, "Claude"},
-		{"claude helper subcommand", `C:\Users\me\.local\bin\claude.exe mcp serve`, ""},
+		{"claude helper subcommand", `C:\Users\me\.local\bin\claude.exe mcp serve`, "Claude/server"},
 		{"claude desktop squirrel", `C:\Users\me\AppData\Local\AnthropicClaude\app-0.9.0\claude.exe`, ""},
 		{"claude desktop msix", `"C:\Program Files\WindowsApps\Claude_1.0.0.0_x64__abc\app\Claude.exe"`, ""},
 		{"claude desktop helper", `C:\Users\me\AppData\Local\somewhere\claude.exe --type=renderer --lang=en-US`, ""},
@@ -45,8 +44,8 @@ func TestClassifyWindowsCommandLines(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := d.classifyProcess(tt.command); got != tt.want {
-				t.Fatalf("classifyProcess(%q) = %q, want %q", tt.command, got, tt.want)
+			if got := classifyLine(tt.command); got != tt.want {
+				t.Fatalf("classify(%q) = %q, want %q", tt.command, got, tt.want)
 			}
 		})
 	}

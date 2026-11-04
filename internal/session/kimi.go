@@ -6,14 +6,37 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
+// kimiTolerance allows for ps reporting elapsed time in whole seconds and
+// for the gap between a process starting and Kimi Code writing its session.
+const kimiTolerance = 5 * time.Second
+
+// kimiNow is the clock Kimi linking compares process start times with.
+// Tests replace it.
+var kimiNow = time.Now
+
+// enrichKimiSessions links Kimi Code session groups by working directory
+// (a guess; Kimi Code keeps no session file open that Firekeeper reads yet).
+// Servers (acp, web) get nothing without evidence (invariant 8); tools never
+// reach Link. Within a directory each session is claimed once:
+//   - kimi -c links the newest session that existed when the process started,
+//     Kimi's documented rule for --continue, even if it was last updated
+//     before then;
+//   - plain kimi and kimi -p link only a session updated after the process
+//     started, newest process first, so a week-old session isn't shown as
+//     ACTIVE; a process whose start time can't be read is left unlinked.
+//
+// -c processes are placed first, so a newer plain kimi in the same
+// directory isn't handed the session -c resumed.
 func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 	var pids []string
 	for _, group := range groups {
-		if group.Tool == "Kimi" {
+		if group.Tool == "Kimi" && group.Role == RoleSession {
 			pids = append(pids, fmt.Sprint(group.Root.PID))
 		}
 	}
@@ -36,34 +59,99 @@ func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 			}
 		}
 	}
-	latest, err := d.latestKimiSessions(filepath.Join(home, "sessions"))
+	byDir, err := d.kimiSessionsByDir(filepath.Join(home, "sessions"))
 	if err != nil {
 		return err
 	}
+	now := kimiNow()
+	type runtime struct {
+		index     int
+		started   time.Time
+		known     bool
+		continue_ bool
+	}
+	perDir := make(map[string][]runtime)
 	for index := range groups {
-		if groups[index].Tool != "Kimi" {
+		group := groups[index]
+		if group.Tool != "Kimi" || group.Role != RoleSession {
 			continue
 		}
-		state, ok := latest[workDirs[groups[index].Root.PID]]
-		if !ok {
+		dir := workDirs[group.Root.PID]
+		if dir == "" {
 			continue
 		}
-		sessionDir := filepath.Dir(state.Path)
-		var rollout string
-		if wire := KimiWirePath(sessionDir); fileExists(wire) {
-			rollout = wire
+		elapsed, known := parseElapsed(group.Root.Elapsed)
+		perDir[dir] = append(perDir[dir], runtime{
+			index:     index,
+			started:   now.Add(-elapsed),
+			known:     known,
+			continue_: hasFlag(group.Root.Invocation.Rest, kimiSignature.flags, "-c", "--continue"),
+		})
+	}
+	for dir, runtimes := range perDir {
+		sort.SliceStable(runtimes, func(i, j int) bool {
+			if runtimes[i].continue_ != runtimes[j].continue_ {
+				return runtimes[i].continue_
+			}
+			return runtimes[i].started.After(runtimes[j].started)
+		})
+		candidates := byDir[dir] // newest first
+		claimed := make(map[string]bool)
+		for _, rt := range runtimes {
+			if !rt.known {
+				continue
+			}
+			for _, candidate := range candidates {
+				if claimed[candidate.Path] {
+					continue
+				}
+				if rt.continue_ {
+					if candidate.CreatedAt.After(rt.started.Add(kimiTolerance)) {
+						continue // created after this process started
+					}
+				} else if candidate.UpdatedAt.Before(rt.started.Add(-kimiTolerance)) {
+					continue // not touched since this process started
+				}
+				claimed[candidate.Path] = true
+				groups[rt.index].Sessions = []Info{d.kimiInfo(candidate)}
+				break
+			}
 		}
-		groups[index].Sessions = []Info{{
-			ID: filepath.Base(sessionDir), Name: d.emptyFallback(d.sanitizeProcessCommand(state.Title), "Kimi Code"), State: SessionStateActive,
-			CWD: d.sanitizeProcessCommand(state.WorkDir), Model: d.sanitizeProcessCommand(state.Model), Source: "Kimi Code", StartedAt: state.CreatedAt, UpdatedAt: state.UpdatedAt,
-			RolloutPath: rollout,
-		}}
 	}
 	return nil
 }
 
+func (d *discoverer) kimiInfo(state KimiLatestSession) Info {
+	sessionDir := filepath.Dir(state.Path)
+	var rollout string
+	if wire := KimiWirePath(sessionDir); fileExists(wire) {
+		rollout = wire
+	}
+	return Info{
+		ID: filepath.Base(sessionDir), Name: d.emptyFallback(d.sanitizeProcessCommand(state.Title), "Kimi Code"), State: SessionStateActive,
+		CWD: d.sanitizeProcessCommand(state.WorkDir), Model: d.sanitizeProcessCommand(state.Model), Source: "Kimi Code", StartedAt: state.CreatedAt, UpdatedAt: state.UpdatedAt,
+		RolloutPath: rollout,
+	}
+}
+
+// latestKimiSessions returns the most recently updated session per working
+// directory.
 func (d *discoverer) latestKimiSessions(root string) (map[string]KimiLatestSession, error) {
-	result := make(map[string]KimiLatestSession)
+	byDir, err := d.kimiSessionsByDir(root)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]KimiLatestSession, len(byDir))
+	for dir, sessions := range byDir {
+		result[dir] = sessions[0]
+	}
+	return result, nil
+}
+
+// kimiSessionsByDir returns every session per working directory, most
+// recently updated first.
+func (d *discoverer) kimiSessionsByDir(root string) (map[string][]KimiLatestSession, error) {
+	result := make(map[string][]KimiLatestSession)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("read Kimi sessions: %w", err)
@@ -87,13 +175,43 @@ func (d *discoverer) latestKimiSessions(root string) (map[string]KimiLatestSessi
 			if json.Unmarshal(body, &state) != nil || state.WorkDir == "" {
 				continue
 			}
-			candidate := KimiLatestSession{KimiSessionState: state, Model: "", Path: path}
-			if previous, ok := result[state.WorkDir]; !ok || candidate.UpdatedAt.After(previous.UpdatedAt) {
-				result[state.WorkDir] = candidate
-			}
+			result[state.WorkDir] = append(result[state.WorkDir], KimiLatestSession{KimiSessionState: state, Path: path})
 		}
 	}
+	for _, sessions := range result {
+		sort.SliceStable(sessions, func(i, j int) bool {
+			if !sessions[i].UpdatedAt.Equal(sessions[j].UpdatedAt) {
+				return sessions[i].UpdatedAt.After(sessions[j].UpdatedAt)
+			}
+			return sessions[i].Path < sessions[j].Path
+		})
+	}
 	return result, nil
+}
+
+// parseElapsed reads ps's etime column, [[dd-]hh:]mm:ss.
+func parseElapsed(value string) (time.Duration, bool) {
+	days := 0
+	if before, after, ok := strings.Cut(value, "-"); ok {
+		n, err := strconv.Atoi(before)
+		if err != nil || n < 0 {
+			return 0, false
+		}
+		days, value = n, after
+	}
+	parts := strings.Split(value, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, false
+	}
+	total := 0
+	for _, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 || n >= 60 && part != parts[0] {
+			return 0, false
+		}
+		total = total*60 + n
+	}
+	return time.Duration(days)*24*time.Hour + time.Duration(total)*time.Second, true
 }
 
 func (d *discoverer) kimiHome() (string, error) {

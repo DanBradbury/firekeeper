@@ -551,6 +551,10 @@ func dashGroupDetail(group processGroup, width int) []string {
 			message = "no Gemini CLI session log found"
 		case "Cursor":
 			message = "no Cursor CLI transcript found"
+		case "Claude":
+			message = "no Claude Code transcript found"
+		case "OpenCode":
+			message = "no OpenCode session found"
 		}
 		lines = append(lines,
 			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(toolLabel(group.tool), dashToolColor(group.tool), true)+

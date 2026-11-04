@@ -3,29 +3,23 @@
 package session
 
 import (
-	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/DanBradbury/firekeeper/pkg/event"
 )
 
-// The scan needs BSD or Linux ps, hence the build constraint.
+// The scan needs BSD or Linux ps, hence the build constraint. A stand-in
+// Copilot process in a long installation path keeps its whole command line
+// and session id through ps and the real argument list.
 func TestDiscoverProcessesPreservesLongCopilotCommand(t *testing.T) {
-	bash := testenv.NeedTool(t, "bash")
 	t.Setenv("COLUMNS", "80")
-	command := "node /opt/" + strings.Repeat("long-installation-path/", 12) + "@github/copilot/index.js --resume=" + testCopilotSessionID
-	child := exec.Command(bash, "-c", `exec -a "$1" sleep 60`, "firekeeper-test", command)
-	if err := child.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = child.Process.Kill()
-		_ = child.Wait()
-	}()
+	dir := filepath.Join(t.TempDir(), strings.Repeat("long-installation-path/", 12), "bin")
+	child := startHelper(t, dir, "copilot", "--resume="+testCopilotSessionID)
+	want := filepath.Join(dir, "copilot") + " --resume=" + testCopilotSessionID
 	d := standalone()
-	// Wait for bash to replace itself with the synthetic runtime.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		output, err := d.discoverProcesses()
@@ -33,7 +27,10 @@ func TestDiscoverProcessesPreservesLongCopilotCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, process := range d.parseProcesses(string(output)) {
-			if process.PID == child.Process.Pid && process.Tool == "Copilot" && process.Command == command+" 60" {
+			if process.PID == child.Process.Pid && process.Provider == event.ProviderCopilot && process.Command == want {
+				if id, ok := (copilotAdapter{}).SessionID(process.Invocation); !ok || id != testCopilotSessionID {
+					t.Fatalf("session id = %q, %v", id, ok)
+				}
 				return
 			}
 		}

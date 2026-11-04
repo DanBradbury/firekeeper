@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,16 +71,14 @@ func TestProcessRefreshRetainsClaudeMetadata(t *testing.T) {
 	}
 }
 
-func TestProcessRefreshDropsUnidentifiedCodexGroups(t *testing.T) {
+// The dashboard shows exactly what Discover emits: an unlinked session is
+// shown with its "not found" message (decision 4); hiding helpers and empty
+// servers is Discover's job, by role, for every provider.
+func TestProcessRefreshShowsUnlinkedSessions(t *testing.T) {
 	m := testModel()
 	updated, _ := m.Update(processResultMsg{
 		groups: []processGroup{
-			{
-				tool: "Codex",
-				// A helper, which is hidden on every platform; an unmatched
-				// interactive CLI is kept on Windows only.
-				root: processInfo{pid: 101, tty: "ttys001", command: "codex app-server --listen unix://"},
-			},
+			{tool: "Codex", root: processInfo{pid: 101, tty: "ttys001", command: "codex"}},
 			{
 				tool: "Codex",
 				root: processInfo{pid: 202, tty: "ttys002", command: "codex"},
@@ -97,14 +94,31 @@ func TestProcessRefreshDropsUnidentifiedCodexGroups(t *testing.T) {
 	})
 	m = updated.(model)
 
-	if len(m.processGroups) != 2 {
-		t.Fatalf("visible process groups = %d, want 2", len(m.processGroups))
+	if len(m.processGroups) != 3 {
+		t.Fatalf("visible process groups = %d, want 3", len(m.processGroups))
 	}
-	if m.processGroups[0].root.pid != 202 || m.processGroups[0].sessions[0].name != "Known Codex session" {
-		t.Fatalf("identified Codex group was not preserved: %#v", m.processGroups[0])
+	if m.processGroups[0].root.pid != 101 || len(m.processGroups[0].sessions) != 0 {
+		t.Fatalf("unlinked Codex session was not shown: %#v", m.processGroups[0])
 	}
-	if m.processGroups[1].tool != "OpenCode" {
-		t.Fatalf("process-only provider was dropped: %#v", m.processGroups[1])
+	if m.processGroups[1].root.pid != 202 || m.processGroups[1].sessions[0].name != "Known Codex session" {
+		t.Fatalf("identified Codex group was not preserved: %#v", m.processGroups[1])
+	}
+	if m.processGroups[2].tool != "OpenCode" {
+		t.Fatalf("process-only provider was dropped: %#v", m.processGroups[2])
+	}
+}
+
+func TestUnlinkedSessionMessages(t *testing.T) {
+	for tool, want := range map[string]string{
+		"Codex": "no Codex rollout metadata found", "Claude": "no Claude Code transcript found",
+		"OpenCode": "no OpenCode session found", "Kimi": "no Kimi session metadata found",
+		"Copilot": "no Copilot session metadata found", "Gemini": "no Gemini CLI session log found",
+		"Cursor": "no Cursor CLI transcript found", "Other": "no session metadata adapter",
+	} {
+		lines := dashGroupDetail(processGroup{tool: tool, root: processInfo{pid: 1}}, 1000)
+		if len(lines) == 0 || !strings.Contains(ansi.Strip(lines[0]), want) {
+			t.Errorf("%s message = %q, want %q", tool, lines, want)
+		}
 	}
 }
 
@@ -457,7 +471,7 @@ func TestRetainKnownSessionMetadataExpiresAfterGrace(t *testing.T) {
 		}
 	}
 	groups, misses = retainKnownSessionMetadata(groups, empty(), misses)
-	if len(groups[0].sessions) != 0 || len(filterUnidentifiedCodexGroups(groups)) != 0 {
+	if len(groups[0].sessions) != 0 {
 		t.Fatal("closed Codex session must disappear after the grace period")
 	}
 	if len(misses) != 0 {
@@ -494,6 +508,8 @@ func TestRetainKnownSessionMetadataSkipsChangedRuntime(t *testing.T) {
 	}
 }
 
+// When a server's only session closes, Discover stops emitting the empty
+// server (invariant 6), so its row goes away.
 func TestProcessRefreshDropsClosedCodexSession(t *testing.T) {
 	m := testModel()
 	root := processInfo{pid: 100, command: "codex app-server"}
@@ -501,38 +517,9 @@ func TestProcessRefreshDropsClosedCodexSession(t *testing.T) {
 		{tool: "Codex", root: root, processes: []processInfo{root}, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}},
 	}})
 	m = updated.(model)
-	for refresh := 0; refresh <= sessionMetadataGraceRefreshes; refresh++ {
-		updated, _ = m.Update(processResultMsg{refreshed: time.Now(), groups: []processGroup{
-			{tool: "Codex", root: root, processes: []processInfo{root}},
-		}})
-		m = updated.(model)
-	}
+	updated, _ = m.Update(processResultMsg{refreshed: time.Now()})
+	m = updated.(model)
 	if len(m.processGroups) != 0 {
 		t.Fatalf("closed Codex session still listed: %d runtimes", len(m.processGroups))
-	}
-}
-
-func TestFilterUnidentifiedCodexGroupsOnWindows(t *testing.T) {
-	cli := processGroup{tool: "Codex", root: processInfo{pid: 1, command: `"C:\Program Files\nodejs\node.exe" C:\npm\node_modules\@openai\codex\bin\codex.js`}}
-	server := processGroup{tool: "Codex", root: processInfo{pid: 2, command: `C:\npm\node_modules\@openai\codex\vendor\codex.exe app-server --listen stdio://`}}
-	desktop := processGroup{tool: "Codex", root: processInfo{pid: 3, command: `"C:\Program Files\WindowsApps\OpenAI.Codex_1.0_x64\app\Codex.exe" --type=renderer`}}
-	matched := processGroup{tool: "Codex", root: processInfo{pid: 4, command: "codex"}, sessions: []sessionInfo{{id: "s"}}}
-	other := processGroup{tool: "Claude", root: processInfo{pid: 5, command: "claude"}}
-	groups := []processGroup{cli, server, desktop, matched, other}
-
-	pids := func(gs []processGroup) []int {
-		var out []int
-		for _, g := range gs {
-			out = append(out, g.root.pid)
-		}
-		return out
-	}
-	// Elsewhere an unmatched Codex runtime is a desktop helper and is hidden.
-	if got := pids(filterUnidentifiedCodexGroupsFor("darwin", groups)); !slices.Equal(got, []int{4, 5}) {
-		t.Errorf("darwin kept %v, want [4 5]", got)
-	}
-	// On Windows the interactive CLI stays even when no session matched.
-	if got := pids(filterUnidentifiedCodexGroupsFor("windows", groups)); !slices.Equal(got, []int{1, 4, 5}) {
-		t.Errorf("windows kept %v, want [1 4 5]", got)
 	}
 }

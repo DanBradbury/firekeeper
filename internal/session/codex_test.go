@@ -13,6 +13,9 @@ import (
 // app-server holds the thread-writer locks instead. The CLI must still get
 // its session, matched by working directory.
 func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
+	// The fake lsof lists held locks, so open files must be listable (on
+	// Windows they are not; linking_test covers that path).
+	setOpenFilesListable(t, true)
 	home := t.TempDir()
 	codexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(codexHome, 0o755); err != nil {
@@ -62,8 +65,11 @@ func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
 				t.Errorf("CLI sessions = %+v, want thread %s", group.Sessions, threadB)
 			}
 		case 200:
-			if len(group.Sessions) != 0 {
-				t.Errorf("app-server sessions = %+v, want none", group.Sessions)
+			// The server holds thread A's lock and no session group claimed
+			// A, so the server keeps it (evidence; invariants 6 and 8). B is
+			// the CLI's, so the server doesn't show it too.
+			if len(group.Sessions) != 1 || group.Sessions[0].ID != threadA {
+				t.Errorf("app-server sessions = %+v, want only the unclaimed thread %s", group.Sessions, threadA)
 			}
 		}
 	}

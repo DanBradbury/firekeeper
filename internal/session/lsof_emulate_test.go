@@ -58,7 +58,7 @@ func TestFormatElapsedMatchesPS(t *testing.T) {
 }
 
 func TestPSLineParsesLikePS(t *testing.T) {
-	d := standalone()
+	d := fixtureDiscoverer()
 	line := psLine(4242, 100, 90*time.Second, "\"C:\\Program Files\\nodejs\\node.exe\" C:\\npm\\node_modules\\@openai\\codex\\bin\\codex.js\r\n --model gpt")
 	if strings.Count(line, "\n") != 1 || !strings.HasSuffix(line, "\n") {
 		t.Fatalf("line = %q, want exactly one trailing newline", line)

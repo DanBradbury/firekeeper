@@ -2,6 +2,8 @@ package session
 
 import (
 	"time"
+
+	"github.com/DanBradbury/firekeeper/pkg/event"
 )
 
 const (
@@ -84,6 +86,15 @@ type KimiLatestSession struct {
 }
 
 type ProcessInfo struct {
+	// Provider is the process's provider, set by the classifier from the
+	// adapter whose signature matched.
+	Provider event.Provider
+	// Role is what the process does, from its subcommand path.
+	Role Role
+	// Invocation is the parsed argument list the classifier used.
+	Invocation invocation
+	// Tool is Provider's display name, toolName(Provider). The follow-up
+	// moves its readers to Provider and removes it.
 	Tool    string
 	PID     int
 	PPID    int
@@ -152,10 +163,17 @@ func (t TokenBreakdown) add(other TokenBreakdown) TokenBreakdown {
 }
 
 type ProcessGroup struct {
-	Tool      string
-	Root      ProcessInfo
-	Processes []ProcessInfo
-	Sessions  []Info
+	// Provider and Role are the root process's.
+	Provider event.Provider
+	Role     Role
+	Tool     string
+	Root     ProcessInfo
+	// explicitID is the session id the root's command line names, set by
+	// Discover from the adapter's SessionID before Link (session groups
+	// only). Link gives such a group exactly that session, never a guess.
+	explicitID string
+	Processes  []ProcessInfo
+	Sessions   []Info
 }
 
 type ThreadMetadataRow struct {
@@ -208,4 +226,9 @@ type RolloutStatusEvent struct {
 			} `json:"total_token_usage"`
 		} `json:"info"`
 	} `json:"payload"`
+}
+
+// explicitSessionID returns the session id the group's command line names.
+func (g ProcessGroup) explicitSessionID() (string, bool) {
+	return g.explicitID, g.explicitID != ""
 }

@@ -46,7 +46,9 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
-		if group.Tool != "Copilot" {
+		// Only session groups are linked: these providers read no evidence a
+		// server holds a session, and servers never guess (invariant 8).
+		if group.Tool != "Copilot" || group.Role != RoleSession {
 			continue
 		}
 		groupIndexes = append(groupIndexes, groupIndex)
@@ -62,7 +64,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	mapped := make(map[int]string, len(groupIndexes))
 	for _, groupIndex := range groupIndexes {
 		group := &groups[groupIndex]
-		if id, ok := d.copilotSessionIDFromGroupCommands(*group); ok {
+		if id, ok := group.explicitSessionID(); ok {
 			mapped[groupIndex] = id
 			continue
 		}
@@ -200,17 +202,8 @@ func (d *discoverer) copilotSessionIDFromStatePath(path string) (string, bool) {
 	return "", false
 }
 
-func (d *discoverer) copilotSessionIDFromGroupCommands(group ProcessGroup) (string, bool) {
-	for _, process := range append([]ProcessInfo{group.Root}, group.Processes...) {
-		if id, ok := d.copilotSessionIDFromCommand(process.Command); ok {
-			return id, true
-		}
-	}
-	return "", false
-}
-
-func (d *discoverer) copilotSessionIDFromCommand(command string) (string, bool) {
-	fields := strings.Fields(command)
+// copilotSessionIDFromArgs reads the same ids from an argument list.
+func (d *discoverer) copilotSessionIDFromArgs(fields []string) (string, bool) {
 	for index, field := range fields {
 		for _, prefix := range []string{"--session-id=", "--resume=", "--resume:", "-r="} {
 			if strings.HasPrefix(field, prefix) {
