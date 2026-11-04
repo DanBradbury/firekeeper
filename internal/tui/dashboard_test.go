@@ -75,9 +75,27 @@ func TestDashboardHeaderShowsCountsWithoutRefreshTime(t *testing.T) {
 	if strings.Contains(header, "09:30:00") {
 		t.Fatalf("header shows refresh time: %q", header)
 	}
-	for _, status := range []string{"1●", "1▲"} {
+	for _, status := range []string{"1●", "1◆"} {
 		if !strings.Contains(header, status) {
 			t.Errorf("header missing status count %q: %q", status, header)
+		}
+	}
+}
+
+func TestDashStateIconsStayCloseInSizeUnderFontFallback(t *testing.T) {
+	tests := []struct {
+		state sessionState
+		want  string
+	}{
+		{sessionStateActive, "●"},
+		{sessionStateWaiting, "○"},
+		{sessionStateNeedsInput, "◆"},
+		{session.SessionStateEnded, "×"},
+		{sessionStateUnknown, "◇"},
+	}
+	for _, tt := range tests {
+		if got := dashStateIcon(tt.state); got != tt.want {
+			t.Errorf("dashStateIcon(%v) = %q, want %q", tt.state, got, tt.want)
 		}
 	}
 }
@@ -387,7 +405,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
 		"[ Processes ]", "summary", "providers", "projects", "sessions (3)",
-		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "▲ NEEDS INPUT", "● ACTIVE",
+		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "◆ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
 		"Sessions 2", "1 active", " 1  input", "Tokens 1.3M total", "in 4% · out 16% · cache 80%",
