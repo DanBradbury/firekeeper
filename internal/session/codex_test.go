@@ -13,6 +13,9 @@ import (
 // app-server holds the thread-writer locks instead. The CLI must still get
 // its session, matched by working directory.
 func TestEnrichCodexSessionsMatchesHeldThreadByCWD(t *testing.T) {
+	// The fake lsof lists held locks, so open files must be listable (on
+	// Windows they are not; linking_test covers that path).
+	setOpenFilesListable(t, true)
 	home := t.TempDir()
 	codexHome := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(codexHome, 0o755); err != nil {

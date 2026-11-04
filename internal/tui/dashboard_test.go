@@ -821,7 +821,7 @@ func TestDashboardShowsTelemetryAndDropsUndercountWarning(t *testing.T) {
 	m.width, m.height = 160, 44
 	m.processGroups = exact
 	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "Background calls (not in transcripts):") || strings.Contains(view, "Has subagents:") {
+	if !strings.Contains(view, "background calls 71 (not in transcripts)") || strings.Contains(view, "Has subagents:") {
 		t.Fatalf("detail view:\n%s", view)
 	}
 	if !strings.Contains(view, "transcripts") || !strings.Contains(view, "371") {
@@ -1110,7 +1110,7 @@ func TestSubagentsListUnderTheirPrimarySession(t *testing.T) {
 		}
 	}
 
-	detail := ansi.Strip(strings.Join(dashGroupDetail(m.processGroups[0]), "\n"))
+	detail := ansi.Strip(strings.Join(dashGroupDetail(m.processGroups[0], 1000), "\n"))
 	for _, want := range []string{"SUBAGENT Galileo", " of " + dashShortID(primary.id), "+ 142.0K in 2 subagents", "% of runtime"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("detail missing %q:\n%s", want, detail)

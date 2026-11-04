@@ -3,6 +3,10 @@ package tui
 import (
 	"slices"
 	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DanBradbury/firekeeper/internal/otelrecv"
 	"github.com/DanBradbury/firekeeper/internal/session"
@@ -29,6 +33,8 @@ func annotateClaudeTelemetry(groups []processGroup, supplements map[string]otelr
 			s.transcriptTokens = sup.Transcript
 			s.exactTokens = sup.Exact
 			s.telemetryLine = backgroundCallLine(sup)
+			s.backgroundTokens = sup.Added
+			s.backgroundCalls = backgroundCallParts(sup)
 		}
 	}
 	return groups
@@ -37,6 +43,15 @@ func annotateClaudeTelemetry(groups []processGroup, supplements map[string]otelr
 func backgroundCallLine(sup otelrecv.Supplement) string {
 	if sup.Added <= 0 {
 		return ""
+	}
+	return "Background calls (not in transcripts): " + formatTokenCount(sup.Added) + " (" + strings.Join(backgroundCallParts(sup), ", ") + ")"
+}
+
+// backgroundCallParts lists each background call source with its tokens, the
+// known sources first under readable names and the rest by name.
+func backgroundCallParts(sup otelrecv.Supplement) []string {
+	if sup.Added <= 0 {
+		return nil
 	}
 	labels := []struct{ key, label string }{
 		{"agent_summary", "summaries"},
@@ -62,5 +77,57 @@ func backgroundCallLine(sup otelrecv.Supplement) string {
 	for _, name := range rest {
 		parts = append(parts, name+" "+formatTokenCount(sup.BySource[name]))
 	}
-	return "Background calls (not in transcripts): " + formatTokenCount(sup.Added) + " (" + strings.Join(parts, ", ") + ")"
+	return parts
+}
+
+// wrapItems packs items into lines of at most width cells, separated by sep.
+// An item wider than width gets a line of its own and is cut to fit.
+func wrapItems(items []string, sep string, width int) []string {
+	var lines []string
+	var line string
+	for _, item := range items {
+		item = ansi.Truncate(item, width, "…")
+		switch {
+		case line == "":
+			line = item
+		case ansi.StringWidth(line+sep+item) <= width:
+			line += sep + item
+		default:
+			lines = append(lines, line)
+			line = item
+		}
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// marqueeInterval is how often a marquee line moves one column.
+const marqueeInterval = 150 * time.Millisecond
+
+// marqueeGap separates the end of a scrolling line from its next pass.
+const marqueeGap = "   ·   "
+
+type marqueeTickMsg struct{}
+
+func tickMarquee() tea.Cmd {
+	return tea.Tick(marqueeInterval, func(time.Time) tea.Msg { return marqueeTickMsg{} })
+}
+
+// marquee returns text unchanged when it fits width, and otherwise the width
+// cells of a loop of it that frame has scrolled to, so a long line moves
+// through its panel instead of being cut off.
+func marquee(text string, width, frame int) string {
+	runes := []rune(text)
+	if width < 1 || len(runes) <= width {
+		return text
+	}
+	loop := append(runes, []rune(marqueeGap)...)
+	start := frame % len(loop)
+	out := make([]rune, width)
+	for i := range out {
+		out[i] = loop[(start+i)%len(loop)]
+	}
+	return string(out)
 }

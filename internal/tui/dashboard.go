@@ -54,7 +54,11 @@ func (m model) dashboardLayout() dashLayout {
 	}
 	rest := contentRows - layout.summary
 	if rest >= dashDetailMinRows && m.width >= 40 {
-		layout.detail = min(dashDetailMaxRows, rest-8)
+		// Grow past the usual height when the selected session needs it,
+		// such as for wrapped background calls, while leaving the sessions
+		// panel its 8 rows.
+		need := len(m.dashSelectedDetail(m.width-4)) + 2
+		layout.detail = min(max(dashDetailMaxRows, need), rest-8)
 	}
 	layout.sessions = contentRows - layout.summary - layout.detail
 	layout.boxed = layout.sessions >= 4 && m.width >= 24
@@ -363,7 +367,7 @@ func (m model) processBodyLines() ([]string, []int) {
 		if !expanded {
 			continue
 		}
-		for _, line := range dashGroupDetail(group) {
+		for _, line := range dashGroupDetail(group, width-4) {
 			lines = append(lines, dashFit(dashPaint("    ", usageMutedColor, false)+line, width, usagePanelColor))
 		}
 	}
@@ -527,8 +531,9 @@ func dashIDTail(id string) string {
 }
 
 // dashGroupDetail describes every session and process of one runtime. It backs
-// both the detail panel and inline expansion when that panel is hidden.
-func dashGroupDetail(group processGroup) []string {
+// both the detail panel and inline expansion when that panel is hidden. The
+// background calls wrap onto as many lines of width as they need.
+func dashGroupDetail(group processGroup, width int) []string {
 	var lines []string
 	label := func(name, value string) string {
 		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(sanitizeProcessCommand(value)+"   ", usageTextColor, false)
@@ -596,7 +601,12 @@ func dashGroupDetail(group processGroup) []string {
 		)
 		subTotal, subCount = 0, 0
 		if session.telemetryLine != "" {
-			lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+			lines = append(lines, dashPaint("background calls ", usageMutedColor, false)+
+				dashPaint(formatTokenCount(session.backgroundTokens)+" ", dashYellow, false)+
+				dashPaint("(not in transcripts)", usageMutedColor, false))
+			for _, line := range wrapItems(session.backgroundCalls, " · ", max(width-2, 1)) {
+				lines = append(lines, dashPaint("  "+line, dashYellow, false))
+			}
 			lines = append(lines, dashPaint("transcripts ", usageMutedColor, false)+dashPaint(formatTokenCount(session.transcriptTokens), usageTextColor, false))
 		} else if session.undercountWarning != "" {
 			lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
@@ -633,7 +643,7 @@ func (m model) dashSelectedDetail(width int) []string {
 	if len(m.processGroups) == 0 || m.processCursor >= len(m.processGroups) {
 		return []string{dashPaint("Select a session to see its details.", usageMutedColor, false)}
 	}
-	return dashGroupDetail(m.processGroups[m.processCursor])
+	return dashGroupDetail(m.processGroups[m.processCursor], width)
 }
 
 // dashSummary aggregates the visible runtimes for the summary panels.
@@ -1213,7 +1223,7 @@ func (m model) dashTokenLines(width int) []string {
 		}
 	}
 	if session.telemetryLine != "" {
-		lines = append(lines, dashPaint(session.telemetryLine, dashYellow, false))
+		lines = append(lines, dashPaint(marquee(session.telemetryLine, width, m.marqueeFrame), dashYellow, false))
 	} else if session.undercountWarning != "" {
 		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
