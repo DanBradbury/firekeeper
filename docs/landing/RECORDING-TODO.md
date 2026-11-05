@@ -153,3 +153,15 @@ ffmpeg -i tmp-$ID.mp4 -vf "fps=15,scale=1000:-1:flags=lanczos,split[a][b];[a]pal
 - [ ] Every `<video>` keeps its `width`/`height` attributes so there's no layout shift. The slots already reserve the aspect ratio.
 - [ ] Add an `aria-label` or visually hidden text per clip describing what it shows. Captions are already under each frame.
 - [ ] Check light mode. The window frames stay dark on purpose, like a real terminal.
+
+## Manual post-sellout checklist (first 100 Personal licenses)
+
+Do this by hand when the $29 launch Payment Link sells out or you decide to end the launch offer. There is **no** automatic sellout detection in the repo, and this checklist does not claim Stripe's quantity/cap was verified.
+
+- [ ] In Stripe, confirm the $29 launch link is exhausted / disabled (or you are ending the offer).
+- [ ] In `docs/landing/_redirects`, point `/buy/personal` at the $49 Personal Payment Link (the live $49 URL is already noted in the PR that landed the redirects; keep the $29 URL commented or in a PR comment for history).
+- [ ] On this landing page (`index.html`):
+  - [ ] **Remove the hero launch offer** — the eyebrow under the hero that says "Launch pricing · Personal license $29 for the first 100 buyers".
+  - [ ] **Replace the actual $29 price** in the Personal tier: drop the "Launch price · first 100" tag, remove the struck `$49` / `$29` pair, and show **`$49` one-time** as the live price.
+  - [ ] Keep "Then $29 a year for updates" (or update that line if renewal pricing changes).
+- [ ] Spot-check live firekeeper.ai: `/buy/personal` 302s to the $49 Stripe Checkout, hero no longer advertises $29, Personal card shows $49.

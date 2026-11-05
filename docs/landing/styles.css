@@ -81,6 +81,16 @@ kbd {
 }
 h1, h2, h3 { font-weight: 500; margin: 0; text-wrap: balance; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Skip link: off-screen until keyboard focus (sr-only alone stays clipped on :focus). */
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  padding: 10px 16px; margin: 8px; border-radius: var(--r-sm);
+  background: var(--primary); color: var(--on-primary); font: 500 14px/1 var(--font-sans);
+  text-decoration: none; border: 0;
+}
+.skip:focus, .skip:focus-visible {
+  left: var(--gutter); outline: 2px solid var(--ember); outline-offset: 3px;
+}
 
 /* The rail: one bordered column down the page, sections separated by full-width rules */
 .rail { width: var(--shell); margin: 0 auto; border-inline: 1px solid var(--border); }
