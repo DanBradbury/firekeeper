@@ -124,31 +124,17 @@
         <p>Press <kbd>s</kbd> to focus the terminal holding that session: Ghostty, Terminal.app, and iTerm2 on macOS. On Windows it raises the terminal window; you pick the tab. Reply and approve tool calls in the agent's own terminal.</p>
       </div>
     </div>
-    <div class="pair">
-      <figure class="frame" id="chat-follow" data-slot>
-        <div class="window">
-          <div class="slot" style="--ar: 4 / 3">
-            <div class="label">
-              <span class="kind">Video · chat-follow</span>
-              <span class="what">Press c, a new reply streams in, Esc back</span>
-              <span class="spec">loop · 4:3 · export 1320×990 · 6–10 s</span>
-            </div>
-          </div>
+    <figure class="frame" id="switch-terminal">
+      <div class="window">
+        <div class="slot has-media" style="--ar: 1600 / 924">
+          <video autoplay muted loop playsinline preload="none" poster="media/switch-terminal.jpg" width="1600" height="924" aria-label="Press s and the agent's Ghostty tab comes to the front">
+            <source src="media/switch-terminal.webm" type="video/webm">
+            <source src="media/switch-terminal.mp4" type="video/mp4">
+          </video>
         </div>
-        <figcaption><kbd>c</kbd> opens the conversation and follows it live.</figcaption>
-      </figure>
-      <figure class="frame" id="switch-terminal">
-        <div class="window">
-          <div class="slot has-media" style="--ar: 1600 / 924">
-            <video autoplay muted loop playsinline preload="none" poster="media/switch-terminal.jpg" width="1600" height="924" aria-label="Press s and the agent's Ghostty tab comes to the front">
-              <source src="media/switch-terminal.webm" type="video/webm">
-              <source src="media/switch-terminal.mp4" type="video/mp4">
-            </video>
-          </div>
-        </div>
-        <figcaption><kbd>s</kbd> focuses the terminal holding the session (macOS shown).</figcaption>
-      </figure>
-    </div>
+      </div>
+      <figcaption><kbd>c</kbd> reads the reply; <kbd>s</kbd> focuses the terminal holding the session (macOS shown).</figcaption>
+    </figure>
   </section>
 
   <!-- FEATURE: usage -->
