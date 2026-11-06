@@ -10,7 +10,7 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 - [x] `processes-live`: shipped from the same take, full window (2112×1216, ~8.9 s).
 - [x] `switch-terminal`: shipped (1600×924, ~14.7 s). Full Ghostty window, no crop; longer than the 5–8 s target but loops cleanly.
 - [x] `web-dashboard`: shipped (1600×1040, ~13.0 s). Full screen capture (Safari window on the desktop), no crop.
-- [ ] Remaining placeholders: `usage-tab`, `og-image`. Optional fuller `hero-demo` reshoot. (`chat-follow` and `backfill-dry-run` removed from the page; Conversation uses `switch-terminal` alone, Reporting uses `web-dashboard` alone.)
+- [x] `usage-tab` recorded and wired (1600×906). Remaining: `og-image`. Optional fuller `hero-demo` reshoot. (`chat-follow` and `backfill-dry-run` removed from the page; Conversation uses `switch-terminal` alone, Reporting uses `web-dashboard` alone.)
 
 Shipped clips keep the full recorded window; each media slot's `--ar` matches the encoded size and the video uses `object-fit: contain`, so nothing inside the window is cropped. Only black desktop padding outside the window is trimmed.
 
@@ -86,7 +86,7 @@ Shipped clips keep the full recorded window; each media slot's `--ar` matches th
 - **Target size:** ≤ 1.5 MB WebM.
 - **Setup:** use a plain solid wallpaper (near-black), with no other apps visible. macOS only. The caption says "macOS shown".
 
-### 5. `usage-tab`, "Understand usage"
+### 5. `usage-tab`, "Understand usage" — WIRED
 - **Where:** Usage section, full width.
 - **Show:** press `Tab` from Processes to Usage, then step through providers. Show local token history by model and, separately, provider limits (Claude Code and Codex have both), plus a per-session token breakdown if it fits.
 - **Format:** looping WebM + MP4 + poster.

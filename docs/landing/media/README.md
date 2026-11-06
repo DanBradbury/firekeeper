@@ -19,3 +19,4 @@ Encodes keep the full recorded window (2026-11-06): only black desktop padding
 outside the window is trimmed, never the TUI or browser content. Each slot's
 `--ar` and the `<video>` width/height match the encoded size, and the CSS uses
 `object-fit: contain`, so the clip fills its card without cutting anything off.
+- `usage-tab` — 1600×906, contain, full window (no pad crop)
