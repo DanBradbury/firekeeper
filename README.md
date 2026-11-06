@@ -98,7 +98,7 @@ An empty list usually means no supported agent is running where Firekeeper
 can see it. See the [missing-session checklist](https://firekeeper.ai/docs/troubleshooting/#missing-session).
 You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
 
-![Firekeeper terminal dashboard showing four agent sessions across Claude, Codex, Copilot, and OpenCode](docs/firekeeper-tui.jpg)
+![Firekeeper Processes view — sessions across Claude, Codex, and Copilot](docs/firekeeper-tui.gif)
 
 ## What you get
 
@@ -121,6 +121,8 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
 
 Usage history is available for Codex, Copilot CLI, Claude Code, and Kimi Code.
 Local token totals can be incomplete and are not an account-wide bill.
+
+![Firekeeper Usage — providers, tokens by day, and session history](docs/firekeeper-usage.gif)
 
 ## Supported agents
 
@@ -235,6 +237,8 @@ Run `firekeeper serve` to launch it. If the server is missing, release builds
 offer to download it and ask for confirmation first. See
 [server installation, updates, and license configuration](docs/reference.md#installing-the-server-from-serve)
 or [server plans](https://firekeeper.ai/#pricing).
+
+![Firekeeper web dashboard — sessions and usage across machines](docs/firekeeper-dashboard.gif)
 
 The protocol is open. The reporter speaks the HTTP API in
 [docs/api.md](docs/api.md) and the event format in
