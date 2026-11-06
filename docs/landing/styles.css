@@ -165,13 +165,9 @@ h1, h2, h3 { font-weight: 500; margin: 0; text-wrap: balance; }
   .cta .btn, .cta .cmd { width: 100%; flex: none; }
 }
 
-/* Media frames: window chrome + slot. Each slot carries the shot id from RECORDING-TODO.md */
+/* Media frames: rounded media card (no fake OS window chrome). */
 .frame { margin: 56px 0 0; }
-.window { overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--term-bg); box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 40px 80px -40px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.2); }
-.window .bar { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid #26211d; background: #171411; color: #8f867d; font: 12px/1 var(--font-sans); }
-.window .bar i { width: 11px; height: 11px; border-radius: 50%; background: #3a332d; }
-.window .bar span { margin: 0 auto; transform: translateX(-28px); }
-.window.browser .bar span { flex: 0 1 360px; margin: 0 auto; transform: none; padding: 5px 12px; border-radius: 6px; background: #0f0d0b; text-align: center; }
+.window { overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--r-lg); background: var(--term-bg); box-shadow: 0 40px 80px -40px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.2); }
 .slot {
   position: relative; display: grid; place-items: center; aspect-ratio: var(--ar, 16 / 10); width: 100%;
   background:
@@ -190,8 +186,6 @@ h1, h2, h3 { font-weight: 500; margin: 0; text-wrap: balance; }
 figcaption { margin-top: 14px; font-size: 13px; color: var(--faint); }
 figcaption code { font-size: 12px; }
 @media (max-width: 560px) {
-  .window .bar { height: 28px; }
-  .window .bar span { display: none; }
   .slot .spec { display: none; }
   .slot::after { inset: 8px; }
 }
