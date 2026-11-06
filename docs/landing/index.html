@@ -124,31 +124,17 @@
         <p>Press <kbd>s</kbd> to focus the terminal holding that session: Ghostty, Terminal.app, and iTerm2 on macOS. On Windows it raises the terminal window; you pick the tab. Reply and approve tool calls in the agent's own terminal.</p>
       </div>
     </div>
-    <div class="pair">
-      <figure class="frame" id="chat-follow" data-slot>
-        <div class="window">
-          <div class="slot" style="--ar: 4 / 3">
-            <div class="label">
-              <span class="kind">Video · chat-follow</span>
-              <span class="what">Press c, a new reply streams in, Esc back</span>
-              <span class="spec">loop · 4:3 · export 1320×990 · 6–10 s</span>
-            </div>
-          </div>
+    <figure class="frame" id="switch-terminal">
+      <div class="window">
+        <div class="slot has-media" style="--ar: 1600 / 924">
+          <video autoplay muted loop playsinline preload="none" poster="media/switch-terminal.jpg" width="1600" height="924" aria-label="Press s and the agent's Ghostty tab comes to the front">
+            <source src="media/switch-terminal.webm" type="video/webm">
+            <source src="media/switch-terminal.mp4" type="video/mp4">
+          </video>
         </div>
-        <figcaption><kbd>c</kbd> opens the conversation and follows it live.</figcaption>
-      </figure>
-      <figure class="frame" id="switch-terminal">
-        <div class="window">
-          <div class="slot has-media" style="--ar: 1600 / 924">
-            <video autoplay muted loop playsinline preload="none" poster="media/switch-terminal.jpg" width="1600" height="924" aria-label="Press s and the agent's Ghostty tab comes to the front">
-              <source src="media/switch-terminal.webm" type="video/webm">
-              <source src="media/switch-terminal.mp4" type="video/mp4">
-            </video>
-          </div>
-        </div>
-        <figcaption><kbd>s</kbd> focuses the terminal holding the session (macOS shown).</figcaption>
-      </figure>
-    </div>
+      </div>
+      <figcaption><kbd>c</kbd> reads the reply; <kbd>s</kbd> focuses the terminal holding the session (macOS shown).</figcaption>
+    </figure>
   </section>
 
   <!-- FEATURE: usage -->
@@ -160,16 +146,16 @@
         <p>Every session also gets a per-session token breakdown: input, output, cache read, and cache write. <a href="/docs/usage/">Understand the data sources</a>.</p>
       </div>
     </div>
-    <figure class="frame" id="usage-tab" data-slot>
+    <figure class="frame" id="usage-tab">
       <div class="window">
-        <div class="slot" style="--ar: 16 / 9">
-          <div class="label">
-            <span class="kind">Video · usage-tab</span>
-            <span class="what">Tab to Usage, step through providers and the by-model history</span>
-            <span class="spec">loop · 16:9 · export 2112×1188 · 8–12 s</span>
-          </div>
+        <div class="slot has-media" style="--ar: 1600 / 906">
+          <video autoplay muted loop playsinline preload="none" poster="media/usage-tab.jpg" width="1600" height="906" aria-label="Tab to Usage, step through providers and the by-model history">
+            <source src="media/usage-tab.webm" type="video/webm">
+            <source src="media/usage-tab.mp4" type="video/mp4">
+          </video>
         </div>
       </div>
+      <figcaption><kbd>Tab</kbd> to Usage — local totals and provider limits side by side.</figcaption>
     </figure>
   </section>
 
@@ -218,31 +204,17 @@
         <p>Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. If you enable uploads, session metadata and full transcripts go through best-effort redaction, and the server's operator can read them. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
       </div>
     </div>
-    <div class="pair">
-      <figure class="frame" id="backfill-dry-run" data-slot>
-        <div class="window">
-          <div class="slot" style="--ar: 4 / 3">
-            <div class="label">
-              <span class="kind">Video · backfill-dry-run</span>
-              <span class="what">login → backfill --dry-run summary → daemon install</span>
-              <span class="spec">loop · 4:3 · export 1320×990 · 10–14 s</span>
-            </div>
-          </div>
+    <figure class="frame" id="web-dashboard">
+      <div class="window browser">
+        <div class="slot has-media" style="--ar: 1600 / 1040">
+          <video autoplay muted loop playsinline preload="none" poster="media/web-dashboard.jpg" width="1600" height="1040" aria-label="Web dashboard sessions across machines, then a redacted transcript">
+            <source src="media/web-dashboard.webm" type="video/webm">
+            <source src="media/web-dashboard.mp4" type="video/mp4">
+          </video>
         </div>
-        <figcaption>Nothing uploads until you name a server and the providers to send.</figcaption>
-      </figure>
-      <figure class="frame" id="web-dashboard">
-        <div class="window browser">
-          <div class="slot has-media" style="--ar: 1600 / 1040">
-            <video autoplay muted loop playsinline preload="none" poster="media/web-dashboard.jpg" width="1600" height="1040" aria-label="Web dashboard sessions across machines, then a redacted transcript">
-              <source src="media/web-dashboard.webm" type="video/webm">
-              <source src="media/web-dashboard.mp4" type="video/mp4">
-            </video>
-          </div>
-        </div>
-        <figcaption>The commercial dashboard server, with demo data.</figcaption>
-      </figure>
-    </div>
+      </div>
+      <figcaption>The commercial dashboard server, with demo data. Nothing uploads until you name a server and the providers to send.</figcaption>
+    </figure>
   </section>
 
   <!-- PRIVACY -->
