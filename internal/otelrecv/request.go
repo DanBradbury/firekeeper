@@ -3,7 +3,8 @@ package otelrecv
 import (
 	"bytes"
 	"encoding/json"
-	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // maxAttrLen is the longest attribute value copied off an OTLP record.
@@ -71,9 +72,19 @@ func (r Request) clean() Request {
 	return r
 }
 
+// cleanString keeps value only when it is short, valid UTF-8, and entirely
+// printable. Anything POSTed to the listener can land here, and these values
+// are shown in the dashboard and printed by otel-listen, so a control
+// character (an escape sequence that sets the clipboard or the window title,
+// for example) or an invisible format character drops the whole value.
 func cleanString(value string) string {
-	if len(value) > maxAttrLen || strings.ContainsAny(value, "\r\n\x00") {
+	if len(value) > maxAttrLen || !utf8.ValidString(value) {
 		return ""
+	}
+	for _, r := range value {
+		if !unicode.IsPrint(r) {
+			return ""
+		}
 	}
 	return value
 }

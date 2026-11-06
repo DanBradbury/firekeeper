@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -253,6 +254,10 @@ type handler struct {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !loopbackHostHeader(r.Host) || !allowedOrigin(r.Header.Get("Origin")) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -315,6 +320,32 @@ func (h *handler) discard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeOK(w, protobufMedia(mediaTypeOf(r.Header.Get("Content-Type"))))
+}
+
+// loopbackHostHeader reports whether a request's Host names this machine:
+// 127.0.0.1 or localhost, with any port. The listener is bound to 127.0.0.1,
+// but a web page can still reach it by rebinding its own domain to
+// 127.0.0.1 (DNS rebinding). Such a request carries that domain as its Host,
+// so it stops here. Exporters configured as the setup text says send
+// 127.0.0.1:<port>.
+func loopbackHostHeader(host string) bool {
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		host = name
+	}
+	return host == "127.0.0.1" || strings.EqualFold(host, "localhost")
+}
+
+// allowedOrigin reports whether an Origin header is acceptable. Exporters
+// send none. A browser names the page's site, which is never a legitimate
+// client of this listener, so any origin other than "null" or this machine is
+// refused. JSON and protobuf bodies already need a CORS preflight, which this
+// handler never grants; this is a second check, not the only one.
+func allowedOrigin(origin string) bool {
+	if origin == "" || origin == "null" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && loopbackHostHeader(u.Host)
 }
 
 func mediaTypeOf(header string) string {

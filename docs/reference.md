@@ -474,6 +474,15 @@ dashboard says that `firekeeper telemetry enable` gets exact totals.
 `otel-listen` and `otel-reconcile` are the same store, for a one-off capture.
 See [docs/research/otel-telemetry.md](research/otel-telemetry.md).
 
+The listener has no password, so it refuses what a web page could send. A
+request whose `Host` is not `127.0.0.1` or `localhost` is refused, which
+stops a site that rebinds its own domain to `127.0.0.1`, and so is one whose
+`Origin` names a web site. Any recorded value (model, query source, session
+or request id) that holds a control or other non-printable character is
+dropped, so nothing that reaches the listener can put an escape sequence on
+your terminal. Point exporters at `http://127.0.0.1:<port>` as `telemetry
+enable` does.
+
 ## Reporting
 
 Reporting is a set of explicit subcommands: `report`, `backfill`, `daemon`,

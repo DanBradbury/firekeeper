@@ -133,7 +133,7 @@ func TestLoopbackHostPort(t *testing.T) {
 func TestRejectedPayloadDoesNotEchoBody(t *testing.T) {
 	var stderr bytes.Buffer
 	journal := newJournal(&nopSync{&bytes.Buffer{}}, nil)
-	req := httptest.NewRequest(http.MethodPost, "/v1/logs", strings.NewReader(`{"prompt":"`+testSecret))
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:4318/v1/logs", strings.NewReader(`{"prompt":"`+testSecret))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	newHandler(journal, &stderr).ServeHTTP(rr, req)

@@ -75,7 +75,8 @@ func backgroundCallParts(sup otelrecv.Supplement) []string {
 	}
 	slices.Sort(rest)
 	for _, name := range rest {
-		parts = append(parts, name+" "+formatTokenCount(sup.BySource[name]))
+		// Source names come from whatever posted to the telemetry listener.
+		parts = append(parts, sanitizeProcessCommand(name)+" "+formatTokenCount(sup.BySource[name]))
 	}
 	return parts
 }

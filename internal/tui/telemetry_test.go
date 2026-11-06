@@ -107,3 +107,40 @@ func TestSessionPanelWrapsBackgroundCalls(t *testing.T) {
 		t.Fatalf("detail rows = %d, want more than %d to fit the wrapped calls", layout.detail, dashDetailMaxRows)
 	}
 }
+
+// Source names come from whatever posted to the telemetry listener. The
+// listener drops ones with control characters, and the dashboard cleans them
+// again, so an escape sequence never reaches the terminal.
+func TestBackgroundCallSourceNamesCannotEscape(t *testing.T) {
+	const escape = "\x1b]52;c;cHduZWQ=\x07\x1b]0;pwned\x07\u009b31m"
+	sup := otelrecv.Supplement{
+		Covered: true, Transcript: 10, Added: 30, Exact: 40,
+		BySource: map[string]int64{"agent" + escape: 10, "web_search_tool": 20},
+	}
+	for _, part := range backgroundCallParts(sup) {
+		if strings.ContainsAny(part, "\x1b\x07\u009b") {
+			t.Fatalf("part %q keeps a control character", part)
+		}
+	}
+	groups := annotateClaudeTelemetry([]processGroup{{
+		tool:      "Claude",
+		root:      processInfo{pid: 1, tty: "ttys002"},
+		processes: []processInfo{{pid: 1, tty: "ttys002", command: "claude"}},
+		sessions:  []sessionInfo{{id: "s1"}},
+	}}, map[string]otelrecv.Supplement{"s1": sup})
+	m := NewModel()
+	m.width, m.height = 160, 50
+	m.processGroups = groups
+	for _, frame := range []int{0, 7} {
+		m.marqueeFrame = frame
+		view := m.View()
+		for _, sequence := range []string{"\x1b]52;", "\x1b]0;", "\x07", "\u009b"} {
+			if strings.Contains(view, sequence) {
+				t.Fatalf("frame %d: dashboard writes %q to the terminal", frame, sequence)
+			}
+		}
+		if !strings.Contains(ansi.Strip(view), "web_search_tool") {
+			t.Fatalf("frame %d: a clean source name is missing", frame)
+		}
+	}
+}
