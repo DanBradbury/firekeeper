@@ -166,6 +166,7 @@ func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
 
 func TestUsageProviderCyclesToClaudeAndLoads(t *testing.T) {
 	m := NewModel()
+	withUsageData(&m)
 	m.activeTab = usageTab
 	m.usageProvider = kimiProvider
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRight})
@@ -216,6 +217,7 @@ func TestClaudeUsageArrowsSelectAndEnterOpensChat(t *testing.T) {
 func TestUsageViewIsCardsAndWidthSafe(t *testing.T) {
 	for _, provider := range []usageProvider{codexProvider, copilotProvider, kimiProvider, claudeProvider} {
 		m := model{width: 80, height: 24, usageProvider: provider}
+		withUsageData(&m)
 		lines := strings.Split(m.viewUsage(20), "\n")
 		if len(lines) != 20 {
 			t.Fatalf("%v: rows = %d, want 20", provider, len(lines))

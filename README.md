@@ -108,7 +108,8 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
 - **Understand usage.** Overview summarizes local tokens and available
   provider limits in cards with agent logos, paired on wide terminals;
   Usage breaks history down by model and lets you open past
-  conversations. See [what each provider reports](https://firekeeper.ai/docs/usage/).
+  conversations. Both list only providers with local usage data, so agents
+  you don't use stay out of the way. See [what each provider reports](https://firekeeper.ai/docs/usage/).
 - **Read without interrupting.** The chat view follows new prompts and replies
   live, read-only. Return to the agent's own terminal to reply or approve work.
   With `firekeeper-server` installed, `e` saves the session as a standalone

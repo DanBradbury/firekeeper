@@ -141,6 +141,7 @@ func TestUsageChipsAndSessionRows(t *testing.T) {
 	m.activeTab = usageTab
 	m.codexUsageRefreshedAt = time.Now()
 	m.copilotUsageRefreshedAt = time.Now()
+	withUsageData(&m)
 	for i := range 6 {
 		m.codexUsage.History = append(m.codexUsage.History, codexHistorySessionForTest(i))
 	}

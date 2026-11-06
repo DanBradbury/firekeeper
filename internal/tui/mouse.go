@@ -121,7 +121,7 @@ func (m model) hitTest(x, y int) hit {
 		}
 	case usageTab:
 		if row == 0 {
-			if index, ok := chipAt(usageProviderLabels(), x); ok {
+			if index, ok := chipAt(m.availableUsageProviderLabels(), x); ok {
 				return hit{hitUsageProvider, index}
 			}
 			return hit{}
@@ -304,8 +304,8 @@ func (m model) leftPress(at cell) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case hitUsageProvider:
-		if provider := usageProvider(target.index); provider != m.usageProvider {
-			cmd = m.cycleUsageProvider(int(provider - m.usageProvider))
+		if available := m.availableUsageProviders(); target.index < len(available) && available[target.index] != m.usageProvider {
+			cmd = m.selectUsageProvider(available[target.index])
 		}
 		return m, cmd
 	case hitProcess:

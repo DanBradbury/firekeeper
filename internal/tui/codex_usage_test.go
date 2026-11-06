@@ -323,6 +323,7 @@ func TestCodexUsageArrowsSelectSessionWithoutEnter(t *testing.T) {
 		{ID: "one", Title: "First session", Model: "gpt-5.6-sol", WorkDir: "/work/one"},
 		{ID: "two", Title: "Second session", Model: "gpt-5.6-codex", WorkDir: "/work/two"},
 	}
+	withUsageData(&m, codexProvider)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
 	view := ansi.Strip(m.View())
@@ -366,6 +367,7 @@ func TestCodexUsageEnterWithoutHistoryDoesNothing(t *testing.T) {
 	m.usageProvider = codexProvider
 	m.width, m.height = 100, 40
 	m.codexHistoryErr = "state database unavailable"
+	withUsageData(&m, codexProvider)
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(model)
 	if cmd != nil || m.chat.open {
@@ -435,6 +437,7 @@ func TestCodexUsageViewShowsRecentSessionsAndProjects(t *testing.T) {
 		{ID: "b", Title: "add tests", WorkDir: "/tmp/beta", Tokens: 9_000_000, UpdatedAt: now.Add(-3 * time.Hour)},
 		{ID: "c", Title: "refactor", WorkDir: "/tmp/alpha", Tokens: 1_000_000, UpdatedAt: now.Add(-50 * time.Hour)},
 	}}
+	withUsageData(&m, codexProvider)
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{"╭─sessions", "╭─projects · last 3", "fix parser", "5m", "3h", "2d", "×2"} {
 		if !strings.Contains(view, expected) {

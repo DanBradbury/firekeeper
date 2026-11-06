@@ -123,9 +123,8 @@ func (m model) idleBody() []string {
 		dashPaint("Supported agents appear here automatically.", usageMutedColor, false),
 		dashPaint("Press Tab for Overview / Usage history.", usageMutedColor, false),
 	}
-	if m.processMetadataWarning != "" {
-		body = append(body, dashPaint("session metadata unavailable: "+sanitizeProcessCommand(m.processMetadataWarning), dashYellow, false))
-	}
+	// A metadata warning is left out: with no session on screen it can only
+	// be about a runtime that is not shown, such as an idle server.
 	return body
 }
 

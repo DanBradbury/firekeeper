@@ -344,6 +344,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.beginOverviewRefresh()
 			}
 			if m.activeTab == usageTab {
+				if !m.usageProviderHasData(m.usageProvider) {
+					return m, m.beginOverviewRefresh()
+				}
 				return m, m.beginUsageRefresh()
 			}
 		case "R":
@@ -439,6 +442,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.codexHistoryErr = ""
 			m.clampUsageCursors()
 		}
+		m.normalizeUsageProvider()
 
 	case copilotUsageResultMsg:
 		m.copilotUsageLoading = false
@@ -458,6 +462,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.copilotHistoryErr = ""
 			m.clampUsageCursors()
 		}
+		m.normalizeUsageProvider()
 
 	case kimiUsageResultMsg:
 		m.kimiUsageLoading = false
@@ -468,6 +473,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.kimiUsage = msg.snapshot
 			m.kimiUsageErr = ""
 		}
+		m.normalizeUsageProvider()
 
 	case claudeUsageResultMsg:
 		m.claudeUsageLoading = false
@@ -479,14 +485,33 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.claudeUsageErr = ""
 			m.clampUsageCursors()
 		}
+		m.normalizeUsageProvider()
 
 	}
 
 	return m, nil
 }
 
+// cycleUsageProvider moves the selection by delta among the providers the
+// Usage tab lists.
 func (m *model) cycleUsageProvider(delta int) tea.Cmd {
-	m.usageProvider = (m.usageProvider + usageProvider(delta) + usageProviderCount) % usageProviderCount
+	available := m.availableUsageProviders()
+	if len(available) == 0 {
+		return nil
+	}
+	current := 0
+	for index, provider := range available {
+		if provider == m.usageProvider {
+			current = index
+		}
+	}
+	next := ((current+delta)%len(available) + len(available)) % len(available)
+	return m.selectUsageProvider(available[next])
+}
+
+// selectUsageProvider shows provider and refreshes it unless it is fresh.
+func (m *model) selectUsageProvider(provider usageProvider) tea.Cmd {
+	m.usageProvider = provider
 	if m.usageProvider == codexProvider && !m.codexUsageRefreshedAt.IsZero() && m.codexUsageErr == "" {
 		return nil
 	}
@@ -528,7 +553,9 @@ func (m *model) switchTab(t tab) tea.Cmd {
 	case overviewTab:
 		return m.beginOverviewRefresh()
 	case usageTab:
-		return m.beginUsageRefresh()
+		// Every provider is read so the selector lists exactly the ones
+		// with data.
+		return m.beginOverviewRefresh()
 	}
 	return nil
 }

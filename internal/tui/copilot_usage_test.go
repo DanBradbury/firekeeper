@@ -254,6 +254,7 @@ func TestCopilotUsageArrowsSelectAndEnterOpensChat(t *testing.T) {
 		{ID: "11111111-1111-1111-1111-111111111111", Title: "First session", Model: "gpt-5", WorkDir: "/work/one"},
 		{ID: "22222222-2222-2222-2222-222222222222", Title: "Second session", Model: "claude-opus", WorkDir: "/work/two", ModelCalls: 3, UserRequests: 1.5},
 	}
+	withUsageData(&m, copilotProvider)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
 	view := ansi.Strip(m.View())
@@ -334,6 +335,7 @@ func TestUsageArrowKeysSwitchProviders(t *testing.T) {
 	m.activeTab = usageTab
 	m.usageProvider = codexProvider
 	m.codexUsageRefreshedAt = time.Now()
+	withUsageData(&m)
 
 	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRight})
 	m = updated.(model)

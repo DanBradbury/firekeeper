@@ -140,25 +140,35 @@ func TestUsageProviderFailuresRemainIndependent(t *testing.T) {
 		t.Fatalf("provider states: Copilot %q, Kimi %q, Claude %q (%d tokens)",
 			m.copilotUsageErr, m.kimiUsageErr, m.claudeUsageErr, m.claudeUsage.Summary.LifetimeTokens)
 	}
+	// Providers that failed before producing data are left out; Claude,
+	// which has data, is still shown.
+	failures := []string{"Codex usage request timed out", "SQLITE_ERROR", "find Kimi session history"}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"Codex usage request timed out", "SQLITE_ERROR", "find Kimi session history", "Claude", "1.2K"} {
+	for _, want := range []string{"Claude", "1.2K"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("overview missing %q", want)
 		}
 	}
+	for _, unwanted := range failures {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("overview shows failed provider %q", unwanted)
+		}
+	}
 	m.activeTab = usageTab
-	for _, tt := range []struct {
-		provider usageProvider
-		want     string
-	}{
-		{codexProvider, "Codex usage request timed out"},
-		{copilotProvider, "SQLITE_ERROR"},
-		{kimiProvider, "find Kimi session history"},
-		{claudeProvider, "1.2K"},
-	} {
-		m.usageProvider = tt.provider
-		if !strings.Contains(ansi.Strip(m.View()), tt.want) {
-			t.Errorf("Usage provider %d missing %q", tt.provider, tt.want)
+	if m.usageProvider != claudeProvider {
+		t.Errorf("Usage selection = %d, want Claude, the only provider with data", m.usageProvider)
+	}
+	view = ansi.Strip(m.View())
+	selector := strings.Split(view, "\n")[1]
+	if !strings.Contains(selector, "[ CLAUDE ]") || strings.Contains(selector, "CODEX") || strings.Contains(selector, "COPILOT") || strings.Contains(selector, "KIMI") {
+		t.Errorf("selector lists unavailable providers: %q", selector)
+	}
+	if !strings.Contains(view, "1.2K") {
+		t.Error("Usage tab missing Claude data")
+	}
+	for _, unwanted := range failures {
+		if strings.Contains(view, unwanted) {
+			t.Errorf("Usage tab shows failed provider %q", unwanted)
 		}
 	}
 	for _, tab := range []tab{overviewTab, usageTab} {
