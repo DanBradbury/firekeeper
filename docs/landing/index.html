@@ -71,15 +71,14 @@
     <p class="meta reveal d3">Free and open source, Apache 2.0 · macOS, Linux (best effort), Windows 10 1809+ and 11 · No account, server, or wrappers · <a href="/docs/usage/#network">Usage and update checks can contact the network</a></p>
 
     <!-- Optional: serve hero-demo-narrow (4:5) under 560px with <source media="(max-width: 560px)" ...> inside the <video>. -->
-    <figure class="frame reveal d3" id="hero-demo" data-slot>
+    <figure class="frame reveal d3" id="hero-demo">
       <div class="window">
         <div class="bar"><i></i><i></i><i></i><span>firekeeper</span></div>
-        <div class="slot" style="--ar: 16 / 10">
-          <div class="label">
-            <span class="kind">Video · hero-demo</span>
-            <span class="what">Agents appear, change state, open a chat, jump to its terminal</span>
-            <span class="spec">loop · 16:10 · export 2112×1320 · 12–18 s</span>
-          </div>
+        <div class="slot has-media" style="--ar: 16 / 10">
+          <video autoplay muted loop playsinline preload="metadata" poster="media/hero-demo.jpg" width="2112" height="1320">
+            <source src="media/hero-demo.webm" type="video/webm">
+            <source src="media/hero-demo.mp4" type="video/mp4">
+          </video>
         </div>
       </div>
     </figure>
@@ -104,15 +103,14 @@
         <ul class="keys"><li><kbd>↑</kbd><kbd>↓</kbd> Select</li><li><kbd>Enter</kbd> Expand</li><li><kbd>Tab</kbd> Switch view</li></ul>
       </div>
     </div>
-    <figure class="frame" id="processes-live" data-slot>
+    <figure class="frame" id="processes-live">
       <div class="window">
         <div class="bar"><i></i><i></i><i></i><span>firekeeper · Processes</span></div>
-        <div class="slot" style="--ar: 16 / 9">
-          <div class="label">
-            <span class="kind">Video · processes-live</span>
-            <span class="what">Four sessions across two projects; one flips Waiting → Active → Needs input</span>
-            <span class="spec">loop · 16:9 · export 2112×1188 · 8–12 s</span>
-          </div>
+        <div class="slot has-media" style="--ar: 16 / 9">
+          <video autoplay muted loop playsinline preload="metadata" poster="media/processes-live.jpg" width="2112" height="1188">
+            <source src="media/processes-live.webm" type="video/webm">
+            <source src="media/processes-live.mp4" type="video/mp4">
+          </video>
         </div>
       </div>
       <figcaption>The real app, recorded against demo projects. States describe the latest event Firekeeper can see.</figcaption>

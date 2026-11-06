@@ -4,6 +4,12 @@ One entry per media slot in `index.html`. Each slot is a `<figure id="…" data-
 
 Sizes below are the **export** size: 2× the largest CSS width the slot renders at (full-width slots are 1052 px wide at 1440; the side-by-side cards are 655 px wide at tablet width, where they stack). Anything bigger wastes bytes.
 
+## Status
+
+- [x] `hero-demo`: **stand-in shipped** from the MacBook Air take (2112×1320, ~8.9 s). It shows Processes browsing and state changes only, with no `c` / chat / `Esc` / `s`. Reshoot the full story below (12–18 s) and replace the three files in `media/`.
+- [x] `processes-live`: shipped from the same take as a 16:9 crop (2112×1188, ~8.9 s).
+- [ ] Everything else below is still a placeholder.
+
 ## Before you record (applies to every shot)
 
 **Machine and data**
@@ -17,7 +23,7 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 - Font: JetBrains Mono (or Geist Mono / Berkeley Mono), **15–16 pt**, line height 1.2–1.3. Bigger than you'd use day to day; it has to read when scaled down to ~300 px wide on phones.
 - Theme: a dark theme that matches the site, warm-neutral background close to `#110f0d` and light text close to `#e7e0d8`. Ember `#f97316` already shows up in the TUI, so avoid themes with lots of competing oranges/reds. Use no transparency, blur or background image.
 - Window: hide the title bar or use minimal chrome; the site draws its own window frame around each video. Use `window-padding-x/y = 12` so text isn't flush to the edge.
-- Columns × rows: about **160×50** for the 16:10 / 16:9 shots, and about **110×42** for the 4:3 cards. Size the window in pixels to the target aspect ratio (below) *before* launching `firekeeper`.
+- Columns × rows: about **160×50** for the 16:10 / 16:9 shots, and about **110×42** for the 4:3 cards. On Dan's MacBook Air the largest Ghostty window is **154×38**: use that for the wide shots and about **110×38** (or crop the sides) for the 4:3 cards. Size the window in pixels to the target aspect ratio (below) *before* launching `firekeeper`.
 - Prompt: short, e.g. `PS1='%F{8}~/code/aurora-api%f $ '` (zsh). No git status segments, no host or user name.
 - Cursor: a block that doesn't blink (blinking adds frames that change and makes files bigger).
 
