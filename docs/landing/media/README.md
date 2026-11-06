@@ -8,6 +8,7 @@
 | `hero-demo` | 2112×1320 (16:10), ~8.9 s | 485 KB | 279 KB | 156 KB | MacBook Air take, letterboxed to 16:10 |
 | `processes-live` | 2112×1188 (16:9), ~8.9 s | 481 KB | 278 KB | 153 KB | Same take, 16:9 crop |
 | `switch-terminal` | 1320×990 (4:3), ~14.7 s | 670 KB | 359 KB | 118 KB | Desktop capture, 4:3 center crop |
+| `web-dashboard` | 1320×990 (4:3), ~13.0 s | 629 KB | 724 KB | 105 KB | Dashboard content, 4:3 center crop |
 
 `hero-demo` is a **stand-in**: the take only shows Processes browsing and state
 changes (no `c` chat, `Esc`, or `s` switch). Replace it when a fuller hero

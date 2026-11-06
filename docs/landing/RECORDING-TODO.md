@@ -9,7 +9,8 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 - [x] `hero-demo`: **stand-in shipped** from the MacBook Air take (2112×1320, ~8.9 s). It shows Processes browsing and state changes only, with no `c` / chat / `Esc` / `s`. Reshoot the full story below (12–18 s) and replace the three files in `media/`.
 - [x] `processes-live`: shipped from the same take as a 16:9 crop (2112×1188, ~8.9 s).
 - [x] `switch-terminal`: shipped (1320×990, ~14.7 s). Desktop capture cropped to 4:3; longer than the 5–8 s target but loops cleanly.
-- [ ] Remaining placeholders: `chat-follow`, `usage-tab`, `backfill-dry-run`, `web-dashboard`, `og-image`. Optional fuller `hero-demo` reshoot.
+- [x] `web-dashboard`: shipped (1320×990, ~13.0 s). 4:3 crop of the dashboard content area.
+- [ ] Remaining placeholders: `chat-follow`, `usage-tab`, `backfill-dry-run`, `og-image`. Optional fuller `hero-demo` reshoot.
 
 ## Before you record (applies to every shot)
 
