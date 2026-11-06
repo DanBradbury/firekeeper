@@ -10,7 +10,7 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 - [x] `processes-live`: shipped from the same take, full window (2112×1216, ~8.9 s).
 - [x] `switch-terminal`: shipped (1600×924, ~14.7 s). Full Ghostty window, no crop; longer than the 5–8 s target but loops cleanly.
 - [x] `web-dashboard`: shipped (1600×1040, ~13.0 s). Full screen capture (Safari window on the desktop), no crop.
-- [ ] Remaining placeholders: `chat-follow`, `usage-tab`, `backfill-dry-run`, `og-image`. Optional fuller `hero-demo` reshoot.
+- [ ] Remaining placeholders: `usage-tab`, `backfill-dry-run`, `og-image`. Optional fuller `hero-demo` reshoot. (`chat-follow` removed from the Conversation section; that section uses `switch-terminal` alone.)
 
 Shipped clips keep the full recorded window; each media slot's `--ar` matches the encoded size and the video uses `object-fit: contain`, so nothing inside the window is cropped. Only black desktop padding outside the window is trimmed.
 
@@ -68,7 +68,7 @@ Shipped clips keep the full recorded window; each media slot's `--ar` matches th
 - **Target size:** ≤ 2 MB WebM.
 - **Tip:** a Claude Code session waiting on a tool-approval prompt is the easiest way to get a real `NEEDS INPUT`.
 
-### 3. `chat-follow`, "Read the reply" (left card)
+### 3. `chat-follow` (removed from page — Conversation uses `switch-terminal` full-width)
 - **Where:** Conversation section, left of the pair.
 - **Show:** select a session, press `c`, and the conversation view opens. A new assistant message arrives live, then `Esc` back to the list.
 - **Format:** looping WebM + MP4 + poster.
