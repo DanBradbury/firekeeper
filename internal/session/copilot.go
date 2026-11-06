@@ -159,7 +159,7 @@ func (d *discoverer) discoverOpenCopilotSessions(pids []int) (map[int][]string, 
 	}
 	sort.Strings(pidStrings)
 	output, err := d.command("lsof", "-Fn", "-p", strings.Join(pidStrings, ",")).Output()
-	if err != nil && len(output) == 0 {
+	if err != nil && len(output) == 0 && !lsofFoundNothing(err) {
 		return nil, fmt.Errorf("inspect Copilot process files: %w", err)
 	}
 

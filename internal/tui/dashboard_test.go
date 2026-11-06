@@ -330,6 +330,7 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 				m.width, m.height = width, 40
 				m.activeTab = tt.tab
 				m.usageProvider = tt.provider
+				withUsageData(&m)
 				if tt.withHistory {
 					m.codexUsage.History = []codexHistoricalSession{{ID: "test-session", WorkDir: "/workspace/project"}}
 				}

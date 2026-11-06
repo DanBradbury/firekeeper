@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -419,6 +420,15 @@ func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) (map[string
 	return held, byPID
 }
 
+// lsofFoundNothing reports whether err is lsof exiting non-zero after it
+// ran, which with no output means it had nothing to list: every process
+// exited between the scan and the lookup, or may not be inspected. That is
+// not a failure worth surfacing; a missing lsof or a timeout still is.
+func lsofFoundNothing(err error) bool {
+	var exit *exec.ExitError
+	return errors.As(err, &exit)
+}
+
 // openFilesListable reports whether discovery can list the files a process
 // holds open. Windows cannot without extra tools, so Codex runtimes there are
 // matched to recently updated threads by working directory instead of to the
@@ -530,7 +540,7 @@ func (d *discoverer) discoverOpenRollouts(rootPIDs []int) (map[int][]string, err
 		pidStrings[index] = strconv.Itoa(pid)
 	}
 	output, err := d.command("lsof", "-Fn", "-p", strings.Join(pidStrings, ",")).Output()
-	if err != nil && len(output) == 0 {
+	if err != nil && len(output) == 0 && !lsofFoundNothing(err) {
 		return nil, fmt.Errorf("run lsof: %w", err)
 	}
 

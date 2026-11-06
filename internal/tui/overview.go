@@ -48,10 +48,11 @@ type overviewProvider struct {
 	Notes []string
 }
 
-// visible reports whether the provider gets a panel: it has data, is loading
-// for the first time, or failed (a failure is worth surfacing).
+// visible reports whether the provider gets a panel: only when it has data.
+// A provider that is not installed, or that failed before producing data, is
+// left out rather than shown as an error.
 func (p overviewProvider) visible() bool {
-	return p.HasData || p.Loading || p.Err != ""
+	return p.HasData
 }
 
 func (m model) overviewProviders(now time.Time) []overviewProvider {
@@ -294,18 +295,23 @@ func (m model) viewOverview(contentRows int) string {
 	}
 	now := time.Now()
 	var shown []overviewProvider
-	hidden := 0
+	hidden, loading := 0, false
 	for _, provider := range m.overviewProviders(now) {
 		if provider.visible() {
 			shown = append(shown, provider)
 		} else {
 			hidden++
+			loading = loading || provider.Loading
 		}
 	}
 
 	var lines []string
 	if len(shown) == 0 {
-		lines = dashBox("overview", []string{dashPaint("No provider usage found yet.", usageMutedColor, false)}, m.width, min(contentRows, 3), dashBlue)
+		message := "No providers found."
+		if loading {
+			message = "Looking for providers…"
+		}
+		lines = dashBox("overview", []string{dashPaint(message, usageMutedColor, false)}, m.width, min(contentRows, 3), dashBlue)
 	} else {
 		// Wide terminals show paired cards; smaller terminals keep full-width meters.
 		columns, gap := 1, 2
@@ -361,7 +367,7 @@ func (m model) viewOverview(contentRows int) string {
 				lines = append(lines, dashFit(strings.Join(parts, dashFit("", gap, usagePanelColor)), m.width, usagePanelColor))
 			}
 		}
-		if hidden > 0 && len(lines) < contentRows {
+		if hidden > 0 && !loading && len(lines) < contentRows {
 			lines = append(lines, dashFit(dashPaint(fmt.Sprintf(" %d provider(s) with no local usage data are not shown", hidden), usageMutedColor, false), m.width, usagePanelColor))
 		}
 	}

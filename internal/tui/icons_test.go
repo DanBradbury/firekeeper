@@ -139,6 +139,7 @@ func TestUsageProviderLabelsCarryIcons(t *testing.T) {
 func TestUsageSelectorHitTestMatchesIcons(t *testing.T) {
 	withIconMode(t, iconsFont)
 	m := model{width: 100, height: 30, activeTab: usageTab}
+	withUsageData(&m)
 	// The selector starts with one space, then chips; the second chip must be
 	// hit at the column the rendered line puts it, icons included.
 	line := m.usageProviderSelectorLine()

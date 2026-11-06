@@ -448,9 +448,17 @@ func (m model) viewUsage(contentRows int) string {
 	if contentRows < 1 {
 		return ""
 	}
+	m.normalizeUsageProvider()
 	selector := m.usageProviderSelectorLine()
 	if contentRows == 1 {
 		return selector
+	}
+	if len(m.availableUsageProviders()) == 0 {
+		title, message := "usage", "No providers found."
+		if m.anyUsageLoading() {
+			title, message = "loading", "Looking for providers…"
+		}
+		return selector + "\n" + m.usageMessageBox(title, message, contentRows-1)
 	}
 	return selector + "\n" + m.viewUsagePage(contentRows-1)
 }
@@ -458,13 +466,72 @@ func (m model) viewUsage(contentRows int) string {
 // usageProviderNames are the selector's providers in usageProvider order.
 var usageProviderNames = []string{"codex", "copilot", "kimi", "claude"}
 
-// usageProviderLabels are the selector's chip labels, each with its icon. The
-// mouse hit test measures the same labels.
+// usageProviderHasData reports whether provider has usage to show. A provider
+// that is missing, or whose refresh failed before it produced data, has none
+// and is left out of the Usage tab.
+func (m model) usageProviderHasData(provider usageProvider) bool {
+	switch provider {
+	case codexProvider:
+		return m.codexUsage.hasData()
+	case copilotProvider:
+		return m.copilotUsage.hasData()
+	case kimiProvider:
+		return m.kimiUsage.hasData()
+	case claudeProvider:
+		return m.claudeUsage.hasData()
+	default:
+		return false
+	}
+}
+
+// availableUsageProviders are the providers the Usage tab lists, in selector order.
+func (m model) availableUsageProviders() []usageProvider {
+	var available []usageProvider
+	for provider := codexProvider; provider < usageProviderCount; provider++ {
+		if m.usageProviderHasData(provider) {
+			available = append(available, provider)
+		}
+	}
+	return available
+}
+
+func (m model) anyUsageLoading() bool {
+	return m.codexUsageLoading || m.copilotUsageLoading || m.kimiUsageLoading || m.claudeUsageLoading
+}
+
+// normalizeUsageProvider moves the selection to the first available provider
+// when the selected one has nothing to show.
+func (m *model) normalizeUsageProvider() {
+	available := m.availableUsageProviders()
+	if len(available) == 0 || m.usageProviderHasData(m.usageProvider) {
+		return
+	}
+	m.usageProvider = available[0]
+}
+
+// usageProviderLabel is a provider's chip label with its icon. The mouse hit
+// test measures the same labels.
+func usageProviderLabel(provider usageProvider) string {
+	name := usageProviderNames[provider]
+	tool := strings.ToUpper(name[:1]) + name[1:]
+	return toolIconPrefix(tool) + strings.ToUpper(name)
+}
+
+// usageProviderLabels are the chip labels of every provider.
 func usageProviderLabels() []string {
 	labels := make([]string, len(usageProviderNames))
-	for index, name := range usageProviderNames {
-		tool := strings.ToUpper(name[:1]) + name[1:]
-		labels[index] = toolIconPrefix(tool) + strings.ToUpper(name)
+	for index := range usageProviderNames {
+		labels[index] = usageProviderLabel(usageProvider(index))
+	}
+	return labels
+}
+
+// availableUsageProviderLabels are the chip labels the selector draws.
+func (m model) availableUsageProviderLabels() []string {
+	available := m.availableUsageProviders()
+	labels := make([]string, len(available))
+	for index, provider := range available {
+		labels[index] = usageProviderLabel(provider)
 	}
 	return labels
 }
@@ -483,12 +550,13 @@ func (m model) usageProviderName() string {
 }
 
 // usageProviderSelectorLine mirrors the tab bar styling of the Processes tab:
-// the active provider is a highlighted chip, the others are muted.
+// the active provider is a highlighted chip, the others are muted. Only
+// providers with data are listed.
 func (m model) usageProviderSelectorLine() string {
 	line := dashPaint(" ", usageTextColor, false)
-	for index, name := range usageProviderNames {
-		label := usageProviderLabels()[index]
-		if name == m.usageProviderName() {
+	for _, provider := range m.availableUsageProviders() {
+		label := usageProviderLabel(provider)
+		if provider == m.usageProvider {
 			line += usagePaint("[ "+label+" ]", dashOrange, true, usageHighlightColor) + dashPaint(" ", usageTextColor, false)
 		} else {
 			line += dashPaint("  "+label+"   ", usageMutedColor, false)

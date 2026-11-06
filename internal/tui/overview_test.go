@@ -111,16 +111,33 @@ func TestOverviewEmptyLoadingAndErrorStates(t *testing.T) {
 	m := NewModel()
 	m.width, m.height = 100, 30
 	m.activeTab = overviewTab
-	if view := ansi.Strip(m.viewOverview(20)); !strings.Contains(view, "No provider usage found yet.") {
+	if view := ansi.Strip(m.viewOverview(20)); !strings.Contains(view, "No providers found.") {
 		t.Fatalf("empty state:\n%s", view)
 	}
 	m.codexUsageLoading = true
 	m.claudeUsageErr = "boom"
 	view := ansi.Strip(m.viewOverview(20))
-	for _, expected := range []string{"╭─Codex", "Loading…", "╭─Claude", "Unavailable: boom"} {
-		if !strings.Contains(view, expected) {
-			t.Fatalf("missing %q:\n%s", expected, view)
+	if !strings.Contains(view, "Looking for providers…") {
+		t.Fatalf("first load not reported:\n%s", view)
+	}
+	// A provider that failed before it produced data is not a panel: on a
+	// machine without it the error is noise.
+	m.codexUsageLoading = false
+	m.codexUsageErr = "Codex executable not found"
+	view = ansi.Strip(m.viewOverview(20))
+	if !strings.Contains(view, "No providers found.") {
+		t.Fatalf("missing empty state:\n%s", view)
+	}
+	for _, unexpected := range []string{"╭─Codex", "╭─Claude", "Unavailable", "boom", "executable"} {
+		if strings.Contains(view, unexpected) {
+			t.Fatalf("failed provider shown (%q):\n%s", unexpected, view)
 		}
+	}
+	// One with data keeps its panel; a failed refresh is noted inside it.
+	m.claudeUsage.Summary.Sessions = 1
+	view = ansi.Strip(m.viewOverview(20))
+	if !strings.Contains(view, "╭─Claude") || !strings.Contains(view, "Refresh failed: boom") || strings.Contains(view, "╭─Codex") {
+		t.Fatalf("provider with data:\n%s", view)
 	}
 }
 
