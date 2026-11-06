@@ -14,3 +14,5 @@
 changes (no `c` chat, `Esc`, or `s` switch). Replace it when a fuller hero
 reshoot exists. The take was recorded on Dan's MacBook Air, where the largest
 Ghostty window is **154×38**.
+
+Clips were re-cropped (2026-11-06) to drop letterboxing and terminal title bars so the TUI/dashboard fills each card.
