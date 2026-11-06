@@ -39,6 +39,17 @@ func TestCleanServer(t *testing.T) {
 	}
 }
 
+// The daemon logs this error on every pass, so it must not repeat a password
+// written into the URL.
+func TestCleanServerErrorOmitsUserInfo(t *testing.T) {
+	for _, in := range []string{"https://user:hunter2@fk.example.com", "http://user:hunter2@127.0.0.1:7777", "https://hunter2@fk.example.com"} {
+		_, err := CleanServer(in)
+		if err == nil || strings.Contains(err.Error(), "hunter2") {
+			t.Errorf("CleanServer(%q) error = %v", in, err)
+		}
+	}
+}
+
 // fakeLink is a server that approves on the nth poll.
 func fakeLink(t *testing.T, approveAt int32, secret string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()

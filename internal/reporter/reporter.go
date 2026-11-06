@@ -310,16 +310,14 @@ func newRun(ctx context.Context, cfg Config) (*run, error) {
 	if server == "" {
 		server = DefaultServer
 	}
-	u, err := url.Parse(server)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("invalid server URL %q", server)
+	// The same rule as login: a server that is not on this machine must use
+	// https, so neither the token nor a transcript crosses a network in the
+	// clear.
+	if r.server, err = CleanServer(server); err != nil {
+		return nil, err
 	}
-	r.server = strings.TrimRight(server, "/")
 	r.token = cfg.Token
-	r.client = cfg.Client
-	if r.client == nil {
-		r.client = &http.Client{Timeout: 30 * time.Second}
-	}
+	r.client = uploadClient(cfg.Client)
 	hostname, _ := os.Hostname()
 	r.machine = machine{Name: hostname, Hostname: hostname, OS: runtime.GOOS, Version: cfg.Version}
 	return r, nil
@@ -661,6 +659,20 @@ func (r *run) post(ctx context.Context, machineID string, meta ingestMeta, event
 	return ok.Duplicates, nil
 }
 
+// uploadClient returns a copy of c, or a client with a 30 second timeout,
+// that never follows a redirect. Go re-sends a request body on a 307 or 308,
+// to any host, and keeps the Authorization header when only the scheme or
+// port changes, so following one could send transcripts or the token
+// somewhere other than the server the user named.
+func uploadClient(c *http.Client) *http.Client {
+	if c == nil {
+		return &http.Client{Timeout: 30 * time.Second, CheckRedirect: noRedirects}
+	}
+	copied := *c
+	copied.CheckRedirect = noRedirects
+	return &copied
+}
+
 // postJSON sends body to path and returns the response body of a 200
 // reply. Errors start with what and never include either body.
 func (r *run) postJSON(ctx context.Context, path, what string, body any) ([]byte, error) {
@@ -706,11 +718,18 @@ type StatusError struct {
 }
 
 func (e *StatusError) Error() string {
+	if e.Redirect() {
+		return fmt.Sprintf("%s: server answered %d, a redirect, which is not followed; set server to its final URL", e.What, e.Status)
+	}
 	if e.Code != "" {
 		return fmt.Sprintf("%s: server returned %d (%s)", e.What, e.Status, e.Code)
 	}
 	return fmt.Sprintf("%s: server returned %d", e.What, e.Status)
 }
+
+// Redirect reports whether the server answered with a redirect. Uploads
+// never follow one, and sending again would get the same answer.
+func (e *StatusError) Redirect() bool { return e.Status >= 300 && e.Status < 400 }
 
 func (r *run) print(res SessionResult) {
 	if r.cfg.Out == nil {

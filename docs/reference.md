@@ -485,6 +485,12 @@ variable, or the config file, and point at a server (`http://127.0.0.1:7777`
 by default). `report --dry-run` shows what would be sent without opening a
 connection. Agent CLIs never depend on any of these commands.
 
+A server on another machine must use `https://`; plain `http://` is accepted
+only for `127.0.0.1`, `::1`, or `localhost`, so neither the token nor a
+transcript crosses a network in the clear. Uploads never follow a redirect:
+a server that answers with one fails the upload, and the error names the
+status, so set `server` to the final URL.
+
 ```sh
 firekeeper snapshot --json            # print currently discovered sessions as JSON
 firekeeper report --dry-run           # show what one upload pass would read

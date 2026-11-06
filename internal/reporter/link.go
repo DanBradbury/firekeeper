@@ -35,7 +35,12 @@ const maxLinkResponse = 1 << 20
 // token never crosses a network in the clear.
 func CleanServer(raw string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+	if err == nil && u.User != nil {
+		// Not quoted: the error is printed and logged, and this part of the
+		// URL can hold a password.
+		return "", errors.New("server URL must not contain a user name or password")
+	}
+	if err != nil || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
 		return "", fmt.Errorf("invalid server URL %q", raw)
 	}
 	switch u.Scheme {

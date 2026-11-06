@@ -33,12 +33,12 @@ func stubDaemon(t *testing.T, err error) *daemon.Config {
 func TestDaemonFlags(t *testing.T) {
 	cfg := stubDaemon(t, nil)
 	var stdout, stderr bytes.Buffer
-	code := runDaemon([]string{"--server", "http://h:1", "--provider", "codex", "--interval", "30s"}, &stdout, &stderr)
+	code := runDaemon([]string{"--server", "https://h:1", "--provider", "codex", "--interval", "30s"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
 	}
 	r := cfg.Reporter
-	if r.Server != "http://h:1" || cfg.Interval != 30*time.Second || len(r.Providers) != 1 || r.Providers[0] != transcript.ProviderCodex || r.DryRun {
+	if r.Server != "https://h:1" || cfg.Interval != 30*time.Second || len(r.Providers) != 1 || r.Providers[0] != transcript.ProviderCodex || r.DryRun {
 		t.Fatalf("config = %+v", *cfg)
 	}
 	if cfg.Out == nil {
@@ -170,11 +170,11 @@ func stubService(t *testing.T, goos string) (*[]string, *serviceRunner, string) 
 func TestDaemonInstallCapturesFlags(t *testing.T) {
 	args, runner, home := stubService(t, "linux")
 	var stdout, stderr bytes.Buffer
-	code := runDaemon([]string{"install", "--server", "http://h:1", "--provider", "codex", "--provider", "Copilot", "--interval", "1m"}, &stdout, &stderr)
+	code := runDaemon([]string{"install", "--server", "https://h:1", "--provider", "codex", "--provider", "Copilot", "--interval", "1m"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
 	}
-	want := []string{"--quiet", "--server", "http://h:1", "--provider", "codex", "--provider", "copilot", "--interval", "1m0s"}
+	want := []string{"--quiet", "--server", "https://h:1", "--provider", "codex", "--provider", "copilot", "--interval", "1m0s"}
 	if !slices.Equal(*args, want) {
 		t.Fatalf("args = %q, want %q", *args, want)
 	}
@@ -184,6 +184,44 @@ func TestDaemonInstallCapturesFlags(t *testing.T) {
 	unit, err := os.ReadFile(filepath.Join(home, ".config", "systemd", "user", "firekeeper.service"))
 	if err != nil || !strings.Contains(string(unit), `"--provider" "copilot"`) {
 		t.Fatalf("unit = %s, %v", unit, err)
+	}
+}
+
+// The daemon refuses a server every pass would refuse: plain http to another
+// machine would send the token and transcripts in the clear.
+func TestDaemonRefusesInsecureServer(t *testing.T) {
+	for _, server := range []string{"http://h:1", "http://10.0.0.5:7777", "https://user:pw@h:1"} {
+		t.Run(server, func(t *testing.T) {
+			ran := false
+			previous := daemonRun
+			daemonRun = func(context.Context, daemon.Config) error { ran = true; return nil }
+			t.Cleanup(func() { daemonRun = previous })
+			var stdout, stderr bytes.Buffer
+			if code := runDaemon([]string{"--server", server, "--provider", "codex"}, &stdout, &stderr); code != 2 || ran {
+				t.Fatalf("daemon: code = %d, ran = %v, stderr = %q", code, ran, stderr.String())
+			}
+			if strings.Contains(stderr.String(), "pw@") {
+				t.Fatalf("error repeats the URL's password: %q", stderr.String())
+			}
+
+			_, runner, home := stubService(t, "linux")
+			stderr.Reset()
+			if code := runDaemon([]string{"install", "--server", server, "--provider", "codex"}, &stdout, &stderr); code != 2 {
+				t.Fatalf("install: code = %d, stderr = %q", code, stderr.String())
+			}
+			if len(runner.calls) != 0 {
+				t.Fatalf("install ran %q", runner.calls)
+			}
+			if _, err := os.Stat(filepath.Join(home, ".config", "systemd", "user", "firekeeper.service")); !os.IsNotExist(err) {
+				t.Fatalf("install wrote a unit: %v", err)
+			}
+		})
+	}
+	// Plain http to this machine is still fine.
+	cfg := stubDaemon(t, nil)
+	var stdout, stderr bytes.Buffer
+	if code := runDaemon([]string{"--server", "http://127.0.0.1:7777", "--provider", "codex"}, &stdout, &stderr); code != 0 || cfg.Reporter.Server != "http://127.0.0.1:7777" {
+		t.Fatalf("loopback refused: code = %d, stderr = %q", code, stderr.String())
 	}
 }
 

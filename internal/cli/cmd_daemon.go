@@ -95,6 +95,14 @@ func parseDaemonFlags(name string, fs *flag.FlagSet, f *daemonFlags, args []stri
 		fmt.Fprintf(stderr, "%s: no --provider given (or providers in the config file); the daemon uploads nothing without one\n", name)
 		return 2, false
 	}
+	// Every pass would refuse this server; say so now rather than start, or
+	// install, a daemon that only logs the same error.
+	if len(c.Providers) > 0 {
+		if _, err := reporter.CleanServer(c.Server); err != nil {
+			fmt.Fprintf(stderr, "%s: %v\n", name, err)
+			return 2, false
+		}
+	}
 	return 0, true
 }
 
