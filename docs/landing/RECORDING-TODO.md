@@ -17,7 +17,7 @@ Shipped clips keep the full recorded window; each media slot's `--ar` matches th
 ## Before you record (applies to every shot)
 
 **Machine and data**
-- [ ] Use a throwaway macOS user or a clean `$HOME`, so paths read `/Users/demo/…` and not `/Users/danbradbury/…`. The current `firekeeper-tui.jpg` shows `/Users/danbradbury/Documents/Github/firekeeper` and a TTY. Fine for you, but not what you want on a sales page.
+- [ ] Use a throwaway macOS user or a clean `$HOME`, so paths read `/Users/demo/…` and not `/Users/danbradbury/…`. The README uses `docs/firekeeper-tui.gif` / `firekeeper-usage.gif` / `firekeeper-dashboard.gif` from the current landing takes. `docs/firekeeper-tui.jpg` remains for the docs site shot; reshoot if personal paths show.
 - [ ] Demo projects only: e.g. `~/code/aurora-api`, `~/code/aurora-web`, `~/code/notes`, with harmless branch names (`main`, `feat/billing`, `fix/pager`). Nothing client-related, and no real repo names you'd mind seeing.
 - [ ] Real agents running real but boring prompts ("add a health check endpoint", "write tests for the pager"), so states, models and tokens are genuine. Never fake the UI.
 - [ ] Before each take, check for API keys, tokens, emails, hostnames, Slack/Linear URLs in prompts or replies. `firekeeper config show` masks the token, but still keep it off screen.
