@@ -10,7 +10,7 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 - [x] `processes-live`: shipped from the same take, full window (2112×1216, ~8.9 s).
 - [x] `switch-terminal`: shipped (1600×924, ~14.7 s). Full Ghostty window, no crop; longer than the 5–8 s target but loops cleanly.
 - [x] `web-dashboard`: shipped (1600×1040, ~13.0 s). Full screen capture (Safari window on the desktop), no crop.
-- [ ] Remaining placeholders: `usage-tab`, `backfill-dry-run`, `og-image`. Optional fuller `hero-demo` reshoot. (`chat-follow` removed from the Conversation section; that section uses `switch-terminal` alone.)
+- [ ] Remaining placeholders: `usage-tab`, `og-image`. Optional fuller `hero-demo` reshoot. (`chat-follow` and `backfill-dry-run` removed from the page; Conversation uses `switch-terminal` alone, Reporting uses `web-dashboard` alone.)
 
 Shipped clips keep the full recorded window; each media slot's `--ar` matches the encoded size and the video uses `object-fit: contain`, so nothing inside the window is cropped. Only black desktop padding outside the window is trimmed.
 
@@ -95,7 +95,7 @@ Shipped clips keep the full recorded window; each media slot's `--ar` matches th
 - **Target size:** ≤ 2 MB WebM.
 - **Watch for:** plan names and limits are your real account data. Decide whether you're OK showing them, or use an account you don't mind showing.
 
-### 6. `backfill-dry-run`, reporting (left card)
+### 6. `backfill-dry-run` (removed from page — Reporting uses `web-dashboard` full-width)
 - **Where:** "Stay local. Add a web dashboard…" section, left card.
 - **Show:** plain shell. `firekeeper backfill --all --dry-run` prints its summary (nothing uploaded). Then `firekeeper login --server https://dashboard.firekeeper.ai` with the browser approval cut short, then `firekeeper daemon install`. If that's too much, the dry run alone is fine.
 - **Format:** looping WebM + MP4 + poster. Alternatively an asciinema cast rendered with `agg`, but match the font and theme.

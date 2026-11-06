@@ -204,31 +204,17 @@
         <p>Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. If you enable uploads, session metadata and full transcripts go through best-effort redaction, and the server's operator can read them. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
       </div>
     </div>
-    <div class="pair">
-      <figure class="frame" id="backfill-dry-run" data-slot>
-        <div class="window">
-          <div class="slot" style="--ar: 4 / 3">
-            <div class="label">
-              <span class="kind">Video · backfill-dry-run</span>
-              <span class="what">login → backfill --dry-run summary → daemon install</span>
-              <span class="spec">loop · 4:3 · export 1320×990 · 10–14 s</span>
-            </div>
-          </div>
+    <figure class="frame" id="web-dashboard">
+      <div class="window browser">
+        <div class="slot has-media" style="--ar: 1600 / 1040">
+          <video autoplay muted loop playsinline preload="none" poster="media/web-dashboard.jpg" width="1600" height="1040" aria-label="Web dashboard sessions across machines, then a redacted transcript">
+            <source src="media/web-dashboard.webm" type="video/webm">
+            <source src="media/web-dashboard.mp4" type="video/mp4">
+          </video>
         </div>
-        <figcaption>Nothing uploads until you name a server and the providers to send.</figcaption>
-      </figure>
-      <figure class="frame" id="web-dashboard">
-        <div class="window browser">
-          <div class="slot has-media" style="--ar: 1600 / 1040">
-            <video autoplay muted loop playsinline preload="none" poster="media/web-dashboard.jpg" width="1600" height="1040" aria-label="Web dashboard sessions across machines, then a redacted transcript">
-              <source src="media/web-dashboard.webm" type="video/webm">
-              <source src="media/web-dashboard.mp4" type="video/mp4">
-            </video>
-          </div>
-        </div>
-        <figcaption>The commercial dashboard server, with demo data.</figcaption>
-      </figure>
-    </div>
+      </div>
+      <figcaption>The commercial dashboard server, with demo data. Nothing uploads until you name a server and the providers to send.</figcaption>
+    </figure>
   </section>
 
   <!-- PRIVACY -->
