@@ -164,6 +164,8 @@ func (m model) claudeOverview(now time.Time) overviewProvider {
 		provider.Notes = append(provider.Notes, "Limits: firekeeper claude-limits enable")
 	case snapshot.LimitsErr != "":
 		provider.Notes = append(provider.Notes, "Limits unavailable: "+snapshot.LimitsErr)
+	case snapshot.NoSignIn && provider.HasData:
+		provider.Notes = append(provider.Notes, claudeNoSignInNote)
 	}
 	if snapshot.CloudSyncWarn != "" {
 		provider.Notes = append(provider.Notes, "Cloud sync: "+snapshot.CloudSyncWarn)

@@ -90,3 +90,36 @@ func TestClaudeLimitsStatusReportsWindowsWithoutLeakingToken(t *testing.T) {
 		t.Fatalf("status = %q", out)
 	}
 }
+
+func TestClaudeLimitsStatusExplainsAnUnusableSignIn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	t.Setenv("FIREKEEPER_CONFIG", filepath.Join(home, "config.toml"))
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	original := newClaudeLimitsClient
+	t.Cleanup(func() { newClaudeLimitsClient = original })
+	newClaudeLimitsClient = func() claudelimits.Client {
+		return claudelimits.Client{GOOS: "linux", Keychain: func() ([]byte, error) { return nil, os.ErrNotExist }}
+	}
+	run := func() string {
+		var stdout, stderr strings.Builder
+		if code := runClaudeLimits([]string{"status"}, &stdout, &stderr); code != 0 {
+			t.Fatalf("status = %d", code)
+		}
+		return stdout.String()
+	}
+	if out := run(); !strings.Contains(out, "no Claude Code sign-in") || !strings.Contains(out, "Looked in:") || !strings.Contains(out, ".credentials.json") {
+		t.Fatalf("missing file status = %q", out)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".credentials.json"), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := run(); !strings.Contains(out, "could not be read") || !strings.Contains(out, "Looked in:") {
+		t.Fatalf("unreadable file status = %q", out)
+	}
+}

@@ -69,6 +69,10 @@ type claudeUsageSnapshot struct {
 	Limits    claudelimits.Limits
 	LimitsOn  bool
 	LimitsErr string
+	// NoSignIn is set when limits are on but no Claude Code sign-in was
+	// found. It is a hint, not an error, and is shown only where this
+	// machine has Claude Code history.
+	NoSignIn bool
 	// CloudSyncWarn is the daemon's last Claude Code on the web sync
 	// problem, set only while `[claude_cloud] enabled = true`.
 	CloudSyncWarn string
@@ -143,11 +147,14 @@ func refreshClaudeUsage() tea.Cmd {
 		if err == nil {
 			limits, enabled, limitsErr := claudeLimitsSource()
 			snapshot.LimitsOn = enabled
-			// No sign-in just means Claude Code is not logged in here: show
-			// nothing rather than an error on every machine without one.
-			if limitsErr != nil && !errors.Is(limitsErr, claudelimits.ErrNoToken) {
+			// No sign-in is not an error: the view shows a hint only when
+			// this machine has Claude Code history, never an error.
+			switch {
+			case errors.Is(limitsErr, claudelimits.ErrNoToken):
+				snapshot.NoSignIn = true
+			case limitsErr != nil:
 				snapshot.LimitsErr = limitsErr.Error()
-			} else {
+			default:
 				snapshot.Limits = limits
 			}
 		}
@@ -361,6 +368,10 @@ func claudeLimitWindows(limits claudelimits.Limits) []claudeLimitWindow {
 	return windows
 }
 
+// claudeNoSignInNote is shown where limits would be when Claude Code has
+// history here but no sign-in Firekeeper can read.
+const claudeNoSignInNote = "Limits: no sign-in found (firekeeper claude-limits status)"
+
 // claudeLimitsNote is the muted line shown where limits would be.
 func claudeLimitsNote(snapshot claudeUsageSnapshot) string {
 	switch {
@@ -368,6 +379,8 @@ func claudeLimitsNote(snapshot claudeUsageSnapshot) string {
 		return "firekeeper claude-limits enable" // short: it must fit a card
 	case snapshot.LimitsErr != "":
 		return "Limits unavailable: " + snapshot.LimitsErr
+	case snapshot.NoSignIn:
+		return claudeNoSignInNote
 	default:
 		return "Plan limits: Claude Code /usage"
 	}

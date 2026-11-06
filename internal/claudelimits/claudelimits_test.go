@@ -157,12 +157,113 @@ func TestFetchExpiredTokenMakesNoRequest(t *testing.T) {
 	}
 }
 
-func TestMalformedCredentialFileIsNoToken(t *testing.T) {
+func noRetryDelay(t *testing.T) {
+	t.Helper()
+	original := credentialRetryDelay
+	credentialRetryDelay = 0
+	t.Cleanup(func() { credentialRetryDelay = original })
+}
+
+// A malformed file is not "no sign-in": the dashboard must say something is
+// wrong instead of quietly showing no limits.
+func TestMalformedCredentialFileIsUnreadable(t *testing.T) {
+	noRetryDelay(t)
+	for name, body := range map[string]string{"broken": "{broken", "empty": "", "partial": `{"claudeAiOauth":{"accessT`} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c := clientFor(dir, "http://127.0.0.1:1")
+		if _, err := c.Fetch(context.Background()); !errors.Is(err, ErrCredentialsUnreadable) {
+			t.Fatalf("%s: err = %v, want ErrCredentialsUnreadable", name, err)
+		}
+		if err := c.CheckToken(); !errors.Is(err, ErrCredentialsUnreadable) || c.HasToken() {
+			t.Fatalf("%s: CheckToken = %v", name, err)
+		}
+	}
+}
+
+// Valid JSON without an OAuth token (an API-key login) is no sign-in.
+func TestCredentialFileWithoutOAuthTokenIsNoToken(t *testing.T) {
+	noRetryDelay(t)
+	for _, body := range []string{`{}`, `{"claudeAiOauth":{"accessToken":""}}`, `{"mcpOAuth":{}}`} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := clientFor(dir, "").CheckToken(); !errors.Is(err, ErrNoToken) {
+			t.Fatalf("%s: err = %v, want ErrNoToken", body, err)
+		}
+	}
+}
+
+// Windows tools can write a UTF-8 byte order mark; it must not hide the token.
+func TestCredentialFileWithByteOrderMark(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte("{broken"), 0o600); err != nil {
+	body := "\xef\xbb\xbf" + `{"claudeAiOauth":{"accessToken":"` + fakeToken + `"}}`
+	if err := os.WriteFile(filepath.Join(dir, ".credentials.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := clientFor(dir, "http://127.0.0.1:1").Fetch(context.Background()); !errors.Is(err, ErrNoToken) {
-		t.Fatalf("err = %v, want ErrNoToken", err)
+	c := clientFor(dir, "")
+	if err := c.CheckToken(); err != nil || !c.HasToken() {
+		t.Fatalf("CheckToken = %v", err)
 	}
+}
+
+// A read that lands while Claude Code rewrites the file sees a partial file;
+// the next attempt sees the finished one.
+func TestCredentialReadRetriesAPartialFile(t *testing.T) {
+	noRetryDelay(t)
+	full := []byte(`{"claudeAiOauth":{"accessToken":"` + fakeToken + `"}}`)
+	original := readFile
+	t.Cleanup(func() { readFile = original })
+	calls := 0
+	readFile = func(string) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return full[:10], nil
+		}
+		return full, nil
+	}
+	tok, err := readCredentialsFile("unused")
+	if err != nil || tok.value != fakeToken || calls != 2 {
+		t.Fatalf("tok ok=%v err=%v calls=%d", tok.value == fakeToken, err, calls)
+	}
+	calls = 0
+	readFile = func(string) ([]byte, error) { calls++; return nil, os.ErrPermission }
+	if _, err := readCredentialsFile("unused"); !errors.Is(err, ErrCredentialsUnreadable) || calls != credentialReadAttempts {
+		t.Fatalf("permission: err=%v calls=%d", err, calls)
+	}
+	calls = 0
+	readFile = func(string) ([]byte, error) { calls++; return nil, os.ErrNotExist }
+	if _, err := readCredentialsFile("unused"); !errors.Is(err, ErrNoToken) || calls != 1 {
+		t.Fatalf("missing: err=%v calls=%d", err, calls)
+	}
+}
+
+func TestCredentialsPath(t *testing.T) {
+	dir := t.TempDir()
+	if got := clientFor(dir, "").CredentialsPath(); got != filepath.Join(dir, ".credentials.json") {
+		t.Fatalf("config dir path = %q", got)
+	}
+	c := Client{Home: dir, Getenv: func(string) string { return "" }}
+	if got := c.CredentialsPath(); got != filepath.Join(dir, ".claude", ".credentials.json") {
+		t.Fatalf("home path = %q", got)
+	}
+}
+
+func FuzzParseCredentials(f *testing.F) {
+	f.Add([]byte(`{"claudeAiOauth":{"accessToken":"x","expiresAt":1}}`))
+	f.Add([]byte("\xef\xbb\xbf{}"))
+	f.Add([]byte(`{broken`))
+	f.Add([]byte(``))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		tok, ok := parseCredentials(data)
+		if !ok && (tok.value != "" || !tok.expires.IsZero()) {
+			t.Fatalf("invalid input returned a token")
+		}
+		if tok.value == "" && (tok.plan != "" || !tok.expires.IsZero()) {
+			t.Fatalf("empty token carried fields")
+		}
+	})
 }

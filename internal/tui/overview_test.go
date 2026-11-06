@@ -236,19 +236,37 @@ func TestRefreshClaudeUsageAttachesLimitsWithoutFailingOnLimitsError(t *testing.
 	if msg.err != nil || msg.snapshot.LimitsErr == "" || msg.snapshot.Limits.Any() {
 		t.Fatalf("limits error must not fail the refresh: %+v err %v", msg.snapshot, msg.err)
 	}
-	// No Claude Code sign-in is not an error: nothing is shown for it.
+	// No Claude Code sign-in is not an error, but where Claude Code has
+	// history the card says why the limits are missing instead of showing
+	// nothing (seen on Windows).
 	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
 		return claudelimits.Limits{}, true, claudelimits.ErrNoToken
 	}
 	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
-	if msg.err != nil || !msg.snapshot.LimitsOn || msg.snapshot.LimitsErr != "" {
-		t.Fatalf("missing sign-in must be silent: %+v", msg.snapshot)
+	if msg.err != nil || !msg.snapshot.LimitsOn || msg.snapshot.LimitsErr != "" || !msg.snapshot.NoSignIn {
+		t.Fatalf("missing sign-in must be a hint, not an error: %+v", msg.snapshot)
 	}
 	m := overviewTestModel(time.Now())
-	m.claudeUsage.LimitsOn, m.claudeUsage.LimitsErr = msg.snapshot.LimitsOn, msg.snapshot.LimitsErr
+	m.claudeUsage.LimitsOn, m.claudeUsage.LimitsErr, m.claudeUsage.NoSignIn = msg.snapshot.LimitsOn, msg.snapshot.LimitsErr, msg.snapshot.NoSignIn
 	view := ansi.Strip(m.viewOverview(30))
-	if strings.Contains(view, "claude-limits enable") || strings.Contains(view, "Limits unavailable") {
-		t.Fatalf("overview nags on a machine without a sign-in:\n%s", view)
+	if strings.Contains(view, "claude-limits enable") || strings.Contains(view, "Limits unavailable") || !strings.Contains(view, "no sign-in found") {
+		t.Fatalf("overview must hint at the missing sign-in:\n%s", view)
+	}
+	// Without Claude Code history the card is hidden, so there is no hint.
+	m.claudeUsage.Summary, m.claudeUsage.Daily = claudeUsageSummary{}, nil
+	if view := ansi.Strip(m.viewOverview(30)); strings.Contains(view, "no sign-in found") {
+		t.Fatalf("hint shown without Claude Code history:\n%s", view)
+	}
+	if got := claudeLimitsNote(claudeUsageSnapshot{LimitsOn: true, NoSignIn: true}); got != claudeNoSignInNote {
+		t.Fatalf("usage tab note = %q", got)
+	}
+	// An unreadable credentials file is an error the card shows.
+	claudeLimitsSource = func() (claudelimits.Limits, bool, error) {
+		return claudelimits.Limits{}, true, claudelimits.ErrCredentialsUnreadable
+	}
+	msg = refreshClaudeUsage()().(claudeUsageResultMsg)
+	if msg.err != nil || msg.snapshot.NoSignIn || !strings.Contains(msg.snapshot.LimitsErr, "credentials file could not be read") {
+		t.Fatalf("unreadable credentials: %+v", msg.snapshot)
 	}
 	claudeLimitsSource = func() (claudelimits.Limits, bool, error) { return claudelimits.Limits{}, false, nil }
 	msg = refreshClaudeUsage()().(claudeUsageResultMsg)

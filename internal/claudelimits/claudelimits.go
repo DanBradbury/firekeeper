@@ -19,6 +19,7 @@
 package claudelimits
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -32,6 +33,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/DanBradbury/firekeeper/internal/fsutil"
 )
 
 // UsageURL is the endpoint Claude Code's /usage view reads.
@@ -55,6 +58,22 @@ var (
 	ErrTokenExpired = errors.New("Claude Code sign-in has expired; open claude once to renew it")
 	// ErrUnauthorized means the endpoint rejected the token.
 	ErrUnauthorized = errors.New("Anthropic rejected the Claude Code sign-in; open claude and run /login")
+	// ErrCredentialsUnreadable means the credentials file exists but could
+	// not be read or parsed, even after a short retry for a concurrent
+	// write by Claude Code.
+	ErrCredentialsUnreadable = errors.New("Claude Code credentials file could not be read; open claude and run /login")
+)
+
+// credentialReadAttempts and credentialRetryDelay bound how long findToken
+// waits for Claude Code to finish rewriting its credentials file. Claude Code
+// rewrites it in place when it renews the token, and a read in the middle of
+// that sees an empty or partial file. Tests shorten the delay.
+var (
+	credentialReadAttempts = 3
+	credentialRetryDelay   = 150 * time.Millisecond
+	// readFile is fsutil.ReadFile, which lets Claude Code replace the file
+	// while it is open here. A variable for tests.
+	readFile = fsutil.ReadFile
 )
 
 // Window is one limit window. UsedPercent is 0-100; ResetsAt is zero when the
@@ -129,10 +148,33 @@ type token struct {
 }
 
 // HasToken reports whether a sign-in is present, without making a request or
-// returning the secret. The CLI uses it for status.
-func (c Client) HasToken() bool {
-	tok, err := c.findToken()
-	return err == nil && tok.value != ""
+// returning the secret.
+func (c Client) HasToken() bool { return c.CheckToken() == nil }
+
+// CheckToken returns nil when a sign-in is present (expired or not), else why
+// not: ErrNoToken or ErrCredentialsUnreadable. It makes no request and never
+// returns the secret. The CLI uses it for status.
+func (c Client) CheckToken() error {
+	_, err := c.findToken()
+	return err
+}
+
+// CredentialsPath is the credentials file Claude Code uses on Linux and
+// Windows (and macOS when the Keychain has no item), for status output.
+func (c Client) CredentialsPath() string {
+	dir := strings.TrimSpace(c.getenv(envConfigDir))
+	if dir == "" {
+		home := c.Home
+		if home == "" {
+			h, err := os.UserHomeDir()
+			if err != nil {
+				return ""
+			}
+			home = h
+		}
+		dir = filepath.Join(home, ".claude")
+	}
+	return filepath.Join(dir, ".credentials.json")
 }
 
 func (c Client) findToken() (token, error) {
@@ -145,42 +187,64 @@ func (c Client) findToken() (token, error) {
 			keychain = readKeychain
 		}
 		if data, err := keychain(); err == nil {
-			if tok, ok := parseCredentials(data); ok {
+			if tok, ok := parseCredentials(data); ok && tok.value != "" {
 				return tok, nil
 			}
 		}
 	}
-	dir := strings.TrimSpace(c.getenv(envConfigDir))
-	if dir == "" {
-		home := c.Home
-		if home == "" {
-			h, err := os.UserHomeDir()
-			if err != nil {
-				return token{}, ErrNoToken
-			}
-			home = h
-		}
-		dir = filepath.Join(home, ".claude")
+	path := c.CredentialsPath()
+	if path == "" {
+		return token{}, ErrNoToken
 	}
-	data, err := os.ReadFile(filepath.Join(dir, ".credentials.json"))
-	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return token{}, ErrNoToken
-		}
-		return token{}, errors.New("read Claude Code credentials file")
-	}
-	if tok, ok := parseCredentials(data); ok {
-		return tok, nil
-	}
-	return token{}, ErrNoToken
+	return readCredentialsFile(path)
 }
 
-func parseCredentials(data []byte) (token, bool) {
+// readCredentialsFile reads Claude Code's credentials file. A missing file,
+// or valid JSON without an OAuth access token (an API-key login), is
+// ErrNoToken. A file that cannot be read or is not valid JSON is retried
+// briefly, since Claude Code may be rewriting it, and is then
+// ErrCredentialsUnreadable rather than silently no sign-in.
+func readCredentialsFile(path string) (token, error) {
+	var lastErr error
+	for attempt := range credentialReadAttempts {
+		if attempt > 0 {
+			time.Sleep(credentialRetryDelay)
+		}
+		data, err := readFile(path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return token{}, ErrNoToken
+			}
+			lastErr = ErrCredentialsUnreadable
+			continue
+		}
+		tok, valid := parseCredentials(data)
+		if !valid {
+			lastErr = ErrCredentialsUnreadable
+			continue
+		}
+		if tok.value == "" {
+			return token{}, ErrNoToken
+		}
+		return tok, nil
+	}
+	return token{}, lastErr
+}
+
+// parseCredentials decodes Claude Code's credential JSON. ok is false when the
+// data is not valid JSON; a valid document without an access token returns an
+// empty token and ok true. A UTF-8 byte order mark, which Windows editors and
+// PowerShell's Out-File can add, is ignored.
+func parseCredentials(data []byte) (tok token, ok bool) {
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	var creds credentials
-	if err := json.Unmarshal(data, &creds); err != nil || creds.ClaudeAiOauth.AccessToken == "" {
+	if err := json.Unmarshal(data, &creds); err != nil {
 		return token{}, false
 	}
-	tok := token{value: creds.ClaudeAiOauth.AccessToken, plan: creds.ClaudeAiOauth.SubscriptionType}
+	if creds.ClaudeAiOauth.AccessToken == "" {
+		return token{}, true
+	}
+	tok = token{value: creds.ClaudeAiOauth.AccessToken, plan: creds.ClaudeAiOauth.SubscriptionType}
 	if creds.ClaudeAiOauth.ExpiresAt > 0 {
 		tok.expires = time.UnixMilli(creds.ClaudeAiOauth.ExpiresAt)
 	}

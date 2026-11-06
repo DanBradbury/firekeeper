@@ -2,9 +2,11 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	"github.com/DanBradbury/firekeeper/internal/claudelimits"
 	"github.com/DanBradbury/firekeeper/internal/config"
@@ -76,8 +78,13 @@ func claudeLimitsStatus(stdout io.Writer) int {
 	}
 	fmt.Fprintln(stdout, "Claude limits: on")
 	client := newClaudeLimitsClient()
-	if !client.HasToken() {
-		fmt.Fprintf(stdout, "Sign-in: %v\n", claudelimits.ErrNoToken)
+	if err := client.CheckToken(); err != nil {
+		fmt.Fprintf(stdout, "Sign-in: %v\n", err)
+		if runtime.GOOS != "darwin" || errors.Is(err, claudelimits.ErrCredentialsUnreadable) {
+			if path := client.CredentialsPath(); path != "" {
+				fmt.Fprintf(stdout, "Looked in: %s\n", path)
+			}
+		}
 		return 0
 	}
 	fmt.Fprintln(stdout, "Sign-in: found")

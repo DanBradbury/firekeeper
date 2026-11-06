@@ -284,13 +284,18 @@ in on this machine, Firekeeper reads that sign-in (`CLAUDE_CODE_OAUTH_TOKEN`,
 the macOS Keychain item `Claude Code-credentials`, or
 `CLAUDE_CONFIG_DIR/.credentials.json`, default `~/.claude/.credentials.json` on
 Linux and Windows) and asks Anthropic's usage endpoint, the way Claude Code's
-`/usage` does. With no sign-in it does nothing and shows nothing. The endpoint
+`/usage` does. With no sign-in it makes no request; when this machine has Claude
+Code history, the Claude panel says no sign-in was found instead of leaving the
+limits out without a word. A credentials file that exists but cannot be read
+(it is retried briefly, since Claude Code rewrites it when it renews the
+token) is reported as an error, not as no sign-in. The endpoint
 is undocumented and can change without notice, so a failure only shows a short
 note on the Claude panel. The token is used for that single request: it is not
 stored, refreshed, logged, or uploaded, and Claude Code's own files are never
 written. On macOS the Keychain may ask you to allow access the first time.
 An expired sign-in is reported, not renewed; open `claude` once to renew it.
-`firekeeper claude-limits status` shows what it can read, `disable` turns it
+`firekeeper claude-limits status` shows what it can read and which
+credentials file it looked in, `disable` turns it
 off, and `enable` turns it back on. The setting is `[claude_limits] enabled` in
 `~/.firekeeper/config.toml`.
 
