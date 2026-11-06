@@ -6,11 +6,13 @@ Sizes below are the **export** size: 2× the largest CSS width the slot renders 
 
 ## Status
 
-- [x] `hero-demo`: **stand-in shipped** from the MacBook Air take (2112×1320, ~8.9 s). It shows Processes browsing and state changes only, with no `c` / chat / `Esc` / `s`. Reshoot the full story below (12–18 s) and replace the three files in `media/`.
-- [x] `processes-live`: shipped from the same take as a 16:9 crop (2112×1188, ~8.9 s).
-- [x] `switch-terminal`: shipped (1320×990, ~14.7 s). Desktop capture cropped to 4:3; longer than the 5–8 s target but loops cleanly.
-- [x] `web-dashboard`: shipped (1320×990, ~13.0 s). 4:3 crop of the dashboard content area.
+- [x] `hero-demo`: **stand-in shipped** from the MacBook Air take (2112×1216, ~8.9 s, full Ghostty window). It shows Processes browsing and state changes only, with no `c` / chat / `Esc` / `s`. Reshoot the full story below (12–18 s) and replace the three files in `media/`.
+- [x] `processes-live`: shipped from the same take, full window (2112×1216, ~8.9 s).
+- [x] `switch-terminal`: shipped (1600×924, ~14.7 s). Full Ghostty window, no crop; longer than the 5–8 s target but loops cleanly.
+- [x] `web-dashboard`: shipped (1600×1040, ~13.0 s). Full screen capture (Safari window on the desktop), no crop.
 - [ ] Remaining placeholders: `chat-follow`, `usage-tab`, `backfill-dry-run`, `og-image`. Optional fuller `hero-demo` reshoot.
+
+Shipped clips keep the full recorded window; each media slot's `--ar` matches the encoded size and the video uses `object-fit: contain`, so nothing inside the window is cropped. Only black desktop padding outside the window is trimmed.
 
 ## Before you record (applies to every shot)
 
