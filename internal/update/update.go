@@ -239,18 +239,7 @@ func Install(ctx context.Context, version, exe string, out, errOut io.Writer) er
 		return fmt.Errorf("invalid version %q", version)
 	}
 	if IsHomebrew(exe) {
-		// Homebrew is chatty (auto-update news, tap trust and Command Line
-		// Tools warnings, cleanup hints). Keep it quiet unless the upgrade
-		// fails, then show everything it said.
-		var buf bytes.Buffer
-		cmd := exec.CommandContext(ctx, "brew", "upgrade", brewFormula)
-		cmd.Stdout, cmd.Stderr = &buf, &buf
-		cmd.Env = append(os.Environ(), "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_INSTALL_CLEANUP=1")
-		if err := cmd.Run(); err != nil {
-			_, _ = errOut.Write(buf.Bytes())
-			return err
-		}
-		return nil
+		return installBrew(ctx, strings.TrimPrefix(tag, "v"), out, errOut)
 	}
 	if goos == "windows" {
 		return installWindows(ctx, tag, exe, out, errOut)
@@ -264,6 +253,118 @@ func Install(ctx context.Context, version, exe string, out, errOut io.Writer) er
 	cmd.Stdout, cmd.Stderr = out, errOut
 	cmd.Env = append(os.Environ(), "FIREKEEPER_INSTALL_DIR="+filepath.Dir(exe))
 	return cmd.Run()
+}
+
+// installBrew upgrades the Homebrew formula to version and checks that brew
+// linked it. `brew upgrade` exits 0 when it has nothing to install, which
+// happens when the local clone of the tap predates the release: brew skips its
+// own auto-update when one ran in the last day or HOMEBREW_NO_AUTO_UPDATE is
+// set. So the taps are refreshed first, and success is judged by the version
+// brew reports afterwards, not by exit codes alone.
+func installBrew(ctx context.Context, version string, out, errOut io.Writer) error {
+	fmt.Fprintln(out, "Updating with Homebrew (brew update, then brew upgrade)...")
+	// Homebrew is chatty (update news, tap trust and Command Line Tools
+	// warnings, cleanup hints). Keep it quiet unless something goes wrong,
+	// then show everything it said.
+	var log bytes.Buffer
+	env := append(os.Environ(), "HOMEBREW_NO_ENV_HINTS=1", "HOMEBREW_NO_INSTALL_CLEANUP=1")
+	brew := func(stdout io.Writer, args ...string) error {
+		cmd := exec.CommandContext(ctx, "brew", args...)
+		cmd.Stdout, cmd.Stderr = stdout, &log
+		cmd.Env = env
+		return cmd.Run()
+	}
+	fail := func(err error) error {
+		_, _ = errOut.Write(log.Bytes())
+		return err
+	}
+	// A failed update (offline, an unrelated broken tap) is not fatal on its
+	// own: the version check below decides whether the upgrade happened.
+	_ = brew(&log, "update")
+	if err := brew(&log, "upgrade", brewFormula); err != nil {
+		return fail(err)
+	}
+	var info bytes.Buffer
+	if err := brew(&info, "info", "--json=v2", brewFormula); err != nil {
+		return fail(fmt.Errorf("brew upgrade ran, but brew info failed, so the new version is unconfirmed: %w", err))
+	}
+	got, err := parseBrewInfo(info.Bytes())
+	if err != nil {
+		return fail(fmt.Errorf("brew upgrade ran, but the new version is unconfirmed: %w", err))
+	}
+	if err := got.check(version); err != nil {
+		return fail(err)
+	}
+	return nil
+}
+
+// brewFormulaState is what `brew info --json=v2` reports for the formula. Each
+// field is a MAJOR.MINOR.PATCH version, or "" when brew gave none or
+// something else.
+type brewFormulaState struct {
+	Formula string // the version the local tap's formula offers
+	Linked  string // the installed version linked into the Homebrew prefix
+}
+
+// parseBrewInfo reads `brew info --json=v2` output for one formula.
+func parseBrewInfo(b []byte) (brewFormulaState, error) {
+	var info struct {
+		Formulae []struct {
+			Versions struct {
+				Stable string `json:"stable"`
+			} `json:"versions"`
+			LinkedKeg *string `json:"linked_keg"`
+		} `json:"formulae"`
+	}
+	if err := json.Unmarshal(b, &info); err != nil {
+		return brewFormulaState{}, fmt.Errorf("read brew info: %w", err)
+	}
+	if len(info.Formulae) != 1 {
+		return brewFormulaState{}, fmt.Errorf("read brew info: %d formulae, want 1", len(info.Formulae))
+	}
+	f := info.Formulae[0]
+	st := brewFormulaState{Formula: plainVersion(f.Versions.Stable)}
+	if f.LinkedKeg != nil {
+		// A keg is named for the version plus "_N" when the formula has a
+		// revision.
+		keg, _, _ := strings.Cut(*f.LinkedKeg, "_")
+		st.Linked = plainVersion(keg)
+	}
+	return st, nil
+}
+
+// plainVersion returns v without a "v" prefix when it is a MAJOR.MINOR.PATCH
+// version, and "" otherwise, so nothing else from brew reaches a message.
+func plainVersion(v string) string {
+	if !tagPattern.MatchString(v) {
+		return ""
+	}
+	if _, _, ok := parse(v); !ok {
+		return ""
+	}
+	return strings.TrimPrefix(v, "v")
+}
+
+// check reports whether brew now links version or a newer one, and if not,
+// why not in terms the user can act on.
+func (s brewFormulaState) check(version string) error {
+	if s.Linked != "" && !Newer(version, s.Linked) {
+		return nil
+	}
+	if s.Formula == "" || Newer(version, s.Formula) {
+		formula := s.Formula
+		if formula == "" {
+			formula = "unknown"
+		}
+		return fmt.Errorf("Homebrew's firekeeper formula is still at %s, so there was nothing to upgrade to %s; "+
+			"run `brew update`, then `brew upgrade %s`", formula, version, brewFormula)
+	}
+	linked := s.Linked
+	if linked == "" {
+		linked = "none"
+	}
+	return fmt.Errorf("Homebrew has %s available, but the linked firekeeper is %s; run `brew upgrade %s` to see why",
+		s.Formula, linked, brewFormula)
 }
 
 // installWindows runs the PowerShell installer for tag into the directory
