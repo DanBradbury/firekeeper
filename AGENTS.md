@@ -210,7 +210,10 @@ Checklist for a new harness:
   always the root of its own group there.
 - Output rule, the same for every provider and every consumer of `Discover`:
   session groups always, linked or not; server groups only while they hold a
-  session no session group claimed; tool groups never.
+  session no session group claimed; tool groups never. The dashboard then
+  hides any group still without session metadata once
+  `retainKnownSessionMetadata`'s grace period ends (`withSessionMetadata`),
+  so it never shows a row without a session.
 - Linking: an explicit id on the command line wins and never falls back to a
   guess; then evidence (open files); then the directory guess, for session
   groups only, each session claimed once. Servers keep only sessions they

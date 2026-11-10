@@ -71,10 +71,9 @@ func TestProcessRefreshRetainsClaudeMetadata(t *testing.T) {
 	}
 }
 
-// The dashboard shows exactly what Discover emits: an unlinked session is
-// shown with its "not found" message (decision 4); hiding helpers and empty
-// servers is Discover's job, by role, for every provider.
-func TestProcessRefreshShowsUnlinkedSessions(t *testing.T) {
+// A runtime without session metadata is left out of the sessions table
+// rather than shown with a "session metadata unavailable" row.
+func TestProcessRefreshHidesRuntimesWithoutSessionMetadata(t *testing.T) {
 	m := testModel()
 	updated, _ := m.Update(processResultMsg{
 		groups: []processGroup{
@@ -94,17 +93,26 @@ func TestProcessRefreshShowsUnlinkedSessions(t *testing.T) {
 	})
 	m = updated.(model)
 
-	if len(m.processGroups) != 3 {
-		t.Fatalf("visible process groups = %d, want 3", len(m.processGroups))
+	if len(m.processGroups) != 1 {
+		t.Fatalf("visible process groups = %d, want 1: %#v", len(m.processGroups), m.processGroups)
 	}
-	if m.processGroups[0].root.pid != 101 || len(m.processGroups[0].sessions) != 0 {
-		t.Fatalf("unlinked Codex session was not shown: %#v", m.processGroups[0])
+	if m.processGroups[0].root.pid != 202 || m.processGroups[0].sessions[0].name != "Known Codex session" {
+		t.Fatalf("identified Codex group was not preserved: %#v", m.processGroups[0])
 	}
-	if m.processGroups[1].root.pid != 202 || m.processGroups[1].sessions[0].name != "Known Codex session" {
-		t.Fatalf("identified Codex group was not preserved: %#v", m.processGroups[1])
+	if view := ansi.Strip(m.View()); strings.Contains(view, "session metadata unavailable") {
+		t.Fatalf("runtime without metadata still shown:\n%s", view)
 	}
-	if m.processGroups[2].tool != "OpenCode" {
-		t.Fatalf("process-only provider was dropped: %#v", m.processGroups[2])
+
+	// A runtime that loses its metadata past the grace period disappears too.
+	for range sessionMetadataGraceRefreshes + 1 {
+		updated, _ = m.Update(processResultMsg{
+			groups:    []processGroup{{tool: "Codex", root: processInfo{pid: 202, tty: "ttys002", command: "codex"}}},
+			refreshed: time.Now(),
+		})
+		m = updated.(model)
+	}
+	if len(m.processGroups) != 0 {
+		t.Fatalf("runtime without metadata kept after grace period: %#v", m.processGroups)
 	}
 }
 

@@ -396,7 +396,7 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			selectedPID := m.selectedProcessRootPID()
 			var groups []processGroup
 			groups, m.metadataMisses = retainKnownSessionMetadata(m.processGroups, msg.groups, m.metadataMisses)
-			m.processGroups = groups
+			m.processGroups = withSessionMetadata(groups)
 			m.restoreProcessSelection(selectedPID)
 			m.processErr = ""
 			m.processMetadataWarning = msg.metadataWarning
@@ -681,6 +681,18 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup, misses map[i
 		group.sessions = append([]sessionInfo(nil), old.sessions...)
 	}
 	return refreshed, nextMisses
+}
+
+// withSessionMetadata drops runtimes whose session metadata is unavailable,
+// so the sessions table lists only runtimes linked to a session.
+func withSessionMetadata(groups []processGroup) []processGroup {
+	kept := groups[:0]
+	for _, group := range groups {
+		if len(group.sessions) > 0 {
+			kept = append(kept, group)
+		}
+	}
+	return kept
 }
 
 // hasSessionMetadataAdapter reports whether discovery enriches tool's runtimes
