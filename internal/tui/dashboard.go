@@ -374,7 +374,7 @@ func (m model) processBodyLines() ([]string, []int) {
 }
 
 func dashGroupRow(group processGroup, columns []dashColumn, width int, selected, expanded bool, background string) string {
-	session, hasSession := firstSession(group)
+	session, _ := firstSession(group)
 	marker := "  "
 	if selected {
 		marker = "▶ "
@@ -392,27 +392,14 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 			value, color, bold = toolLabel(group.tool), dashToolColor(group.tool), true
 		case "project":
 			value, color, bold = dashProjectName(session), usageBrightColor, true
-			if !hasSession {
-				value, color, bold = "—", usageMutedColor, false
-			}
 		case "title":
 			value, color = emptyFallback(session.name, "—"), usageTextColor
-			if !hasSession {
-				color = usageMutedColor
-			}
 		case "session":
 			value, color = dashSessionLabel(group), dashOrange
 		case "directory":
-			value, color = "session metadata unavailable", usageMutedColor
-			if hasSession {
-				value = emptyFallback(dashShortPath(session.cwd), "—")
-			}
+			value, color = emptyFallback(dashShortPath(session.cwd), "—"), usageMutedColor
 		case "status":
-			state := sessionStateUnknown
-			if hasSession {
-				state = session.state
-			}
-			value, color = dashStateIcon(state)+" "+state.String(), dashStateColor(state)
+			value, color = dashStateIcon(session.state)+" "+session.state.String(), dashStateColor(session.state)
 		case "model":
 			value, color = emptyFallback(session.model, "—"), usageMutedColor
 		case "tokens":

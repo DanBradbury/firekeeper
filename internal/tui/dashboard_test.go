@@ -407,7 +407,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	for _, expected := range []string{
 		"[ Processes ]", "summary", "providers", "projects", "sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "◆ NEEDS INPUT", "● ACTIVE",
-		"1.2M", "019fb33c", "/workspace/firekeeper", "session metadata unavailable",
+		"1.2M", "019fb33c", "/workspace/firekeeper",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
 		"Sessions 2", "1 active", " 1  input", "Tokens 1.3M total", "in 4% · out 16% · cache 80%",
 	} {
@@ -465,11 +465,11 @@ func TestDashboardProcessRowsKeepDirectoryOnOneLine(t *testing.T) {
 	if row := ansi.Strip(lines[1]); !strings.Contains(row, "—") || strings.Contains(row, "feature/x") {
 		t.Errorf("missing directory is not shown as unavailable: %q", row)
 	}
-	if row := ansi.Strip(lines[2]); !strings.Contains(row, "session metadata unavailable") || strings.Contains(row, "ttys003") || strings.Contains(row, "1 proc") {
+	if row := ansi.Strip(lines[2]); strings.Contains(row, "session metadata unavailable") || strings.Contains(row, "ttys003") || strings.Contains(row, "1 proc") {
 		t.Errorf("unexpected missing-metadata fallback: %q", row)
 	}
 	directoryColumn := []dashColumn{{key: "directory", width: 48}}
-	for index, want := range []string{"/workspace/firekeeper", "—", "session metadata unavailable"} {
+	for index, want := range []string{"/workspace/firekeeper", "—", "—"} {
 		row := dashGroupRow(m.processGroups[index], directoryColumn, 51, false, false, usagePanelColor)
 		if got := strings.TrimSpace(ansi.Strip(row)); got != want {
 			t.Errorf("runtime %d directory = %q, want %q", index, got, want)
