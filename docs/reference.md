@@ -403,7 +403,10 @@ linked only to sessions they hold open themselves.
 - **Claude Code:** uses an explicit `--session-id` or `--resume` id when the
   command line has one, and otherwise maps the runtime's working directory to
   its project folder under `~/.claude/projects` and picks the most recently
-  written unclaimed transcript there. Several Claude Code runtimes in one
+  written unclaimed transcript there. A runtime that starts a new
+  conversation (no `--continue` or `--resume`) only takes a transcript
+  written since it started; until its first message it shows as "New
+  session". Several Claude Code runtimes in one
   directory may be matched to the wrong transcript. Transcripts are read,
   never modified. `claude mcp serve` is a server; `daemon`, `mcp`, `doctor`
   and the other helper subcommands are tools.
