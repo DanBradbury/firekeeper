@@ -147,3 +147,12 @@ func setKimiNow(t *testing.T, now time.Time) {
 	kimiNow = func() time.Time { return now }
 	t.Cleanup(func() { kimiNow = old })
 }
+
+// setClaudeNow fixes the clock Claude linking compares process start times
+// with, for the length of the test.
+func setClaudeNow(t *testing.T, now time.Time) {
+	t.Helper()
+	old := claudeNow
+	claudeNow = func() time.Time { return now }
+	t.Cleanup(func() { claudeNow = old })
+}

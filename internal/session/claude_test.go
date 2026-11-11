@@ -217,8 +217,8 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		return nil, nil
 	}
 	metas, err := Discover(context.Background(), opts)
-	if err == nil || !strings.Contains(err.Error(), "Claude: metadata unavailable for 1 runtime(s)") {
-		t.Fatalf("want a warning for the unmapped runtime, got %v", err)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
 	}
 	byPID := map[int]Meta{}
 	for _, m := range metas {
@@ -238,10 +238,12 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		cwd   string
 	}{
 		{50, claudeIDA, "Explicit", SessionStateWaiting, otherCwd},
-		// Higher PIDs are newer processes and take newer transcripts.
+		// --continue resumes the newest transcript, written before it started.
 		{70, claudeIDC, "Newer", SessionStateActive, cwd},
-		{60, claudeIDB, "Older", SessionStateWaiting, cwd},
-		{90, "", "", SessionStateUnknown, ""},
+		// A new conversation has no transcript until its first message; the
+		// older one there belongs to an earlier session.
+		{60, "", ClaudeNewSessionName, SessionStateWaiting, cwd},
+		{90, "", ClaudeNewSessionName, SessionStateWaiting, ""},
 	}
 	for _, tt := range tests {
 		m := byPID[tt.pid]
@@ -265,6 +267,143 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 	if byPID[60].UndercountWarning != "" || byPID[70].UndercountWarning != "" {
 		t.Fatal("session without subagents reported an undercount warning")
 	}
+}
+
+// A Claude Code runtime started after the newest transcript in its directory
+// is a new conversation, not the earlier session (regression: it showed the
+// previous session's title until its first message).
+func TestDiscoverClaudeNewSessionSkipsEarlierTranscript(t *testing.T) {
+	now := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	setClaudeNow(t, now)
+	home := t.TempDir()
+	claudeDir := filepath.Join(home, "claude-config")
+	cwd := filepath.Join(home, "work", "demo")
+	project := filepath.Join(claudeDir, "projects", (&discoverer{}).claudeProjectDirName(cwd))
+	earlier := filepath.Join(project, claudeIDA+".jsonl")
+	current := filepath.Join(project, claudeIDB+".jsonl")
+	writeClaudeTranscript(t, earlier, cwd, "Earlier")
+	writeClaudeTranscript(t, current, cwd, "Current")
+	for path, stamp := range map[string]time.Time{earlier: now.Add(-time.Hour), current: now.Add(-time.Minute)} {
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	opts := Options{Home: home, ClaudeHome: claudeDir}
+	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte(strings.Join([]string{
+				"60 1 pts/1 05:00 claude",       // wrote current since it started
+				"70 1 pts/2 00:30 claude",       // started after both transcripts
+				"80 1 pts/3 00:20 claude -c",    // continues the earlier session
+				"90 1 pts/4 00:10 claude bogus", // elapsed unknown below
+			}, "\n")), nil
+		case "lsof":
+			if reflect.DeepEqual(args, []string{"-a", "-d", "cwd", "-Fn", "-p", "60,70,80,90"}) {
+				return []byte("p60\nn" + cwd + "\np70\nn" + cwd + "\np80\nn" + cwd + "\np90\nn" + filepath.Join(home, "elsewhere") + "\n"), nil
+			}
+			return nil, fmt.Errorf("unexpected lsof %v", args)
+		case "git":
+			return nil, fmt.Errorf("not a repository")
+		}
+		t.Fatalf("unexpected command %s", name)
+		return nil, nil
+	}
+	metas, err := Discover(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	byPID := map[int]Meta{}
+	for _, m := range metas {
+		byPID[m.PID] = m
+	}
+	tests := []struct {
+		pid   int
+		id    string
+		title string
+	}{
+		{60, claudeIDB, "Current"},
+		{70, "", ClaudeNewSessionName},
+		{80, claudeIDA, "Earlier"},
+		{90, "", ClaudeNewSessionName},
+	}
+	for _, tt := range tests {
+		m := byPID[tt.pid]
+		if m.ID != tt.id || m.Title != tt.title {
+			t.Errorf("pid %d: id %q title %q; want id %q title %q", tt.pid, m.ID, m.Title, tt.id, tt.title)
+		}
+	}
+	if m := byPID[70]; m.State != SessionStateWaiting || m.RolloutPath != "" || m.StartedAt == nil || !m.StartedAt.Equal(now.Add(-30*time.Second)) {
+		t.Errorf("new session: state %s path set %v started %v", m.State, m.RolloutPath != "", m.StartedAt)
+	}
+}
+
+// Without a known start time the guess cannot tell a new conversation from
+// an old one, so it links the newest transcript as before.
+func TestDiscoverClaudeUnknownElapsedKeepsGuess(t *testing.T) {
+	setClaudeNow(t, time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC))
+	home := t.TempDir()
+	claudeDir := filepath.Join(home, "claude-config")
+	cwd := filepath.Join(home, "work", "demo")
+	path := filepath.Join(claudeDir, "projects", (&discoverer{}).claudeProjectDirName(cwd), claudeIDA+".jsonl")
+	writeClaudeTranscript(t, path, cwd, "Earlier")
+	stamp := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{Home: home, ClaudeHome: claudeDir}
+	opts.Run = func(ctx context.Context, name string, args ...string) ([]byte, error) {
+		switch name {
+		case "ps":
+			return []byte("60 1 pts/1 garbage claude\n"), nil
+		case "lsof":
+			return []byte("p60\nn" + cwd + "\n"), nil
+		}
+		return nil, fmt.Errorf("unexpected command %s", name)
+	}
+	metas, err := Discover(context.Background(), opts)
+	if err != nil || len(metas) != 1 || metas[0].ID != claudeIDA {
+		t.Fatalf("metas %+v err %v; want the earlier transcript linked", metas, err)
+	}
+}
+
+func TestClaudeContinues(t *testing.T) {
+	tests := []struct {
+		command string
+		want    bool
+	}{
+		{"claude -c", true},
+		{"claude --continue", true},
+		{"claude --resume", true},
+		{"claude -r", true},
+		{"claude --model opus --continue", true},
+		{"claude", false},
+		{"claude --fork-session --continue", false},
+		{"claude -- -c", false},
+		{"claude --continued", false},
+		{"claude config", false},
+		{"node /x/@anthropic-ai/claude-code/cli.js -c", true},
+	}
+	for _, tt := range tests {
+		if got := claudeContinues(parseInvocation(strings.Fields(tt.command))); got != tt.want {
+			t.Errorf("claudeContinues(%q) = %v, want %v", tt.command, got, tt.want)
+		}
+	}
+}
+
+func FuzzClaudeContinues(f *testing.F) {
+	for _, seed := range []string{"claude -c", "claude --resume x", "claude -- -c", "claude --fork-session -r", ""} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, command string) {
+		inv := parseInvocation(strings.Fields(command))
+		if claudeContinues(inv) {
+			if _, ok := sessionArgs(claudeSignature, inv); !ok {
+				t.Fatalf("%q continues but is not a Claude session", command)
+			}
+		}
+	})
 }
 
 func TestClaudeConfigDirHonorsEnvironment(t *testing.T) {

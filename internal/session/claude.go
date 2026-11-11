@@ -87,6 +87,17 @@ func (d *discoverer) claudeProjectDirName(cwd string) string {
 	}, cwd)
 }
 
+// ClaudeNewSessionName names a Claude Code runtime that has no transcript
+// yet, so it is not shown under an earlier session's title.
+const ClaudeNewSessionName = "New session"
+
+// claudeTolerance allows for ps reporting elapsed time in whole seconds.
+const claudeTolerance = 5 * time.Second
+
+// claudeNow is the clock Claude linking compares process start times with.
+// Tests replace it.
+var claudeNow = time.Now
+
 func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
@@ -131,9 +142,14 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	// Otherwise map each runtime's working directory to its project
 	// directory and take the most recently written transcripts there. When
 	// several runtimes share a directory, newer processes (higher PIDs) get
-	// newer transcripts. This is a guess; see NOTES.md.
+	// newer transcripts. A runtime that starts a new conversation only takes
+	// a transcript written since it started: until its first message it has
+	// none, and the newest one there belongs to an earlier session. This is
+	// a guess; see NOTES.md.
+	fresh := make(map[int]time.Time)
 	if len(unmapped) > 0 {
 		workDirs := d.claudeWorkDirs(groups, unmapped)
+		now := claudeNow()
 		byDir := make(map[string][]int)
 		for _, index := range unmapped {
 			if cwd := workDirs[groups[index].Root.PID]; cwd != "" {
@@ -141,11 +157,39 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 			}
 		}
 		for cwd, indexes := range byDir {
-			sort.Slice(indexes, func(i, j int) bool { return groups[indexes[i]].Root.PID > groups[indexes[j]].Root.PID })
+			// Runtimes that started a new conversation choose first, since
+			// only transcripts written since they started can be theirs.
+			started := make(map[int]time.Time, len(indexes))
+			for _, index := range indexes {
+				if elapsed, known := parseElapsed(groups[index].Root.Elapsed); known && !claudeContinues(groups[index].Root.Invocation) {
+					started[index] = now.Add(-elapsed)
+				}
+			}
+			sort.Slice(indexes, func(i, j int) bool {
+				_, si := started[indexes[i]]
+				_, sj := started[indexes[j]]
+				if si != sj {
+					return si
+				}
+				return groups[indexes[i]].Root.PID > groups[indexes[j]].Root.PID
+			})
 			candidates := d.newestClaudeTranscripts(filepath.Join(projects, d.claudeProjectDirName(cwd)), claimed)
-			for i, index := range indexes {
-				if i < len(candidates) {
-					paths[index] = candidates[i]
+			taken := make(map[string]bool)
+			for _, index := range indexes {
+				started := started[index]
+				for _, candidate := range candidates {
+					if taken[candidate.path] {
+						continue
+					}
+					if !started.IsZero() && candidate.modTime.Before(started.Add(-claudeTolerance)) {
+						break // newest first: the rest are older still
+					}
+					taken[candidate.path] = true
+					paths[index] = candidate.path
+					break
+				}
+				if _, ok := paths[index]; !ok && !started.IsZero() {
+					fresh[index] = started
 				}
 			}
 		}
@@ -155,7 +199,11 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	for _, index := range groupIndexes {
 		path, ok := paths[index]
 		if !ok {
-			missing++
+			if started, isNew := fresh[index]; isNew {
+				groups[index].Sessions = []Info{d.newClaudeSession(started)}
+			} else {
+				missing++
+			}
 			continue
 		}
 		info, err := d.readClaudeTranscriptMetadata(path)
@@ -199,18 +247,20 @@ func (d *discoverer) claudeWorkDirs(groups []ProcessGroup, indexes []int) map[in
 	return workDirs
 }
 
+// claudeTranscript is a transcript the directory guess may link.
+type claudeTranscript struct {
+	path    string
+	modTime time.Time
+}
+
 // newestClaudeTranscripts lists session transcripts in dir, newest first,
 // skipping ids already claimed by another runtime.
-func (d *discoverer) newestClaudeTranscripts(dir string, claimed map[string]bool) []string {
+func (d *discoverer) newestClaudeTranscripts(dir string, claimed map[string]bool) []claudeTranscript {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
-	type candidate struct {
-		path    string
-		modTime time.Time
-	}
-	var candidates []candidate
+	var candidates []claudeTranscript
 	for _, entry := range entries {
 		id, isJSONL := strings.CutSuffix(entry.Name(), ".jsonl")
 		if entry.IsDir() || !isJSONL || !d.validUUID(id) || claimed[strings.ToLower(id)] {
@@ -220,7 +270,7 @@ func (d *discoverer) newestClaudeTranscripts(dir string, claimed map[string]bool
 		if err != nil {
 			continue
 		}
-		candidates = append(candidates, candidate{filepath.Join(dir, entry.Name()), info.ModTime()})
+		candidates = append(candidates, claudeTranscript{filepath.Join(dir, entry.Name()), info.ModTime()})
 	}
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].modTime.Equal(candidates[j].modTime) {
@@ -228,11 +278,34 @@ func (d *discoverer) newestClaudeTranscripts(dir string, claimed map[string]bool
 		}
 		return candidates[i].modTime.After(candidates[j].modTime)
 	})
-	paths := make([]string, len(candidates))
-	for i, c := range candidates {
-		paths[i] = c.path
+	return candidates
+}
+
+// claudeContinues reports whether a runtime resumes an earlier conversation
+// it does not name (--continue, or --resume's picker), so its transcript may
+// predate the process. A fork writes a new transcript.
+func claudeContinues(inv invocation) bool {
+	args, ok := sessionArgs(claudeSignature, inv)
+	if !ok || hasFlag(args, claudeSignature.flags, "--fork-session") {
+		return false
 	}
-	return paths
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		switch {
+		case arg == "-c", arg == "--continue", arg == "-r", arg == "--resume",
+			strings.HasPrefix(arg, "--resume="):
+			return true
+		}
+	}
+	return false
+}
+
+// newClaudeSession describes a runtime that has not written a transcript
+// yet: Claude Code creates one with the first message.
+func (d *discoverer) newClaudeSession(started time.Time) Info {
+	return Info{Name: ClaudeNewSessionName, State: SessionStateWaiting, Source: "Claude Code", StartedAt: started}
 }
 
 func (d *discoverer) claudeConfigDir() (string, error) {
