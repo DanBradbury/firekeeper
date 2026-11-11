@@ -24,7 +24,7 @@ Do not commit, push, create issues, or modify remote state unless the user asks.
 
 ## Build and verification
 
-Go 1.26 or newer is declared in `go.mod`.
+Go 1.27.3 or newer is declared in `go.mod`.
 
 Run these local checks in order before handoff. The fast checks come before the tests, so most failures show up early:
 

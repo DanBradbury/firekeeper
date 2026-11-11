@@ -1,6 +1,6 @@
 module github.com/DanBradbury/firekeeper
 
-go 1.26.0
+go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.5.0
