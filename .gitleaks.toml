@@ -11,3 +11,9 @@ paths = ['''^internal/redact/[^/]*_test\.go$''']
 [[allowlists]]
 description = "Docs show a deliberately invalid token"
 regexes = ['''^fk_wrong$''']
+
+[[allowlists]]
+description = "Vendored, minified xterm.js: the identifier FourKeyMap trips generic-api-key"
+condition = "AND"
+paths = ['''^docs/landing/demo/vendor/xterm\.js$''']
+rules = ["generic-api-key"]
