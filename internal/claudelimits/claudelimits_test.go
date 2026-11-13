@@ -117,7 +117,7 @@ func TestFetchNeverReadsKeychainOffMacOS(t *testing.T) {
 func TestFetchErrorsAreClassifiedAndNeverLeakTheToken(t *testing.T) {
 	dir := t.TempDir()
 	writeCreds(t, dir, testNow.Add(time.Hour))
-	statuses := map[int]error{http.StatusUnauthorized: ErrUnauthorized, http.StatusForbidden: ErrUnauthorized}
+	statuses := map[int]error{http.StatusUnauthorized: ErrUnauthorized, http.StatusForbidden: ErrUnauthorized, http.StatusTooManyRequests: ErrRateLimited}
 	for status, want := range statuses {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(status) }))
 		_, err := clientFor(dir, server.URL).Fetch(context.Background())
