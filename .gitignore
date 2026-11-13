@@ -31,3 +31,7 @@ Thumbs.db
 
 # Wrangler (Cloudflare) local dev state
 .wrangler/
+
+# Browser TUI spike build outputs
+/docs/landing/demo/firekeeper-demo.wasm
+/docs/landing/demo/wasm_exec.js

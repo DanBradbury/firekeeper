@@ -219,14 +219,19 @@
     </div>
     <figure class="frame" id="processes-live">
       <div class="window">
-        <div class="slot has-media" style="--ar: 2112 / 1216">
+        <div class="slot has-media process-demo-slot" style="--ar: 2112 / 1216">
           <video autoplay muted loop playsinline preload="metadata" poster="media/processes-live.jpg" width="2112" height="1216">
             <source src="media/processes-live.webm" type="video/webm">
             <source src="media/processes-live.mp4" type="video/mp4">
           </video>
+          <div class="process-demo-terminal" data-process-demo-terminal hidden aria-label="Interactive Firekeeper terminal demo"></div>
+          <div class="process-demo-controls">
+            <button type="button" data-process-demo-start>Try the real TUI</button>
+            <span data-process-demo-status aria-live="polite">Sample sessions · keyboard enabled</span>
+          </div>
         </div>
       </div>
-      <figcaption>The real app, recorded against demo projects. States describe the latest event Firekeeper can see.</figcaption>
+      <figcaption>Press “Try the real TUI” to use Firekeeper with invented sample sessions. Click terminal, then use ↑↓, Tab, c, Esc, ?, or q. Video remains fallback.</figcaption>
     </figure>
   </section>
 
@@ -472,6 +477,7 @@
 </main>
 
 <script src="menubar-demo.js" defer></script>
+<script src="demo/processes-demo.js" defer></script>
 <script>
 (function () {
   var live =document.getElementById('live');
