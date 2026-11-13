@@ -62,24 +62,139 @@
   <!-- HERO -->
   <section class="section hero">
     <a class="eyebrow reveal" href="#pricing"><span class="dot active"></span><b>Launch pricing</b> Personal license $29 for the first 100 buyers</a>
-    <h1 class="reveal d1">Your coding agents. <span>One terminal dashboard.</span></h1>
-    <p class="lede reveal d2">See which agents are working or need attention, read their replies, and check token usage without hunting through tabs. Keep launching your agents as usual; run <code>firekeeper</code> beside them.</p>
+    <h1 class="reveal d1">Your coding agents. <span data-rotate="menu bar|terminal|browser">In your menu bar, terminal, and browser.</span></h1>
+    <p class="lede reveal d2">See which agents are working or need attention, read their replies, and check token usage without hunting through tabs. One tool, three views: a terminal dashboard, a macOS menu bar app, and an optional web dashboard. Keep launching your agents as usual; run <code>firekeeper</code> beside them.</p>
     <div class="cta reveal d3">
       <a class="btn btn-ember" href="#install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>Install free</a>
       <div class="cmd"><span class="p">$</span><code>brew install DanBradbury/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy the Homebrew command" data-copy="brew install DanBradbury/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
     </div>
     <p class="meta reveal d3">Free and open source, Apache 2.0 · macOS, Linux (best effort), Windows 10 1809+ and 11 · No account, server, or wrappers · <a href="/docs/usage/#network">Usage and update checks can contact the network</a></p>
 
-    <!-- Optional: serve hero-demo-narrow (4:5) under 560px with <source media="(max-width: 560px)" ...> inside the <video>. -->
-    <figure class="frame reveal d3" id="hero-demo">
-      <div class="window">
-        <div class="slot has-media" style="--ar: 2112 / 1216">
-          <video autoplay muted loop playsinline preload="metadata" poster="media/hero-demo.jpg" width="2112" height="1216">
-            <source src="media/hero-demo.webm" type="video/webm">
-            <source src="media/hero-demo.mp4" type="video/mp4">
-          </video>
+    <!-- The menu bar app as a live DOM mock, not a recording: menubar-demo.js
+         drives it, and the markup below is a complete static panel without it. -->
+    <figure class="frame reveal d3" id="menubar-demo">
+      <div class="mb" data-mb data-open>
+        <div class="mb-bar">
+          <b>Ghostty</b><span class="mb-menu">File</span><span class="mb-menu">Edit</span><span class="mb-menu">View</span><span class="mb-menu">Window</span><span class="mb-menu">Help</span>
+          <span class="mb-right">
+            <button class="mb-tray" type="button" data-mb-tray aria-expanded="true" aria-controls="mb-panel" aria-label="Firekeeper menu bar panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 2c1.5 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.2 1-3.6 2.2-4.8.3 1.6 1.1 2.6 2.3 3C11 7.4 11.2 4.6 12 2Z"/><path d="M12 13.5c.7 1 1.7 1.7 1.7 3a1.7 1.7 0 0 1-3.4 0c0-1 .8-1.7 1.7-3Z" fill="currentColor" stroke="none"/></svg>
+            </button>
+            <svg class="mb-sys" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 9.500a13 13 0 0 1 18 0M6.5 13a8 8 0 0 1 11 0M10 16.500a3 3 0 0 1 4 0"/></svg>
+            <svg class="mb-sys" viewBox="0 0 28 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="7" width="21" height="10" rx="3"/><rect x="4" y="9" width="13" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M25.5 10.500v3" stroke-linecap="round"/></svg>
+            <span class="mb-clock" data-mb-clock>Thu 12 Nov 22:30</span>
+          </span>
+        </div>
+        <div class="mb-stage">
+          <div class="mb-wins" aria-hidden="true">
+            <div class="mb-win front" data-mb-win="landing" data-state="working">
+              <div class="mb-win-bar"><i></i><i></i><i></i><span>claude · landing</span></div>
+              <div class="mb-win-body">
+                <p><span class="p">&gt;</span> Animate the menu bar demo</p>
+                <p class="dim">⏺ Update(docs/landing/index.html)</p>
+                <p class="dim">⏺ Update(docs/landing/styles.css)</p>
+                <p class="work" data-when="working">✻ Working… <span data-mb-elapsed>42s</span></p>
+                <p data-when="waiting">Done. Waiting for your next prompt.</p>
+                <p class="ask" data-when="needs">Allow <b>npm run build</b>? <button type="button" tabindex="-1" data-mb-approve="landing">Approve</button></p>
+              </div>
+            </div>
+            <div class="mb-win" data-mb-win="api" data-state="needs">
+              <div class="mb-win-bar"><i></i><i></i><i></i><span>codex · api</span></div>
+              <div class="mb-win-body">
+                <p><span class="p">›</span> Add rate limiting to ingest</p>
+                <p class="dim">• Edited internal/ingest/limit.go</p>
+                <p class="dim">• Edited internal/ingest/limit_test.go</p>
+                <p class="work" data-when="working">• Working… <span data-mb-elapsed>3s</span></p>
+                <p data-when="waiting">Done. Waiting for your next prompt.</p>
+                <p class="ask" data-when="needs">Allow <b>go test ./internal/ingest</b>? <button type="button" tabindex="-1" data-mb-approve="api">Approve</button></p>
+              </div>
+            </div>
+            <div class="mb-win" data-mb-win="docs" data-state="waiting">
+              <div class="mb-win-bar"><i></i><i></i><i></i><span>copilot · docs</span></div>
+              <div class="mb-win-body">
+                <p><span class="p">&gt;</span> Rewrite the quick start</p>
+                <p class="dim">● Edited docs/quick-start.md</p>
+                <p class="work" data-when="working">● Working… <span data-mb-elapsed>3s</span></p>
+                <p data-when="waiting">Done. Waiting for your next prompt.</p>
+                <p class="ask" data-when="needs">Allow <b>git diff --stat</b>? <button type="button" tabindex="-1" data-mb-approve="docs">Approve</button></p>
+              </div>
+            </div>
+            <p class="mb-toast" data-mb-toast></p>
+          </div>
+
+          <div class="mb-panel" id="mb-panel" data-mb-panel>
+            <div class="mb-head">
+              <img src="/favicon.svg" alt="" width="20" height="20"><b>Firekeeper</b><span class="mb-paused">Paused</span>
+              <button class="mb-icon-btn" type="button" data-mb-pause aria-pressed="false" aria-label="Pause the live demo">
+                <svg class="pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4.5" height="14" rx="1"/><rect x="13.5" y="5" width="4.5" height="14" rx="1"/></svg>
+                <svg class="play" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.500v13a1 1 0 0 0 1.5.900l10.5-6.500a1 1 0 0 0 0-1.800L9.5 4.600A1 1 0 0 0 8 5.500Z"/></svg>
+              </button>
+            </div>
+
+            <div class="mb-card">
+              <div class="mb-card-head"><i class="mb-ico codex"></i><b>Codex</b><small>plus</small></div>
+              <div class="mb-pair">
+                <div class="mb-limit codex" data-mb-limit="codex-5h" style="--v:0%"><div><span>5-hour</span><b data-mb-pct>0%</b></div><div class="mb-track"><i></i></div><small>Resets in 5h 0m</small></div>
+                <div class="mb-limit codex" data-mb-limit="codex-week" style="--v:14%"><div><span>Weekly</span><b data-mb-pct>14%</b></div><div class="mb-track"><i></i></div><small>Resets in 3d 22h</small></div>
+              </div>
+            </div>
+
+            <div class="mb-cols">
+              <div class="mb-card">
+                <div class="mb-card-head"><i class="mb-ico claude"></i><b>Claude Code</b><small>pro</small><span class="mb-live">1 live</span></div>
+                <div class="mb-limit claude" data-mb-limit="claude-5h" style="--v:15%"><div><span>5-hour</span><b data-mb-pct>15%</b></div><div class="mb-track"><i></i></div><small>Resets in 3h 51m</small></div>
+                <div class="mb-limit claude" data-mb-limit="claude-week" style="--v:29%"><div><span>Weekly</span><b data-mb-pct>29%</b></div><div class="mb-track"><i></i></div><small>Resets in 14h 31m</small></div>
+              </div>
+              <div class="mb-card">
+                <div class="mb-card-head"><i class="mb-ico copilot"></i><b>GitHub Copilot</b></div>
+                <div class="mb-big" data-mb-limit="copilot"><b data-mb-pct>5%</b><span>AI credits</span><small>Resets in 17d 17h</small></div>
+              </div>
+            </div>
+
+            <div class="mb-card">
+              <div class="mb-card-head"><span class="mb-label">Last 24 hours</span><b class="mb-end">3 started</b></div>
+              <div class="mb-chart" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i style="--h:100%"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i style="--h:100%"></i><i></i><i class="now" style="--h:100%"></i></div>
+              <div class="mb-axis"><span>24h ago</span><span>Now</span></div>
+            </div>
+
+            <div class="mb-card mb-sessions">
+              <div class="mb-card-head"><span class="mb-label">Live</span><b data-mb-count>3</b></div>
+              <div class="mb-group" data-mb-session="landing" data-provider="claude" data-state="working" data-search="landing claude code animate the menu bar demo homepage-fun">
+                <div class="mb-proj"><span class="mb-badge">L</span><b>landing</b><span class="mb-path">~/code/landing</span><span>1 agent</span></div>
+                <div class="mb-agent">
+                  <span class="mb-tile"><i class="mb-ico claude"></i></span>
+                  <div><b>Animate the menu bar demo</b><span class="mb-state"><span data-mb-state>Working</span> · <span data-mb-ago>just now</span> · homepage-fun</span></div>
+                  <button class="mb-go" type="button" data-mb-go="landing" aria-label="Switch to the terminal running Animate the menu bar demo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5.5-5.500M19 12l-5.5 5.5"/></svg></button>
+                </div>
+              </div>
+              <div class="mb-group" data-mb-session="api" data-provider="codex" data-state="needs" data-search="api codex add rate limiting to ingest rate-limit">
+                <div class="mb-proj"><span class="mb-badge">A</span><b>api</b><span class="mb-path">~/code/api</span><span>1 agent</span></div>
+                <div class="mb-agent">
+                  <span class="mb-tile"><i class="mb-ico codex"></i></span>
+                  <div><b>Add rate limiting to ingest</b><span class="mb-state"><span data-mb-state>Needs input</span> · <span data-mb-ago>just now</span> · rate-limit</span></div>
+                  <button class="mb-go" type="button" data-mb-go="api" aria-label="Switch to the terminal running Add rate limiting to ingest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5.5-5.500M19 12l-5.5 5.5"/></svg></button>
+                </div>
+              </div>
+              <div class="mb-group" data-mb-session="docs" data-provider="copilot" data-state="waiting" data-search="docs github copilot rewrite the quick start main">
+                <div class="mb-proj"><span class="mb-badge">D</span><b>docs</b><span class="mb-path">~/code/docs</span><span>1 agent</span></div>
+                <div class="mb-agent">
+                  <span class="mb-tile"><i class="mb-ico copilot"></i></span>
+                  <div><b>Rewrite the quick start</b><span class="mb-state"><span data-mb-state>Waiting</span> · <span data-mb-ago>2m ago</span> · main</span></div>
+                  <button class="mb-go" type="button" data-mb-go="docs" aria-label="Switch to the terminal running Rewrite the quick start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m0 0-5.5-5.500M19 12l-5.5 5.5"/></svg></button>
+                </div>
+              </div>
+              <p class="mb-empty" data-mb-empty hidden>No live sessions match.</p>
+            </div>
+
+            <label class="mb-filter">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+              <input type="text" data-mb-filter placeholder="Filter by project, agent or branch…" aria-label="Filter the demo sessions by project, agent or branch" autocomplete="off" spellcheck="false">
+              <kbd>⌘K</kbd>
+            </label>
+          </div>
         </div>
       </div>
+      <figcaption>A live demo with sample data, not a recording. Sessions change state on their own; pause it with the button in the panel.</figcaption>
     </figure>
 
     <ol class="steps" style="margin-top:28px">
@@ -356,9 +471,10 @@
 </div>
 </main>
 
+<script src="menubar-demo.js" defer></script>
 <script>
 (function () {
-  var live = document.getElementById('live');
+  var live =document.getElementById('live');
   function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
     return new Promise(function (resolve, reject) {
@@ -389,6 +505,34 @@
       });
     });
   });
+  // Hero headline: cycle through the places Firekeeper runs. The markup holds
+  // the full sentence, which stays as the accessible text and is what shows
+  // without scripting or with reduced motion.
+  var rot = document.querySelector('[data-rotate]');
+  if (rot && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    var words = rot.dataset.rotate.split('|');
+    var full = document.createElement('span');
+    full.className = 'sr-only';
+    full.textContent = rot.textContent;
+    rot.parentNode.insertBefore(full, rot);
+    rot.setAttribute('aria-hidden', 'true');
+    rot.textContent = 'In your ';
+    var word = document.createElement('b');
+    word.className = 'rot';
+    word.textContent = words[0];
+    rot.appendChild(word);
+    rot.appendChild(document.createTextNode('.'));
+    var at = 0;
+    setInterval(function () {
+      if (document.hidden) return;
+      word.classList.add('out');
+      setTimeout(function () {
+        at = (at + 1) % words.length;
+        word.textContent = words[at];
+        word.classList.remove('out');
+      }, 260);
+    }, 2600);
+  }
   var t = document.querySelector('[data-theme-toggle]');
   var r = document.documentElement;
   var saved = localStorage.getItem('fk-theme');
