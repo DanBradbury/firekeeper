@@ -55,6 +55,9 @@ var (
 	ErrTokenExpired = errors.New("Claude Code sign-in has expired; open claude once to renew it")
 	// ErrUnauthorized means the endpoint rejected the token.
 	ErrUnauthorized = errors.New("Anthropic rejected the Claude Code sign-in; open claude and run /login")
+	// ErrRateLimited means the endpoint answered HTTP 429. Callers should back
+	// off and keep showing the last values they had.
+	ErrRateLimited = errors.New("Anthropic usage endpoint is rate limiting requests (HTTP 429)")
 )
 
 // Window is one limit window. UsedPercent is 0-100; ResetsAt is zero when the
@@ -243,6 +246,8 @@ func (c Client) Fetch(ctx context.Context) (Limits, error) {
 	switch {
 	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
 		return Limits{}, ErrUnauthorized
+	case response.StatusCode == http.StatusTooManyRequests:
+		return Limits{}, ErrRateLimited
 	case response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices:
 		return Limits{}, fmt.Errorf("Anthropic usage endpoint returned HTTP %d", response.StatusCode)
 	}

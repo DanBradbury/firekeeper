@@ -297,12 +297,15 @@ func fetchCopilotUsage() (copilotUsageSnapshot, error) {
 	return snapshot, nil
 }
 
+// copilotTokenMissing is fetchCopilotPlan's message when no GitHub token is found.
+const copilotTokenMissing = "Copilot token unavailable"
+
 const copilotPlanURL = "https://api.github.com/copilot_internal/user"
 
 func fetchCopilotPlan() (copilotPlanDetails, string) {
 	token := copilotGitHubToken()
 	if token == "" {
-		return copilotPlanDetails{}, "Copilot token unavailable"
+		return copilotPlanDetails{}, copilotTokenMissing
 	}
 
 	endpoint := copilotPlanURL

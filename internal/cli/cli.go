@@ -36,6 +36,12 @@ var subcommands = []subcommand{
 	{"version", "print the version, commit and build date (also --version)", runVersion},
 }
 
+// Register adds a subcommand implemented outside this package, so the cli
+// package does not import the dashboard. main calls it before RunSubcommand.
+func Register(name, summary string, run func(args []string, stdout, stderr io.Writer) int) {
+	subcommands = append(subcommands, subcommand{name, summary, run})
+}
+
 // RunSubcommand dispatches on the first argument. It reports false when the
 // arguments do not name a subcommand, so the caller falls through to the TUI.
 func RunSubcommand(args []string, stdout, stderr io.Writer) (int, bool) {
