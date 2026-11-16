@@ -79,11 +79,12 @@ func TestRunRecentRequiresJSON(t *testing.T) {
 	if code := RunRecent(nil, &out, &errb); code != 2 || !strings.Contains(errb.String(), "only --json") {
 		t.Fatalf("code=%d stderr=%q", code, errb.String())
 	}
+	previousSource := recentSessionsSource
 	recentSessionsSource = func(context.Context, time.Time) []recentSession {
 		return []recentSession{{provider: transcript.ProviderCodex, id: "x", title: "Hello", last: time.Now()}}
 	}
 	t.Cleanup(func() {
-		recentSessionsSource = loadRecentSessions
+		recentSessionsSource = previousSource
 	})
 	out.Reset()
 	errb.Reset()
