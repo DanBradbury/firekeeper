@@ -152,6 +152,9 @@ unsupported.
   `entrypoint` (shown as the source), the latest non-synthetic model, the
   title (`ai-title`, else `agent-name`), the last timestamp, and the state.
   The first 64 KiB give the start time. Transcript text is never kept.
+  Historical enumeration (`recent`, `backfill`) reads the title from the last
+  64 KiB instead: `ai-title` records repeat as the session grows, and the first
+  one often lies past the head.
 - **State.** A prompt or tool result means `ACTIVE`; a pending `tool_use` means
   `ACTIVE`, or `NEEDS INPUT` for `AskUserQuestion` and `ExitPlanMode`; an
   assistant `end_turn`, a `turn_duration` record, or the interrupt marker

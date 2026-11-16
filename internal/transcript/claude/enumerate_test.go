@@ -114,3 +114,32 @@ func TestSessionHeadBounded(t *testing.T) {
 		t.Fatal("head read exceeded limit")
 	}
 }
+
+func TestEnumerateTitleFromTail(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	head, _ := json.Marshal(map[string]any{"cwd": filepath.Join(home, "repo"), "timestamp": "2026-01-01T00:00:00Z"})
+	title := func(s string) string {
+		b, _ := json.Marshal(map[string]any{"type": "ai-title", "aiTitle": s, "sessionId": fixtureID})
+		return string(b) + "\n"
+	}
+	filler := strings.Repeat(`{"type":"attachment","note":"`+strings.Repeat("x", 900)+`"}`+"\n", 200) // well past the head
+	dir := filepath.Join(home, ".claude", "projects", "-encoded")
+	const noTitleID = "0199c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6e"
+	writeHistorical(t, dir, fixtureID, string(head)+"\n"+title("Old name")+filler+title("Fix the login bug")+filler[:len(filler)/2]+title("Fix the login bug, again"), time.Now())
+	writeHistorical(t, dir, noTitleID, string(head)+"\n"+filler, time.Now().Add(-time.Hour))
+	metas, err := (&Source{Home: home}).Enumerate(context.Background(), reader.EnumerateOptions{})
+	if err != nil || len(metas) != 2 {
+		t.Fatalf("count = %d, error = %v", len(metas), err)
+	}
+	byID := map[string]string{}
+	for _, m := range metas {
+		byID[m.ID] = m.Title
+	}
+	if byID[fixtureID] != "Fix the login bug, again" {
+		t.Fatalf("title = %q, want the newest ai-title from the tail", byID[fixtureID])
+	}
+	if byID[noTitleID] != "" {
+		t.Fatalf("title = %q, want empty without an ai-title", byID[noTitleID])
+	}
+}
