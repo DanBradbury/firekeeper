@@ -2,6 +2,7 @@ package claude
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -137,5 +138,40 @@ func readSessionHead(ctx context.Context, path string) (session.Meta, error) {
 	if !decoded {
 		return meta, errors.New("no decodable record")
 	}
+	meta.Title = clean(tailTitle(f))
 	return meta, nil
+}
+
+// tailTitle returns the newest "ai-title" Claude Code recorded, or "". Claude
+// Code rewrites that record as the session grows and usually first writes it
+// well past the head, so the end of the file is read instead. Only the title
+// is kept; the rest of the tail is discarded.
+func tailTitle(f *os.File) string {
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	start := max(info.Size()-reader.HeadBytes, 0)
+	buf := make([]byte, info.Size()-start)
+	n, err := f.ReadAt(buf, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return ""
+	}
+	buf = buf[:n]
+	marker := []byte(`"ai-title"`)
+	lines := bytes.Split(buf, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		if !bytes.Contains(lines[i], marker) {
+			continue
+		}
+		// The first line of a mid-file tail may be cut; it then fails to decode.
+		var r struct {
+			Type    string `json:"type"`
+			AITitle string `json:"aiTitle"`
+		}
+		if json.Unmarshal(lines[i], &r) == nil && r.Type == "ai-title" && strings.TrimSpace(r.AITitle) != "" {
+			return r.AITitle
+		}
+	}
+	return ""
 }
