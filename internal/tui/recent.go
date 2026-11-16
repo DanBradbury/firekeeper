@@ -2,6 +2,11 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
@@ -240,4 +245,73 @@ func (m model) recentLines(capacity int) []string {
 
 func recentTitle(recent recentSession) string {
 	return sanitizeProcessCommand(emptyFallback(recent.title, dashShortID(recent.id)))
+}
+
+// RecentSessionReport is one row of `firekeeper recent --json`.
+type RecentSessionReport struct {
+	SessionID      string     `json:"session_id"`
+	Provider       string     `json:"provider"`
+	Title          string     `json:"title"`
+	Project        string     `json:"project"`
+	CWD            string     `json:"cwd"`
+	LastActivityAt *time.Time `json:"last_activity_at"`
+}
+
+// RecentReport is the output of `firekeeper recent --json`: the same cross-
+// provider list the idle Processes view shows (last 30 days, newest 10).
+type RecentReport struct {
+	GeneratedAt time.Time             `json:"generated_at"`
+	Sessions    []RecentSessionReport `json:"sessions"`
+}
+
+// RunRecent implements the recent subcommand for the menu bar and scripts.
+func RunRecent(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("firekeeper recent", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print recent sessions as JSON")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "firekeeper recent: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+	if !*asJSON {
+		fmt.Fprintln(stderr, "firekeeper recent: only --json output is implemented")
+		return 2
+	}
+
+	now := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	report := buildRecentReport(now, recentSessionsSource(ctx, now))
+	enc := json.NewEncoder(stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(report); err != nil {
+		fmt.Fprintf(stderr, "firekeeper recent: write JSON: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func buildRecentReport(now time.Time, sessions []recentSession) RecentReport {
+	out := make([]RecentSessionReport, 0, len(sessions))
+	for _, s := range sessions {
+		row := RecentSessionReport{
+			SessionID: s.id,
+			Provider:  string(s.provider),
+			Title:     emptyFallback(s.title, dashShortID(s.id)),
+			Project:   s.project,
+			CWD:       s.cwd,
+		}
+		if !s.last.IsZero() {
+			last := s.last
+			row.LastActivityAt = &last
+		}
+		out = append(out, row)
+	}
+	return RecentReport{GeneratedAt: now, Sessions: out}
 }

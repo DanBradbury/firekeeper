@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,4 +52,49 @@ func TestLoadRecentSessionsReadsProviderTranscripts(t *testing.T) {
 		}
 	}
 	t.Fatalf("claude session missing from %d results", len(got))
+}
+
+func TestBuildRecentReportJSON(t *testing.T) {
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	last := now.Add(-3 * 24 * time.Hour)
+	report := buildRecentReport(now, []recentSession{{
+		provider: transcript.ProviderClaude,
+		id:       "abc-123",
+		project:  "firekeeper",
+		title:    "",
+		cwd:      "/tmp/firekeeper",
+		last:     last,
+	}})
+	if report.GeneratedAt != now || len(report.Sessions) != 1 {
+		t.Fatalf("report = %+v", report)
+	}
+	row := report.Sessions[0]
+	if row.Provider != "claude" || row.SessionID != "abc-123" || row.Title == "" || row.LastActivityAt == nil || !row.LastActivityAt.Equal(last) {
+		t.Fatalf("row = %+v", row)
+	}
+}
+
+func TestRunRecentRequiresJSON(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := RunRecent(nil, &out, &errb); code != 2 || !strings.Contains(errb.String(), "only --json") {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+	recentSessionsSource = func(context.Context, time.Time) []recentSession {
+		return []recentSession{{provider: transcript.ProviderCodex, id: "x", title: "Hello", last: time.Now()}}
+	}
+	t.Cleanup(func() {
+		recentSessionsSource = loadRecentSessions
+	})
+	out.Reset()
+	errb.Reset()
+	if code := RunRecent([]string{"--json"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d stderr=%q", code, errb.String())
+	}
+	var report RecentReport
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out.String())
+	}
+	if len(report.Sessions) != 1 || report.Sessions[0].Title != "Hello" {
+		t.Fatalf("sessions = %+v", report.Sessions)
+	}
 }

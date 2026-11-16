@@ -21,6 +21,7 @@ import (
 
 func main() {
 	cli.Register("usage", "print provider quota windows and reset times (--json)", tui.RunUsage)
+	cli.Register("recent", "print recent sessions across providers (--json)", tui.RunRecent)
 	if code, ok := cli.RunSubcommand(os.Args[1:], os.Stdout, os.Stderr); ok {
 		os.Exit(code)
 	}
