@@ -31,6 +31,7 @@ var subcommands = []subcommand{
 	{"otel-listen", "experimental: record local Claude Code OTLP usage on 127.0.0.1", runOtelListen},
 	{"otel-reconcile", "experimental: compare an otel-listen file with transcript totals", runOtelReconcile},
 	{"telemetry", "opt-in Claude Code usage listener: enable, disable, status", runTelemetry},
+	{"window", "break the current 5-hour window down by session (--provider, --json, --html FILE)", runWindow},
 	{"claude-limits", "Claude 5-hour and weekly limits, on by default (enable, disable, status)", runClaudeLimits},
 	{"install-font", "install the logo font the dashboard uses (--remove to undo)", runInstallFont},
 	{"version", "print the version, commit and build date (also --version)", runVersion},
