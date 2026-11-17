@@ -118,7 +118,9 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
 - **Take your history with you.** `firekeeper snapshot --json` prints discovered
   sessions for scripts, and `firekeeper usage --json` prints quota windows with
   reset times (Claude, Codex, Copilot AI credits) and Kimi's local totals; Gemini,
-  Cursor and OpenCode report no usage source. Transcript exports and server
+  Cursor and OpenCode report no usage source. Near a 5-hour limit,
+  `firekeeper window` breaks the window down by session, model and hour (`--json`,
+  or `--html FILE` for a standalone page; `--provider` picks the harness). Transcript exports and server
   reporting are separate, optional commands in the [reference](docs/reference.md#reporting).
 
 Usage history is available for Codex, Copilot CLI, Claude Code, and Kimi Code.
