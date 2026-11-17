@@ -217,16 +217,28 @@
         <ul class="keys"><li><kbd>↑</kbd><kbd>↓</kbd> Select</li><li><kbd>Enter</kbd> Expand</li><li><kbd>Tab</kbd> Switch view</li></ul>
       </div>
     </div>
-    <figure class="frame" id="processes-live">
+    <!-- The real dashboard, compiled to WebAssembly (cmd/demo-wasm) and run on
+         invented sample sessions. processes-demo.js starts it, and falls back
+         to the recording when it cannot run. -->
+    <figure class="frame" id="processes-live" data-process-demo>
       <div class="window">
-        <div class="slot has-media" style="--ar: 2112 / 1216">
-          <video autoplay muted loop playsinline preload="metadata" poster="media/processes-live.jpg" width="2112" height="1216">
-            <source src="media/processes-live.webm" type="video/webm">
-            <source src="media/processes-live.mp4" type="video/mp4">
-          </video>
+        <div class="slot has-media process-demo-slot" style="--ar: 2112 / 1216">
+          <img class="process-demo-poster" src="media/processes-live.jpg" width="2112" height="1216" alt="The Firekeeper process list: four coding agents with their state, model, branch and token count.">
+          <noscript>
+            <video autoplay muted loop playsinline preload="metadata" poster="media/processes-live.jpg" width="2112" height="1216">
+              <source src="media/processes-live.webm" type="video/webm">
+              <source src="media/processes-live.mp4" type="video/mp4">
+            </video>
+          </noscript>
+          <div class="process-demo-terminal" data-process-demo-terminal role="group" aria-label="Interactive Firekeeper demo with sample sessions" aria-describedby="process-demo-help" hidden></div>
         </div>
       </div>
-      <figcaption>The real app, recorded against demo projects. States describe the latest event Firekeeper can see.</figcaption>
+      <div class="process-demo-bar" data-process-demo-bar hidden>
+        <button type="button" data-process-demo-start>Try the real TUI</button>
+        <button type="button" data-process-demo-pause aria-pressed="false" hidden>Pause sample updates</button>
+        <span class="process-demo-status" data-process-demo-status role="status"></span>
+      </div>
+      <figcaption id="process-demo-help"><span data-process-demo-caption>The real app, recorded against demo projects.</span> States describe the latest event Firekeeper can see.</figcaption>
     </figure>
   </section>
 
@@ -472,6 +484,7 @@
 </main>
 
 <script src="menubar-demo.js" defer></script>
+<script src="demo/processes-demo.js" defer></script>
 <script>
 (function () {
   var live =document.getElementById('live');

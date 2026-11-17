@@ -1,0 +1,14 @@
+# Cloudflare Pages response headers (deployed with the site).
+#
+# The demo program and its loader are named by content hash, so they can be
+# cached for good; manifest.json is the one file that says which names are
+# current, so it is always revalidated. See cmd/demo-wasm/README.md.
+/demo/manifest.json
+  Cache-Control: no-cache
+/demo/firekeeper-demo.*.wasm
+  Cache-Control: public, max-age=31536000, immutable
+  Content-Type: application/wasm
+/demo/wasm_exec.*.js
+  Cache-Control: public, max-age=31536000, immutable
+/demo/vendor/*
+  Cache-Control: public, max-age=86400

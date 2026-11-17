@@ -226,3 +226,25 @@ jobs:
             echo "version, commit, or date was not injected; check the -X paths in .goreleaser.yaml" >&2
             exit 1
           fi
+
+  # The landing page's browser demo: the dashboard compiled to js/wasm. It is
+  # built here on every change so a Bubble Tea or dashboard change that breaks
+  # the demo fails the pull request, not the next landing deploy.
+  demo-wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: shellcheck
+        run: shellcheck cmd/demo-wasm/build.sh
+      - name: build the demo
+        run: cmd/demo-wasm/build.sh
+      - name: run the demo in Node
+        run: node scripts/test-demo-wasm.cjs
+      - name: landing script syntax
+        run: node --check docs/landing/demo/processes-demo.js

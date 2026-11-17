@@ -1,3 +1,5 @@
+//go:build !js
+
 // Package sqlitejson runs one read-only SQLite query and returns its rows as
 // JSON, in the shape of `sqlite3 -readonly -json`.
 //
