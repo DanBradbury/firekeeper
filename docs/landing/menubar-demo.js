@@ -170,7 +170,7 @@
     if (go) {
       var s = byId(go.dataset.mbGo);
       focusWin(s.id);
-      say('Switched to Ghostty · ' + s.id);
+      say('Switched to terminal · ' + s.id);
       return;
     }
     var approve = e.target.closest('[data-mb-approve]');
