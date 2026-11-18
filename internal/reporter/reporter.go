@@ -37,8 +37,8 @@ import (
 	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
 )
 
-// DefaultServer is the dashboard server's default listen address.
-const DefaultServer = "http://127.0.0.1:7777"
+// DefaultServer is the hosted dashboard, used when no server is configured.
+const DefaultServer = "https://dashboard.firekeeper.ai"
 
 // Ingest limits from the v1 contract. Batches stay under maxBatchBytes so the
 // envelope and session metadata fit inside the 5 MiB request limit.
