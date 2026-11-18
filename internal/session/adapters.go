@@ -20,7 +20,8 @@ type providerAdapter interface {
 	Link(d *discoverer, groups []*ProcessGroup) error
 }
 
-// adapters is the registry, in the order Discover links providers.
+// adapters is the registry. Discover links the providers concurrently and
+// reports their warnings in this order.
 var adapters = []providerAdapter{
 	codexAdapter{}, copilotAdapter{}, kimiAdapter{}, claudeAdapter{},
 	openCodeAdapter{}, geminiAdapter{}, cursorAdapter{},

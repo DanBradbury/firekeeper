@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,9 @@ import (
 
 // Options configures discovery. Zero values use the local environment.
 // Run overrides command execution for fixture tests; it must honor ctx.
+// Discover links each provider on its own goroutine, so Run is called from
+// several goroutines at once when more than one provider is running and
+// must be safe for that.
 type Options struct {
 	Home        string
 	CodexHome   string
@@ -137,6 +141,25 @@ func (c commandOutput) Output() ([]byte, error) {
 	return exec.CommandContext(c.d.ctx, c.name, c.args...).Output()
 }
 
+// linkPanic is a panic from one provider's Link, carried from its goroutine
+// to Discover's caller. It keeps the stack of the goroutine that panicked,
+// which the second panic would otherwise lose.
+type linkPanic struct {
+	provider string
+	value    any
+	stack    []byte
+}
+
+func (p *linkPanic) Error() string {
+	return fmt.Sprintf("panic linking %s sessions: %v\n\n%s", p.provider, p.value, p.stack)
+}
+
+// Unwrap returns the original panic value when it was an error.
+func (p *linkPanic) Unwrap() error {
+	err, _ := p.value.(error)
+	return err
+}
+
 // Discover performs one bounded scan. Callers choose their own polling interval.
 // Each provider is best effort and cannot prevent other runtimes from appearing.
 func Discover(ctx context.Context, opts Options) ([]Meta, error) {
@@ -148,9 +171,11 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		return nil, fmt.Errorf("run ps: %w", err)
 	}
 	groups := d.groupProcesses(d.parseProcesses(string(output)))
-	var warnings []string
-	for _, a := range adapters {
-		var own []*ProcessGroup
+	// Partition the groups by provider first, and set explicit ids, before any
+	// Link runs: a running Link rewrites its own groups, so nothing else may
+	// read them from here until every Link has returned.
+	owned := make([][]*ProcessGroup, len(adapters))
+	for index, a := range adapters {
 		for i := range groups {
 			g := &groups[i]
 			if g.Provider != a.Provider() {
@@ -167,13 +192,49 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 					g.explicitID = id
 				}
 			}
-			own = append(own, g)
+			owned[index] = append(owned[index], g)
 		}
+	}
+	// Providers are linked concurrently, one goroutine per provider that has
+	// groups, so a slow provider does not hold up the others. Each Link gets
+	// only its own provider's groups, which no other goroutine touches. Each
+	// provider's warning is kept at its adapter's index, so the joined
+	// message does not depend on which Link finished first.
+	//
+	// A panic in a Link is caught on its goroutine and raised again here once
+	// every Link has returned, so it reaches the caller as it did when linking
+	// ran on the caller's goroutine. The dashboard depends on that: Bubble Tea
+	// recovers a panic in a command and restores the terminal, which it cannot
+	// do for a panic on a goroutine it did not start.
+	linkWarnings := make([]string, len(adapters))
+	linkPanics := make([]*linkPanic, len(adapters))
+	var linking sync.WaitGroup
+	for index, a := range adapters {
+		own := owned[index]
 		if len(own) == 0 {
 			continue
 		}
-		if err := a.Link(d, own); err != nil {
-			warnings = append(warnings, toolName(a.Provider())+": "+d.sanitizeProcessCommand(err.Error()))
+		linking.Go(func() {
+			defer func() {
+				if value := recover(); value != nil {
+					linkPanics[index] = &linkPanic{provider: toolName(a.Provider()), value: value, stack: debug.Stack()}
+				}
+			}()
+			if err := a.Link(d, own); err != nil {
+				linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
+			}
+		})
+	}
+	linking.Wait()
+	for _, caught := range linkPanics {
+		if caught != nil {
+			panic(caught) // the first in registry order, whichever happened first
+		}
+	}
+	var warnings []string
+	for _, warning := range linkWarnings {
+		if warning != "" {
+			warnings = append(warnings, warning)
 		}
 	}
 	machine, err := machineID(opts.Home)

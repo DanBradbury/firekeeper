@@ -147,6 +147,46 @@ The tree describes architectural responsibilities. Confirm actual file and funct
 - Treat provider metadata and state as best effort. Partial data should remain useful and should not crash or blank unrelated UI.
 - Keep terminal output width-safe. Use existing truncation, padding, sanitization, and `fitLine` helpers.
 
+## Concurrency
+
+Use goroutines by default for work made of independent items that each do
+I/O, run a subprocess, or make a network request, when there are several
+items or any one of them can be slow: per-provider work, per-file reads,
+per-session lookups.
+
+When using goroutines:
+
+- Keep output deterministic: collect results by index, unless they are
+  merged by an order-independent operation (sums, counts) or sorted
+  afterwards.
+- Bound the workers: one goroutine per provider for provider work, and at
+  most `runtime.GOMAXPROCS(0)` workers for file or subprocess work.
+- Keep shared state (maps, counters, callbacks such as `Skip`) on one
+  goroutine, or guard it.
+- Respect the caller's context and timeout.
+- Run `go test -race ./...`.
+
+New code follows the default without measurement. A change that converts
+existing sequential code to goroutines for speed, or that claims a
+speedup, states the before and after timings and what they were measured
+on (item counts, total size) in the PR description.
+
+Run sequentially when goroutines do not make sense:
+
+- The steps depend on each other or on a strict order.
+- The work is cheap in-memory computation, or a loop over a few small
+  items.
+- A contract requires it. Today that is the upload paths in
+  `internal/reporter` (ordered `state.json` saves, the failure counter,
+  newest-first order) and the Claude cloud sync (one request at a time,
+  stopping on account-wide errors). The same applies to any path whose
+  doc comment or the "Reporting" section states an order, a rate limit,
+  or a stop-on-error rule.
+- The work is a single call that cannot be split.
+
+Inside Bubble Tea, concurrent work still belongs in `tea.Cmd` functions;
+`Update` stays non-blocking.
+
 ## Process and provider integrations
 
 Process discovery uses `ps`; open-file mapping uses `lsof`; local database queries use `sqlite3 -readonly -json` (through `internal/sqlitejson`); terminal focus uses `osascript`. Invoke commands with argument arrays, never shell interpolation.
