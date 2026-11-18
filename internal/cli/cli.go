@@ -22,6 +22,7 @@ var subcommands = []subcommand{
 	{"export", "export local transcripts (not implemented)", runExport},
 	{"report", "upload session metadata and redacted transcripts once", runReport},
 	{"backfill", "upload sessions already on this machine once (--all, --provider, or --claude-cloud)", runBackfill},
+	{"backfill-cloud", "upload sessions held by a cloud service once (claude)", runBackfillCloud},
 	{"serve", "run the dashboard server (separate firekeeper-server binary)", runServe},
 	{"login", "link this machine to a dashboard server (--server URL)", runLogin},
 	{"logout", "revoke and remove this machine's stored token", runLogout},

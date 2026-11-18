@@ -794,9 +794,16 @@ Sessions you ran on claude.ai/code have no files on your machine, so
 `--all` cannot see them. `--claude-cloud` imports them:
 
 ```sh
-firekeeper backfill --claude-cloud --dry-run    # download, then print the plan
-firekeeper backfill --claude-cloud              # print the plan, ask, upload
+firekeeper backfill-cloud claude --dry-run      # download, then print the plan
+firekeeper backfill-cloud claude                # print the plan, ask, upload
 ```
+
+`backfill-cloud <provider>` is the entry point for providers whose sessions
+live in a cloud service; `claude` is the only one so far. It takes the same
+flags as `backfill` (`--dry-run`, `--since`, `--after`, `--limit`, `--yes`,
+`--server`, `--token`). `backfill --claude-cloud` is the same thing under its
+older name. Sessions started from the Claude desktop app's Code tab in the
+cloud are Claude Code on the web sessions and appear in the same list.
 
 How it works, and what you should know first:
 

@@ -6,6 +6,16 @@ seen from one account, not a published contract, and Anthropic can change them
 without notice. Values below are shapes only; no transcript data is recorded
 here.
 
+## Why an undocumented API
+
+Sessions run on claude.ai/code or from the Claude desktop app's cloud Code
+sessions leave no transcript on this machine, so the local Claude reader never
+sees them. Anthropic documents no export or list API for them. The only source
+is the internal API the web app itself uses. Firekeeper limits the risk: read-only
+GETs, only on `firekeeper backfill-cloud claude` (or `backfill --claude-cloud`)
+and the opt-in daemon setting, the user's own login, and a clear error when the
+shape changes.
+
 ## Access
 
 - Base URL `https://api.anthropic.com/v1`, read-only `GET`s.
