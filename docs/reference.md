@@ -484,7 +484,7 @@ Reporting is a set of explicit subcommands: `report`, `backfill`, `daemon`,
 and `daemon` send session metadata and full transcripts to a dashboard server
 that speaks the [open API](api.md). Nothing is sent until you allow
 providers with `--provider`, `backfill --all`, the `FIREKEEPER_PROVIDERS`
-variable, or the config file, and point at a server (`http://127.0.0.1:7777`
+variable, or the config file, and point at a server (`https://dashboard.firekeeper.ai`
 by default). `report --dry-run` shows what would be sent without opening a
 connection. Agent CLIs never depend on any of these commands.
 
@@ -496,7 +496,7 @@ firekeeper backfill --all --dry-run   # plan importing all supported local histo
 firekeeper backfill --all             # confirm, then import past sessions
 firekeeper daemon --provider codex    # report every 15 seconds until stopped
 firekeeper daemon install             # detect providers and run the daemon at login
-firekeeper login --server https://dash.example   # link this machine without copying a token
+firekeeper login                      # link this machine without copying a token
 firekeeper whoami                     # server, account and machine this machine reports as
 firekeeper logout                     # revoke and remove this machine's token
 firekeeper config show                # print the merged configuration, token masked
@@ -700,7 +700,7 @@ this off and reads running sessions only.
 
 | Flag | Meaning |
 | --- | --- |
-| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
+| `--server URL` | Dashboard server. Default `https://dashboard.firekeeper.ai`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Upload this provider's sessions. Repeatable. `codex`, `copilot`, and `claude` have transcript readers today. |
 | `--dry-run` | Read and redact, print counts, upload nothing. |
 | `--since DURATION` | Skip transcript files not modified within the duration, for example `24h`. |
@@ -768,7 +768,7 @@ that is still running keeps the state discovery reports for it.
 
 | Flag | Meaning |
 | --- | --- |
-| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
+| `--server URL` | Dashboard server. Default `https://dashboard.firekeeper.ai`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Import this provider's sessions. Repeatable. `codex`, `copilot`, and `claude` can be backfilled. |
 | `--all` | Import all supported providers found locally, for this pass only. |
 | `--claude-cloud` | Import Claude Code on the web sessions instead of local ones. See [Cloud sessions](#claude-code-on-the-web-cloud-sessions). Not with `--all` or `--provider`. |
@@ -881,7 +881,7 @@ after the normal interval, never the one-minute catch-up. The same credential ru
 On a server that supports linking, a machine connects without anyone copying a token:
 
 ```sh
-firekeeper login --server https://dash.example
+firekeeper login   # or: firekeeper login --server https://dash.example
 ```
 
 It prints a URL and a short code and waits. Open the URL (sign in if asked),
@@ -921,7 +921,7 @@ firekeeper daemon --provider codex --provider copilot
 
 | Flag | Meaning |
 | --- | --- |
-| `--server URL` | Dashboard server. Default `http://127.0.0.1:7777`, `$FIREKEEPER_SERVER`, or the config file. |
+| `--server URL` | Dashboard server. Default `https://dashboard.firekeeper.ai`, `$FIREKEEPER_SERVER`, or the config file. |
 | `--provider NAME` | Upload this provider's sessions. Repeatable. The daemon refuses to start unless a provider comes from a flag, `$FIREKEEPER_PROVIDERS`, or the config file. |
 | `--interval DURATION` | Time between passes. Default `15s`, minimum `5s`. |
 | `--live-only` | Read only running sessions, as before transcript scanning. Default `scan_ended` in the config file (on). |

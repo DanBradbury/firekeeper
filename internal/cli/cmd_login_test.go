@@ -228,7 +228,7 @@ func TestLoginDeviceFlowEndToEnd(t *testing.T) {
 		t.Fatalf("config after logout:\n%s", raw)
 	}
 	var wo2, we2 bytes.Buffer
-	if code := runWhoami(nil, &wo2, &we2); code != 1 || !strings.Contains(we2.String(), "not logged in") {
+	if code := runWhoami(nil, &wo2, &we2); code != 1 || !strings.Contains(we2.String(), "run `firekeeper login`") || strings.Contains(we2.String(), "--server") {
 		t.Fatalf("whoami after logout: %d %q", code, we2.String())
 	}
 	lo.Reset()

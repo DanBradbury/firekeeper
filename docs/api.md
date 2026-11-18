@@ -14,7 +14,7 @@ server can test against the same examples. A test fails if this document lists
 an endpoint (a `###` heading of the form `` `METHOD /path` ``) or an error code
 (a row of the table below) that has no fixture.
 
-- Default server address the client assumes: `http://127.0.0.1:7777`. A
+- Default server address the client assumes: `https://dashboard.firekeeper.ai`. A
   server that is not on this machine must be reached over `https`.
 - Authentication: `Authorization: Bearer TOKEN`. Tokens are ingest-scoped and
   bound to one machine id. A server may instead run open on loopback, in which
@@ -48,7 +48,7 @@ Every error is a JSON object with a standard HTTP status:
 
 ## Machine linking
 
-`firekeeper login --server URL` connects a machine without anyone copying a
+`firekeeper login` (or `firekeeper login --server URL` for another server) connects a machine without anyone copying a
 secret, using a device-code flow. Codes expire after 10 minutes and work once.
 
 1. The machine calls `POST /v1/link/start` with its machine id. It gets a long

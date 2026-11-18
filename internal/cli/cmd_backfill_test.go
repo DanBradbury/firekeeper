@@ -166,7 +166,7 @@ func TestBackfillConfirmation(t *testing.T) {
 		wantUpload  bool
 		wantStderr  string
 	}{
-		{"yes typed", []string{"--provider", "codex"}, "y\n", true, 0, true, "Upload 1 session (~4 events, ~1 request) to http://127.0.0.1:7777? [y/N]"},
+		{"yes typed", []string{"--provider", "codex"}, "y\n", true, 0, true, "Upload 1 session (~4 events, ~1 request) to https://dashboard.firekeeper.ai? [y/N]"},
 		{"enter declines", []string{"--provider", "codex"}, "\n", true, 1, false, "nothing uploaded"},
 		{"non-interactive refused", []string{"--provider", "codex"}, "y\n", false, 1, false, "pass --yes to upload"},
 		{"--yes skips the prompt", []string{"--provider", "codex", "--yes"}, "", false, 0, true, ""},

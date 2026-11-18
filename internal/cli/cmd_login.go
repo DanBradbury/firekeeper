@@ -104,7 +104,7 @@ func runWhoami(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if c.Token == "" {
-		fmt.Fprintf(stderr, "%s: not logged in; run `firekeeper login --server URL`\n", name)
+		fmt.Fprintf(stderr, "%s: not logged in; run `firekeeper login`\n", name)
 		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
