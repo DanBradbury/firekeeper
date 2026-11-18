@@ -26,6 +26,13 @@ func (f *fakeSource) Enumerate(context.Context, reader.EnumerateOptions) ([]sess
 	return f.metas, nil
 }
 
+// shared is registered once: the reader registry panics on a second Register.
+var shared = func() *fakeSource {
+	f := &fakeSource{}
+	reader.Register(transcript.ProviderClaude, f)
+	return f
+}()
+
 var now = time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 
 func ev(at time.Time, role transcript.Role, model string, in, out, cache int64) transcript.Event {
@@ -50,7 +57,7 @@ func TestBounds(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			start, end, basis := Bounds(now, tt.reset)
+			start, end, basis := Bounds(PeriodFiveHour, now, tt.reset)
 			if basis != tt.basis || !end.Equal(tt.end) || end.Sub(start) != Length {
 				t.Fatalf("Bounds = %v %v %v", start, end, basis)
 			}
@@ -59,7 +66,7 @@ func TestBounds(t *testing.T) {
 }
 
 func TestBuildSumsOnlyEventsInWindow(t *testing.T) {
-	src := &fakeSource{
+	*shared = fakeSource{
 		metas: []session.Meta{{ID: "big", Title: "Big", CWD: "/nonexistent/app"}, {ID: "old", CWD: "/nonexistent/old"}},
 		events: map[string][]transcript.Event{
 			"big": {
@@ -71,7 +78,6 @@ func TestBuildSumsOnlyEventsInWindow(t *testing.T) {
 			"old": {ev(now.Add(-9*time.Hour), transcript.RoleAssistant, "m1", 1, 1, 1)},
 		},
 	}
-	reader.Register(transcript.ProviderClaude, src)
 
 	report, err := Build(context.Background(), now, Options{Provider: transcript.ProviderClaude})
 	if err != nil {
@@ -103,7 +109,7 @@ func TestBuildNoReader(t *testing.T) {
 }
 
 func TestWriteHTMLEscapesAndOmitsCWD(t *testing.T) {
-	r := newReport(now, transcript.ProviderClaude, BasisRolling, now.Add(-Length), now)
+	r := newReport(now, transcript.ProviderClaude, PeriodFiveHour, BasisRolling, now.Add(-Length), now)
 	r.Sessions = []Session{{SessionID: "x", Title: "<script>alert(1)</script>", CWD: "/secret/path", FirstAt: now, LastAt: now}}
 	var buf bytes.Buffer
 	if err := WriteHTML(&buf, r); err != nil {
@@ -115,5 +121,80 @@ func TestWriteHTMLEscapesAndOmitsCWD(t *testing.T) {
 	}
 	if !strings.Contains(out, "&lt;script&gt;") {
 		t.Fatal("title not shown escaped")
+	}
+}
+
+func TestParsePeriod(t *testing.T) {
+	for _, in := range []string{"5h", "week"} {
+		if p, err := ParsePeriod(in); err != nil || string(p) != in {
+			t.Errorf("ParsePeriod(%q) = %q, %v", in, p, err)
+		}
+	}
+	for _, in := range []string{"", "day", "WEEK", "7d"} {
+		if _, err := ParsePeriod(in); err == nil {
+			t.Errorf("ParsePeriod(%q) accepted", in)
+		}
+	}
+}
+
+func TestPeriodTable(t *testing.T) {
+	tests := []struct {
+		p      Period
+		length time.Duration
+		bucket time.Duration
+		label  string
+	}{
+		{PeriodFiveHour, 5 * time.Hour, time.Hour, "5-hour"},
+		{PeriodWeek, 7 * 24 * time.Hour, 24 * time.Hour, "weekly"},
+		{Period("bogus"), 5 * time.Hour, time.Hour, "5-hour"},
+	}
+	for _, tt := range tests {
+		if tt.p.Length() != tt.length || tt.p.bucket() != tt.bucket || tt.p.Label() != tt.label {
+			t.Errorf("%q: %v %v %q", tt.p, tt.p.Length(), tt.p.bucket(), tt.p.Label())
+		}
+	}
+}
+
+func TestBoundsWeek(t *testing.T) {
+	week := PeriodWeek.Length()
+	start, end, basis := Bounds(PeriodWeek, now, now.Add(3*24*time.Hour))
+	if basis != BasisLimits || end.Sub(start) != week {
+		t.Fatalf("reset in week: %v %v %v", start, end, basis)
+	}
+	// A 5-hour-sized reset is still inside a week, but a past or far one is not.
+	for _, reset := range []time.Time{now.Add(-time.Hour), now.Add(30 * 24 * time.Hour)} {
+		if _, end, basis := Bounds(PeriodWeek, now, reset); basis != BasisRolling || !end.Equal(now) {
+			t.Fatalf("reset %v: %v %v", reset, end, basis)
+		}
+	}
+}
+
+func TestBuildWeekDaily(t *testing.T) {
+	*shared = fakeSource{
+		metas: []session.Meta{{ID: "s", Title: "S", CWD: "/nonexistent/app"}},
+		events: map[string][]transcript.Event{"s": {
+			ev(now.Add(-8*24*time.Hour), transcript.RoleAssistant, "m1", 999, 999, 999), // before window
+			ev(now.Add(-6*24*time.Hour), transcript.RoleAssistant, "m1", 10, 10, 0),
+			ev(now.Add(-2*time.Hour), transcript.RoleAssistant, "m1", 5, 5, 0),
+		}},
+	}
+	report, err := Build(context.Background(), now, Options{Provider: transcript.ProviderClaude, Period: PeriodWeek})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Total.Total != 30 || len(report.Hourly) != 0 || len(report.Daily) != 7 {
+		t.Fatalf("report = total %d hourly %d daily %d", report.Total.Total, len(report.Hourly), len(report.Daily))
+	}
+	if report.Daily[1].Tokens.Total != 20 || report.Daily[6].Tokens.Total != 10 {
+		t.Fatalf("daily = %+v", report.Daily)
+	}
+	var buf bytes.Buffer
+	if err := WriteHTML(&buf, report); err != nil || !strings.Contains(buf.String(), "weekly window") || !strings.Contains(buf.String(), "By day") {
+		t.Fatalf("html: %v", err)
+	}
+	buf.Reset()
+	WriteText(&buf, report)
+	if !strings.Contains(buf.String(), "weekly window") {
+		t.Fatalf("text: %s", buf.String())
 	}
 }

@@ -1,11 +1,12 @@
-// Package window answers "where did my 5-hour window go": it sums the token
-// use of every session that was active inside one window, from the local
+// Package window answers "where did my 5-hour or weekly window go": it sums
+// the token use of every session that was active inside one window, from the local
 // transcripts only. Nothing is uploaded and no provider file is written.
 package window
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -14,7 +15,61 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 )
 
-// Length is the rolling window providers meter against.
+// Period is which provider limit window a report covers.
+type Period string
+
+const (
+	PeriodFiveHour Period = "5h"
+	PeriodWeek     Period = "week"
+)
+
+// ParsePeriod rejects anything but a known period.
+func ParsePeriod(s string) (Period, error) {
+	switch p := Period(s); p {
+	case PeriodFiveHour, PeriodWeek:
+		return p, nil
+	}
+	return "", fmt.Errorf("window: unknown period %q", s)
+}
+
+// Length is the rolling window providers meter against for p. An unknown
+// period is treated as the 5-hour window.
+func (p Period) Length() time.Duration {
+	switch p {
+	case PeriodWeek:
+		return 7 * 24 * time.Hour
+	case PeriodFiveHour:
+		return Length
+	default:
+		return Length
+	}
+}
+
+// bucket is the size of one row in the over-time breakdown.
+func (p Period) bucket() time.Duration {
+	switch p {
+	case PeriodWeek:
+		return 24 * time.Hour
+	case PeriodFiveHour:
+		return time.Hour
+	default:
+		return time.Hour
+	}
+}
+
+// Label is the human name of the window.
+func (p Period) Label() string {
+	switch p {
+	case PeriodWeek:
+		return "weekly"
+	case PeriodFiveHour:
+		return "5-hour"
+	default:
+		return "5-hour"
+	}
+}
+
+// Length is the 5-hour window providers meter against.
 const Length = 5 * time.Hour
 
 // ErrNoReader means the provider has no transcript reader to enumerate.
@@ -76,6 +131,7 @@ type Bucket struct {
 type Report struct {
 	GeneratedAt time.Time `json:"generated_at"`
 	Provider    string    `json:"provider"`
+	Period      Period    `json:"period"`
 	Basis       Basis     `json:"basis"`
 	Start       time.Time `json:"window_start"`
 	End         time.Time `json:"window_end"`
@@ -85,7 +141,9 @@ type Report struct {
 	Sessions    []Session `json:"sessions"`
 	ByModel     []Group   `json:"by_model"`
 	ByProject   []Group   `json:"by_project"`
-	Hourly      []Bucket  `json:"hourly"`
+	// Hourly is filled for the 5-hour window, Daily for the weekly one.
+	Hourly []Bucket `json:"hourly,omitempty"`
+	Daily  []Bucket `json:"daily,omitempty"`
 	// Notes carry limitations, such as sessions that could not be read.
 	Notes []string `json:"notes"`
 }
@@ -93,6 +151,8 @@ type Report struct {
 // Options picks the provider and window.
 type Options struct {
 	Provider transcript.Provider
+	// Period defaults to the 5-hour window.
+	Period Period
 	// ResetsAt, when non-zero, ends the window there; otherwise it ends at
 	// now. UsedPercent is passed through to the report.
 	ResetsAt    time.Time
@@ -100,11 +160,12 @@ type Options struct {
 }
 
 // Bounds returns the window for now and an optional reset time.
-func Bounds(now, resetsAt time.Time) (start, end time.Time, basis Basis) {
-	if !resetsAt.IsZero() && resetsAt.After(now) && resetsAt.Before(now.Add(Length+time.Minute)) {
-		return resetsAt.Add(-Length), resetsAt, BasisLimits
+func Bounds(p Period, now, resetsAt time.Time) (start, end time.Time, basis Basis) {
+	length := p.Length()
+	if !resetsAt.IsZero() && resetsAt.After(now) && resetsAt.Before(now.Add(length+time.Minute)) {
+		return resetsAt.Add(-length), resetsAt, BasisLimits
 	}
-	return now.Add(-Length), now, BasisRolling
+	return now.Add(-length), now, BasisRolling
 }
 
 // Build reads the provider's transcripts and sums what fell inside the window.
@@ -114,8 +175,11 @@ func Build(ctx context.Context, now time.Time, opts Options) (Report, error) {
 	if !ok || !canList {
 		return Report{}, ErrNoReader
 	}
-	start, end, basis := Bounds(now, opts.ResetsAt)
-	report := newReport(now, opts.Provider, basis, start, end)
+	if opts.Period == "" {
+		opts.Period = PeriodFiveHour
+	}
+	start, end, basis := Bounds(opts.Period, now, opts.ResetsAt)
+	report := newReport(now, opts.Provider, opts.Period, basis, start, end)
 	report.UsedPercent = opts.UsedPercent
 
 	metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{ModifiedAfter: start})
@@ -156,16 +220,31 @@ func Build(ctx context.Context, now time.Time, opts Options) (Report, error) {
 	return report, nil
 }
 
-func newReport(now time.Time, provider transcript.Provider, basis Basis, start, end time.Time) Report {
+func newReport(now time.Time, provider transcript.Provider, period Period, basis Basis, start, end time.Time) Report {
 	r := Report{
-		GeneratedAt: now.UTC(), Provider: string(provider), Basis: basis,
+		GeneratedAt: now.UTC(), Provider: string(provider), Period: period, Basis: basis,
 		Start: start.UTC(), End: end.UTC(),
-		Sessions: []Session{}, ByModel: []Group{}, ByProject: []Group{}, Hourly: []Bucket{}, Notes: []string{},
+		Sessions: []Session{}, ByModel: []Group{}, ByProject: []Group{}, Notes: []string{},
 	}
-	for at := r.Start; at.Before(r.End); at = at.Add(time.Hour) {
-		r.Hourly = append(r.Hourly, Bucket{Start: at})
+	size := period.bucket()
+	var buckets []Bucket
+	for at := r.Start; at.Before(r.End); at = at.Add(size) {
+		buckets = append(buckets, Bucket{Start: at})
+	}
+	if period == PeriodWeek {
+		r.Daily = buckets
+	} else {
+		r.Hourly = buckets
 	}
 	return r
+}
+
+// buckets is the over-time breakdown for the report's period.
+func (r *Report) buckets() []Bucket {
+	if r.Period == PeriodWeek {
+		return r.Daily
+	}
+	return r.Hourly
 }
 
 type accumulator struct {
@@ -205,8 +284,9 @@ func (a *accumulator) session(meta session.Meta, events []transcript.Event) {
 		}
 		row.Tokens.add(e.Tokens)
 		a.report.Total.add(e.Tokens)
-		if i := int(ts.Sub(a.report.Start) / time.Hour); i >= 0 && i < len(a.report.Hourly) {
-			a.report.Hourly[i].Tokens.add(e.Tokens)
+		buckets := a.report.buckets()
+		if i := int(ts.Sub(a.report.Start) / a.report.Period.bucket()); i >= 0 && i < len(buckets) {
+			buckets[i].Tokens.add(e.Tokens)
 		}
 		if e.Tokens.Input+e.Tokens.Output+e.Tokens.Cache > 0 {
 			model := "unknown"

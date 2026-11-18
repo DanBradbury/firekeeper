@@ -18,26 +18,30 @@ import (
 	"github.com/DanBradbury/firekeeper/internal/window"
 )
 
-// windowLimits returns the Claude 5-hour limit when limits are on. It is a
-// variable so tests never reach the config, Keychain or network.
-var windowLimits = func(ctx context.Context) (*claudelimits.Window, error) {
+// windowLimits returns the Claude 5-hour or weekly limit when limits are on.
+// It is a variable so tests never reach the config, Keychain or network.
+var windowLimits = func(ctx context.Context, period window.Period) (*claudelimits.Window, error) {
 	cfg, err := config.Load(config.Options{Getenv: os.Getenv})
 	if err != nil || !cfg.ClaudeLimits {
 		return nil, nil
 	}
 	limits, err := claudelimits.Client{}.Fetch(ctx)
+	if period == window.PeriodWeek {
+		return limits.SevenDay, err
+	}
 	return limits.FiveHour, err
 }
 
 var windowNow = time.Now
 
-// runWindow breaks the current 5-hour window down by session, so a user near
+// runWindow breaks the current 5-hour or weekly window down by session, so a user near
 // the limit can see what used it. Everything is read locally; the HTML page is
 // a file on this machine, never uploaded.
 func runWindow(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper window", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	provider := fs.String("provider", string(transcript.ProviderClaude), "provider to review")
+	weekly := fs.Bool("week", false, "review the weekly window instead of the 5-hour one")
 	asJSON := fs.Bool("json", false, "print the breakdown as JSON")
 	htmlPath := fs.String("html", "", "write the breakdown as a standalone HTML page to `file` and print its file:// URL")
 	if err := fs.Parse(args); err != nil {
@@ -60,12 +64,18 @@ func runWindow(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	period := window.PeriodFiveHour
+	timeout := time.Minute
+	if *weekly {
+		period = window.PeriodWeek
+		timeout = 3 * time.Minute // a week of transcripts is a lot more to read
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	opts := window.Options{Provider: prov}
+	opts := window.Options{Provider: prov, Period: period}
 	if prov == transcript.ProviderClaude {
 		// A failed limits request only costs the exact reset time.
-		if w, err := windowLimits(ctx); err == nil && w != nil {
+		if w, err := windowLimits(ctx, period); err == nil && w != nil {
 			opts.ResetsAt = w.ResetsAt
 			used := w.UsedPercent
 			opts.UsedPercent = &used

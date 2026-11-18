@@ -9,15 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/DanBradbury/firekeeper/internal/window"
 )
 
 func stubWindow(t *testing.T) {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir()) // never read real transcripts
 	prev := windowLimits
-	windowLimits = func(context.Context) (*claudelimits.Window, error) { return nil, nil }
+	windowLimits = func(context.Context, window.Period) (*claudelimits.Window, error) { return nil, nil }
 	t.Cleanup(func() { windowLimits = prev })
 }
 
@@ -61,5 +63,31 @@ func TestWindowJSONAndHTML(t *testing.T) {
 	}
 	if page, err := os.ReadFile(path); err != nil || !strings.Contains(string(page), "5-hour window") {
 		t.Fatalf("page: %v", err)
+	}
+}
+
+func TestWindowWeekUsesWeeklyLimit(t *testing.T) {
+	stubWindow(t)
+	var asked window.Period
+	windowLimits = func(_ context.Context, p window.Period) (*claudelimits.Window, error) {
+		asked = p
+		return &claudelimits.Window{UsedPercent: 91, ResetsAt: windowNow().Add(48 * time.Hour)}, nil
+	}
+	var out, errb bytes.Buffer
+	if code := runWindow([]string{"--week", "--json"}, &out, &errb); code != 0 {
+		t.Fatalf("code %d: %s", code, errb.String())
+	}
+	var got struct {
+		Period      string   `json:"period"`
+		Basis       string   `json:"basis"`
+		UsedPercent *float64 `json:"used_percent"`
+		Daily       []any    `json:"daily"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if asked != window.PeriodWeek || got.Period != "week" || got.Basis != "provider_reset" ||
+		got.UsedPercent == nil || *got.UsedPercent != 91 || len(got.Daily) != 7 {
+		t.Fatalf("asked %q, got %+v", asked, got)
 	}
 }
