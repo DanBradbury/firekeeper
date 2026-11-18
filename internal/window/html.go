@@ -15,6 +15,7 @@ func WriteHTML(w io.Writer, r Report) error {
 var page = template.Must(template.New("window").Funcs(template.FuncMap{
 	"n":    count,
 	"time": func(t interface{ Format(string) string }) string { return t.Format("Jan 2 15:04 MST") },
+	"day":  func(t interface{ Format(string) string }) string { return t.Format("Mon Jan 2") },
 	"pct":  func(f float64) string { return fmt.Sprintf("%.1f%%", f) },
 	"bar": func(part, total int64) template.CSS {
 		if total <= 0 {
@@ -25,7 +26,7 @@ var page = template.Must(template.New("window").Funcs(template.FuncMap{
 	"deref": func(f *float64) float64 { return *f },
 }).Parse(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>5-hour window: {{.Provider}}</title>
+<title>{{.Period.Label}} window: {{.Provider}}</title>
 <style>
 :root{--bg:#fff;--fg:#1c1b1a;--mute:#6b6762;--line:#e4e1dc;--bar:#d9641e}
 @media (prefers-color-scheme:dark){:root{--bg:#161514;--fg:#ece9e4;--mute:#9a958e;--line:#2d2b29;--bar:#f08a4b}}
@@ -36,8 +37,8 @@ th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}th{fon
 td.r,th.r{text-align:right}.bar{height:6px;background:var(--bar);border-radius:3px;min-width:1px}
 .wrap{overflow-x:auto}
 </style></head><body><main>
-<h1>{{.Provider}}: 5-hour window</h1>
-<p class="mute">{{time .Start}} to {{time .End}}{{if eq .Basis "rolling"}} (last 5 hours; no reset time known){{else}} (ends at the provider's reset){{end}}
+<h1>{{.Provider}}: {{.Period.Label}} window</h1>
+<p class="mute">{{time .Start}} to {{time .End}}{{if eq .Basis "rolling"}} (rolling {{.Period.Label}} window; no reset time known){{else}} (ends at the provider's reset){{end}}
 {{if .UsedPercent}} · provider reports {{pct (deref .UsedPercent)}} used{{end}}</p>
 <p><strong>{{n .Total.Total}}</strong> tokens · {{n .Total.Input}} input · {{n .Total.Output}} output · {{n .Total.Cache}} cache · {{len .Sessions}} sessions</p>
 {{range .Notes}}<p class="mute">Note: {{.}}</p>{{end}}
@@ -46,7 +47,8 @@ td.r,th.r{text-align:right}.bar{height:6px;background:var(--bar);border-radius:3
 {{else}}<tr><td colspan="7" class="mute">No activity in this window.</td></tr>{{end}}</table></div>
 <h2>By model</h2><table>{{range .ByModel}}<tr><td>{{.Name}}</td><td class="r">{{n .Tokens.Total}}</td></tr>{{else}}<tr><td class="mute">None</td></tr>{{end}}</table>
 <h2>By project</h2><table>{{range .ByProject}}<tr><td>{{.Name}}</td><td class="r">{{n .Tokens.Total}}</td></tr>{{else}}<tr><td class="mute">None</td></tr>{{end}}</table>
-<h2>By hour</h2><table>{{range .Hourly}}<tr><td>{{time .Start}}</td><td class="r">{{n .Tokens.Total}}</td><td style="width:50%"><div class="bar" style="{{bar .Tokens.Total $.Total.Total}}"></div></td></tr>{{end}}</table>
+{{if .Hourly}}<h2>By hour</h2><table>{{range .Hourly}}<tr><td>{{time .Start}}</td><td class="r">{{n .Tokens.Total}}</td><td style="width:50%"><div class="bar" style="{{bar .Tokens.Total $.Total.Total}}"></div></td></tr>{{end}}</table>{{end}}
+{{if .Daily}}<h2>By day</h2><table>{{range .Daily}}<tr><td>{{day .Start}}</td><td class="r">{{n .Tokens.Total}}</td><td style="width:50%"><div class="bar" style="{{bar .Tokens.Total $.Total.Total}}"></div></td></tr>{{end}}</table>{{end}}
 <p class="mute">Local transcripts only; token totals can be incomplete and are not the provider's billing figure. Generated {{time .GeneratedAt}}.</p>
 </main></body></html>`))
 
@@ -60,7 +62,11 @@ func count(n int64) string {
 
 // WriteText prints a short table of the busiest sessions.
 func WriteText(w io.Writer, r Report) {
-	fmt.Fprintf(w, "%s window %s to %s\n", r.Provider, r.Start.Local().Format("Jan 2 15:04"), r.End.Local().Format("15:04 MST"))
+	end := "15:04 MST"
+	if r.Period == PeriodWeek {
+		end = "Jan 2 15:04 MST"
+	}
+	fmt.Fprintf(w, "%s %s window %s to %s\n", r.Provider, r.Period.Label(), r.Start.Local().Format("Jan 2 15:04"), r.End.Local().Format(end))
 	if r.UsedPercent != nil {
 		fmt.Fprintf(w, "provider reports %.0f%% used\n", *r.UsedPercent)
 	}
