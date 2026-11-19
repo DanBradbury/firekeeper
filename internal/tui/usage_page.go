@@ -83,14 +83,16 @@ type usagePage struct {
 	Total         int
 	Filter        string
 	FilterEditing bool
+	Sort          usageSort
 }
 
-// usagePage is the active provider's page with the session filter applied.
+// usagePage is the active provider's page with the session order and filter
+// applied.
 func (m model) usagePage() usagePage {
 	page := m.providerUsagePage()
 	page.Total = len(page.Sessions)
-	page.Filter, page.FilterEditing = m.usageFilter, m.usageFilterEditing
-	page.Sessions = filterUsageSessions(page.Sessions, m.usageFilter)
+	page.Filter, page.FilterEditing, page.Sort = m.usageFilter, m.usageFilterEditing, m.usageSort
+	page.Sessions = filterUsageSessions(sortUsageSessions(page.Sessions, m.usageSort), m.usageFilter)
 	page.Cursor = min(max(page.Cursor, 0), max(len(page.Sessions)-1, 0))
 	return page
 }
@@ -330,18 +332,20 @@ func (m model) usageSessionRow(page usagePage, height int, now time.Time) []stri
 }
 
 func usageSessionsTitle(page usagePage) string {
+	title := "sessions"
 	filter := strings.TrimSpace(page.Filter)
-	if filter == "" {
-		if len(page.Sessions) == 0 {
-			return "sessions"
-		}
-		return fmt.Sprintf("sessions · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
+	switch {
+	case filter != "" && len(page.Sessions) == 0:
+		title += fmt.Sprintf(" · 0 of %d · filter %q", page.Total, filter)
+	case filter != "":
+		title += fmt.Sprintf(" · %d/%d of %d · filter %q", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions), page.Total, filter)
+	case len(page.Sessions) > 0:
+		title += fmt.Sprintf(" · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
 	}
-	position := "0"
-	if len(page.Sessions) > 0 {
-		position = fmt.Sprintf("%d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
+	if label := page.Sort.label(); label != "" && len(page.Sessions) > 0 {
+		title += " · " + label
 	}
-	return fmt.Sprintf("sessions · %s of %d · filter %q", position, page.Total, filter)
+	return title
 }
 
 // usageListLayout is how a session list body of a given height is split: an
@@ -387,7 +391,7 @@ func usageSessionLines(page usagePage, width, rows int, now time.Time) []string 
 	}
 	columns := usageSessionColumns(width, page.Sessions)
 	if layout.header {
-		lines = append(lines, columns.header())
+		lines = append(lines, columns.header(page.Sort))
 	}
 	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, layout.capacity)
 	for index := start; index < end; index++ {
@@ -516,7 +520,21 @@ func usageSessionColumns(width int, sessions []usageSession) usageSessionCols {
 	return cols
 }
 
-func (c usageSessionCols) header() string {
+// sortSpans returns the [start, end) columns of the TOKENS and AGO header
+// cells within a list row.
+func (c usageSessionCols) sortSpans() (tokens, updated [2]int) {
+	start := 2 + c.title + 1
+	for _, width := range []int{c.project, c.branch, c.model} {
+		if width > 0 {
+			start += width + 1
+		}
+	}
+	tokens = [2]int{start, start + c.tokens}
+	updated = [2]int{tokens[1] + 1, tokens[1] + 1 + c.updated}
+	return tokens, updated
+}
+
+func (c usageSessionCols) header(order usageSort) string {
 	line := dashPaint("  "+dashCell("TITLE", c.title, false)+" ", usageMutedColor, true)
 	if c.project > 0 {
 		line += dashPaint(dashCell("PROJECT", c.project, false)+" ", usageMutedColor, true)
@@ -527,7 +545,14 @@ func (c usageSessionCols) header() string {
 	if c.model > 0 {
 		line += dashPaint(dashCell("MODEL", c.model, false)+" ", usageMutedColor, true)
 	}
-	return line + dashPaint(dashCell("TOKENS", c.tokens, true)+" "+dashCell("AGO", c.updated, true), usageMutedColor, true)
+	sortable := func(name string, column usageSortColumn, width int) string {
+		color := usageMutedColor
+		if arrow := order.arrow(column); arrow != "" {
+			name, color = name+arrow, dashOrange
+		}
+		return dashPaint(dashCell(name, width, true), color, true)
+	}
+	return line + sortable("TOKENS", usageSortTokens, c.tokens) + dashPaint(" ", usageMutedColor, true) + sortable("AGO", usageSortUpdated, c.updated)
 }
 
 func (c usageSessionCols) row(session usageSession, selected bool, now time.Time) string {

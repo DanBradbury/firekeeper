@@ -33,6 +33,8 @@ const (
 	hitRecent
 	hitUsageProvider
 	hitUsageSession
+	// hitUsageSort is a sortable column header; index is its usageSortColumn.
+	hitUsageSort
 )
 
 // hit is the interactive element under a screen cell.
@@ -129,6 +131,9 @@ func (m model) hitTest(x, y int) hit {
 		if index, ok := m.usageSessionIndexAt(x, row-1, rows-1); ok {
 			return hit{hitUsageSession, index}
 		}
+		if column, ok := m.usageSortColumnAt(x, row-1, rows-1); ok {
+			return hit{hitUsageSort, int(column)}
+		}
 	}
 	return hit{}
 }
@@ -178,16 +183,24 @@ func (m model) recentIndexAt(row, rows int) (int, bool) {
 	return 0, false
 }
 
-// usageSessionIndexAt maps a row of the Usage page (below the provider
-// selector) to a session in the history list.
-func (m model) usageSessionIndexAt(x, pageRow, pageRows int) (int, bool) {
+// usageSessionList is where the Usage page draws its session list: the
+// list's inner width, the page row of its column header (-1 when hidden) and
+// of its first session.
+type usageSessionList struct {
+	page              usagePage
+	layout            usageListLayout
+	width             int
+	headerRow, rowTop int
+}
+
+func (m model) usageSessionListAt(pageRows int) (usageSessionList, bool) {
 	page := m.usagePage()
 	if (page.Loading && !page.HasData) || (page.Err != "" && !page.HasData) {
-		return 0, false
+		return usageSessionList{}, false
 	}
 	geometry := usageGeometryFor(page, pageRows)
 	if geometry.sessions == 0 || len(page.Sessions) == 0 {
-		return 0, false
+		return usageSessionList{}, false
 	}
 	listWidth := m.width
 	if m.width >= 80 {
@@ -197,22 +210,52 @@ func (m model) usageSessionIndexAt(x, pageRow, pageRows int) (int, bool) {
 		}
 		listWidth = m.width - right
 	}
-	if x < 1 || x >= listWidth-1 {
+	list := usageSessionList{page: page, layout: usageSessionListLayout(page, geometry.sessions-2), width: listWidth - 4, headerRow: -1}
+	list.rowTop = geometry.usageSessionsTop() + 1
+	if list.layout.filter {
+		list.rowTop++
+	}
+	if list.layout.header {
+		list.headerRow = list.rowTop
+		list.rowTop++
+	}
+	return list, true
+}
+
+// usageSessionIndexAt maps a row of the Usage page (below the provider
+// selector) to a session in the history list.
+func (m model) usageSessionIndexAt(x, pageRow, pageRows int) (int, bool) {
+	list, ok := m.usageSessionListAt(pageRows)
+	if !ok || x < 1 || x >= list.width+3 {
 		return 0, false
 	}
-	layout := usageSessionListLayout(page, geometry.sessions-2)
-	first := geometry.usageSessionsTop() + 1
-	if layout.filter {
-		first++
-	}
-	if layout.header {
-		first++
-	}
-	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, layout.capacity)
-	if offset := pageRow - first; offset >= 0 && offset < end-start {
+	start, end := usageSessionWindow(len(list.page.Sessions), list.page.Cursor, list.layout.capacity)
+	if offset := pageRow - list.rowTop; offset >= 0 && offset < end-start {
 		return start + offset, true
 	}
 	return 0, false
+}
+
+// usageSortColumnAt maps a cell of the Usage page to the TOKENS or AGO
+// column header drawn there.
+func (m model) usageSortColumnAt(x, pageRow, pageRows int) (usageSortColumn, bool) {
+	list, ok := m.usageSessionListAt(pageRows)
+	if !ok || pageRow != list.headerRow {
+		return usageSortNone, false
+	}
+	// The box border and its padding put list column 0 at screen column 2.
+	column := x - 2
+	if column < 0 || column >= list.width {
+		return usageSortNone, false
+	}
+	tokens, updated := usageSessionColumns(list.width, list.page.Sessions).sortSpans()
+	switch {
+	case column >= tokens[0] && column < tokens[1]:
+		return usageSortTokens, true
+	case column >= updated[0] && column < updated[1]:
+		return usageSortUpdated, true
+	}
+	return usageSortNone, false
 }
 
 func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -332,6 +375,11 @@ func (m model) leftPress(at cell) (tea.Model, tea.Cmd) {
 			cmd = m.openUsageSessionChat()
 			return m, cmd
 		}
+	case hitUsageSort:
+		// Each click cycles the order, so a quick second click is not a
+		// double click.
+		m.mouse.lastPress = time.Time{}
+		return m.Update(keyRunes(usageSortKey(usageSortColumn(target.index))))
 	default:
 		if double {
 			m.startWordSelection(at)
@@ -365,6 +413,8 @@ func (m model) openMenu(at cell) model {
 	case target.kind == hitUsageSession:
 		*m.usageCursorRef() = target.index
 		items = []menuItem{{"Open chat", tea.KeyMsg{Type: tea.KeyEnter}}, refresh}
+	case target.kind == hitUsageSort:
+		items = []menuItem{{"Sort by tokens", keyRunes('t')}, {"Sort by age", keyRunes('a')}, refresh}
 	default:
 		items = []menuItem{refresh, help}
 	}

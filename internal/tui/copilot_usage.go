@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -653,17 +654,31 @@ func (m model) usageFooter() string {
 	}
 	if len(page.Sessions) > 0 {
 		keys = append([]footerKey{{"↑↓", "session"}, {"enter", "chat"}}, keys...)
+		// The sort hint goes after the filter one.
+		for index := range keys {
+			if keys[index].key == "/" {
+				keys = slices.Insert(keys, index+1, footerKey{"t/a", "sort"})
+				break
+			}
+		}
 	}
+	// Too wide: shorten actions, and drop the sort hint (? help lists the
+	// keys, and the headers show the order) before shortening the rest.
 	_, available := footerVersion(m.width)
-	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"esc", "clear"}, {"r", "reload"}} {
+	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"t/a", ""}, {"esc", "clear"}, {"r", "reload"}} {
 		if footerKeysWidth(keys, 1) <= available {
 			break
 		}
 		for index := range keys {
-			if keys[index].key == compact.key {
-				keys[index].action = compact.action
-				break
+			if keys[index].key != compact.key {
+				continue
 			}
+			if compact.action == "" {
+				keys = slices.Delete(keys, index, index+1)
+			} else {
+				keys[index].action = compact.action
+			}
+			break
 		}
 	}
 	return renderFooterKeys(keys, m.width)
