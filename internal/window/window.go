@@ -113,6 +113,10 @@ type Session struct {
 	ToolCalls int       `json:"tool_calls"`
 	Tokens    Tokens    `json:"tokens"`
 	SharePct  float64   `json:"share_percent"` // of the window's total tokens
+	ByModel   []Group   `json:"by_model"`
+	// Activity has the session's tokens per hour (5-hour window) or day
+	// (weekly), in the same buckets as the report; empty ones are left out.
+	Activity []Bucket `json:"activity"`
 }
 
 // Group is a total for one model or project.
@@ -264,6 +268,13 @@ func (a *accumulator) session(meta session.Meta, events []transcript.Event) {
 		SessionID: meta.ID, Title: meta.Title, CWD: meta.CWD,
 		Project: reader.ProjectName(meta.CWD),
 	}
+	models := map[string]*Tokens{}
+	var activity []Bucket
+	if size := a.report.Period.bucket(); size > 0 {
+		for _, b := range a.report.buckets() {
+			activity = append(activity, Bucket{Start: b.Start})
+		}
+	}
 	for _, e := range events {
 		if e.TS == nil || e.TS.Before(a.report.Start) || !e.TS.Before(a.report.End) {
 			continue
@@ -287,6 +298,7 @@ func (a *accumulator) session(meta session.Meta, events []transcript.Event) {
 		buckets := a.report.buckets()
 		if i := int(ts.Sub(a.report.Start) / a.report.Period.bucket()); i >= 0 && i < len(buckets) {
 			buckets[i].Tokens.add(e.Tokens)
+			activity[i].Tokens.add(e.Tokens)
 		}
 		if e.Tokens.Input+e.Tokens.Output+e.Tokens.Cache > 0 {
 			model := "unknown"
@@ -294,11 +306,19 @@ func (a *accumulator) session(meta session.Meta, events []transcript.Event) {
 				model = *e.Model
 			}
 			add(a.models, model, e.Tokens)
+			add(models, model, e.Tokens)
 			add(a.projects, emptyOr(row.Project, "unknown"), e.Tokens)
 		}
 	}
 	if row.FirstAt.IsZero() {
 		return
+	}
+	row.ByModel = groups(models)
+	row.Activity = []Bucket{}
+	for _, b := range activity {
+		if b.Tokens.Total > 0 {
+			row.Activity = append(row.Activity, b)
+		}
 	}
 	if row.Title == "" {
 		row.Title = shortID(row.SessionID)
