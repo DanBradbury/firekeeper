@@ -295,6 +295,11 @@ func installBrew(ctx context.Context, version string, out, errOut io.Writer) err
 	if err := got.check(version); err != nil {
 		return fail(err)
 	}
+	// HOMEBREW_NO_INSTALL_CLEANUP above also stops brew from removing the
+	// version it just replaced, so every update would leave one more keg in the
+	// Cellar. Prune this formula only; an old keg that is still running stays
+	// valid until it exits. A failed cleanup costs disk space, not the update.
+	_ = brew(&log, "cleanup", brewFormula)
 	return nil
 }
 
