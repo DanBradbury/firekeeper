@@ -393,7 +393,7 @@ func TestDryRunRedacts(t *testing.T) {
 		t.Fatalf("code %d: %s", code, errb.String())
 	}
 	s := out.String()
-	for _, want := range []string{"batch of 16 runs", "model_reasoning_effort=xhigh", "--ignore-user-config", "-C <bench-repo> -",
+	for _, want := range []string{"batch of 16 runs", "model_reasoning_effort=xhigh", "--ignore-user-config", "<bench-repo>",
 		"--sandbox workspace-write", "opencode run --format json --model openai/gpt-test#", "--auto", "<store>"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("dry run output lacks %q:\n%s", want, s)
