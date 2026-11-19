@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -425,14 +426,40 @@ func extractServerZip(archive, dir, exeName string, maxEntry int64) (tmpPath str
 	return tmpPath, nil
 }
 
+// textBusyWait bounds how long sanityCheck waits for a just-written binary
+// to stop being "text file busy".
+const textBusyWait = 2 * time.Second
+
 // sanityCheck runs `<path> version` and requires a clean exit.
 func sanityCheck(ctx context.Context, path string) error {
+	return runVersionCheck(ctx, path, textBusyWait)
+}
+
+// runVersionCheck is sanityCheck, waiting up to busyWait for ETXTBSY to
+// clear. The file was written and closed by this process, but a fork in
+// another goroutine can briefly inherit the descriptor it was written with
+// (https://go.dev/issue/22315), and on Linux exec fails with ETXTBSY until
+// that child execs or exits.
+func runVersionCheck(ctx context.Context, path string, busyWait time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "version")
-	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("the downloaded server failed its `version` check: %w", err)
+	deadline := time.Now().Add(busyWait)
+	delay := 5 * time.Millisecond
+	for {
+		cmd := exec.CommandContext(ctx, path, "version")
+		cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
+		err := cmd.Run()
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, syscall.ETXTBSY) || time.Now().Add(delay).After(deadline) {
+			return fmt.Errorf("the downloaded server failed its `version` check: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("the downloaded server failed its `version` check: %w", err)
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, 200*time.Millisecond)
 	}
-	return nil
 }
