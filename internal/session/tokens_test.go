@@ -16,7 +16,7 @@ func TestScanRolloutStatusTokens(t *testing.T) {
 		`{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":9}}}}`,
 		`{"type":"event_msg","payload":{"type":"task_complete"}}`,
 	}, "\n")
-	state, tokens, err := (&discoverer{}).scanRolloutStatus(bufio.NewReader(strings.NewReader(lines)))
+	state, tokens, _, err := (&discoverer{}).scanRolloutStatus(bufio.NewReader(strings.NewReader(lines)))
 	if err != nil {
 		t.Fatal(err)
 	}

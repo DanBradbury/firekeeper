@@ -102,7 +102,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 			if name == "" {
 				name = row.ID
 			}
-			state, tokens, _ := d.readRolloutStatus(rolloutPath)
+			state, tokens, effort, _ := d.readRolloutStatus(rolloutPath)
 			forkedFrom := ""
 			if own, ok := readCodexSessionMetaFile(rolloutPath, row.ID); ok && own.ForkedFromID != row.ID {
 				forkedFrom = d.sanitizeProcessCommand(own.ForkedFromID)
@@ -113,6 +113,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 				State:       state,
 				CWD:         d.sanitizeProcessCommand(row.CWD),
 				Model:       d.sanitizeProcessCommand(row.Model),
+				Effort:      effort,
 				Source:      d.sanitizeProcessCommand(row.Source),
 				Subagent:    row.isSubagent(),
 				ParentID:    row.parentThreadID(),

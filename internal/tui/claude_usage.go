@@ -50,6 +50,7 @@ type claudeHistoricalSession struct {
 	WorkDir        string
 	GitBranch      string
 	Model          string
+	Effort         string
 	UpdatedAt      time.Time
 	InputTokens    int64
 	CacheRead      int64
@@ -88,12 +89,13 @@ type claudeUsageResultMsg struct {
 // claudeUsageRecord holds the transcript fields the Usage tab reads. Message
 // content is never decoded.
 type claudeUsageRecord struct {
-	Type      string `json:"type"`
-	Timestamp string `json:"timestamp"`
-	CWD       string `json:"cwd"`
-	GitBranch string `json:"gitBranch"`
-	AITitle   string `json:"aiTitle"`
-	AgentName string `json:"agentName"`
+	Type      string          `json:"type"`
+	Timestamp string          `json:"timestamp"`
+	CWD       string          `json:"cwd"`
+	GitBranch string          `json:"gitBranch"`
+	AITitle   string          `json:"aiTitle"`
+	AgentName string          `json:"agentName"`
+	Effort    json.RawMessage `json:"effort"`
 	Message   *struct {
 		ID    string `json:"id"`
 		Model string `json:"model"`
@@ -312,6 +314,9 @@ func trackClaudeUsageLine(line []byte, session *claudeHistoricalSession, summary
 		if model := strings.TrimSpace(rec.Message.Model); model != "" {
 			session.Model = model
 			models[model] += tokens
+		}
+		if effort := effortLabel(rec.Effort); effort != "" {
+			session.Effort = effort
 		}
 		if ts, err := time.Parse(time.RFC3339Nano, rec.Timestamp); err == nil {
 			daily[ts.Local().Format("2006-01-02")] += tokens

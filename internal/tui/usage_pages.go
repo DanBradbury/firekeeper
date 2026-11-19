@@ -33,7 +33,7 @@ func (m model) copilotPage() usagePage {
 	for _, item := range snapshot.History {
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
-			Model: item.Model, Tokens: item.LifetimeTokens, UpdatedAt: item.UpdatedAt,
+			Model: item.Model, Effort: item.Effort, Tokens: item.LifetimeTokens, UpdatedAt: item.UpdatedAt,
 			Details: []usageField{
 				{Name: "Repo", Value: item.Repository, Color: dashTeal},
 				{Name: "Usage", Value: fmt.Sprintf("%s calls · %s requests", formatTokenCount(item.ModelCalls), formatRequestCount(item.UserRequests))},
@@ -209,7 +209,7 @@ func (m model) claudePage() usagePage {
 		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
-			Model: item.Model, Tokens: tokens, UpdatedAt: item.UpdatedAt,
+			Model: item.Model, Effort: item.Effort, Tokens: tokens, UpdatedAt: item.UpdatedAt,
 			Details: details,
 		})
 	}

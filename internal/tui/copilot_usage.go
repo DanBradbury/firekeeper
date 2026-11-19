@@ -61,6 +61,7 @@ type copilotHistoricalSession struct {
 	Created        string  `json:"created_at"`
 	Updated        string  `json:"updated_at"`
 	Model          string  `json:"model"`
+	Effort         string  `json:"-"`
 	InputTokens    int64   `json:"input_tokens"`
 	OutputTokens   int64   `json:"output_tokens"`
 	LifetimeTokens int64   `json:"tokens"`
@@ -166,7 +167,11 @@ func readCopilotHistoricalSessions() ([]copilotHistoricalSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read Copilot session history: %w", err)
 	}
-	return decodeCopilotHistoricalSessions(output)
+	sessions, err := decodeCopilotHistoricalSessions(output)
+	for index := range sessions {
+		sessions[index].Effort = copilotSessionEffort(home, sessions[index].ID)
+	}
+	return sessions, err
 }
 
 func decodeCopilotHistoricalSessions(output []byte) ([]copilotHistoricalSession, error) {

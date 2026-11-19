@@ -55,7 +55,7 @@ func (m model) codexUsageSessions() []usageSession {
 		}
 		sessions = append(sessions, usageSession{
 			ID: item.ID, Title: item.Title, WorkDir: item.WorkDir, Branch: item.GitBranch,
-			Model: item.Model, Tokens: item.Tokens, UpdatedAt: item.UpdatedAt,
+			Model: item.Model, Effort: item.Effort, Tokens: item.Tokens, UpdatedAt: item.UpdatedAt,
 			Details: []usageField{{Name: "Source", Value: source}},
 		})
 	}

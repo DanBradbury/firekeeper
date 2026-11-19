@@ -100,6 +100,7 @@ type codexHistoricalSession struct {
 	Title     string `json:"display_name"`
 	WorkDir   string `json:"cwd"`
 	Model     string `json:"model"`
+	Effort    string `json:"effort"`
 	Source    string `json:"source"`
 	GitBranch string `json:"git_branch"`
 	UpdatedMS int64  `json:"updated_at_ms"`
@@ -351,6 +352,7 @@ func codexHistoryQuery(columns map[string]bool) (string, error) {
 	title := codexHistoryTextExpression(columns, "id", "name", "title", "preview")
 	cwd := codexHistoryTextExpression(columns, "''", "cwd")
 	model := codexHistoryTextExpression(columns, "''", "model")
+	effort := codexHistoryTextExpression(columns, "''", "reasoning_effort")
 	source := codexHistoryTextExpression(columns, "''", "thread_source", "source")
 	branch := codexHistoryTextExpression(columns, "''", "git_branch")
 	updated := codexHistoryUpdatedExpression(columns)
@@ -372,6 +374,7 @@ func codexHistoryQuery(columns map[string]bool) (string, error) {
 			%s AS display_name,
 			%s AS cwd,
 			%s AS model,
+			%s AS effort,
 			%s AS source,
 			%s AS git_branch,
 			%s AS updated_at_ms,
@@ -380,7 +383,7 @@ func codexHistoryQuery(columns map[string]bool) (string, error) {
 		FROM threads
 		ORDER BY %s DESC
 		LIMIT %d
-	`, title, cwd, model, source, branch, updated, tokens, archived, order, codexSessionHistoryLimit), nil
+	`, title, cwd, model, effort, source, branch, updated, tokens, archived, order, codexSessionHistoryLimit), nil
 }
 
 func codexHistoryTextExpression(columns map[string]bool, fallback string, candidates ...string) string {
@@ -426,6 +429,7 @@ func decodeCodexHistoricalSessions(output []byte) ([]codexHistoricalSession, err
 		session.Title = emptyFallback(sanitizeProcessCommand(session.Title), "Codex session")
 		session.WorkDir = sanitizeProcessCommand(session.WorkDir)
 		session.Model = sanitizeProcessCommand(session.Model)
+		session.Effort = normalizeEffort(session.Effort)
 		session.Source = sanitizeProcessCommand(session.Source)
 		session.GitBranch = sanitizeProcessCommand(session.GitBranch)
 		if session.UpdatedMS > 0 {

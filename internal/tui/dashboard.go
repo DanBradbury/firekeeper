@@ -560,7 +560,7 @@ func dashGroupDetail(group processGroup, width int) []string {
 					dashPaint(" of "+emptyFallback(dashShortID(session.parentID), "this runtime"), usageMutedColor, false),
 				dashPaint("   ", usageMutedColor, false)+
 					dashPaint(dashStateIcon(session.state)+" "+session.state.String()+"   ", dashStateColor(session.state), true)+
-					label("model", emptyFallback(session.model, "unknown"))+
+					label("model", sessionModelLabel(session))+
 					dashPaint("tokens ", usageMutedColor, false)+
 					dashPaint(formatTokenCount(sessionTokenTotal(session))+" ", usageTextColor, false)+
 					dashTokenBreakdownText(session.tokens)+dashPaint(share, usageMutedColor, false),
@@ -578,7 +578,7 @@ func dashGroupDetail(group processGroup, width int) []string {
 			dashPaint("title ", usageMutedColor, false)+dashPaint(sanitizeProcessCommand(emptyFallback(session.name, "—")), usageBrightColor, true),
 			dashPaint("state ", usageMutedColor, false)+
 				dashPaint(dashStateIcon(session.state)+" "+session.state.String()+"   ", dashStateColor(session.state), true)+
-				label("model", emptyFallback(session.model, "unknown")),
+				label("model", sessionModelLabel(session)),
 			label(originLabel, emptyFallback(origin, "unknown"))+
 				label("branch", emptyFallback(session.gitBranch, "none")),
 			dashPaint("tokens ", usageMutedColor, false)+
@@ -1219,4 +1219,14 @@ func (m model) dashTokenLines(width int) []string {
 		lines = append(lines, dashPaint(session.undercountWarning, dashYellow, false))
 	}
 	return lines
+}
+
+// sessionModelLabel is the model name, followed by the reasoning effort when
+// the provider recorded one.
+func sessionModelLabel(session sessionInfo) string {
+	model := emptyFallback(session.model, "unknown")
+	if session.effort == "" {
+		return model
+	}
+	return model + " · " + session.effort
 }
