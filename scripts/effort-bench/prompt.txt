@@ -1,0 +1,1 @@
+Implement parse_duration and format_duration in durations.py so that `python3 -m unittest -q` passes. Follow the docstrings. Do not edit test_durations.py and do not add dependencies. Run the tests before you finish, then reply with one sentence.
