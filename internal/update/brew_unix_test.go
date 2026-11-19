@@ -37,6 +37,10 @@ upgrade)
 	fi
 	cp "$d/formula" "$d/linked"
 	;;
+cleanup)
+	if [ -e "$d/cleanup_fails" ]; then echo "Error: Permission denied @ apply2files - /opt/homebrew/Cellar/firekeeper/0.10.2" >&2; exit 1; fi
+	echo "Removing: /opt/homebrew/Cellar/firekeeper/0.10.2... (7 files, 17.6MB)"
+	;;
 info)
 	printf '{"formulae":[{"name":"firekeeper","versions":{"stable":"%s"},"linked_keg":"%s"}],"casks":[]}\n' "$(cat "$d/formula")" "$(cat "$d/linked")"
 	;;
@@ -50,6 +54,7 @@ esac
 type brewSetup struct {
 	remote, formula, linked   string
 	updateFails, upgradeFails bool
+	cleanupFails              bool
 	script                    string // replaces fakeBrew when set
 }
 
@@ -78,6 +83,9 @@ func installFakeBrew(t *testing.T, s brewSetup) string {
 	}
 	if s.upgradeFails {
 		write("upgrade_fails", "")
+	}
+	if s.cleanupFails {
+		write("cleanup_fails", "")
 	}
 	t.Setenv("FAKE_BREW_DIR", state)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -154,6 +162,12 @@ func TestInstallHomebrew(t *testing.T) {
 			if got := readState(t, state, "linked"); got != tt.wantLinked {
 				t.Errorf("linked = %s, want %s", got, tt.wantLinked)
 			}
+			// Old versions are pruned after a confirmed upgrade, never after a
+			// failed one: `brew cleanup` must not delete what is still needed.
+			cleaned := strings.Contains(readState(t, state, "calls"), "\ncleanup firekeeper-ai/tap/firekeeper")
+			if cleaned != (tt.wantErr == nil) {
+				t.Errorf("brew cleanup ran = %v, want %v (calls %q)", cleaned, tt.wantErr == nil, readState(t, state, "calls"))
+			}
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("Install = %v; brew said %q", err, errOut.String())
@@ -195,5 +209,26 @@ func TestInstallHomebrewUnreadableInfo(t *testing.T) {
 	}
 	if got := readState(t, state, "linked"); got != "0.10.3" {
 		t.Fatalf("linked = %s, want the upgrade to have run", got)
+	}
+}
+
+// Regression: HOMEBREW_NO_INSTALL_CLEANUP made every update leave the replaced
+// version in the Cellar. A cleanup that itself fails must not turn a
+// successful, confirmed upgrade into an error.
+func TestInstallHomebrewCleanupFailureIsNotFatal(t *testing.T) {
+	state := installFakeBrew(t, brewSetup{remote: "0.10.3", formula: "0.10.3", linked: "0.10.2", cleanupFails: true})
+	exe := filepath.Join(t.TempDir(), "Cellar", "firekeeper", "0.10.2", "bin", "firekeeper")
+	var out, errOut strings.Builder
+	if err := Install(context.Background(), "0.10.3", exe, &out, &errOut); err != nil {
+		t.Fatalf("Install = %v, want success despite the failed cleanup", err)
+	}
+	if got := readState(t, state, "linked"); got != "0.10.3" {
+		t.Fatalf("linked = %s, want 0.10.3", got)
+	}
+	if !strings.Contains(readState(t, state, "calls"), "cleanup firekeeper-ai/tap/firekeeper") {
+		t.Errorf("cleanup was not attempted; calls %q", readState(t, state, "calls"))
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("a failed cleanup printed brew output: %q", errOut.String())
 	}
 }

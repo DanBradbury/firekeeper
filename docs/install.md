@@ -144,7 +144,7 @@ When you start `firekeeper` in a terminal it checks GitHub for a newer
 release (one unauthenticated request per launch) and asks whether to
 update. Homebrew installs run `brew update` and then `brew upgrade`, and the
 update counts as done only when Homebrew reports the new version as installed
-and linked; others re-run the install script (`install.ps1` on Windows) for that
+and linked, after which `brew cleanup` removes the versions it replaced; others re-run the install script (`install.ps1` on Windows) for that
 exact version. Choose "Skip this version" to stop asking about it, or
 set `FIREKEEPER_NO_UPDATE_CHECK=1` to turn the check off. Builds from source
 never check.
