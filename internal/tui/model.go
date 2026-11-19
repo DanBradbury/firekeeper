@@ -159,6 +159,7 @@ type model struct {
 	notice                  string
 	usageFilter             string
 	usageFilterEditing      bool
+	usageSort               usageSort
 	recentSessions          []recentSession
 	recentCursor            int
 	recentLoading           bool
@@ -361,6 +362,14 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			if m.activeTab == usageTab {
 				m.clearUsageFilter()
+			}
+		case "t":
+			if m.activeTab == usageTab {
+				m.cycleUsageSort(usageSortTokens)
+			}
+		case "a":
+			if m.activeTab == usageTab {
+				m.cycleUsageSort(usageSortUpdated)
 			}
 		case "R":
 			if m.idleListActive() {

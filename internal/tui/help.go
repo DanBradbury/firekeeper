@@ -43,7 +43,7 @@ var helpSections = []helpSection{
 		{"Esc / c / q", "Back"},
 	}},
 	{"Mouse", []helpKey{
-		{"Click", "Switch tabs and provider chips; select a session row"},
+		{"Click", "Switch tabs and provider chips; select a session row; sort by a Usage column header"},
 		{"Double-click", "On a row: switch terminal or open chat. Elsewhere: select a token"},
 		{"Right-click", "Context menu for the row, chat, or view under the pointer"},
 		{"Wheel", "Scroll the list or chat"},
@@ -59,6 +59,7 @@ var helpSections = []helpSection{
 		{"↑ ↓ / j k", "Select a session (PgUp/PgDn/Home/End also work)"},
 		{"/", "Filter sessions: title matches first, then project or branch"},
 		{"Enter / Esc", "Keep the filter / clear it"},
+		{"t / a", "Sort by tokens / age (or click TOKENS / AGO); again to reverse, a third time to reset"},
 		{"r", "Refresh selected provider"},
 	}},
 }
