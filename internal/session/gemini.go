@@ -139,17 +139,18 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 		}
 	}
 
-	missing := 0
-	for _, index := range groupIndexes {
+	// Each session log is read on its own goroutine: the reads are
+	// independent, and each parses up to GeminiTranscriptTailBytes.
+	loaded := make([]bool, len(groupIndexes))
+	parallel(len(groupIndexes), func(i int) {
+		index := groupIndexes[i]
 		path, ok := paths[index]
 		if !ok {
-			missing++
-			continue
+			return
 		}
 		t, err := ReadGeminiTranscript(path)
 		if err != nil || t.Kind == "subagent" {
-			missing++
-			continue
+			return
 		}
 		groups[index].Sessions = []Info{{
 			ID:          t.SessionID,
@@ -162,6 +163,13 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 			UpdatedAt:   t.UpdatedAt,
 			RolloutPath: path,
 		}}
+		loaded[i] = true
+	})
+	missing := 0
+	for _, ok := range loaded {
+		if !ok {
+			missing++
+		}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)

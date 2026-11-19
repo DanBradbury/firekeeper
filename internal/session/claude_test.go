@@ -213,7 +213,7 @@ func TestDiscoverClaudeSessions(t *testing.T) {
 		case "git":
 			return nil, fmt.Errorf("not a repository")
 		}
-		t.Fatalf("unexpected command %s", name)
+		t.Errorf("unexpected command %s", name)
 		return nil, nil
 	}
 	metas, err := Discover(context.Background(), opts)
@@ -307,7 +307,7 @@ func TestDiscoverClaudeNewSessionSkipsEarlierTranscript(t *testing.T) {
 		case "git":
 			return nil, fmt.Errorf("not a repository")
 		}
-		t.Fatalf("unexpected command %s", name)
+		t.Errorf("unexpected command %s", name)
 		return nil, nil
 	}
 	metas, err := Discover(context.Background(), opts)

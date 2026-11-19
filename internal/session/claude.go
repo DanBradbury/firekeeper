@@ -196,23 +196,35 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 		}
 	}
 
-	missing := 0
-	for _, index := range groupIndexes {
+	// Each transcript is read on its own goroutine: the reads are
+	// independent, and each parses up to ClaudeTranscriptTailBytes of JSON.
+	readErrs := make([]error, len(groupIndexes))
+	parallel(len(groupIndexes), func(i int) {
+		index := groupIndexes[i]
 		path, ok := paths[index]
 		if !ok {
-			if started, isNew := fresh[index]; isNew {
-				groups[index].Sessions = []Info{d.newClaudeSession(started)}
-			} else {
+			return
+		}
+		info, err := d.readClaudeTranscriptMetadata(path)
+		if err != nil {
+			readErrs[i] = err
+			return
+		}
+		groups[index].Sessions = []Info{info}
+	})
+	missing := 0
+	for i, index := range groupIndexes {
+		if _, ok := paths[index]; ok {
+			if readErrs[i] != nil {
 				missing++
 			}
 			continue
 		}
-		info, err := d.readClaudeTranscriptMetadata(path)
-		if err != nil {
+		if started, isNew := fresh[index]; isNew {
+			groups[index].Sessions = []Info{d.newClaudeSession(started)}
+		} else {
 			missing++
-			continue
 		}
-		groups[index].Sessions = []Info{info}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)

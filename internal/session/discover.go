@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +20,9 @@ import (
 
 // Options configures discovery. Zero values use the local environment.
 // Run overrides command execution for fixture tests; it must honor ctx.
+// Discover links each provider on its own goroutine and reads files and runs
+// commands for several sessions at once, so Run is called from several
+// goroutines at once and must be safe for that.
 type Options struct {
 	Home        string
 	CodexHome   string
@@ -137,6 +142,25 @@ func (c commandOutput) Output() ([]byte, error) {
 	return exec.CommandContext(c.d.ctx, c.name, c.args...).Output()
 }
 
+// linkPanic is a panic from one provider's Link, carried from its goroutine
+// to Discover's caller. It keeps the stack of the goroutine that panicked,
+// which the second panic would otherwise lose.
+type linkPanic struct {
+	provider string
+	value    any
+	stack    []byte
+}
+
+func (p *linkPanic) Error() string {
+	return fmt.Sprintf("panic linking %s sessions: %v\n\n%s", p.provider, p.value, p.stack)
+}
+
+// Unwrap returns the original panic value when it was an error.
+func (p *linkPanic) Unwrap() error {
+	err, _ := p.value.(error)
+	return err
+}
+
 // Discover performs one bounded scan. Callers choose their own polling interval.
 // Each provider is best effort and cannot prevent other runtimes from appearing.
 func Discover(ctx context.Context, opts Options) ([]Meta, error) {
@@ -148,9 +172,11 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		return nil, fmt.Errorf("run ps: %w", err)
 	}
 	groups := d.groupProcesses(d.parseProcesses(string(output)))
-	var warnings []string
-	for _, a := range adapters {
-		var own []*ProcessGroup
+	// Partition the groups by provider first, and set explicit ids, before any
+	// Link runs: a running Link rewrites its own groups, so nothing else may
+	// read them from here until every Link has returned.
+	owned := make([][]*ProcessGroup, len(adapters))
+	for index, a := range adapters {
 		for i := range groups {
 			g := &groups[i]
 			if g.Provider != a.Provider() {
@@ -167,25 +193,95 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 					g.explicitID = id
 				}
 			}
-			own = append(own, g)
+			owned[index] = append(owned[index], g)
 		}
+	}
+	// Providers are linked concurrently, one goroutine per provider that has
+	// groups, so a slow provider does not hold up the others. Each Link gets
+	// only its own provider's groups, which no other goroutine touches. Each
+	// provider's warning is kept at its adapter's index, so the joined
+	// message does not depend on which Link finished first.
+	//
+	// A panic in a Link is caught on its goroutine and raised again here once
+	// every Link has returned, so it reaches the caller as it did when linking
+	// ran on the caller's goroutine. The dashboard depends on that: Bubble Tea
+	// recovers a panic in a command and restores the terminal, which it cannot
+	// do for a panic on a goroutine it did not start.
+	linkWarnings := make([]string, len(adapters))
+	linkPanics := make([]*linkPanic, len(adapters))
+	var linking sync.WaitGroup
+	for index, a := range adapters {
+		own := owned[index]
 		if len(own) == 0 {
 			continue
 		}
-		if err := a.Link(d, own); err != nil {
-			warnings = append(warnings, toolName(a.Provider())+": "+d.sanitizeProcessCommand(err.Error()))
+		linking.Go(func() {
+			defer func() {
+				if value := recover(); value != nil {
+					linkPanics[index] = &linkPanic{provider: toolName(a.Provider()), value: value, stack: debug.Stack()}
+				}
+			}()
+			if err := a.Link(d, own); err != nil {
+				linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
+			}
+		})
+	}
+	linking.Wait()
+	for _, caught := range linkPanics {
+		if caught != nil {
+			panic(caught) // the first in registry order, whichever happened first
+		}
+	}
+	var warnings []string
+	for _, warning := range linkWarnings {
+		if warning != "" {
+			warnings = append(warnings, warning)
 		}
 	}
 	machine, err := machineID(opts.Home)
 	if err != nil {
 		warnings = append(warnings, err.Error())
 	}
-	var metas []Meta
-	projects := make(map[string]string)
-	for _, g := range groups {
-		if !emitted(g) {
-			continue
+	// Resolve each emitted group's fallback cwd (one lsof per group), then
+	// each distinct cwd's project (one git per directory), concurrently.
+	var emit []*ProcessGroup
+	for i := range groups {
+		if emitted(groups[i]) {
+			emit = append(emit, &groups[i])
 		}
+	}
+	rootCWDs := make([]string, len(emit))
+	parallel(len(emit), func(i int) {
+		g := emit[i]
+		needed := len(g.Sessions) == 0
+		for _, s := range g.Sessions {
+			needed = needed || s.CWD == ""
+		}
+		if needed {
+			rootCWDs[i] = d.processCWD(g.Root.PID)
+		}
+	})
+	var cwds []string
+	projects := make(map[string]string)
+	for i, g := range emit {
+		for _, s := range g.Sessions {
+			if _, seen := projects[s.CWD]; !seen && s.CWD != "" {
+				projects[s.CWD] = ""
+				cwds = append(cwds, s.CWD)
+			}
+		}
+		if _, seen := projects[rootCWDs[i]]; !seen && rootCWDs[i] != "" {
+			projects[rootCWDs[i]] = ""
+			cwds = append(cwds, rootCWDs[i])
+		}
+	}
+	resolved := make([]string, len(cwds))
+	parallel(len(cwds), func(i int) { resolved[i] = d.projectName(cwds[i]) })
+	for i, cwd := range cwds {
+		projects[cwd] = resolved[i]
+	}
+	var metas []Meta
+	for i, g := range emit {
 		sessions := g.Sessions
 		if len(sessions) == 0 {
 			sessions = []Info{{}}
@@ -193,32 +289,10 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		for _, s := range sessions {
 			cwd := s.CWD
 			if cwd == "" {
-				output, err := d.command("lsof", "-a", "-d", "cwd", "-Fn", "-p", fmt.Sprint(g.Root.PID)).Output()
-				if err == nil {
-					for _, line := range strings.Split(string(output), "\n") {
-						if strings.HasPrefix(line, "n") {
-							cwd = d.sanitizeProcessCommand(line[1:])
-							break
-						}
-					}
-				}
+				cwd = rootCWDs[i]
 			}
-			project, known := projects[cwd]
-			if !known {
-				project = cwd
-				if cwd != "" {
-					if root, err := d.command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
-						if resolved := strings.TrimSpace(string(root)); resolved != "" {
-							project = d.sanitizeProcessCommand(resolved)
-						}
-					}
-				}
-				if project != "" {
-					project = filepath.Base(project)
-				}
-				projects[cwd] = project
-			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: g})
+			project := projects[cwd]
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -293,6 +367,74 @@ func machineID(home string) (string, error) {
 		return "", errors.New("publish Firekeeper machine-id")
 	}
 	return id, nil
+}
+
+// parallelPanic is a panic from one of parallel's calls, carried from its
+// goroutine to parallel's caller with the stack of the goroutine that
+// panicked.
+type parallelPanic struct {
+	value any
+	stack []byte
+}
+
+func (p *parallelPanic) Error() string {
+	return fmt.Sprintf("panic in parallel discovery work: %v\n\n%s", p.value, p.stack)
+}
+
+// Unwrap returns the original panic value when it was an error.
+func (p *parallelPanic) Unwrap() error {
+	err, _ := p.value.(error)
+	return err
+}
+
+// parallel calls fn(0) through fn(n-1) for per-file and per-command work, on
+// at most runtime.GOMAXPROCS(0) goroutines, and returns once every call has
+// returned. Each fn must write only to its own index of any shared slice. A
+// panic in a call is raised again on the caller's goroutine after every call
+// has returned (the first by index), so it reaches the caller as it would
+// have from a loop.
+func parallel(n int, fn func(i int)) {
+	if n <= 1 {
+		for i := range n {
+			fn(i)
+		}
+		return
+	}
+	panics := make([]*parallelPanic, n)
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
+	for i := range n {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() {
+				if value := recover(); value != nil {
+					panics[i] = &parallelPanic{value: value, stack: debug.Stack()}
+				}
+				<-slots
+			}()
+			fn(i)
+		})
+	}
+	wg.Wait()
+	for _, caught := range panics {
+		if caught != nil {
+			panic(caught)
+		}
+	}
+}
+
+// projectName returns the basename of cwd's Git root, else of cwd itself.
+func (d *discoverer) projectName(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	project := cwd
+	if root, err := d.command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
+		if resolved := strings.TrimSpace(string(root)); resolved != "" {
+			project = d.sanitizeProcessCommand(resolved)
+		}
+	}
+	return filepath.Base(project)
 }
 
 func (d *discoverer) home() (string, error) {

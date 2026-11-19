@@ -101,20 +101,22 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 		}
 	}
 
-	missing := 0
-	for _, index := range groupIndexes {
+	// Each session's transcript and chat are read on its own goroutine: the
+	// reads are independent, and a transcript tail is up to
+	// CursorTranscriptTailBytes.
+	loaded := make([]bool, len(groupIndexes))
+	parallel(len(groupIndexes), func(i int) {
+		index := groupIndexes[i]
 		id, ok := ids[index]
 		if !ok {
-			missing++
-			continue
+			return
 		}
 		cwd := workDirs[groups[index].Root.PID]
 		info := Info{ID: id, CWD: d.sanitizeProcessCommand(cwd), Source: CursorSource, Name: CursorSource}
 		transcriptPath := FindCursorTranscript(dir, id)
 		chatPath := FindCursorChat(dir, cwd, id)
 		if transcriptPath == "" && chatPath == "" {
-			missing++
-			continue
+			return
 		}
 		if transcriptPath != "" {
 			if t, err := ReadCursorTranscript(transcriptPath); err == nil {
@@ -134,6 +136,13 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 			}
 		}
 		groups[index].Sessions = []Info{info}
+		loaded[i] = true
+	})
+	missing := 0
+	for _, ok := range loaded {
+		if !ok {
+			missing++
+		}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)
