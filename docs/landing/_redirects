@@ -12,3 +12,9 @@
 #   /buy/personal       https://buy.stripe.com/6oU7sE8f48hA0ukcDI4ow00  302
 /buy/personal       https://buy.stripe.com/14A5kw7b0cxQ1yodHM4ow01  302
 /buy/team-annual    https://buy.stripe.com/fZu9AM3YO69s0uk0V04ow02  302
+
+# The Download for macOS button on /docs/products/ points at /download/mac.
+# GitHub serves the asset as an attachment, so the browser downloads the DMG
+# without leaving the page. Bump the version here on each Mac app release
+# (https://github.com/firekeeper-ai/firekeeper-releases/releases).
+/download/mac       https://github.com/firekeeper-ai/firekeeper-releases/releases/download/v0.3.1/Firekeeper-0.3.1.dmg  302
