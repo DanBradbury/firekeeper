@@ -10,6 +10,11 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// queryProjects is the project: qualifiers of m's filter, comma-joined.
+func queryProjects(m model) string {
+	return strings.Join(parseUsageQuery(m.usageFilter).Projects, ",")
+}
+
 func TestFilterUsageProjectMatchesWholeNames(t *testing.T) {
 	sessions := []usageSession{
 		{ID: "a", WorkDir: "/w/alpha"},
@@ -26,19 +31,23 @@ func TestFilterUsageProjectMatchesWholeNames(t *testing.T) {
 		{"alpha-two", "[c]"},
 		{"unknown", "[d]"},
 		{"alp", "[]"},
-		{"ALPHA", "[]"},
+		{"ALPHA", "[a b]"},
 		{"/w/alpha", "[]"},
 	}
 	for _, tt := range tests {
 		got := []string{}
-		for _, session := range filterUsageProject(sessions, tt.project) {
+		var projects []string
+		if tt.project != "" {
+			projects = []string{tt.project}
+		}
+		for _, session := range filterUsageProjects(sessions, projects) {
 			got = append(got, session.ID)
 		}
 		if fmt.Sprint(got) != tt.want {
 			t.Errorf("project %q = %v, want %s", tt.project, got, tt.want)
 		}
 	}
-	if got := filterUsageProject(nil, "alpha"); len(got) != 0 {
+	if got := filterUsageProjects(nil, []string{"alpha"}); len(got) != 0 {
 		t.Fatalf("nil input = %v", got)
 	}
 }
@@ -71,10 +80,17 @@ func TestUsageProjectsShownKeepsTheActiveProject(t *testing.T) {
 		{0, "a", "[]"},
 	}
 	for _, tt := range tests {
-		if got := fmt.Sprint(usageProjectsShown(totals, tt.rows, tt.active)); got != tt.want {
+		if got := fmt.Sprint(usageProjectsShown(totals, tt.rows, activeList(tt.active))); got != tt.want {
 			t.Errorf("rows %d active %q = %s, want %s", tt.rows, tt.active, got, tt.want)
 		}
 	}
+}
+
+func activeList(active string) []string {
+	if active == "" {
+		return nil
+	}
+	return []string{active}
 }
 
 // projectPanelCell returns a screen cell on the projects panel row naming
@@ -99,14 +115,14 @@ func TestUsageProjectKeyShowsOnlyThatProject(t *testing.T) {
 	m := filterTestModel(t)
 	m.codexHistoryCursor = 2 // write docs, in auth-service
 	m, _ = sendKeys(t, m, keyRunes('p'))
-	if m.usageProject != "auth-service" {
-		t.Fatalf("project = %q", m.usageProject)
+	if queryProjects(m) != "auth-service" {
+		t.Fatalf("project = %q", queryProjects(m))
 	}
 	if got := fmt.Sprint(usageSessionIDs(m)); got != "[id-docs]" {
 		t.Fatalf("sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"sessions · 1/1 of 4 · project auth-service", "project auth-service", "/ search · esc clear", "▸ auth-service", "projects · last 4", "  alpha"} {
+	for _, want := range []string{"sessions · 1/1 of 4 · project auth-service", "filter project:auth-service", "/ edit · esc clear", "▸ auth-service", "projects · last 4", "  alpha"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
@@ -119,8 +135,8 @@ func TestUsageProjectKeyShowsOnlyThatProject(t *testing.T) {
 	}
 
 	m, _ = sendKeys(t, m, keyRunes('p'))
-	if m.usageProject != "" || len(usageSessionIDs(m)) != 4 {
-		t.Fatalf("second p: project %q, %d sessions", m.usageProject, len(usageSessionIDs(m)))
+	if queryProjects(m) != "" || len(usageSessionIDs(m)) != 4 {
+		t.Fatalf("second p: project %q, %d sessions", queryProjects(m), len(usageSessionIDs(m)))
 	}
 	if page := m.usagePage(); page.Sessions[page.Cursor].ID != "id-docs" {
 		t.Fatalf("selection moved to %q", page.Sessions[page.Cursor].ID)
@@ -141,7 +157,7 @@ func TestUsageProjectComposesWithFilterAndSort(t *testing.T) {
 		t.Fatalf("sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{`sessions · 1/2 of 5 · project beta · filter "fix" · most tokens`, "project beta  filter fix", "/ edit · esc clear"} {
+	for _, want := range []string{`sessions · 1/2 of 5 · project beta · filter "fix" · most tokens`, "filter project:beta fix", "/ edit · esc clear"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
@@ -152,8 +168,8 @@ func TestUsageProjectComposesWithFilterAndSort(t *testing.T) {
 	}
 
 	m, _ = sendKeys(t, m, tea.KeyMsg{Type: tea.KeyEsc})
-	if m.usageProject != "" || m.usageFilter != "" || len(usageSessionIDs(m)) != 5 {
-		t.Fatalf("Esc left project %q filter %q", m.usageProject, m.usageFilter)
+	if queryProjects(m) != "" || m.usageFilter != "" || len(usageSessionIDs(m)) != 5 {
+		t.Fatalf("Esc left project %q filter %q", queryProjects(m), m.usageFilter)
 	}
 	if m.usageSort != (usageSort{column: usageSortTokens}) {
 		t.Fatalf("Esc changed the order: %+v", m.usageSort)
@@ -170,14 +186,14 @@ func TestUsageProjectBelowTheFoldStaysInProjectsPanel(t *testing.T) {
 		t.Fatalf("shown project beta is hidden in the projects panel:\n%s", view)
 	}
 	beta := projectPanelCell(t, m, "beta")
-	if m = press(m, beta.x, beta.y); m.usageProject != "" {
-		t.Fatalf("click on the shown project did not show every project: %q", m.usageProject)
+	if m = press(m, beta.x, beta.y); queryProjects(m) != "" {
+		t.Fatalf("click on the shown project did not show every project: %q", queryProjects(m))
 	}
 }
 
 func TestUsageProjectWithoutMatchesSaysSo(t *testing.T) {
 	m := filterTestModel(t)
-	m.usageProject, m.usageFilter = "gamma", "auth"
+	m.usageFilter = "project:gamma auth"
 	view := ansi.Strip(m.View())
 	for _, want := range []string{"sessions · 0 of 4 · project gamma", `No Codex sessions in project gamma match "auth".`} {
 		if !strings.Contains(view, want) {
@@ -185,14 +201,13 @@ func TestUsageProjectWithoutMatchesSaysSo(t *testing.T) {
 		}
 	}
 	// A project another provider has no sessions in: p shows every project.
-	m.usageFilter = ""
-	m.usageProject = "elsewhere"
+	m.usageFilter = "project:elsewhere"
 	if !strings.Contains(ansi.Strip(m.View()), "No Codex sessions in project elsewhere.") {
 		t.Fatalf("empty project not explained:\n%s", ansi.Strip(m.View()))
 	}
 	m, _ = sendKeys(t, m, keyRunes('p'))
-	if m.usageProject != "" || len(usageSessionIDs(m)) != 4 {
-		t.Fatalf("p on an empty list: project %q", m.usageProject)
+	if queryProjects(m) != "" || len(usageSessionIDs(m)) != 4 {
+		t.Fatalf("p on an empty list: project %q", queryProjects(m))
 	}
 }
 
@@ -200,13 +215,13 @@ func TestUsageProjectKeyOnlyAppliesToUsage(t *testing.T) {
 	m := filterTestModel(t)
 	m.activeTab = processesTab
 	m, _ = sendKeys(t, m, keyRunes('p'))
-	if m.usageProject != "" {
-		t.Fatalf("p outside Usage set project %q", m.usageProject)
+	if queryProjects(m) != "" {
+		t.Fatalf("p outside Usage set project %q", queryProjects(m))
 	}
 	m = filterTestModel(t)
 	m, _ = sendKeys(t, m, keyRunes('/'), keyRunes('p'))
-	if m.usageProject != "" || m.usageFilter != "p" {
-		t.Fatalf("p while typing: project %q filter %q", m.usageProject, m.usageFilter)
+	if queryProjects(m) != "" || m.usageFilter != "p" {
+		t.Fatalf("p while typing: project %q filter %q", queryProjects(m), m.usageFilter)
 	}
 }
 
@@ -220,20 +235,20 @@ func TestClickingProjectsPanelShowsOneProject(t *testing.T) {
 			t.Fatalf("width %d: hit = %+v", width, h)
 		}
 		m = press(m, gamma.x, gamma.y)
-		if m.usageProject != "gamma" || fmt.Sprint(usageSessionIDs(m)) != "[id-fix-ci]" {
-			t.Fatalf("width %d: click gamma: project %q sessions %v", width, m.usageProject, usageSessionIDs(m))
+		if queryProjects(m) != "gamma" || fmt.Sprint(usageSessionIDs(m)) != "[id-fix-ci]" {
+			t.Fatalf("width %d: click gamma: project %q sessions %v", width, queryProjects(m), usageSessionIDs(m))
 		}
 		// A quick click on another project switches to it.
 		*now = now.Add(50 * time.Millisecond)
 		alpha := projectPanelCell(t, m, "alpha")
 		m = press(m, alpha.x, alpha.y)
-		if m.usageProject != "alpha" {
-			t.Fatalf("width %d: click alpha: project %q", width, m.usageProject)
+		if queryProjects(m) != "alpha" {
+			t.Fatalf("width %d: click alpha: project %q", width, queryProjects(m))
 		}
 		*now = now.Add(50 * time.Millisecond)
 		m = press(m, alpha.x, alpha.y)
-		if m.usageProject != "" {
-			t.Fatalf("width %d: second click alpha: project %q", width, m.usageProject)
+		if queryProjects(m) != "" {
+			t.Fatalf("width %d: second click alpha: project %q", width, queryProjects(m))
 		}
 		*now = now.Add(time.Second)
 		// The panel border and the session list are not project rows.
@@ -285,8 +300,8 @@ func TestUsageProjectListIsWidthSafe(t *testing.T) {
 			ID: "long", Title: "long", WorkDir: "/work/" + strings.Repeat("very-long-project-name-", 6), UpdatedAt: time.Now(),
 		})
 		m.width, m.height = size[0], size[1]
-		m.usageProject = usageProjectName(usageSession{WorkDir: "/work/" + strings.Repeat("very-long-project-name-", 6)})
-		m.usageFilter, m.usageFilterEditing = "lo", true
+		m.usageFilter = usageProjectQualifier(usageProjectName(usageSession{WorkDir: "/work/" + strings.Repeat("very-long-project-name-", 6)})) + " lo"
+		m.usageFilterEditing = true
 		rows := m.height - chromeRows - 1
 		lines := strings.Split(m.viewUsagePage(rows), "\n")
 		if len(lines) != rows {

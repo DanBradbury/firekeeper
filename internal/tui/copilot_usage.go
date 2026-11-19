@@ -647,7 +647,7 @@ func (m model) usageFooter() string {
 	keys := []footerKey{{"←/→", "provider"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}
 	page := m.usagePage()
 	switch {
-	case strings.TrimSpace(m.usageFilter) != "" || m.usageProject != "":
+	case strings.TrimSpace(m.usageFilter) != "":
 		keys = append([]footerKey{{"/", "filter"}, {"esc", "clear filter"}}, keys...)
 	case page.Total > 0:
 		keys = append([]footerKey{{"/", "filter"}}, keys...)

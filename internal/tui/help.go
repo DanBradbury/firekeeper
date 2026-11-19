@@ -58,10 +58,11 @@ var helpSections = []helpSection{
 		{"Enter", "Open the selected session's chat"},
 		{"↑ ↓ / j k", "Select a session (PgUp/PgDn/Home/End also work)"},
 		{"/", "Filter sessions: title matches first, then project or branch"},
+		{"project:NAME", "In the filter: only that project, e.g. /project:firekeeper session"},
 		{"Enter / Esc", "Keep the filter / clear it"},
 		{"t / a", "Sort by tokens / age (or click TOKENS / AGO); again to reverse, a third time to reset"},
-		{"p", "Show only the selected session's project (or click it in projects); again for all"},
-		{"Esc", "Clear the filter and the project"},
+		{"p", "Add or remove project: for the selected session's project (or click one in projects)"},
+		{"Esc", "Clear the filter"},
 		{"r", "Refresh selected provider"},
 	}},
 }

@@ -82,9 +82,9 @@ type usagePage struct {
 	Total         int
 	Filter        string
 	FilterEditing bool
-	// Project is the one project shown, or empty for all of them.
-	Project string
-	// ProjectSessions is the list before the project filter, which the
+	// Query is Filter parsed.
+	Query usageQuery
+	// ProjectSessions is the list before the project: qualifiers, which the
 	// projects panel rolls up so every project stays there to pick.
 	ProjectSessions []usageSession
 	Sort            usageSort
@@ -95,9 +95,10 @@ type usagePage struct {
 func (m model) usagePage() usagePage {
 	page := m.providerUsagePage()
 	page.Total = len(page.Sessions)
-	page.Filter, page.FilterEditing, page.Project, page.Sort = m.usageFilter, m.usageFilterEditing, m.usageProject, m.usageSort
-	page.ProjectSessions = filterUsageSessions(sortUsageSessions(page.Sessions, m.usageSort), m.usageFilter)
-	page.Sessions = filterUsageProject(page.ProjectSessions, m.usageProject)
+	page.Filter, page.FilterEditing, page.Sort = m.usageFilter, m.usageFilterEditing, m.usageSort
+	page.Query = parseUsageQuery(m.usageFilter)
+	page.ProjectSessions = filterUsageText(sortUsageSessions(page.Sessions, m.usageSort), page.Query.Text)
+	page.Sessions = filterUsageProjects(page.ProjectSessions, page.Query.Projects)
 	page.Cursor = min(max(page.Cursor, 0), max(len(page.Sessions)-1, 0))
 	return page
 }
@@ -318,7 +319,7 @@ func (m model) usageSessionRow(page usagePage, height int, now time.Time) []stri
 		right = dashBox("session", usageSessionDetailLines(page), rightWidth, detail, dashTeal)
 	}
 	if projectsHeight > 0 {
-		right = append(right, dashBox(projects, usageProjectLines(history, projectsHeight-2, page.Project), rightWidth, projectsHeight, dashTeal)...)
+		right = append(right, dashBox(projects, usageProjectLines(history, projectsHeight-2, page.Query.Projects), rightWidth, projectsHeight, dashTeal)...)
 	}
 	rows := make([]string, height)
 	for row := range rows {
@@ -338,8 +339,7 @@ func usageRightWidth(width int) int {
 
 func usageSessionsTitle(page usagePage) string {
 	title := "sessions"
-	filter := strings.TrimSpace(page.Filter)
-	narrowed := filter != "" || page.Project != ""
+	narrowed := !page.Query.empty()
 	switch {
 	case narrowed && len(page.Sessions) == 0:
 		title += fmt.Sprintf(" · 0 of %d", page.Total)
@@ -348,11 +348,11 @@ func usageSessionsTitle(page usagePage) string {
 	case len(page.Sessions) > 0:
 		title += fmt.Sprintf(" · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
 	}
-	if page.Project != "" {
-		title += " · project " + sanitizeProcessCommand(page.Project)
+	if len(page.Query.Projects) > 0 {
+		title += " · project " + usageProjectList(page.Query.Projects)
 	}
-	if filter != "" {
-		title += fmt.Sprintf(" · filter %q", filter)
+	if page.Query.Text != "" {
+		title += fmt.Sprintf(" · filter %q", page.Query.Text)
 	}
 	if label := page.Sort.label(); label != "" && len(page.Sessions) > 0 {
 		title += " · " + label
@@ -369,7 +369,7 @@ type usageListLayout struct {
 
 func usageSessionListLayout(page usagePage, rows int) usageListLayout {
 	layout := usageListLayout{capacity: rows}
-	if (page.FilterEditing || strings.TrimSpace(page.Filter) != "" || page.Project != "") && rows >= 2 {
+	if (page.FilterEditing || strings.TrimSpace(page.Filter) != "") && rows >= 2 {
 		layout.filter = true
 		layout.capacity--
 	}
