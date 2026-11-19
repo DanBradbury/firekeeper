@@ -181,7 +181,7 @@ func TestDiscoverOpenCodeSessions(t *testing.T) {
 		case "sqlite3":
 			return exec.CommandContext(ctx, name, args...).Output()
 		}
-		t.Fatalf("unexpected command %s", name)
+		t.Errorf("unexpected command %s", name)
 		return nil, nil
 	}
 	metas, err := Discover(context.Background(), opts)
@@ -242,7 +242,7 @@ func TestDiscoverOpenCodeWithoutDatabase(t *testing.T) {
 		case "lsof", "git":
 			return nil, fmt.Errorf("unavailable")
 		}
-		t.Fatalf("unexpected command %s", name)
+		t.Errorf("unexpected command %s", name)
 		return nil, nil
 	}
 	metas, err := Discover(context.Background(), opts)

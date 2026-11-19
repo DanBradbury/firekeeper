@@ -8,10 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func fixtureFile(t *testing.T, path, contents string) {
@@ -61,7 +65,10 @@ func TestDiscoverFixtureTree(t *testing.T) {
 			return []byte("p30\nn" + cwd + "\n"), nil
 		case "sqlite3":
 			if len(args) < 4 || args[0] != "-readonly" || args[1] != "-json" {
-				t.Fatalf("database command is not read-only: %v", args)
+				// Run is called from the linking goroutines, where a test
+				// may not call Fatalf.
+				t.Errorf("database command is not read-only: %v", args)
+				return nil, errors.New("database command is not read-only")
 			}
 			if args[2] == filepath.Join(home, "codex", "state_5.sqlite") {
 				b, _ := json.Marshal([]ThreadMetadataRow{{ID: codexID, Name: "Codex fixture", CWD: cwd, Model: "codex-model", TokensUsed: 123}})
@@ -74,8 +81,8 @@ func TestDiscoverFixtureTree(t *testing.T) {
 			}
 			return []byte(project + "\n"), nil
 		default:
-			t.Fatalf("unexpected command %s", name)
-			return nil, nil
+			t.Errorf("unexpected command %s", name)
+			return nil, errors.New("unexpected command")
 		}
 	}
 	metas, err := Discover(context.Background(), opts)
@@ -274,6 +281,8 @@ func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
 	// Session updated at 1791460860000 ms; the kimi process (etime 00:01)
 	// started a second before.
 	setKimiNow(t, time.UnixMilli(1791460860000))
+	// Run is called from the linking goroutines, so the list is guarded.
+	var mu sync.Mutex
 	var kimiPIDs []string
 	metas, err := Discover(context.Background(), Options{Home: home, KimiHome: filepath.Join(home, "kimi"), ClaudeHome: filepath.Join(home, "claude"), Run: func(_ context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
@@ -282,7 +291,9 @@ func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
 		case "lsof":
 			for i, a := range args {
 				if a == "-p" && i+1 < len(args) && strings.Contains(args[len(args)-4], "cwd") {
+					mu.Lock()
 					kimiPIDs = append(kimiPIDs, args[i+1])
+					mu.Unlock()
 				}
 			}
 			return []byte("p30\nn" + cwd + "\np31\nn" + cwd + "\n"), nil
@@ -304,8 +315,303 @@ func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
 	}
 }
 
+// linkAdapter wraps a real adapter and replaces its Link, so a test decides
+// what linking does and when it returns.
+type linkAdapter struct {
+	providerAdapter
+	link func(groups []*ProcessGroup) error
+}
+
+func (a linkAdapter) Link(_ *discoverer, groups []*ProcessGroup) error { return a.link(groups) }
+
+// replaceLinks swaps every adapter's Link for link, for the length of the
+// test. index is the adapter's place in adapters.
+func replaceLinks(t *testing.T, link func(index int, provider event.Provider, groups []*ProcessGroup) error) {
+	t.Helper()
+	saved := adapters
+	t.Cleanup(func() { adapters = saved })
+	wrapped := make([]providerAdapter, len(saved))
+	for index, a := range saved {
+		wrapped[index] = linkAdapter{providerAdapter: a, link: func(groups []*ProcessGroup) error {
+			return link(index, a.Provider(), groups)
+		}}
+	}
+	adapters = wrapped
+}
+
+// everyProviderPS lists one session for each provider.
+const everyProviderPS = "10 1 ttys001 00:01 codex\n20 1 ttys002 00:01 kimi\n30 1 ttys003 00:01 claude\n40 1 ttys004 00:01 opencode\n50 1 ttys005 00:01 gemini\n60 1 ttys006 00:01 cursor-agent\n70 1 ttys007 00:01 copilot\n"
+
+// requireEveryProvider fails the test when everyProviderPS has no session for
+// a registered provider, so a provider added later is reported as a missing
+// fixture line and not as a linking failure.
+func requireEveryProvider(t *testing.T) {
+	t.Helper()
+	d := &discoverer{ctx: context.Background(), opts: Options{Run: psOnly(everyProviderPS)}}
+	seen := map[event.Provider]bool{}
+	for _, g := range d.groupProcesses(d.parseProcesses(everyProviderPS)) {
+		if g.Role == RoleSession {
+			seen[g.Provider] = true
+		}
+	}
+	for _, a := range adapters {
+		if !seen[a.Provider()] {
+			t.Fatalf("everyProviderPS has no session for %s: add one", a.Provider())
+		}
+	}
+}
+
+// psOnly answers ps with the fixture list and fails every other command.
+func psOnly(ps string) func(context.Context, string, ...string) ([]byte, error) {
+	return func(_ context.Context, name string, _ ...string) ([]byte, error) {
+		if name == "ps" {
+			return []byte(ps), nil
+		}
+		return nil, os.ErrNotExist
+	}
+}
+
+// linkWait bounds how long a fixture Link waits for another one. Only a
+// regression reaches it.
+const linkWait = 2 * time.Second
+
+// Providers are linked at the same time: every Link here waits until all of
+// them have started, which never happens when they run one after another.
+func TestDiscoverLinksProvidersConcurrently(t *testing.T) {
+	requireEveryProvider(t)
+	var started sync.WaitGroup
+	started.Add(len(adapters))
+	all := make(chan struct{})
+	go func() {
+		started.Wait()
+		close(all)
+	}()
+	var alone atomic.Int32
+	replaceLinks(t, func(int, event.Provider, []*ProcessGroup) error {
+		started.Done()
+		if alone.Load() > 0 {
+			return nil // already failed; do not wait again
+		}
+		select {
+		case <-all:
+		case <-time.After(linkWait):
+			alone.Add(1)
+		}
+		return nil
+	})
+	metas, err := Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly(everyProviderPS)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alone.Load() > 0 {
+		t.Fatal("a provider's Link ran without the others having started: linking is not concurrent")
+	}
+	if len(metas) != len(adapters) {
+		t.Fatalf("got %d sessions, want one for each of the %d providers", len(metas), len(adapters))
+	}
+}
+
+// The warning lists providers in registry order, whichever Link finishes
+// first: here they finish in reverse.
+func TestDiscoverLinkWarningsKeepAdapterOrder(t *testing.T) {
+	requireEveryProvider(t)
+	var want []string
+	for _, a := range adapters {
+		want = append(want, toolName(a.Provider())+": fixture "+string(a.Provider())+" failure")
+	}
+	count := len(adapters)
+	done := make([]chan struct{}, count+1)
+	for i := range done {
+		done[i] = make(chan struct{})
+	}
+	close(done[count])
+	var mu sync.Mutex
+	var finished []int
+	replaceLinks(t, func(index int, provider event.Provider, _ []*ProcessGroup) error {
+		// Finish only after the provider registered next has finished.
+		select {
+		case <-done[index+1]:
+		case <-time.After(linkWait):
+		}
+		mu.Lock()
+		finished = append(finished, index)
+		mu.Unlock()
+		close(done[index])
+		return fmt.Errorf("fixture %s failure", provider)
+	})
+	metas, err := Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly(everyProviderPS)})
+	var warning *Warning
+	if !errors.As(err, &warning) {
+		t.Fatalf("err = %v, want a warning", err)
+	}
+	for i, index := range finished {
+		if index != count-1-i {
+			t.Fatalf("Links finished in order %v, want the reverse of registry order", finished)
+		}
+	}
+	if got := strings.Join(want, "; "); warning.Message != got {
+		t.Errorf("warning = %q, want %q", warning.Message, got)
+	}
+	if len(metas) != count {
+		t.Errorf("got %d sessions, want all %d despite the warnings", len(metas), count)
+	}
+}
+
+// One provider failing leaves the others linked, and what each Link wrote to
+// its groups is in the result.
+func TestDiscoverLinkFailureKeepsOtherProviders(t *testing.T) {
+	requireEveryProvider(t)
+	replaceLinks(t, func(_ int, provider event.Provider, groups []*ProcessGroup) error {
+		if provider == event.ProviderClaude {
+			return errors.New("fixture failure")
+		}
+		for _, g := range groups {
+			// Replace the whole group, as linkValues does for the real
+			// adapters: under -race this fails if Discover still reads any
+			// group while a Link is running.
+			linked := *g
+			linked.Sessions = []Info{{ID: string(provider) + "-session", State: SessionStateActive}}
+			*g = linked
+		}
+		return nil
+	})
+	metas, err := Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly(everyProviderPS)})
+	var warning *Warning
+	if !errors.As(err, &warning) || warning.Message != "Claude: fixture failure" {
+		t.Fatalf("err = %v, want only the Claude warning", err)
+	}
+	if len(metas) != len(adapters) {
+		t.Fatalf("got %d sessions, want %d", len(metas), len(adapters))
+	}
+	for _, m := range metas {
+		want, state := m.Provider+"-session", SessionStateActive
+		if m.Provider == string(event.ProviderClaude) {
+			want, state = "", SessionStateUnknown
+		}
+		if m.ID != want || m.State != state {
+			t.Errorf("%s: id %q state %s, want id %q state %s", m.Provider, m.ID, m.State, want, state)
+		}
+	}
+}
+
+// Cancelling while providers are being linked ends the scan with the
+// context's error once every Link has returned: the other Links here are
+// still running when Claude's cancels.
+func TestDiscoverCancelledWhileLinking(t *testing.T) {
+	requireEveryProvider(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cancelled := make(chan struct{})
+	var returned, stuck atomic.Int32
+	replaceLinks(t, func(_ int, provider event.Provider, _ []*ProcessGroup) error {
+		if provider == event.ProviderClaude {
+			cancel()
+			close(cancelled)
+		} else {
+			select {
+			case <-cancelled:
+			case <-time.After(linkWait):
+				stuck.Add(1)
+			}
+		}
+		returned.Add(1)
+		return nil
+	})
+	metas, err := Discover(ctx, Options{Home: t.TempDir(), Run: psOnly(everyProviderPS)})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if stuck.Load() > 0 {
+		t.Fatal("a Link was not running when Claude's cancelled: linking is not concurrent")
+	}
+	if got := int(returned.Load()); got != len(adapters) {
+		t.Errorf("Discover returned after %d Links, want all %d to have returned", got, len(adapters))
+	}
+	if len(metas) != len(adapters) {
+		t.Errorf("got %d sessions, want the %d found before the cancellation", len(metas), len(adapters))
+	}
+}
+
+// A panic in a provider's Link reaches Discover's caller, on the caller's
+// goroutine, after the other providers have finished. It names the provider,
+// keeps the original value and the stack of the goroutine that panicked, and
+// with several panics it is the first provider in registry order.
+func TestDiscoverLinkPanicReachesCaller(t *testing.T) {
+	requireEveryProvider(t)
+	cause := errors.New("fixture panic")
+	first, last := adapters[0].Provider(), adapters[len(adapters)-1].Provider()
+	for _, tc := range []struct {
+		name      string
+		panics    map[event.Provider]any
+		provider  event.Provider
+		unwrapped error
+	}{
+		{"error value", map[event.Provider]any{event.ProviderClaude: cause}, event.ProviderClaude, cause},
+		{"string value", map[event.Provider]any{event.ProviderClaude: "fixture panic"}, event.ProviderClaude, nil},
+		{"two providers", map[event.Provider]any{last: "fixture panic", first: "fixture panic"}, first, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var finished atomic.Int32
+			replaceLinks(t, func(_ int, provider event.Provider, _ []*ProcessGroup) error {
+				if value, ok := tc.panics[provider]; ok {
+					panic(value)
+				}
+				finished.Add(1)
+				return nil
+			})
+			var caught any
+			func() {
+				defer func() { caught = recover() }()
+				_, _ = Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly(everyProviderPS)})
+			}()
+			err, ok := caught.(error)
+			if !ok {
+				t.Fatalf("recovered %v, want the Link's panic as an error", caught)
+			}
+			message := err.Error()
+			if want := "panic linking " + toolName(tc.provider) + " sessions: fixture panic"; !strings.HasPrefix(message, want) {
+				t.Errorf("panic = %.80q, want it to start with %q", message, want)
+			}
+			// The stack is the panicking goroutine's: it has the adapter's
+			// Link frame, which Discover's own goroutine never runs.
+			if !strings.Contains(message, "linkAdapter.Link") {
+				t.Error("panic message lost the stack of the goroutine that panicked")
+			}
+			if got := errors.Unwrap(err); got != tc.unwrapped {
+				t.Errorf("Unwrap = %v, want %v", got, tc.unwrapped)
+			}
+			if got, want := int(finished.Load()), len(adapters)-len(tc.panics); got != want {
+				t.Errorf("%d other providers finished before the panic was raised, want %d", got, want)
+			}
+		})
+	}
+}
+
+// Without a panic, and with a single provider, linking is unchanged.
+func TestDiscoverLinksSingleProvider(t *testing.T) {
+	var linked []event.Provider
+	replaceLinks(t, func(_ int, provider event.Provider, groups []*ProcessGroup) error {
+		linked = append(linked, provider) // one provider, so one goroutine
+		for _, g := range groups {
+			g.Sessions = []Info{{ID: "only"}}
+		}
+		return nil
+	})
+	metas, err := Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly("20 1 ttys002 00:01 kimi\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(linked) != 1 || linked[0] != event.ProviderKimi {
+		t.Fatalf("linked %v, want only Kimi: a provider without groups is not linked", linked)
+	}
+	if len(metas) != 1 || metas[0].ID != "only" {
+		t.Fatalf("metas = %+v, want the Kimi session", metas)
+	}
+}
+
 func TestParallelCallsEveryIndexOnceWithinBound(t *testing.T) {
-	for _, n := range []int{0, 1, 2, maxParallel, 3*maxParallel + 1} {
+	limit := runtime.GOMAXPROCS(0)
+	for _, n := range []int{0, 1, 2, limit, 3*limit + 1} {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
 			calls := make([]int, n)
 			var mu sync.Mutex
@@ -326,8 +632,8 @@ func TestParallelCallsEveryIndexOnceWithinBound(t *testing.T) {
 					t.Fatalf("index %d called %d times", i, c)
 				}
 			}
-			if peak > maxParallel {
-				t.Fatalf("peak concurrency %d exceeds %d", peak, maxParallel)
+			if peak > limit {
+				t.Fatalf("peak concurrency %d exceeds GOMAXPROCS %d", peak, limit)
 			}
 		})
 	}
@@ -335,4 +641,54 @@ func TestParallelCallsEveryIndexOnceWithinBound(t *testing.T) {
 
 func TestParallelNegativeCountCallsNothing(t *testing.T) {
 	parallel(-1, func(int) { t.Fatal("fn called for negative n") })
+}
+
+// A panic in one call reaches parallel's caller, on the caller's goroutine,
+// after every other call has returned. It keeps the original value and the
+// stack of the goroutine that panicked, and with several panics it is the
+// first by index.
+func TestParallelPanicReachesCaller(t *testing.T) {
+	cause := errors.New("fixture panic")
+	for _, tc := range []struct {
+		name      string
+		panics    map[int]any
+		want      string
+		unwrapped error
+	}{
+		{"error value", map[int]any{3: cause}, "fixture panic", cause},
+		{"string value", map[int]any{3: "fixture panic"}, "fixture panic", nil},
+		{"two calls", map[int]any{5: "later", 1: "first"}, "first", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const n = 8
+			var finished atomic.Int32
+			var caught any
+			func() {
+				defer func() { caught = recover() }()
+				parallel(n, func(i int) {
+					if value, ok := tc.panics[i]; ok {
+						panic(value)
+					}
+					finished.Add(1)
+				})
+			}()
+			err, ok := caught.(error)
+			if !ok {
+				t.Fatalf("recovered %v, want the call's panic as an error", caught)
+			}
+			message := err.Error()
+			if want := "panic in parallel discovery work: " + tc.want; !strings.HasPrefix(message, want) {
+				t.Errorf("panic = %.80q, want it to start with %q", message, want)
+			}
+			if !strings.Contains(message, "TestParallelPanicReachesCaller") {
+				t.Error("panic message lost the stack of the goroutine that panicked")
+			}
+			if got := errors.Unwrap(err); got != tc.unwrapped {
+				t.Errorf("Unwrap = %v, want %v", got, tc.unwrapped)
+			}
+			if got, want := int(finished.Load()), n-len(tc.panics); got != want {
+				t.Errorf("%d other calls finished before the panic was raised, want %d", got, want)
+			}
+		})
+	}
 }
