@@ -61,16 +61,21 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	if err != nil {
 		return err
 	}
-	mapped := make(map[int]string, len(groupIndexes))
-	for _, groupIndex := range groupIndexes {
-		group := &groups[groupIndex]
+	// Each group's logs are searched on its own goroutine; a group writes
+	// only its own slot.
+	logIDs := make([]string, len(groupIndexes))
+	parallel(len(groupIndexes), func(i int) {
+		group := &groups[groupIndexes[i]]
 		if id, ok := group.explicitSessionID(); ok {
-			mapped[groupIndex] = id
-			continue
+			logIDs[i] = id
+		} else if id, ok := d.copilotSessionIDFromGroupLogs(home, *group); ok {
+			logIDs[i] = id
 		}
-		if id, ok := d.copilotSessionIDFromGroupLogs(home, *group); ok {
-			mapped[groupIndex] = id
-			continue
+	})
+	mapped := make(map[int]string, len(groupIndexes))
+	for i, groupIndex := range groupIndexes {
+		if logIDs[i] != "" {
+			mapped[groupIndex] = logIDs[i]
 		}
 	}
 
@@ -110,19 +115,27 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	}
 	stored, _ := d.readCopilotStoredMetadata(home, ids)
 
-	missing := 0
-	for _, groupIndex := range groupIndexes {
+	// Each session's files are read on its own goroutine: the reads are
+	// independent, and each parses up to CopilotEventTailBytes of events.
+	loaded := make([]bool, len(groupIndexes))
+	parallel(len(groupIndexes), func(i int) {
+		groupIndex := groupIndexes[i]
 		id, ok := mapped[groupIndex]
 		if !ok {
-			missing++
-			continue
+			return
 		}
 		session, err := d.loadCopilotSession(home, id, stored[id])
 		if err != nil {
-			missing++
-			continue
+			return
 		}
 		groups[groupIndex].Sessions = []Info{session}
+		loaded[i] = true
+	})
+	missing := 0
+	for _, ok := range loaded {
+		if !ok {
+			missing++
+		}
 	}
 	if missing > 0 {
 		return fmt.Errorf("metadata unavailable for %d runtime(s)", missing)

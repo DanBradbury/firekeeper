@@ -148,8 +148,11 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		return nil, fmt.Errorf("run ps: %w", err)
 	}
 	groups := d.groupProcesses(d.parseProcesses(string(output)))
-	var warnings []string
-	for _, a := range adapters {
+	// Each adapter receives only its own provider's groups and keeps no
+	// shared state, so adapters link concurrently. Warnings keep registry
+	// order.
+	owned := make([][]*ProcessGroup, len(adapters))
+	for ai, a := range adapters {
 		var own []*ProcessGroup
 		for i := range groups {
 			g := &groups[i]
@@ -169,23 +172,64 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 			}
 			own = append(own, g)
 		}
-		if len(own) == 0 {
-			continue
+		owned[ai] = own
+	}
+	linkErrs := make([]error, len(adapters))
+	parallel(len(adapters), func(ai int) {
+		if len(owned[ai]) > 0 {
+			linkErrs[ai] = adapters[ai].Link(d, owned[ai])
 		}
-		if err := a.Link(d, own); err != nil {
-			warnings = append(warnings, toolName(a.Provider())+": "+d.sanitizeProcessCommand(err.Error()))
+	})
+	var warnings []string
+	for ai, err := range linkErrs {
+		if err != nil {
+			warnings = append(warnings, toolName(adapters[ai].Provider())+": "+d.sanitizeProcessCommand(err.Error()))
 		}
 	}
 	machine, err := machineID(opts.Home)
 	if err != nil {
 		warnings = append(warnings, err.Error())
 	}
-	var metas []Meta
-	projects := make(map[string]string)
-	for _, g := range groups {
-		if !emitted(g) {
-			continue
+	// Resolve each emitted group's fallback cwd (one lsof per group), then
+	// each distinct cwd's project (one git per directory), concurrently.
+	var emit []*ProcessGroup
+	for i := range groups {
+		if emitted(groups[i]) {
+			emit = append(emit, &groups[i])
 		}
+	}
+	rootCWDs := make([]string, len(emit))
+	parallel(len(emit), func(i int) {
+		g := emit[i]
+		needed := len(g.Sessions) == 0
+		for _, s := range g.Sessions {
+			needed = needed || s.CWD == ""
+		}
+		if needed {
+			rootCWDs[i] = d.processCWD(g.Root.PID)
+		}
+	})
+	var cwds []string
+	projects := make(map[string]string)
+	for i, g := range emit {
+		for _, s := range g.Sessions {
+			if _, seen := projects[s.CWD]; !seen && s.CWD != "" {
+				projects[s.CWD] = ""
+				cwds = append(cwds, s.CWD)
+			}
+		}
+		if _, seen := projects[rootCWDs[i]]; !seen && rootCWDs[i] != "" {
+			projects[rootCWDs[i]] = ""
+			cwds = append(cwds, rootCWDs[i])
+		}
+	}
+	resolved := make([]string, len(cwds))
+	parallel(len(cwds), func(i int) { resolved[i] = d.projectName(cwds[i]) })
+	for i, cwd := range cwds {
+		projects[cwd] = resolved[i]
+	}
+	var metas []Meta
+	for i, g := range emit {
 		sessions := g.Sessions
 		if len(sessions) == 0 {
 			sessions = []Info{{}}
@@ -193,32 +237,10 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		for _, s := range sessions {
 			cwd := s.CWD
 			if cwd == "" {
-				output, err := d.command("lsof", "-a", "-d", "cwd", "-Fn", "-p", fmt.Sprint(g.Root.PID)).Output()
-				if err == nil {
-					for _, line := range strings.Split(string(output), "\n") {
-						if strings.HasPrefix(line, "n") {
-							cwd = d.sanitizeProcessCommand(line[1:])
-							break
-						}
-					}
-				}
+				cwd = rootCWDs[i]
 			}
-			project, known := projects[cwd]
-			if !known {
-				project = cwd
-				if cwd != "" {
-					if root, err := d.command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
-						if resolved := strings.TrimSpace(string(root)); resolved != "" {
-							project = d.sanitizeProcessCommand(resolved)
-						}
-					}
-				}
-				if project != "" {
-					project = filepath.Base(project)
-				}
-				projects[cwd] = project
-			}
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: g})
+			project := projects[cwd]
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
 		}
 	}
 	if err := ctx.Err(); err != nil {
@@ -293,6 +315,46 @@ func machineID(home string) (string, error) {
 		return "", errors.New("publish Firekeeper machine-id")
 	}
 	return id, nil
+}
+
+// maxParallel bounds the goroutines parallel starts, so a machine with many
+// sessions never runs an unbounded number of subprocesses or file reads.
+const maxParallel = 8
+
+// parallel calls fn(0) through fn(n-1) on at most maxParallel goroutines and
+// returns once every call has returned. Each fn must write only to its own
+// index of any shared slice.
+func parallel(n int, fn func(i int)) {
+	if n <= 1 {
+		for i := range n {
+			fn(i)
+		}
+		return
+	}
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, maxParallel)
+	for i := range n {
+		slots <- struct{}{}
+		wg.Go(func() {
+			defer func() { <-slots }()
+			fn(i)
+		})
+	}
+	wg.Wait()
+}
+
+// projectName returns the basename of cwd's Git root, else of cwd itself.
+func (d *discoverer) projectName(cwd string) string {
+	if cwd == "" {
+		return ""
+	}
+	project := cwd
+	if root, err := d.command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output(); err == nil {
+		if resolved := strings.TrimSpace(string(root)); resolved != "" {
+			project = d.sanitizeProcessCommand(resolved)
+		}
+	}
+	return filepath.Base(project)
 }
 
 func (d *discoverer) home() (string, error) {

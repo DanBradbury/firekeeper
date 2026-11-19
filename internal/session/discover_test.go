@@ -303,3 +303,36 @@ func TestDiscoverNeverLinksOrEmitsTools(t *testing.T) {
 		}
 	}
 }
+
+func TestParallelCallsEveryIndexOnceWithinBound(t *testing.T) {
+	for _, n := range []int{0, 1, 2, maxParallel, 3*maxParallel + 1} {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			calls := make([]int, n)
+			var mu sync.Mutex
+			running, peak := 0, 0
+			parallel(n, func(i int) {
+				mu.Lock()
+				running++
+				peak = max(peak, running)
+				mu.Unlock()
+				time.Sleep(time.Millisecond)
+				calls[i]++
+				mu.Lock()
+				running--
+				mu.Unlock()
+			})
+			for i, c := range calls {
+				if c != 1 {
+					t.Fatalf("index %d called %d times", i, c)
+				}
+			}
+			if peak > maxParallel {
+				t.Fatalf("peak concurrency %d exceeds %d", peak, maxParallel)
+			}
+		})
+	}
+}
+
+func TestParallelNegativeCountCallsNothing(t *testing.T) {
+	parallel(-1, func(int) { t.Fatal("fn called for negative n") })
+}
