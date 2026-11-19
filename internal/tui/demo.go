@@ -74,6 +74,8 @@ func (d demoModel) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case d.model.helpOpen:
 		// Help consumes its own next key.
+	case d.model.activeTab == usageTab && d.model.usageFilterEditing:
+		// Typing a session filter: every key is text or a filter edit.
 	case d.model.chat.open:
 		switch key.String() {
 		case "e", "o":

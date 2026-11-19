@@ -76,11 +76,26 @@ type usagePage struct {
 	// styled line per day, newest last.
 	Days func(count, inner int) (suffix string, lines []string)
 
+	// Sessions is the list as shown, after the filter; Cursor indexes it.
 	Sessions []usageSession
 	Cursor   int
+	// Total is the session count before the filter.
+	Total         int
+	Filter        string
+	FilterEditing bool
 }
 
+// usagePage is the active provider's page with the session filter applied.
 func (m model) usagePage() usagePage {
+	page := m.providerUsagePage()
+	page.Total = len(page.Sessions)
+	page.Filter, page.FilterEditing = m.usageFilter, m.usageFilterEditing
+	page.Sessions = filterUsageSessions(page.Sessions, m.usageFilter)
+	page.Cursor = min(max(page.Cursor, 0), max(len(page.Sessions)-1, 0))
+	return page
+}
+
+func (m model) providerUsagePage() usagePage {
 	switch m.usageProvider {
 	case copilotProvider:
 		return m.copilotPage()
@@ -107,23 +122,15 @@ func (m *model) usageCursorRef() *int {
 	}
 }
 
+// usageSessionCount is the number of sessions the list shows, after the filter.
 func (m model) usageSessionCount() int {
-	switch m.usageProvider {
-	case copilotProvider:
-		return len(m.copilotUsage.History)
-	case kimiProvider:
-		return len(m.kimiUsage.History)
-	case claudeProvider:
-		return len(m.claudeUsage.History)
-	default:
-		return len(m.codexUsage.History)
-	}
+	return len(m.usagePage().Sessions)
 }
 
 // moveUsageCursor moves the session selection by delta, clamped to the list.
 func (m *model) moveUsageCursor(delta int) {
-	cursor := m.usageCursorRef()
-	*cursor = min(max(*cursor+delta, 0), max(m.usageSessionCount()-1, 0))
+	page := m.usagePage()
+	*m.usageCursorRef() = min(max(page.Cursor+delta, 0), max(len(page.Sessions)-1, 0))
 }
 
 func (m *model) setUsageCursorEnd() {
@@ -323,16 +330,44 @@ func (m model) usageSessionRow(page usagePage, height int, now time.Time) []stri
 }
 
 func usageSessionsTitle(page usagePage) string {
-	if len(page.Sessions) == 0 {
-		return "sessions"
+	filter := strings.TrimSpace(page.Filter)
+	if filter == "" {
+		if len(page.Sessions) == 0 {
+			return "sessions"
+		}
+		return fmt.Sprintf("sessions · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
 	}
-	return fmt.Sprintf("sessions · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
+	position := "0"
+	if len(page.Sessions) > 0 {
+		position = fmt.Sprintf("%d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
+	}
+	return fmt.Sprintf("sessions · %s of %d · filter %q", position, page.Total, filter)
+}
+
+// usageListLayout is how a session list body of a given height is split: an
+// optional filter line, an optional column header, then capacity rows.
+type usageListLayout struct {
+	filter, header bool
+	capacity       int
+}
+
+func usageSessionListLayout(page usagePage, rows int) usageListLayout {
+	layout := usageListLayout{capacity: rows}
+	if (page.FilterEditing || strings.TrimSpace(page.Filter) != "") && rows >= 2 {
+		layout.filter = true
+		layout.capacity--
+	}
+	if rows >= 4 {
+		layout.header = true
+		layout.capacity--
+	}
+	return layout
 }
 
 // usageSessionLines is the session table with the selected row highlighted
 // and kept in view.
 func usageSessionLines(page usagePage, width, rows int, now time.Time) []string {
-	if len(page.Sessions) == 0 {
+	if page.Total == 0 && len(page.Sessions) == 0 {
 		message := "No historical " + page.Label + " sessions."
 		switch {
 		case page.HistoryErr != "":
@@ -342,14 +377,19 @@ func usageSessionLines(page usagePage, width, rows int, now time.Time) []string 
 		}
 		return []string{dashPaint(message, usageMutedColor, false)}
 	}
-	columns := usageSessionColumns(width, page.Sessions)
+	layout := usageSessionListLayout(page, rows)
 	var lines []string
-	capacity := rows
-	if rows >= 4 {
-		lines = append(lines, columns.header())
-		capacity--
+	if layout.filter {
+		lines = append(lines, usageFilterLine(page, width))
 	}
-	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, capacity)
+	if len(page.Sessions) == 0 {
+		return append(lines, dashPaint(fmt.Sprintf("No %s sessions match %q.", page.Label, strings.TrimSpace(page.Filter)), usageMutedColor, false))
+	}
+	columns := usageSessionColumns(width, page.Sessions)
+	if layout.header {
+		lines = append(lines, columns.header())
+	}
+	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, layout.capacity)
 	for index := start; index < end; index++ {
 		lines = append(lines, columns.row(page.Sessions[index], index == page.Cursor, now))
 	}
