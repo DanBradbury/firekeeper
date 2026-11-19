@@ -124,6 +124,55 @@ func TestWriteHTMLEscapesAndOmitsCWD(t *testing.T) {
 	}
 }
 
+func TestWriteHTMLShareColumns(t *testing.T) {
+	r := newReport(now, transcript.ProviderClaude, PeriodFiveHour, BasisRolling, now.Add(-Length), now)
+	r.Total = Tokens{Total: 200}
+	r.ByModel = []Group{{Name: "m1", Tokens: Tokens{Total: 50}}}
+	r.ByProject = []Group{{Name: "p1", Tokens: Tokens{Total: 150}}}
+	r.Hourly = []Bucket{{Start: now, Tokens: Tokens{Total: 100}}}
+	var buf bytes.Buffer
+	if err := WriteHTML(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{"25.0%", "75.0%", "50.0%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	// A zero total must not divide by zero.
+	r.Total = Tokens{}
+	buf.Reset()
+	if err := WriteHTML(&buf, r); err != nil || !strings.Contains(buf.String(), "0.0%") {
+		t.Fatalf("zero total: %v", err)
+	}
+}
+
+func TestWriteHTMLSessionDetails(t *testing.T) {
+	r := newReport(now, transcript.ProviderClaude, PeriodFiveHour, BasisRolling, now.Add(-Length), now)
+	tk := Tokens{Input: 10, Output: 30, Cache: 60, Total: 100}
+	r.Total = tk
+	r.Sessions = []Session{{SessionID: "x", Title: "t", FirstAt: now, LastAt: now, Turns: 4, Tokens: tk,
+		ByModel:  []Group{{Name: "model-a", Tokens: tk}},
+		Activity: []Bucket{{Start: now, Tokens: tk}}}}
+	var buf bytes.Buffer
+	if err := WriteHTML(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{`class="det"`, "model-a", "60.0%", "25 tokens/turn"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	// No turns: no division by zero, no per-turn figure.
+	r.Sessions[0].Turns = 0
+	buf.Reset()
+	if err := WriteHTML(&buf, r); err != nil || strings.Contains(buf.String(), "tokens/turn") {
+		t.Fatalf("zero turns: %v", err)
+	}
+}
+
 func TestParsePeriod(t *testing.T) {
 	for _, in := range []string{"5h", "week"} {
 		if p, err := ParsePeriod(in); err != nil || string(p) != in {
