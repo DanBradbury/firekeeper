@@ -111,10 +111,12 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
   conversations. Both list only providers with local usage data, so agents
   you don't use stay out of the way. See [what each provider reports](https://firekeeper.ai/docs/usage/).
   In Usage's session list, `/` filters by title (sessions whose project or
-  branch match follow), `p` shows only the selected session's project (or
+  branch match follow); add `project:NAME` to show one project, as in
+  `/project:firekeeper session` (quote names with spaces, repeat it for either
+  of two projects). `p` adds or removes the selected session's project (or
   click a project in the projects panel), and `t` or `a`, or a click on the
   TOKENS or AGO header, sorts by tokens or age; press again to reverse, a
-  third time for newest first. Esc clears the filters.
+  third time for newest first. Esc clears the filter.
 - **Read without interrupting.** The chat view follows new prompts and replies
   live, read-only. Return to the agent's own terminal to reply or approve work.
   With `firekeeper-server` installed, `e` saves the session as a standalone

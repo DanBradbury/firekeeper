@@ -3,44 +3,50 @@ package tui
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
-// usage_project.go narrows the Usage tab's session list to one project, the
-// working directory name the projects panel groups by. p shows only the
-// selected session's project and shows every project again when pressed in
-// that project; a click on a row of the projects panel does the same for that
-// project. Like the / filter it applies to every provider's list, and the
-// list's title and filter line say which project is shown.
+// usage_project.go narrows the Usage tab's session list to projects, the
+// working directory names the projects panel groups by, with the / filter's
+// project: qualifier. p writes the selected session's project into the
+// filter and takes it out again when it is the only one shown; a click on a
+// row of the projects panel does the same for that project.
 
-// filterUsageProject returns the sessions in project, in list order. An empty
-// project returns sessions unchanged.
-func filterUsageProject(sessions []usageSession, project string) []usageSession {
-	if project == "" {
+// filterUsageProjects returns the sessions in any of projects, compared
+// ignoring case, in list order. No projects returns sessions unchanged.
+func filterUsageProjects(sessions []usageSession, projects []string) []usageSession {
+	if len(projects) == 0 {
 		return sessions
 	}
 	var matched []usageSession
 	for _, session := range sessions {
-		if usageProjectName(session) == project {
+		if usageProjectIn(usageProjectName(session), projects) {
 			matched = append(matched, session)
 		}
 	}
 	return matched
 }
 
-// toggleUsageProject shows only project, or every project when it is
-// already the one shown.
-func (m *model) toggleUsageProject(project string) {
-	if project == m.usageProject {
-		project = ""
+func usageProjectIn(name string, projects []string) bool {
+	for _, project := range projects {
+		if strings.EqualFold(name, project) {
+			return true
+		}
 	}
-	m.keepUsageSelection(func() { m.usageProject = project })
+	return false
+}
+
+// toggleUsageProject shows only project, or every project when it is
+// already the only one shown. An empty project shows every project.
+func (m *model) toggleUsageProject(project string) {
+	m.keepUsageSelection(func() { m.usageFilter = withUsageProject(m.usageFilter, project) })
 }
 
 // toggleSelectedUsageProject is the p key: the selected session's project.
 func (m *model) toggleSelectedUsageProject() {
 	page := m.usagePage()
 	if len(page.Sessions) == 0 {
-		m.keepUsageSelection(func() { m.usageProject = "" })
+		m.toggleUsageProject("")
 		return
 	}
 	m.toggleUsageProject(usageProjectName(page.Sessions[page.Cursor]))
@@ -106,18 +112,23 @@ func usageProjectRows(totals, rows int) int {
 }
 
 // usageProjectsShown returns the indexes into totals that the panel lists in
-// rows lines, largest first. The shown project takes the last row when it
-// would otherwise be left out, so it stays visible and clickable.
-func usageProjectsShown(totals []usageProjectTotal, rows int, active string) []int {
+// rows lines, largest first. The first shown project left out takes the last
+// row, so a project the filter shows stays visible and clickable.
+func usageProjectsShown(totals []usageProjectTotal, rows int, active []string) []int {
 	shown := make([]int, usageProjectRows(len(totals), rows))
 	for index := range shown {
 		shown[index] = index
 	}
-	if len(shown) == 0 || active == "" {
+	if len(shown) == 0 || len(active) == 0 {
 		return shown
 	}
+	for _, index := range shown {
+		if usageProjectIn(totals[index].name, active) {
+			return shown
+		}
+	}
 	for index := len(shown); index < len(totals); index++ {
-		if totals[index].name == active {
+		if usageProjectIn(totals[index].name, active) {
 			shown[len(shown)-1] = index
 			break
 		}
@@ -126,8 +137,8 @@ func usageProjectsShown(totals []usageProjectTotal, rows int, active string) []i
 }
 
 // usageProjectLines draws the projects panel. When a project filter is
-// active, every row gets a marker column and the shown project is marked.
-func usageProjectLines(history []usageSession, rows int, active string) []string {
+// active, every row gets a marker column and the shown projects are marked.
+func usageProjectLines(history []usageSession, rows int, active []string) []string {
 	totals := usageProjectTotals(history)
 	if len(totals) == 0 {
 		return []string{dashPaint("No project data.", usageMutedColor, false)}
@@ -142,8 +153,8 @@ func usageProjectLines(history []usageSession, rows int, active string) []string
 		entry := totals[index]
 		name := dashPaint(sanitizeProcessCommand(entry.name), usageBrightColor, true)
 		switch {
-		case active == "":
-		case entry.name == active:
+		case len(active) == 0:
+		case usageProjectIn(entry.name, active):
 			name = dashPaint("▸ ", dashOrange, true) + dashPaint(sanitizeProcessCommand(entry.name), dashOrange, true)
 		default:
 			name = dashPaint("  ", usageMutedColor, false) + name
@@ -198,7 +209,7 @@ func (m model) usageProjectAt(x, pageRow, pageRows int) (int, bool) {
 	if height == 0 {
 		return 0, false
 	}
-	shown := usageProjectsShown(usageProjectTotals(page.ProjectSessions), height-2, page.Project)
+	shown := usageProjectsShown(usageProjectTotals(page.ProjectSessions), height-2, page.Query.Projects)
 	offset := pageRow - (geometry.usageSessionsTop() + top + 1)
 	if offset < 0 || offset >= len(shown) {
 		return 0, false
