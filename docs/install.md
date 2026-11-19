@@ -3,6 +3,15 @@
 Install Firekeeper, then run it beside your existing agent terminals.
 No Firekeeper account, server, or background service is required.
 
+These instructions install the Firekeeper CLI and its terminal dashboard only.
+They do not install [Firekeeper Menu Bar](https://firekeeper.ai/docs/menu-bar/)
+or sign you up for the [Hosted dashboard](https://firekeeper.ai/docs/hosted/);
+both are licensed, opt-in offerings.
+
+<!-- TODO(#115): confirm the canonical tap and install-script URL after the org
+     move (firekeeper-ai/... below vs DanBradbury/...). Do not add a Firekeeper
+     Menu Bar install command until its install path is confirmed. -->
+
 ## Choose one installation method
 
 These methods install a prebuilt binary; you do not need Go.

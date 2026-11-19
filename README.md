@@ -10,11 +10,34 @@ and check token usage without hunting through terminal tabs. Firekeeper
 discovers **Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode,
 Gemini CLI, and Cursor CLI** running on your machine.
 
-**Free and open source. No Firekeeper account, server, or agent wrappers
-required.** Launch your agents as usual, then open `firekeeper` beside them.
-The terminal dashboard reads local session data without uploading it;
+**The Firekeeper CLI and its terminal dashboard are free and open source.
+No Firekeeper account, server, or agent wrappers required.** Launch your
+agents as usual, then open `firekeeper` beside them. The terminal dashboard
+reads local session data without uploading it;
 [usage lookups and update checks](https://firekeeper.ai/docs/usage/#network)
 can contact the network.
+
+Two tiers:
+
+- **Free and open source (Apache 2.0):** the Firekeeper CLI, including the
+  terminal dashboard, the local CLI tools, and the opt-in reporting commands
+  (`login`, `report`, `backfill`, `daemon`, `whoami`, `logout`).
+- **Licensed, opt-in (not Apache 2.0):**
+  [Firekeeper Menu Bar](https://firekeeper.ai/docs/menu-bar/), a macOS menu
+  bar app; and the web dashboard, served by
+  [Firekeeper Server](https://firekeeper.ai/docs/server/). The web dashboard
+  is free in free local mode (this machine, loopback, one user, no license
+  key); remote or shared use needs a Personal, Team, or Enterprise license.
+  The [Hosted dashboard](https://firekeeper.ai/docs/hosted/) is the same web
+  dashboard, operated by Lucky Daisy: buy a license, open the signup link
+  emailed to the license address, sign in, then run `firekeeper login`.
+
+<!-- TODO(#115): confirm which license tiers include Firekeeper Menu Bar, how
+     it is installed and launched, and which paid tiers receive the Hosted
+     signup email. Do not add install commands for it until confirmed. -->
+<!-- TODO(#115): confirm the canonical GitHub and Homebrew paths after the org
+     move (firekeeper-ai/... vs DanBradbury/...). The badges and commands here
+     already use firekeeper-ai/...; change all public references together. -->
 
 [Install](#install) · [First run](#first-run) ·
 [Usage guides](https://firekeeper.ai/docs/) ·
@@ -22,8 +45,9 @@ can contact the network.
 
 ## Install
 
-Choose **one** method. All three install a prebuilt binary; no Go toolchain
-is needed.
+Choose **one** method. All three install a prebuilt binary of the Firekeeper
+CLI; no Go toolchain is needed. They do not install Firekeeper Menu Bar or
+sign you up for the Hosted dashboard.
 
 **macOS — Homebrew**
 
@@ -236,17 +260,24 @@ for linking a machine, choosing providers, importing history, and installing
 the optional background reporter. Redaction is best effort, and the server
 operator can read what you send.
 
-### The dashboard server
+<a id="the-dashboard-server"></a>
+### Firekeeper Server and the web dashboard
 
-`firekeeper-server` is a separate commercial product from Lucky Daisy LLC
-for browsing, searching, and charting reported sessions in a browser. It is
-not part of this repository or required by the terminal dashboard, which
-uses it only to render a session as HTML when you press `e` in the chat view.
-**It is free to run for yourself on this machine** without a license key;
-team, remote, or hosted use requires a license.
+Firekeeper Server (`firekeeper-server`) is a separate commercial product from
+Lucky Daisy LLC that serves the web dashboard: browsing, searching, and
+charting reported sessions in a browser. It is not part of this repository or
+required by the terminal dashboard, which uses it only to render a session as
+HTML when you press `e` in the chat view (no license key, nothing uploaded).
+**Free local mode:** it is free to run for yourself on this machine, on
+loopback, for one user, without a license key. Remote or shared use of a
+self-hosted server needs a license. See the
+[Hosted dashboard](https://firekeeper.ai/docs/hosted/) if you would rather not
+run it yourself. `firekeeper login` with no `--server` links this machine to
+the Hosted dashboard; pass `--server URL` for a self-hosted server.
 
-Run `firekeeper serve` to launch it. If the server is missing, release builds
-offer to download it and ask for confirmation first. See
+Run `firekeeper serve` to launch it. <!-- TODO(#115): README and
+docs/reference.md have disagreed on whether `serve` in current release builds
+offers to download a missing server; confirm before stating it here. --> See
 [server installation, updates, and license configuration](docs/reference.md#installing-the-server-from-serve)
 or [server plans](https://firekeeper.ai/#pricing).
 
@@ -263,6 +294,10 @@ are the stable, importable pieces of that contract.
 
 - [Usage guides](https://firekeeper.ai/docs/): quick start, everyday workflows,
   usage data, keyboard shortcuts, and troubleshooting
+- Licensed, opt-in:
+  [Firekeeper Menu Bar](https://firekeeper.ai/docs/menu-bar/),
+  [Hosted dashboard](https://firekeeper.ai/docs/hosted/), and
+  [Firekeeper Server](https://firekeeper.ai/docs/server/)
 - [Install and uninstall](docs/install.md)
 - [Reference](docs/reference.md): terminal dashboard, reporting, the daemon,
   and configuration

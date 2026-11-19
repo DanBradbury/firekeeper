@@ -499,3 +499,11 @@ footer.section { padding-top: 40px; padding-bottom: 56px; }
 .process-demo-bar button[data-process-demo-pause]:hover { background: var(--surface); }
 .process-demo-status { min-height: 1.4em; }
 @media (max-width: 560px) { .process-demo-terminal { padding: 4px; } }
+
+/* Marketing refresh: FAQ list, a lone last grid cell, nested lists in feature copy */
+.faq > div { max-width: 78ch; margin-top: 32px; }
+.faq h3 { margin: 28px 0 6px; font-size: 16px; }
+.faq p { margin: 0; font-size: 15px; color: var(--muted); }
+.cells > div:last-child:nth-child(3n+1) { grid-column: 1 / -1; border-right: 0; }
+.feature-head ul:not(.legend):not(.keys) { margin: 12px 0 0; padding-left: 20px; font-size: 14.5px; color: var(--muted); }
+.feature-head ul:not(.legend):not(.keys) li { margin-top: 8px; }

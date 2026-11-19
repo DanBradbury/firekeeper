@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <script>(function(){try{var t=localStorage.getItem('fk-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}})();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Firekeeper – one terminal dashboard for your coding agents</title>
-<meta name="description" content="See which coding agents need attention, read conversations, and track token usage. Free, open-source terminal dashboard for Claude Code, Codex, Copilot CLI, and more.">
+<title>Firekeeper – your coding agents in the menu bar, terminal, and browser</title>
+<meta name="description" content="See which coding agents need attention, read their replies, and track token usage. The terminal dashboard is free and open source; Firekeeper Menu Bar and the web dashboard are licensed, opt-in. Works with Claude Code, Codex, Copilot CLI, and more.">
 <link rel="canonical" href="https://firekeeper.ai/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -14,22 +14,33 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Firekeeper">
 <meta property="og:url" content="https://firekeeper.ai/">
-<meta property="og:title" content="Firekeeper: one terminal dashboard for your coding agents">
-<meta property="og:description" content="See which agents need attention, read their replies, and check token usage. Free and open source. No Firekeeper account, server, or agent wrappers required.">
+<meta property="og:title" content="Firekeeper: your coding agents in the menu bar, terminal, and browser">
+<meta property="og:description" content="See which agents need attention, read their replies, and check token usage. The terminal dashboard is free and open source with no account, server, or agent wrappers. Firekeeper Menu Bar and the web dashboard are licensed, opt-in.">
 <meta property="og:image" content="https://firekeeper.ai/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Firekeeper's terminal dashboard listing coding agent sessions">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Firekeeper: one terminal dashboard for your coding agents">
-<meta name="twitter:description" content="See which agents need attention, read their replies, and check token usage. Free and open source. No Firekeeper account, server, or agent wrappers required.">
+<meta name="twitter:title" content="Firekeeper: your coding agents in the menu bar, terminal, and browser">
+<meta name="twitter:description" content="See which agents need attention, read their replies, and check token usage. The terminal dashboard is free and open source with no account, server, or agent wrappers. Firekeeper Menu Bar and the web dashboard are licensed, opt-in.">
 <meta name="twitter:image" content="https://firekeeper.ai/og.png">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","url":"https://firekeeper.ai/","description":"Free, open-source terminal dashboard for monitoring local coding agents, reading conversations, and checking token usage. Works with Claude Code, Codex, Copilot CLI, Cursor CLI, Gemini CLI, OpenCode, and Kimi Code.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Firekeeper","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows","url":"https://firekeeper.ai/","description":"The Firekeeper CLI is a free, open-source terminal dashboard for monitoring local coding agents, reading conversations, and checking token usage. Works with Claude Code, Codex, Copilot CLI, Cursor CLI, Gemini CLI, OpenCode, and Kimi Code.","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <link rel="preload" href="assets/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/JetBrainsMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
+<!-- TODO(#115, open question 1): confirm the canonical GitHub and Homebrew paths
+     after the org move (firekeeper-ai/firekeeper + firekeeper-ai/homebrew-tap vs
+     DanBradbury/...). Every public link and install command on this page, in
+     /docs/, and in the Markdown docs currently uses firekeeper-ai/...; change
+     them all together or not at all. -->
+<!-- TODO(#115, open question 2): which license tiers include Firekeeper Menu Bar,
+     how it is installed and launched, and whether it is the same key as
+     Firekeeper Server. Until confirmed there is no Menu Bar install command here. -->
+<!-- TODO(#115, open question 3): which paid SKUs receive the Hosted signup-link
+     email (Personal renewals, Team monthly renewals, Enterprise sold through
+     contact), and whether the link is in the same email as the license key. -->
 <!-- Media slots: every <figure data-slot> is a placeholder until recordings land.
      Its id matches an entry in RECORDING-TODO.md. To ship a clip, replace the
      .label block with:
@@ -45,13 +56,14 @@
     <a class="brand" href="#top"><img src="/favicon.svg" alt="" width="20" height="20">Firekeeper</a>
     <ul>
       <li class="opt"><a href="#features">Features</a></li>
-      <li class="opt"><a href="#providers">Providers</a></li>
+      <li class="opt"><a href="#providers">Agents</a></li>
+      <li class="opt"><a href="#hosted">Hosted</a></li>
       <li class="opt"><a href="#pricing">Pricing</a></li>
       <li class="opt"><a href="#privacy">Privacy</a></li>
       <li class="opt"><a href="/docs/">Docs</a></li>
       <li class="gh"><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></li>
       <li><button class="theme" type="button" aria-label="Toggle color theme" data-theme-toggle><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg></button></li>
-      <li><a class="btn btn-primary" href="#install">Install</a></li>
+      <li><a class="btn btn-primary" href="#install">Install free</a></li>
     </ul>
   </div>
 </header>
@@ -63,12 +75,16 @@
   <section class="section hero">
     <a class="eyebrow reveal" href="#pricing"><span class="dot active"></span><b>Launch pricing</b> Personal license $29 for the first 100 buyers</a>
     <h1 class="reveal d1">Your coding agents. <span data-rotate="menu bar|terminal|browser">In your menu bar, terminal, and browser.</span></h1>
-    <p class="lede reveal d2">See which agents are working or need attention, read their replies, and check token usage without hunting through tabs. One tool, three views: a terminal dashboard, a macOS menu bar app, and an optional web dashboard. Keep launching your agents as usual; run <code>firekeeper</code> beside them.</p>
+    <p class="lede reveal d2">See which coding agents are working or need attention, read their latest replies, and check token usage. The terminal dashboard is free and open source: keep launching your agents as usual, then run <code>firekeeper</code> beside them. No account, server, or wrappers required. Firekeeper Menu Bar on macOS and the web dashboard are licensed, opt-in offerings. Use the web dashboard in free local mode, self-host Firekeeper Server, or use the Hosted dashboard we operate.</p>
     <div class="cta reveal d3">
       <a class="btn btn-ember" href="#install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>Install free</a>
+      <a class="btn btn-outline" href="#pricing">See pricing</a>
+      <!-- TODO(#115): confirm whether the canonical tap is now firekeeper-ai/homebrew-tap
+           (this command already uses firekeeper-ai/tap) or DanBradbury/tap. -->
       <div class="cmd"><span class="p">$</span><code>brew install firekeeper-ai/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy the Homebrew command" data-copy="brew install firekeeper-ai/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
     </div>
-    <p class="meta reveal d3">Free and open source, Apache 2.0 · macOS, Linux (best effort), Windows 10 1809+ and 11 · No account, server, or wrappers · <a href="/docs/usage/#network">Usage and update checks can contact the network</a></p>
+    <p class="meta reveal d3">This installs the Firekeeper CLI (the terminal dashboard), not Firekeeper Menu Bar.</p>
+    <p class="meta reveal d3">The terminal dashboard is free and open source, Apache 2.0 · Firekeeper Menu Bar and the web dashboard are licensed · macOS, Linux (best effort), Windows 10 1809+ and 11 · <a href="/docs/usage/#network">Usage and update checks can contact the network</a></p>
 
     <!-- The menu bar app as a live DOM mock, not a recording: menubar-demo.js
          drives it, and the markup below is a complete static panel without it. -->
@@ -197,14 +213,34 @@
       <figcaption>A live demo with sample data, not a recording. Sessions change state on their own; pause it with the button in the panel.</figcaption>
     </figure>
 
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="section" id="how">
+    <h2>How it works</h2>
+    <p class="lede">Keep launching agents the way you already do. Firekeeper watches them; it does not wrap them. Start with the free terminal dashboard.</p>
     <ol class="steps" style="margin-top:28px">
-      <li><h3><span class="dot active"></span>Start agents as usual</h3><p>Claude Code, Codex, Copilot CLI and the rest, with their normal commands and sign-in.</p></li>
-      <li><h3><kbd>firekeeper</kbd> Open it beside them</h3><p>In another terminal, from any directory. Sessions show up within a couple of seconds.</p></li>
-      <li><h3><kbd>c</kbd> Read the latest reply</h3><p>Follow the conversation live, then <kbd>Esc</kbd> back or <kbd>s</kbd> to jump to that terminal.</p></li>
+      <li><h3><span class="dot active"></span>Start agents as usual</h3><p>Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, or Cursor CLI, with their normal commands and sign-in.</p></li>
+      <li><h3><kbd>firekeeper</kbd> Open the terminal dashboard beside them</h3><p>In another terminal, from any directory, run <code>firekeeper</code>. Sessions show up within a couple of seconds.</p></li>
+      <li><h3><kbd>c</kbd> Read the reply, then jump back</h3><p>Press <kbd>c</kbd> to follow the conversation live. Press <kbd>s</kbd> to focus that agent's terminal (Ghostty, Terminal.app, and iTerm2 on macOS; on Windows the window is raised and you pick the tab). Reply and approve tool calls in the agent's own terminal.</p></li>
     </ol>
+    <p class="fine">The same sessions can also appear in two licensed views: <b>Firekeeper Menu Bar</b> on macOS, and the <b>web dashboard</b> in a browser (free local mode, self-hosted Firekeeper Server, or the Hosted dashboard). Neither is required to use the terminal dashboard.</p>
     <ul class="agents" aria-label="Supported agent CLIs">
       <li>Works with</li><li>Claude Code</li><li>Codex</li><li>GitHub Copilot CLI</li><li>Cursor CLI</li><li>Gemini CLI</li><li>OpenCode</li><li>Kimi Code</li>
     </ul>
+  </section>
+
+  <!-- THREE VIEWS -->
+  <section class="section" id="views">
+    <!-- TODO(#115): the headline below is approved v4 copy, but the web dashboard
+         is also free in free local mode. Revisit "Only the terminal is free"
+         with the project owner; the cell copy states the free local mode. -->
+    <h2>Three views. Only the terminal is free.</h2>
+    <div class="cells">
+      <div><h3>Terminal dashboard</h3><p>Free and open source. Run <code>firekeeper</code> for a keyboard-driven list of every agent, with live replies and usage.</p></div>
+      <div><h3>Firekeeper Menu Bar</h3><p>Licensed, macOS. See which agents are working or need attention, and jump to their terminals, from the menu bar.</p></div>
+      <div><h3>Web dashboard</h3><p>Licensed. Browse, search, and chart reported history in a browser. Run it in free local mode on this machine, self-host Firekeeper Server (a license is required for remote or shared use), or use the <a href="#hosted">Hosted dashboard</a> we operate.</p></div>
+    </div>
   </section>
 
   <!-- FEATURE: processes -->
@@ -212,9 +248,10 @@
     <div class="feature-head">
       <div><span class="kicker">Processes</span><h2>See what is running</h2></div>
       <div>
-        <p><b>Every agent, one list.</b> A keyboard-driven terminal UI finds your agent processes, groups each with its children, and shows state, model, working directory, Git branch, and tokens. It refreshes every two seconds.</p>
+        <p><b>Every agent, one list.</b> The terminal dashboard finds your agent processes, groups each runtime with its children, and shows state, model, working directory, Git branch, and tokens. It refreshes every two seconds.</p>
+        <p>States (Active, Waiting, Needs input) describe the latest event Firekeeper can see, not ground truth. Not every agent exposes every state.</p>
         <ul class="legend"><li><span class="dot active"></span>Active</li><li><span class="dot"></span>Waiting</li><li><span class="dot input"></span>Needs input</li></ul>
-        <ul class="keys"><li><kbd>↑</kbd><kbd>↓</kbd> Select</li><li><kbd>Enter</kbd> Expand</li><li><kbd>Tab</kbd> Switch view</li></ul>
+        <ul class="keys"><li><kbd>↑</kbd><kbd>↓</kbd> Select</li><li><kbd>Enter</kbd> Expand</li><li><kbd>Tab</kbd> Switch view</li><li><kbd>?</kbd> Lists every key</li></ul>
       </div>
     </div>
     <!-- The real dashboard, compiled to WebAssembly (cmd/demo-wasm) and run on
@@ -247,8 +284,8 @@
     <div class="feature-head">
       <div><span class="kicker">Conversation</span><h2>Read the reply. Jump to the terminal.</h2></div>
       <div>
-        <p><b>No more tab hunting.</b> Select a session and press <kbd>c</kbd> to read its available prompts and replies, following new messages live. Press <kbd>Esc</kbd> to return.</p>
-        <p>Press <kbd>s</kbd> to focus the terminal holding that session: Ghostty, Terminal.app, and iTerm2 on macOS. On Windows it raises the terminal window; you pick the tab. Reply and approve tool calls in the agent's own terminal.</p>
+        <p><b>No more tab hunting.</b> Select a session and press <kbd>c</kbd> to read available prompts and replies, following new messages live. Press <kbd>Esc</kbd> to return. Press <kbd>s</kbd> to focus the terminal holding that session, then do the work there.</p>
+        <p>On macOS, Firekeeper Menu Bar is a licensed way to see those same states and jump to the terminal without opening the terminal dashboard.</p>
       </div>
     </div>
     <figure class="frame" id="switch-terminal">
@@ -269,8 +306,8 @@
     <div class="feature-head">
       <div><span class="kicker">Usage</span><h2>Understand usage</h2></div>
       <div>
-        <p><b>Local totals, provider limits, side by side.</b> Compare local token history by model for Codex, Copilot CLI, Kimi Code, and Claude Code. See provider limits where available, separately from local totals.</p>
-        <p>Every session also gets a per-session token breakdown: input, output, cache read, and cache write. <a href="/docs/usage/">Understand the data sources</a>.</p>
+        <p><b>Local totals and provider limits, side by side.</b> Compare local token history by model for Codex, GitHub Copilot CLI, Kimi Code, and Claude Code. See provider limits where the agent makes them available, separately from local totals. Each session also gets a per-session breakdown: input, output, cache read, and cache write.</p>
+        <p>Local token totals can be incomplete and are not an account-wide bill. <a href="/docs/usage/">Understand the data sources</a>.</p>
       </div>
     </div>
     <figure class="frame" id="usage-tab">
@@ -288,47 +325,58 @@
 
   <!-- ALSO IN THE BOX -->
   <section class="section">
-    <h2>Also in the box</h2>
+    <h2>Also in the Firekeeper CLI</h2>
     <div class="cells">
-      <div><h3>Nothing to configure</h3><p>No login, server, or daemon for the local dashboard. Quitting Firekeeper leaves your agents running.</p></div>
+      <div><h3>Nothing to configure for the terminal dashboard</h3><p>No login, server, or daemon. Quitting Firekeeper leaves your agents running.</p></div>
       <div><h3>Read-only on provider data</h3><p>Firekeeper never changes your agents' databases, logs, or launch commands.</p></div>
       <div><h3>Ignore whole repos</h3><p>A repository containing <code>.firekeeper-ignore</code>, or an excluded directory, is never read.</p></div>
-      <div><h3>Sessions as JSON</h3><p><code>firekeeper snapshot --json</code> prints every discovered session for your own scripts.</p></div>
-      <div><h3>Keys for everything</h3><p><kbd>Tab</kbd> switches Processes, Overview, and Usage. <kbd>?</kbd> lists every key, <kbd>q</kbd> quits.</p></div>
+      <div><h3>Sessions as JSON</h3><p><code>firekeeper snapshot --json</code> prints every discovered session for your own scripts. <code>firekeeper usage --json</code> prints quota windows where a provider reports them.</p></div>
+      <div><h3>Keys for everything</h3><p><kbd>Tab</kbd> switches Processes, Overview, and Usage. <kbd>?</kbd> lists every key. <kbd>q</kbd> quits.</p></div>
       <div><h3>Verified installs</h3><p>The install scripts check the binary against the release's SHA-256 checksums. No <code>sudo</code> or admin rights.</p></div>
+      <div><h3>Session HTML export</h3><p>With Firekeeper Server installed locally, press <kbd>e</kbd> in the chat view to save a standalone HTML page. No license key, and nothing is uploaded.</p></div>
     </div>
   </section>
 
   <!-- PROVIDERS -->
   <section class="section" id="providers">
     <div class="feature-head">
-      <div><h2>Seven agent CLIs, one view</h2></div>
+      <div><h2>Seven agents, one view</h2></div>
       <div><p>Process discovery works without any integration. Each provider also has an adapter that reads its local session data, read-only.</p></div>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Provider</th><th>Process discovery</th><th>State &amp; metadata</th><th>Usage tab</th><th>Optional transcript upload</th></tr></thead>
+        <thead><tr><th>Agent</th><th>Process discovery</th><th>State &amp; metadata</th><th>Usage tab</th><th>Optional transcript upload</th></tr></thead>
         <tbody>
           <tr><td>Codex</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Limits and history</td><td class="y">Yes</td></tr>
           <tr><td>GitHub Copilot CLI</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Local history and plan details</td><td class="y">Yes</td></tr>
           <tr><td>Claude Code</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Limits and token history</td><td class="y">Yes</td></tr>
           <tr><td>Kimi Code</td><td class="y">Yes</td><td>Metadata</td><td class="y">Token history</td><td class="y">Yes</td></tr>
           <tr><td>OpenCode</td><td class="y">Yes</td><td class="y">Yes</td><td>No</td><td class="y">Yes</td></tr>
-          <tr><td>Gemini CLI</td><td class="y">Yes</td><td>Yes, no NEEDS INPUT</td><td>No</td><td class="y">Yes</td></tr>
-          <tr><td>Cursor CLI</td><td class="y">Yes</td><td>Yes, no NEEDS INPUT</td><td>No</td><td>Yes, no timestamps or tokens</td></tr>
+          <tr><td>Gemini CLI</td><td class="y">Yes</td><td>Yes, no Needs input</td><td>No</td><td class="y">Yes</td></tr>
+          <tr><td>Cursor CLI</td><td class="y">Yes</td><td>Yes, no Needs input</td><td>No</td><td>Yes, no timestamps or tokens</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="note">States describe the latest event Firekeeper can see, not ground truth. Provider data formats can change between CLI releases, and adapters evolve with them. macOS is the main target; Linux is best effort; Windows is supported with limits and has had the least real-world use.</p>
+    <p class="note">States describe the latest event Firekeeper can see, not ground truth. Provider data formats can change between CLI releases, and adapters evolve with them. macOS is the main target; Linux is best effort; Windows is supported with limits and has had the least real-world use. Firekeeper Menu Bar is macOS only.</p>
   </section>
 
-  <!-- REPORTING / WEB DASHBOARD -->
+  <!-- LICENSED VIEWS / WEB DASHBOARD -->
   <section class="section feature" id="reporting">
     <div class="feature-head">
-      <div><span class="kicker">Optional · Reporting</span><h2>Stay local. Add a web dashboard only if you need it.</h2></div>
+      <div><span class="kicker">Optional · Licensed</span><h2>Stay local by default. Add licensed views only if you need them.</h2></div>
       <div>
-        <p><b>The terminal dashboard is complete on its own.</b> Sending history to a server is a separate opt-in workflow: <code>backfill</code> and the daemon read your agents' local history, redact it, and upload it to the dashboard server you name, over an open API.</p>
-        <p>Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. If you enable uploads, session metadata and full transcripts go through best-effort redaction, and the server's operator can read them. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
+        <p><b>The terminal dashboard is complete on its own</b> and uploads no conversations. Licensed, opt-in offerings sit beside it:</p>
+        <ul>
+          <li><b>Firekeeper Menu Bar</b> (macOS): watch sessions from the menu bar. A license is required for full use. <!-- TODO(#115): confirm install path and which license tiers include it. --></li>
+          <li><b>Web dashboard</b>, three ways:
+            <ul>
+              <li><b>Free local mode:</b> you run Firekeeper Server on this machine, on loopback, for one user, with no license key. Every dashboard feature works. It will not bind to a public address or serve other accounts until you add a license.</li>
+              <li><b>Self-hosted Firekeeper Server:</b> you run the web dashboard on a server you control. A Personal, Team, or Enterprise license is required for remote or shared use.</li>
+              <li><b>Hosted dashboard:</b> we run the web dashboard for you at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>. Buy a license, open the signup link we email to the license address, sign in, then run <code>firekeeper login</code>. See the <a href="#hosted">Hosted dashboard</a> section below.</li>
+            </ul>
+          </li>
+        </ul>
+        <p>Uploading history is a separate workflow: <code>backfill</code> and the background reporter read local history, redact it on your machine, and send it only to the server you use: Firekeeper Server you run, or the Hosted dashboard. Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. Redaction is best effort, and whoever operates the server can read what is uploaded. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
       </div>
     </div>
     <figure class="frame" id="web-dashboard">
@@ -340,27 +388,85 @@
           </video>
         </div>
       </div>
-      <figcaption>The commercial dashboard server, with demo data. Nothing uploads until you name a server and the providers to send.</figcaption>
+      <figcaption>The web dashboard, with demo data. Nothing uploads until you choose a server and the agents to send.</figcaption>
     </figure>
+  </section>
+
+  <!-- HOSTED DASHBOARD -->
+  <section class="section feature" id="hosted">
+    <div class="feature-head">
+      <div><span class="kicker">Hosted dashboard</span><h2>Hosted dashboard</h2></div>
+      <div>
+        <p>Want a browser view without running a server? The <b>Hosted dashboard</b> is the web dashboard, operated by Lucky Daisy, at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>.</p>
+        <p>The terminal dashboard stays free, local, and open source. Nothing is uploaded until you opt in. There is no open sign-up and no request-access form.</p>
+      </div>
+    </div>
+    <h3>How to get access</h3>
+    <ol class="steps" style="margin-top:20px">
+      <li><h3>Buy a license</h3><p>Choose Personal, Team, or Enterprise in <a href="#pricing">Pricing</a>.</p></li>
+      <li><h3>Check your email</h3><p>Your signup link is sent to the address the license is registered to.</p></li>
+      <li><h3>Sign in</h3><p>Sign in to the Hosted dashboard with that link.</p></li>
+      <li><h3>Run <code>firekeeper login</code></h3><p>Run it on this machine, then choose which agents to report. Preview first with <code>firekeeper backfill --all --dry-run</code>.</p></li>
+    </ol>
+    <p class="fine">Already have an account? <a href="https://dashboard.firekeeper.ai">Sign in</a> at the Hosted dashboard, then run <code>firekeeper login</code> on this machine if it is not linked yet.</p>
+    <h3 style="margin-top:32px">Choose how you use the web dashboard</h3>
+    <div class="cells">
+      <div><h3>Free local mode</h3><p>You run Firekeeper Server on this machine only, with no license key. One user, loopback, every dashboard feature. No Hosted account required.</p></div>
+      <div><h3>Self-hosted Firekeeper Server</h3><p>You run the web dashboard on a server you control. A Personal, Team, or Enterprise license is required for remote or shared use.</p></div>
+      <div><h3>Hosted dashboard</h3><p>We run the web dashboard for you. After you buy a license, we email a signup link to the address the license is registered to. Sign in with that link, then run <code>firekeeper login</code>.</p></div>
+    </div>
+    <div class="cta">
+      <a class="btn btn-ember" href="#pricing">Buy a license</a>
+      <a class="btn btn-outline" href="https://dashboard.firekeeper.ai">Sign in (existing customers)</a>
+      <a class="btn btn-outline" href="/docs/hosted/">How login and reporting work</a>
+    </div>
+    <p class="fine"><code>firekeeper login</code>, with no <code>--server</code>, links this machine to the Hosted dashboard. Preview a backfill with <code>--dry-run</code> before anything is uploaded. Redaction is best effort; as the operator, Lucky Daisy can read what you send.</p>
+    <!-- TODO(#115, open question 3): confirm that every paid tier receives the hosted
+         signup email, including Personal update renewals and Enterprise licenses sold
+         through the contact form. The fulfillment code we could read emails a license
+         key for all paid SKUs, but that template does not yet include a signup link.
+         Also confirm whether the signup link arrives in the same email as the license key. -->
+    <!-- TODO(#115, open question 4): keep the early-access disclosure below until the
+         Hosted Instance terms in the EULA are updated (a private-repo follow-up). -->
+    <p class="fine">There is no separate published Hosted plan or SLA; access follows a purchased license. The license key is emailed within one business day. The current Hosted Instance terms still describe early-access service with no availability, support, or data-retention commitment, and say data may be wiped at any time without notice. See the <a href="/terms">terms</a>.</p>
+  </section>
+
+  <!-- WHO IT'S FOR -->
+  <section class="section" id="who">
+    <h2>Who it's for</h2>
+    <p class="lede">Firekeeper is for people who already run coding agents in the terminal, and especially for people who run more than one at a time.</p>
+    <div class="cells">
+      <div><h3>Individual developers</h3><p>You juggle Claude Code, Codex, Copilot, or other agent CLIs across projects and want one list instead of a pile of tabs. The terminal dashboard is enough, and it is free.</p></div>
+      <div><h3>macOS users who want that list in the menu bar</h3><p>That is Firekeeper Menu Bar, a licensed offering, not part of the open-source CLI.</p></div>
+      <div><h3>People who care about usage</h3><p>You want local token history next to the provider limits you already pay for, without treating Firekeeper's numbers as a bill.</p></div>
+      <div><h3>People who want a browser view without operating a server</h3><p>That is the Hosted dashboard at dashboard.firekeeper.ai. After you buy a license, we email a signup link to the address the license is registered to. It is not the free terminal dashboard, and it is not a self-hosted Firekeeper Server.</p></div>
+      <div><h3>Teams and organizations</h3><p>You want a shared web dashboard of reported sessions on a server you control. That is self-hosted Firekeeper Server, with a Team or Enterprise license: not the open-source CLI, and not the Hosted dashboard.</p></div>
+      <div><h3>Operators who need to stay local</h3><p>If transcripts should not leave the machine, use only the Firekeeper CLI. You never have to turn reporting on.</p></div>
+    </div>
+    <p class="note">It is not a new way to launch agents, not a terminal multiplexer, and not a hosted agent runner.</p>
   </section>
 
   <!-- PRIVACY -->
   <section class="section" id="privacy">
     <div class="feature-head">
-      <div><h2>Your transcripts, your rules</h2></div>
-      <div><p>The terminal dashboard reads provider data locally and uploads no conversations. <a href="/docs/usage/#network">Provider usage lookups and release checks can contact the network.</a> Transcript reporting is separate and opt-in.</p></div>
+      <div><h2>Privacy, in plain terms</h2></div>
+      <div><p>The terminal dashboard reads provider data locally and uploads no conversations. <a href="/docs/usage/#network">Provider usage lookups and release checks can contact the network.</a></p></div>
     </div>
     <div class="facts">
-      <div><h3>Opt-in per provider</h3><p>An unconfigured report or daemon sends nothing. You name each provider you allow.</p></div>
+      <div><h3>Opt-in per agent</h3><p>An unconfigured report or background reporter sends nothing. You name each agent you allow.</p></div>
       <div><h3>Redacted first</h3><p>Every event passes through redaction before it leaves the machine.</p></div>
-      <div><h3>You pick the server</h3><p>Uploads go only to the server you name, over HTTPS unless it is on this machine, with a token bound to this machine.</p></div>
+      <div><h3>You pick the destination</h3><p>Uploads go only to the server you use (Firekeeper Server you run, or the Hosted dashboard) over HTTPS unless it is on this machine, with a token bound to this machine. <code>firekeeper login</code> with no <code>--server</code> targets the Hosted dashboard.</p></div>
     </div>
     <p class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">Read what is uploaded and what is not caught</a> before you turn uploads on.</p>
+    <!-- TODO(#115, open question 1): confirm the GitHub URL (firekeeper-ai/firekeeper vs DanBradbury/firekeeper). -->
   </section>
 
   <!-- INSTALL -->
   <section class="section" id="install">
-    <div class="head-row"><h2 style="font-size:clamp(30px,3.6vw,40px);letter-spacing:-.025em">Install</h2><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper/releases">All releases</a></div>
+    <div class="head-row"><h2 style="font-size:clamp(30px,3.6vw,40px);letter-spacing:-.025em">Install the free terminal dashboard</h2><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper/releases">All releases</a></div>
+    <p class="fine" style="margin:0 0 24px">These commands install only the Firekeeper CLI. They do not install Firekeeper Menu Bar or sign you up for the Hosted dashboard.</p>
+    <!-- TODO(#115): confirm the tap and the install-script URL after the org move
+         (both commands below already use firekeeper-ai). Left as is until confirmed. -->
     <div class="rows">
       <div class="row">
         <h3>macOS<small>Homebrew · recommended</small></h3>
@@ -397,6 +503,11 @@
       <div><strong>Learn the controls</strong>Press <kbd>?</kbd> inside the dashboard</div>
       <div><strong>Remove later</strong><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md#uninstall">Uninstall steps</a></div>
     </div>
+    <h3 style="margin-top:40px">Firekeeper Menu Bar (macOS, licensed)</h3>
+    <!-- TODO(#115, open question 2): confirm the install and launch path for Firekeeper
+         Menu Bar and which license the user needs first, then add a short, separate
+         install note here. Do not invent an install command. -->
+    <p class="fine">Firekeeper Menu Bar is a separate, licensed macOS app. It is not part of the open-source CLI and is not installed by the commands above. A license is required for full use. <a href="/docs/menu-bar/">About Firekeeper Menu Bar</a>.</p>
     <p class="fine">The script commands download and execute code. Prefer to inspect first? See <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md">verification, version pinning, and manual installation</a>. <a href="/docs/quick-start/#install">Read the installation steps without the command pills</a>.</p>
   </section>
 
@@ -404,32 +515,39 @@
   <section class="section" id="pricing">
     <div class="feature-head">
       <div><h2>Pricing</h2></div>
-      <div><p>The terminal dashboard is free and open source, with no subscription. The separate commercial web dashboard is free for local use on your own machine. For remote or shared use, pick a server license.</p></div>
+      <div>
+        <p>The Firekeeper CLI and terminal dashboard are free and open source, with no subscription. Firekeeper Menu Bar and the web dashboard are licensed, opt-in offerings. Firekeeper Server, which provides the web dashboard, is also free in free local mode on your own machine. For remote or shared use of a self-hosted web dashboard, and for Firekeeper Menu Bar, pick a license.</p>
+        <p>The prices below are the published license prices. They cover self-hosted Firekeeper Server beyond free local mode. Hosted dashboard access is granted after a license purchase, through a signup link emailed to the address the license is registered to. There is no separate published Hosted plan, and no open sign-up.</p>
+        <!-- TODO(#115): confirm which published tiers include Firekeeper Menu Bar, and say
+             so on the relevant cards. Also confirm that Hosted access applies to every paid
+             tier (including Personal renewals and Enterprise sold through contact). Do not
+             invent a Hosted-only price, free-tier limit, or SLA. -->
+      </div>
     </div>
     <div class="tiers">
       <div class="tier">
-        <h3>Free</h3><p class="for">Terminal dashboard</p>
+        <h3>Free</h3><p class="for">Firekeeper CLI</p>
         <div class="price">$0</div>
-        <ul><li>Terminal dashboard for seven agent CLIs</li><li>Local chat history and usage</li><li>Open source, Apache 2.0</li></ul>
-        <a class="btn btn-outline" href="#install">Install</a>
+        <ul><li>Terminal dashboard for seven agent CLIs</li><li>Local chat history and usage, plus the other local CLI tools</li><li>Open source, Apache 2.0</li><li>No license key, account, or server</li><li>Does not include Firekeeper Menu Bar or remote/shared web dashboard use</li></ul>
+        <a class="btn btn-outline" href="#install">Install free</a>
       </div>
       <div class="tier featured">
         <span class="tag">Launch price · first 100</span>
-        <h3>Personal</h3><p class="for">Web dashboard server for one</p>
+        <h3>Personal</h3><p class="for">Web dashboard for one</p>
         <div class="price"><s>$49</s>$29 <small>one-time</small></div>
-        <ul><li>A year of updates included</li><li>Then $29 a year for updates</li></ul>
+        <ul><li>Firekeeper Server beyond free local mode, for one seat</li><li>A year of updates included</li><li>Then $29 a year for updates</li><!-- TODO(#115): Firekeeper Menu Bar: confirm whether this tier includes it. --></ul>
         <a class="btn btn-ember" href="/buy/personal">Buy Personal</a>
       </div>
       <div class="tier">
         <h3>Team</h3><p class="for">Shared, self-hosted</p>
         <div class="price">$12 <small>per seat / month</small></div>
-        <ul><li>$144 per seat a year, billed annually</li><li>3-seat minimum</li><li>Monthly billing? <a href="/contact">Talk to us</a></li></ul>
+        <ul><li>$144 per seat a year, billed annually</li><li>3-seat minimum</li><li>Shared web dashboard you host</li><li>Monthly billing? <a href="/contact">Talk to us</a></li><!-- TODO(#115, open question 5): a $15 per seat / month price exists internally but has no live Buy button; keep yearly-only until confirmed. --><!-- TODO(#115): Firekeeper Menu Bar: confirm whether this tier includes it. --></ul>
         <a class="btn btn-primary" href="/buy/team-annual">Buy Team, yearly</a>
       </div>
       <div class="tier">
         <h3>Enterprise</h3><p class="for">For larger organizations</p>
         <div class="price"><span class="from">From</span>$10K <small>per year</small></div>
-        <ul><li>Up to 50 seats</li><li>SSO and the fleet agent</li><li>Source review under an NDA</li><li>Data processing agreement</li></ul>
+        <ul><li>Up to 50 seats</li><li>Data processing agreement</li><li>Source review under an NDA</li><!-- TODO(#115, open question 5): SSO and the fleet agent are omitted until confirmed that they ship on Enterprise. --><!-- TODO(#115): Firekeeper Menu Bar: confirm whether this tier includes it. --></ul>
         <a class="btn btn-outline" href="/contact">Talk to us</a>
       </div>
     </div>
@@ -441,26 +559,66 @@
   <section class="section">
     <div class="feature-head">
       <div><h2>The command line</h2></div>
-      <div><p>Plain <code>firekeeper</code> opens the dashboard. Everything else is an explicit subcommand.</p></div>
+      <div><p>Plain <code>firekeeper</code> opens the terminal dashboard. Everything else is an explicit subcommand. These commands are the Firekeeper CLI, which is free; they do not launch Firekeeper Menu Bar.</p></div>
     </div>
-    <div class="cli">
+    <h3 style="margin-top:32px">Always local (Firekeeper CLI)</h3>
+    <div class="cli" style="margin-top:8px">
       <div><code>firekeeper</code><span>Terminal dashboard: Processes, Overview, and Usage</span></div>
-      <div><code>firekeeper login --server URL</code><span>Link this machine with a browser approval</span></div>
+      <div><code>firekeeper snapshot --json</code><span>Print discovered sessions as JSON</span></div>
+      <div><code>firekeeper usage --json</code><span>Print quota windows and reset times, where a provider reports them</span></div>
+      <div><code>firekeeper config show</code><span>Merged configuration, token masked</span></div>
+    </div>
+    <h3 style="margin-top:32px">Opt-in reporting (still the Firekeeper CLI; talks to a server only when you ask)</h3>
+    <div class="cli" style="margin-top:8px">
+      <div><code>firekeeper login</code><span>Link this machine with a browser approval. With no <code>--server</code>, this targets the Hosted dashboard at <code>https://dashboard.firekeeper.ai</code>. Pass <code>--server URL</code> to link to a self-hosted Firekeeper Server instead.</span></div>
       <div><code>firekeeper report</code><span>Upload the sessions running right now</span></div>
       <div><code>firekeeper backfill --all</code><span>Import past sessions from local history</span></div>
       <div><code>firekeeper daemon install</code><span>Report in the background from login</span></div>
       <div><code>firekeeper whoami</code><span>Server, account, and machine this one reports as</span></div>
       <div><code>firekeeper logout</code><span>Revoke and remove this machine's token</span></div>
-      <div><code>firekeeper snapshot --json</code><span>Print discovered sessions as JSON</span></div>
-      <div><code>firekeeper config show</code><span>Merged configuration, token masked</span></div>
+    </div>
+    <h3 style="margin-top:32px">Licensed product launcher</h3>
+    <div class="cli" style="margin-top:8px">
+      <div><code>firekeeper serve</code><span>Start Firekeeper Server (the web dashboard). Free local mode with no key; a license key for remote or shared use.</span></div>
+    </div>
+    <!-- TODO(#115): confirm the command or app path that launches Firekeeper Menu Bar and
+         list it here as a licensed offering, not as a CLI subcommand, unless it actually is one. -->
+    <!-- TODO(#115, open question 6): confirm whether `firekeeper serve` in current release
+         builds offers to auto-download Firekeeper Server. README.md and docs/reference.md
+         have disagreed; neither is claimed on this page. -->
+  </section>
+
+  <!-- FAQ -->
+  <section class="section faq" id="faq">
+    <h2>FAQ</h2>
+    <div>
+      <h3>Is Firekeeper free?</h3>
+      <p>The terminal dashboard (the Firekeeper CLI) is free and open source (Apache 2.0). Firekeeper Menu Bar and the web dashboard are licensed, opt-in offerings. The web dashboard is also free in free local mode on your own machine (loopback, one user). Remote or shared use of a self-hosted web dashboard, and access to the Hosted dashboard, need a purchased license (Personal, Team, or Enterprise). There is no separate published Hosted price, and no open Hosted sign-up.</p>
+      <h3>Do I need an account or a server to use it?</h3>
+      <p>No. Run <code>firekeeper</code> next to your agents. You only need a license for Firekeeper Menu Bar, or a server (one you run, or the Hosted dashboard) if you opt in to the web dashboard or to uploading history.</p>
+      <h3>What is the Hosted dashboard?</h3>
+      <p>The Hosted dashboard is the web dashboard operated by Lucky Daisy at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>. It is not the free terminal dashboard, and it is not self-hosted Firekeeper Server. After you buy a license, we email a signup link to the address the license is registered to. Open that link, sign in, then run <code>firekeeper login</code> and opt in to reporting the agents you choose. Nothing is uploaded until you do. There is no open sign-up and no request-access form. Existing customers can <a href="https://dashboard.firekeeper.ai">sign in</a>.</p>
+      <h3>I bought a license but didn't get a signup link.</h3>
+      <p>The link is sent to the email the license is registered to, the same address on your order. Check that inbox and spam, and allow up to one business day (the time already published for the license-key email). If it still has not arrived, use <a href="/contact">the contact form</a>.</p>
+      <!-- TODO(#115, open question 3): confirm whether the signup link arrives in the same email as the license key. -->
+      <!-- TODO(#115, open question 7): add a published support email here once confirmed; do not invent one. -->
+      <h3>Will it change how I launch my agents?</h3>
+      <p>No. Start Claude Code, Codex, Copilot CLI, and the rest with their usual commands. Firekeeper does not wrap them, replace them, or send them messages. Reply and approve tool calls in the agent's own terminal.</p>
+      <h3>Does Firekeeper upload my transcripts?</h3>
+      <p>Not unless you opt in. The terminal dashboard reads local data only. Reporting commands can upload session metadata and transcripts to a server you use, after best-effort redaction. Preview with <code>--dry-run</code>. The operator of that server can read what you send.</p>
+      <h3>What does a license actually unlock?</h3>
+      <p>A license is for the opt-in products, not for the Firekeeper CLI. The CLI is never license-gated. Firekeeper Menu Bar is a licensed macOS app. Firekeeper Server's web dashboard already runs in free local mode on this machine without a key; a valid Personal, Team, or Enterprise key lets you self-host it for remote or shared use: bind it beyond loopback, and use accounts and tokens. The Hosted dashboard is the same web dashboard, run by us rather than by you; access comes with a purchased license, through a signup link emailed to the license address, not through open sign-up.</p>
+      <!-- TODO(#115, open questions 2 and 3): confirm that every paid tier is included in Hosted access, whether a self-hosted key is the same credential as Hosted access, and which license tiers include Firekeeper Menu Bar. -->
+      <h3>Which platforms are supported?</h3>
+      <p>macOS (Apple Silicon and Intel) is the main target. Linux (amd64 and arm64) is best effort. Windows 10 1809+ and 11 (amd64 and arm64) are supported with documented limits, and have had the least real-world use. Firekeeper Menu Bar is macOS only. Firekeeper is an early-stage project; adapters evolve as the agent CLIs change.</p>
     </div>
   </section>
 
   <!-- CLOSING -->
   <section class="section closing">
     <h2>Keep the fire going.<br>Watch every agent from one place.</h2>
-    <p>Free, open source, and running in a minute.</p>
-    <div class="cta"><a class="btn btn-ember" href="#install">Install free</a><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper">Star on GitHub</a></div>
+    <p>The terminal dashboard is free, open source, and running in a minute. Add Firekeeper Menu Bar, a self-hosted web dashboard, or the Hosted dashboard when you want them.</p>
+    <div class="cta"><a class="btn btn-ember" href="#install">Install free</a><a class="btn btn-outline" href="#pricing">Buy a license</a><a class="btn btn-outline" href="https://dashboard.firekeeper.ai">Sign in (existing Hosted customers)</a><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper">Star on GitHub</a></div>
   </section>
 
   <footer class="section">
@@ -470,6 +628,7 @@
         <li><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></li>
         <li><a href="https://github.com/firekeeper-ai/firekeeper/releases">Releases</a></li>
         <li><a href="/docs/">Docs</a></li>
+        <li><a href="/docs/hosted/">Hosted dashboard</a></li>
         <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/api.md">API</a></li>
         <li><a href="/terms">Terms</a></li>
         <li><a href="/refund">Refunds</a></li>
@@ -477,7 +636,7 @@
         <li><a href="/contact">Contact</a></li>
       </ul>
     </div>
-    <p class="legal">© 2026 Lucky Daisy LLC. The Firekeeper client is an early-stage open source project, licensed under Apache 2.0. The dashboard server is a separate, commercial product and is not covered by that license.</p>
+    <p class="legal">© 2026 Lucky Daisy LLC. The Firekeeper CLI is an early-stage open source project, licensed under Apache 2.0. Firekeeper Menu Bar, Firekeeper Server, and the Hosted dashboard are separate, commercial offerings and are not covered by that license.</p>
   </footer>
 
 </div>

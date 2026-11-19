@@ -30,6 +30,12 @@
       <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
       <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
     </ul>
+    <p class="nav-label">Licensed, opt-in</p>
+    <ul>
+      <li><a href="/docs/menu-bar/">Firekeeper Menu Bar</a></li>
+      <li><a href="/docs/hosted/">Hosted dashboard</a></li>
+      <li><a href="/docs/server/">Firekeeper Server</a></li>
+    </ul>
     <p class="nav-label">Reference on GitHub</p>
     <ul>
       <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
@@ -43,10 +49,11 @@
     <p class="lede">Use local history to understand your work. Use provider limits, where available, to understand your allowance. They are not the same measurement.</p>
     <nav class="on-page" aria-label="On this page"><a href="#overview">Overview</a><a href="#history">History</a><a href="#limits">Limits</a><a href="#network">Network access</a></nav>
     <h2 id="overview">Get a quick overview</h2>
-    <p>From Processes, press <kbd>Tab</kbd> to open <strong>Overview</strong>. Provider panels summarize tokens today, over the last seven days, and lifetime in the available local history, alongside limits and reset countdowns when those can be fetched.</p>
+    <p>From Processes, press <kbd>Tab</kbd> to open the terminal dashboard's <strong>Overview</strong>. Provider panels summarize tokens today, over the last seven days, and lifetime in the available local history, alongside limits and reset countdowns when those can be fetched.</p>
     <p>Press <kbd>r</kbd> to refresh every provider. Missing data does not mean zero usage, and a missing quota panel does not mean unlimited access.</p>
+    <p>The licensed <a href="/docs/products/#web-dashboard">web dashboard</a> also charts usage, from sessions you have chosen to report.</p>
     <h2 id="history">Explore models and past sessions</h2>
-    <p>Open <strong>Usage</strong> with <kbd>Tab</kbd>. Use <kbd>Left</kbd> / <kbd>Right</kbd> or <kbd>h</kbd> / <kbd>l</kbd> to choose Codex, Copilot, Kimi, or Claude. Press <kbd>r</kbd> to refresh the selected provider.</p>
+    <p>In the terminal dashboard, open <strong>Usage</strong> with <kbd>Tab</kbd>. Use <kbd>Left</kbd> / <kbd>Right</kbd> or <kbd>h</kbd> / <kbd>l</kbd> to choose Codex, Copilot, Kimi, or Claude. Press <kbd>r</kbd> to refresh the selected provider.</p>
     <p>Daily bars and model totals help you see where tokens went. Where sessions are available, use <kbd>Up</kbd> / <kbd>Down</kbd> to select one and <kbd>Enter</kbd> to open its chat. Press <kbd>Esc</kbd> to return to Usage.</p>
     <p>This history is read from the provider's local files or database. It does not require reporting, a server, or a running agent process. OpenCode, Gemini CLI, and Cursor CLI can appear in Processes and chat without having a Usage page.</p>
     <h2 id="limits">Know what each source tells you</h2>
