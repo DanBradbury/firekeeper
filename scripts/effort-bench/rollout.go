@@ -12,8 +12,9 @@ import (
 	"time"
 )
 
-// Usage is one Codex usage object. input_tokens already includes
-// cached_input_tokens; total_tokens is input_tokens + output_tokens.
+// Usage is one usage object in OpenAI's shape: input_tokens includes cache
+// reads and cache writes, output_tokens includes reasoning, and
+// total_tokens = input_tokens + output_tokens.
 type Usage struct {
 	Input      int64 `json:"input_tokens"`
 	Cached     int64 `json:"cached_input_tokens"`
@@ -32,29 +33,36 @@ func (u *Usage) add(o Usage) {
 	u.Total += o.Total
 }
 
-// RolloutStats is what one Codex rollout file says about its session.
-type RolloutStats struct {
-	SessionID  string
-	CLIVersion string
-	Models     []string // distinct turn_context models, in order
-	Efforts    []string // distinct turn_context efforts, in order
-	// Usage sums last_token_usage over token_count events, the same rule
-	// Firekeeper uses, so the totals match `firekeeper window`.
-	Usage Usage
-	// Final is the last total_token_usage seen; it should equal Usage.
-	Final Usage
-	// Requests counts model responses: distinct response ids in
-	// token_usage_record when present, otherwise token_count events.
-	Requests int
-	// First is the first response's usage, which shows whether the run
-	// started cold (nothing cached) or warm.
-	First Usage
-	// ToolCalls counts function and custom tool calls.
+// Request is one model response's usage.
+type Request struct {
+	At time.Time `json:"at"`
+	Usage
+}
+
+// RunData is what a harness's local records say about one session.
+type RunData struct {
+	SessionID string
+	Version   string
+	Models    []string // distinct models, in order
+	Efforts   []string // distinct recorded efforts, in order
+	Requests  []Request
+	// Final is the harness's own running total when it keeps one (Codex);
+	// it should equal the sum of Requests.
+	Final     *Usage
 	ToolCalls int
-	// UsedPercentStart/End are the primary (5-hour) rate-limit window's
-	// used_percent at the first and last token_count that reported one.
+	// UsedPercentStart/End are the 5-hour window's used_percent at the first
+	// and last report in the session; ResetsAt is when that window resets.
 	UsedPercentStart, UsedPercentEnd *float64
-	FirstAt, LastAt                  time.Time
+	ResetsAt                         *time.Time
+}
+
+// Sum adds the requests up.
+func (d RunData) Sum() Usage {
+	var u Usage
+	for _, r := range d.Requests {
+		u.add(r.Usage)
+	}
+	return u
 }
 
 type rolloutLine struct {
@@ -69,7 +77,6 @@ type rolloutPayload struct {
 	CLIVersion string `json:"cli_version"`
 	Model      string `json:"model"`
 	Effort     string `json:"effort"`
-	ResponseID string `json:"response_id"`
 	Info       *struct {
 		Total *Usage `json:"total_token_usage"`
 		Last  *Usage `json:"last_token_usage"`
@@ -77,18 +84,18 @@ type rolloutPayload struct {
 	RateLimits *struct {
 		Primary *struct {
 			UsedPercent float64 `json:"used_percent"`
+			ResetsAt    *int64  `json:"resets_at"`
 		} `json:"primary"`
 	} `json:"rate_limits"`
 }
 
-// ParseRollout reads a Codex rollout JSONL file. Unknown and malformed lines
-// are skipped; nothing is printed, so prompts and outputs never leak.
-func ParseRollout(r io.Reader) (RolloutStats, error) {
-	var st RolloutStats
+// ParseRollout reads a Codex rollout JSONL file. Each token_count event with
+// last_token_usage is one request, the same rule Firekeeper uses. Unknown and
+// malformed lines are skipped; no text is kept.
+func ParseRollout(r io.Reader) (RunData, error) {
+	var d RunData
 	seenModel := map[string]bool{}
 	seenEffort := map[string]bool{}
-	responses := map[string]bool{}
-	tokenCounts := 0
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 1<<20), 64<<20)
 	for sc.Scan() {
@@ -100,36 +107,25 @@ func ParseRollout(r io.Reader) (RolloutStats, error) {
 		if len(line.Payload) > 0 && json.Unmarshal(line.Payload, &p) != nil {
 			continue
 		}
-		if ts, err := time.Parse(time.RFC3339Nano, line.Timestamp); err == nil {
-			if st.FirstAt.IsZero() || ts.Before(st.FirstAt) {
-				st.FirstAt = ts
-			}
-			if ts.After(st.LastAt) {
-				st.LastAt = ts
-			}
-		}
+		ts, _ := time.Parse(time.RFC3339Nano, line.Timestamp)
 		switch line.Type {
 		case "session_meta":
-			if st.SessionID == "" {
-				st.SessionID = p.ID
-				st.CLIVersion = p.CLIVersion
+			if d.SessionID == "" {
+				d.SessionID = p.ID
+				d.Version = p.CLIVersion
 			}
 		case "turn_context":
 			if p.Model != "" && !seenModel[p.Model] {
 				seenModel[p.Model] = true
-				st.Models = append(st.Models, p.Model)
+				d.Models = append(d.Models, p.Model)
 			}
 			if p.Effort != "" && !seenEffort[p.Effort] {
 				seenEffort[p.Effort] = true
-				st.Efforts = append(st.Efforts, p.Effort)
-			}
-		case "token_usage_record":
-			if p.ResponseID != "" {
-				responses[p.ResponseID] = true
+				d.Efforts = append(d.Efforts, p.Effort)
 			}
 		case "response_item":
 			if p.Type == "function_call" || p.Type == "custom_tool_call" {
-				st.ToolCalls++
+				d.ToolCalls++
 			}
 		case "event_msg":
 			if p.Type != "token_count" {
@@ -137,42 +133,39 @@ func ParseRollout(r io.Reader) (RolloutStats, error) {
 			}
 			if p.RateLimits != nil && p.RateLimits.Primary != nil {
 				v := p.RateLimits.Primary.UsedPercent
-				if st.UsedPercentStart == nil {
-					st.UsedPercentStart = &v
+				if d.UsedPercentStart == nil {
+					d.UsedPercentStart = &v
 				}
-				st.UsedPercentEnd = &v
+				d.UsedPercentEnd = &v
+				if p.RateLimits.Primary.ResetsAt != nil {
+					t := time.Unix(*p.RateLimits.Primary.ResetsAt, 0).UTC()
+					d.ResetsAt = &t
+				}
 			}
 			if p.Info == nil || p.Info.Last == nil {
 				continue
 			}
-			if tokenCounts == 0 {
-				st.First = *p.Info.Last
-			}
-			tokenCounts++
-			st.Usage.add(*p.Info.Last)
+			d.Requests = append(d.Requests, Request{At: ts.UTC(), Usage: *p.Info.Last})
 			if p.Info.Total != nil {
-				st.Final = *p.Info.Total
+				t := *p.Info.Total
+				d.Final = &t
 			}
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return st, err
+		return d, err
 	}
-	st.Requests = len(responses)
-	if st.Requests == 0 {
-		st.Requests = tokenCounts
+	if len(d.Requests) == 0 {
+		return d, errors.New("rollout has no token_count usage")
 	}
-	if tokenCounts == 0 {
-		return st, errors.New("rollout has no token_count usage")
-	}
-	return st, nil
+	return d, nil
 }
 
 // ParseRolloutFile opens and parses one rollout.
-func ParseRolloutFile(path string) (RolloutStats, error) {
+func ParseRolloutFile(path string) (RunData, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return RolloutStats{}, err
+		return RunData{}, err
 	}
 	defer f.Close()
 	return ParseRollout(f)

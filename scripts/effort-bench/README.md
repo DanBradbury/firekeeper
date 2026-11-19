@@ -1,134 +1,203 @@
 # effort-bench
 
-Does Codex's reasoning effort change the **cache-read ratio**, or only the
-**volume**? This runs one small, fixed coding task through `codex exec` at
-each effort (default `low,medium,high,xhigh`, 2 reps each = 8 runs) and
-compares, per run and as means per effort:
+Does reasoning effort change the **cache-read ratio**, or only the **volume**?
+This runs one small, fixed coding task through `codex exec` (and optionally
+`opencode run`) at each reasoning effort, many times, and compares per run,
+per request and per effort:
 
 total tokens, fresh input, cache read, cache write, output, reasoning output,
-cache-hit % (cache read ÷ input), model requests, tool calls, wall time,
-whether the task's tests pass, and how far Codex's own 5-hour window moved.
+cache-hit % (cache read ÷ input), where in the run the cache misses happen,
+model requests, tool calls, wall time, whether the task's tests pass, the gap
+since the previous run, the local time of day, and how far Codex's own 5-hour
+window moved.
 
-All numbers come from the local Codex rollouts
-(`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*-<thread id>.jsonl`), the same files
-Firekeeper reads, and are cross-checked against `firekeeper window --provider
-codex --json` when `firekeeper` is on `PATH`. The benchmark uploads nothing and
-the HTML chart has no scripts or external requests. (The Codex runs themselves
-talk to the model, as any Codex run does.)
+Runs accumulate in a local **store** across batches, 5-hour windows and days.
+`report` aggregates everything in it: n, mean, median, sd and 95% bootstrap
+intervals per effort, pairwise Mann-Whitney U tests with Holm correction,
+and bootstrap intervals for mean differences.
+
+Numbers come from the harness's local records: Codex rollouts
+(`$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*-<thread id>.jsonl`, the files
+Firekeeper reads) and OpenCode's database. Each run's total is cross-checked
+against `firekeeper window --provider <harness> --json` when `firekeeper` is on
+`PATH`. The benchmark uploads nothing and the HTML has no scripts or external
+requests. (The agent runs themselves talk to the model, as any run does.)
 
 ## Run it
 
-Prerequisites: Go (to `go run`), `git`, `python3` (to check the task's tests;
-optional), and the Codex CLI, logged in. `firekeeper` on `PATH` is optional.
+Prerequisites: Go, `git`, `python3` (checks the task's tests; optional), the
+Codex CLI logged in. Optional: `firekeeper` on `PATH`; OpenCode 2.x for
+`--harness opencode`.
 
 ```sh
 # from a firekeeper checkout
-go run ./scripts/effort-bench --dry-run --model <model>   # see the plan and exact commands, runs nothing
-go run ./scripts/effort-bench --model <model>             # the 8-run matrix
+go run ./scripts/effort-bench --dry-run --model gpt-6.1-sol --reps 50   # plan and commands, runs nothing
+go run ./scripts/effort-bench --model gpt-6.1-sol --reps 50             # starts the batch; stops by itself at 80% of the 5-hour window
+go run ./scripts/effort-bench --resume                                  # next window: continue the same batch
+go run ./scripts/effort-bench report --model gpt-6.1-sol                # aggregate everything stored, run nothing
 ```
 
-Pin `--model` to the model you want to talk about (the same one for every run).
-Results land in `$TMPDIR/firekeeper-effort-bench/results-<time>/`:
+The batch is planned once (efforts shuffled inside each rep with a recorded
+seed) and saved to the store. A run that stops (5-hour window, `--batch`,
+`--max-tokens`, three failures in a row, Ctrl-C) prints how to resume; `--resume`
+picks up exactly the runs that are left with the batch's own settings, and
+refuses to start while the last run saw the window above the threshold and the
+window has not reset yet. Starting a different batch while one is unfinished
+needs `--new`. Runs are deduplicated by harness and session id.
 
-- `summary.md`: the means table and every run (also printed to stdout)
-- `results.csv`, `results.json`: per-run numbers
-- `chart.html`: stacked token bars, cache-hit % and reasoning tokens per effort
+Store: `~/.firekeeper-effort-bench/` (`runs.jsonl`, `plan.json`; `--store`
+changes it). Each batch run and `report` write `<store>/report/`:
+`summary.md` (also printed), `results.csv` (one row per run),
+`requests.csv` (one row per model request), `results.json`, and `chart.html`.
 
-Output is redacted by default: the throwaway repo, work dir, Codex home, home
-directory, user name and host name are replaced, and session ids are cut to
-their last 8 characters. `--no-redact` keeps them. The real results path is
-printed on stderr only.
+Output is redacted by default: the throwaway repo, work dir, store, Codex home,
+temp dir, home directory, user name and host name are replaced, and session ids
+are cut to their last 8 characters (`--no-redact` keeps them). Local time of
+day is shown. The store itself keeps full session ids (to deduplicate and
+match) and redacted error text, and no paths; `plan.json` keeps the
+benchmark's own prompt so `--resume` sends the same text.
 
 ### Flags
 
 | flag | default | |
 |---|---|---|
-| `--model` | Codex default | `codex exec -m`; pin it |
-| `--efforts` | `low,medium,high,xhigh` | values for `-c model_reasoning_effort=...`; levels depend on the model |
-| `--reps` | 2 | runs per effort |
-| `--order` | `shuffle` | shuffles efforts inside each rep (seeded by `--seed`, so it is reproducible); `fixed` keeps the list order |
-| `--warm-repeat` | off | after each run, repeat it immediately and report the repeat separately (doubles the cost) |
-| `--max-runs` | 10 | refuses to start a bigger matrix |
-| `--max-tokens` | 4,000,000 | stops after the run that crosses it |
-| `--stop-at-used-percent` | 80 | stops once Codex reports the 5-hour window at least this full |
+| `--model` | harness default | pin it; Codex `-m`, OpenCode `openai/<model>` |
+| `--efforts` | `low,medium,high,xhigh` | Codex `-c model_reasoning_effort=…`, OpenCode `--model …#<effort>` |
+| `--reps` | 2 | runs per effort (and harness) in the batch |
+| `--harness` | `codex` | comma list: `codex`, `opencode` (see below) |
+| `--max-runs` | 200 | refuse a bigger batch; 0 = no limit |
+| `--batch` | 0 | run at most this many now, then stop; 0 = all |
+| `--max-tokens` | 25,000,000 | stop once this invocation used more; 0 = no limit |
+| `--stop-at-used-percent` | 80 | stop once Codex reports the 5-hour window this full; 0 = never |
+| `--resume`, `--new` | | continue the stored batch / start another while one is unfinished |
+| `--order`, `--seed` | `shuffle`, from the clock | order inside each rep; the seed is saved in the plan |
+| `--warm-repeat` | off | repeat each run immediately and report repeats separately (doubles the cost) |
 | `--timeout` | 20m | per run |
-| `--use-user-config` | off | by default runs pass `--ignore-user-config` so your MCP servers, profiles and model settings do not leak into the comparison |
-| `--codex-arg` | | extra `codex exec` argument, repeatable |
-| `--codex`, `--codex-home`, `--workdir`, `--out`, `--prompt`, `--firekeeper` | | binaries and paths; `--firekeeper off` skips the cross-check |
+| `--use-user-config` | off | Codex runs pass `--ignore-user-config` unless this is set |
+| `--codex-arg`, `--opencode-arg` | | extra CLI arguments, repeatable |
+| `--store`, `--workdir`, `--codex`, `--codex-home`, `--opencode`, `--prompt`, `--firekeeper` | | paths and binaries; `--firekeeper off` skips the cross-check |
+
+`report` takes `--store`, `--out`, `--model`, `--harness`, `--batch`,
+`--seed` (bootstrap) and `--no-redact`.
 
 ## What one run does
 
-1. Recreates `<workdir>/bench-repo` from `seed/` (a 20-line Python module with
-   two stubbed functions and a unittest file) with a fixed commit date, so
-   every run starts from an identical tree at the same path.
-2. Runs, with `prompt.txt` on stdin:
-   `codex exec --json -m <model> -c model_reasoning_effort=<effort> --sandbox workspace-write --ignore-user-config -C <bench-repo> -`
-   Each `codex exec` is a new session (new thread id).
-3. Takes the thread id from the `thread.started` event, finds that rollout,
-   and sums `last_token_usage` over its `token_count` events (Firekeeper's rule),
-   checking it against Codex's running `total_token_usage`. It also reads the
-   model and effort Codex actually used from `turn_context`, the first
-   request's cached tokens (cold or warm start), and `rate_limits.primary.used_percent`.
-4. Runs `python3 -m unittest -q` in the repo to record whether the task was solved.
+1. Recreates `<workdir>/bench-repo` from `seed/` (a small Python module with two
+   stubbed functions and a unittest file) with a fixed commit date, so every run
+   starts from an identical tree at the same path.
+2. Codex: `codex exec --json -m <model> -c model_reasoning_effort=<effort> --sandbox workspace-write --ignore-user-config -C <bench-repo> -`
+   with `prompt.txt` on stdin. Each run is a new session.
+3. Finds the session from the `thread.started` event, reads its rollout: every
+   `token_count` event's `last_token_usage` is one request (Firekeeper's rule),
+   checked against Codex's running total; the model and effort Codex used come
+   from `turn_context`, the window from `rate_limits.primary`
+   (`used_percent`, `resets_at`).
+4. Runs `python3 -m unittest -q` to record whether the task was solved, and
+   appends the run to the store.
 
-## Reading the numbers
+## Reading the report
 
-- Codex's `input_tokens` includes cached tokens. Following OpenAI's prompt
-  caching guide, input = ordinary + cache read + cache write, so here
-  **fresh input = input − cache read − cache write** and
-  fresh + cache read + cache write + output = total.
-- **cache-hit % = cache read ÷ input**, summed over a run (and over runs for the means).
-- Reasoning tokens are part of output. Whether earlier reasoning is carried
-  into later requests' input depends on the model and Codex version, and higher
-  effort can also change the number of requests and tool calls, which changes
-  how much (mostly cached) prefix is re-sent. So compare `requests` and input
-  per effort, not only output.
-- A run's first request is usually **cold** (nothing cached yet); later
-  requests re-send the growing conversation and hit the cache. Short tasks
-  therefore show lower hit rates than a long interactive session like an
-  11M-token 5-hour window, where almost all input is a cached prefix.
-- `5h window Δ%` is the change in Codex's own primary rate-limit
-  `used_percent` across the run, when Codex logged it. It is coarse and also
-  moves with anything else using the same account at the time.
+- input = ordinary + cache read + cache write (OpenAI's prompt caching guide),
+  so **fresh = input − cache read − cache write**, and
+  **cache-hit % = cache read ÷ input**. Reasoning is part of output.
+- **Statistics**: means with 95% percentile-bootstrap intervals (4,000
+  resamples, seeded, so a report is reproducible). Below 5 runs per effort the
+  report prints no interval and no test verdict and says the sample is too
+  small.
+- **Pairwise**: two-sided Mann-Whitney U (normal approximation with tie and
+  continuity corrections) for cache-hit % and total tokens, Holm-corrected
+  across all effort pairs of each metric, plus a bootstrap interval for the
+  difference in means. Mann-Whitney compares whole distributions, which suits
+  cache-hit %: it is bimodal (most runs near the top, some with a dip).
+- **Where the misses are**: for request #1, #2, … (#11+ pooled), the cached
+  share and how much of the effort's uncached input lands there; a run with a
+  *later miss* had a request after the first that was under half cached. This
+  tells first-request (cold start) dips from mid-run cache losses.
+- **Gap and time of day**: each run's gap since the previous run of the same
+  harness and model (same prompt prefix; effort is a request setting, not part
+  of the prompt) and since the previous run of the same effort, with
+  cache-hit % binned by gap and by local time, and a scatter of cache-hit %
+  against the gap in `chart.html`. OpenAI keeps a cache entry for at least 30
+  minutes by default and never guarantees a hit, so gaps beyond that should
+  show more cold starts.
+- **5h Δ%** is the mean change in Codex's `used_percent` across a run. It is
+  coarse and also moves with any other use of the account, so pause other
+  Codex use during a batch.
 
-## Fairness
+## How many runs
 
-- Same model (pinned), same prompt, same repo state and path, same sandbox,
-  user config ignored, a fresh session per run.
-- Efforts are shuffled within each rep so time-of-day drift and cache
-  warm-up do not always favor the same effort. Use more reps for tighter means;
-  agent runs vary a lot (the table shows min–max).
-- Prompt-cache entries are kept for a minimum lifetime (30 minutes by default
-  on current OpenAI models; older models differ), and a hit is never
-  guaranteed. Runs back to back may find the shared system prompt cached from
-  the previous run; `first request` in the run table shows whether that
-  happened. `--warm-repeat` measures the immediate-repeat case deliberately.
-- Stop other Codex use on the account during the matrix if you want the
-  window Δ% to mean anything.
+From the first 8 runs on gpt-6.1-sol: totals were tight (~100–102K), while
+cache-hit % had an sd of roughly 8–10 points because of occasional dips. To
+detect a 5-point difference in mean cache-hit % (two-sided α = 0.05, 80%
+power, normal approximation; Mann-Whitney needs about 5% more for normal data
+and can need fewer for dip-heavy data):
 
-## Other harnesses
+    n per effort ≈ 2 (z₀.₉₇₅ + z₀.₈)² σ² / δ² = 15.7 σ² / 25
 
-`firekeeper window --provider` can read codex, claude, copilot, cursor,
-opencode, gemini and kimi transcripts, so the same idea works for any harness
-that can run the same OpenAI model (for example Cursor CLI or OpenCode). It is
-not built in: each harness sends its own system prompt and tool schemas, so the
-cached prefix size, request count and therefore cache-hit % differ for reasons
-unrelated to the model, and not every harness exposes a reasoning-effort
-setting or logs cache writes and reasoning tokens. Treat a cross-harness
-comparison as "what this harness costs for this task", not as a model
-property. Claude Code runs a different model and is not comparable here.
+| sd σ | one pre-chosen comparison (e.g. low vs xhigh) | all 6 pairs, Holm (α/6 for the smallest p) |
+|---|---|---|
+| 8 | 40 | 62 |
+| 9 | 51 | 79 |
+| 10 | 63 | 97 |
+
+Recommendation: **50 per effort** (`--reps 50`, 200 runs over four efforts, the
+default caps) with low vs xhigh as the primary question, which is the X post's
+question; treat the other pairs as exploratory. For every pair to carry a 5-point
+claim, use about 80 (`--reps 80 --max-runs 320`). Total tokens need far fewer
+runs: their spread is small.
 
 ## Cost
 
-An estimate, not a measurement: a run of this task is roughly 4–10 model
-requests over a 15–30k token context, so about 100–250k tokens, 80–90% of
-it cache reads, with output from a few thousand tokens (low) to a few tens of
-thousands (xhigh). The default 8-run matrix is therefore about 1–2M tokens.
-Run with `--reps 1` first to see the real numbers; `--max-tokens` and
-`--stop-at-used-percent` cap a run that goes long.
+Measured: about 100K tokens per run (gpt-6.1-sol, this task). So 50 runs per
+effort over four efforts is about 20M tokens; low and xhigh only
+(`--efforts low,xhigh --reps 50`) about 10M. At OpenAI's published API prices
+for gpt-6.1-sol ($2 input, $0.10 cached input, $2.50 cache write (30m), $10
+output per 1M tokens) a run with ~86% cache hits is roughly $0.05–0.08, so
+200 runs are roughly $9–16 API-equivalent. On a ChatGPT plan the 5-hour-window
+share per run is not published: read the `5h Δ%` column after the first batch;
+runs per window ≈ (80 − starting used %) ÷ Δ% per run.
+
+## Harnesses
+
+- **codex** (default): everything is logged, including effort, cache writes,
+  reasoning tokens and the 5-hour window.
+- **opencode**: `opencode run --format json --model openai/<model>#<effort> --auto "<prompt>"`
+  in the throwaway repo (flags verified in OpenCode 2.3.2's source; `--auto`
+  approves its tool calls and OpenCode has no sandbox like Codex's, so it runs
+  commands in the throwaway repo unsandboxed). Tokens come from OpenCode's
+  database, located with Firekeeper's OpenCode code and read with Firekeeper's
+  SQLite runner: one assistant message per request, with input, output,
+  reasoning, cache read and cache write; the effort is the recorded model
+  variant. Needs OpenCode 2.x (the `session_v2` schema Firekeeper supports) and
+  the model available to OpenCode's `openai` provider (`opencode models openai`).
+  OpenCode does not log Codex's 5-hour window (n/a), and loads its own config.
+- **cursor**: not supported. Cursor CLI runs headless (`-p`, `--model`,
+  `--output-format json|stream-json`), but per its docs the JSON carries no
+  token usage, and per Firekeeper's Cursor notes its local transcripts and chat
+  databases hold no token counts. TODO if Cursor starts logging usage.
+
+Each harness sends its own system prompt and tool definitions, so the cached
+prefix, the number of requests, and therefore cache-hit % differ for reasons
+unrelated to the model. The report keeps harnesses in separate sections and
+never tests one against another: read a second harness as "what this harness
+costs for this task".
+
+## Fairness
+
+- Same model (pinned), prompt (its hash is stored per run), repo state and
+  path, sandbox, Codex user config ignored, and a fresh session per run.
+- Efforts are shuffled inside every rep, so time of day, cache state and
+  service drift spread across efforts; the gap and time-of-day tables show
+  whether those matter.
+- Batches across days accumulate; filter with `report --batch` or `--model`
+  when settings changed.
 
 ## Tests
 
-`go test ./scripts/effort-bench` parses a fixture rollout and runs the whole
-matrix end to end against a fake `codex` (the test binary), including the
-redaction checks. It never runs the real Codex.
+`go test ./scripts/effort-bench` covers the rollout and OpenCode parsers, the
+per-request breakdown, the statistics (Mann-Whitney against Wikipedia's worked
+tortoise-and-hare examples and a hand-counted tie case, Holm, bootstrap), and
+end-to-end batches against fake `codex` and `opencode` CLIs (the test binary):
+batch stop and resume, the 5-hour-window stop, appending and deduplication,
+report aggregation, and redaction of every output file. It never runs a real
+agent.

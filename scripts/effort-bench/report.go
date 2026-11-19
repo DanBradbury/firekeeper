@@ -6,8 +6,9 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"html/template"
+	"hash/fnv"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"os/user"
@@ -19,45 +20,64 @@ import (
 	"time"
 )
 
-// Result is one Codex run.
+// Result is one run. It is the store's record format too.
 type Result struct {
-	Run             int      `json:"run"`
-	Rep             int      `json:"rep"`
-	Effort          string   `json:"effort"`
-	Kind            string   `json:"kind"`
-	ModelRequested  string   `json:"model_requested,omitempty"`
-	Model           string   `json:"model"`           // from the rollout's turn_context
-	EffortRecorded  string   `json:"effort_recorded"` // from the rollout's turn_context
-	SessionID       string   `json:"session_id"`
-	CLIVersion      string   `json:"codex_version"`
-	Source          string   `json:"source"`
-	WallSeconds     float64  `json:"wall_seconds"`
-	Usage           Usage    `json:"usage"`
-	FinalTotal      int64    `json:"final_total_tokens"`
-	Requests        int      `json:"requests"`
-	ToolCalls       int      `json:"tool_calls"`
-	FirstInput      int64    `json:"first_request_input"`
-	FirstCached     int64    `json:"first_request_cached"`
-	UsedPctStart    *float64 `json:"window_used_percent_start"`
-	UsedPctEnd      *float64 `json:"window_used_percent_end"`
-	TestsPass       *bool    `json:"tests_pass"`
-	FirekeeperTotal *int64   `json:"firekeeper_total,omitempty"`
-	Error           string   `json:"error,omitempty"`
+	Harness         string     `json:"harness"`
+	Batch           string     `json:"batch"`
+	PlanIndex       int        `json:"plan_index"`
+	Rep             int        `json:"rep"`
+	Effort          string     `json:"effort"`
+	Kind            string     `json:"kind"`
+	PromptID        string     `json:"prompt_id"`
+	ModelRequested  string     `json:"model_requested,omitempty"`
+	Model           string     `json:"model"`           // as the harness recorded it
+	EffortRecorded  string     `json:"effort_recorded"` // as the harness recorded it
+	SessionID       string     `json:"session_id"`
+	Version         string     `json:"harness_version,omitempty"`
+	StartedAt       time.Time  `json:"started_at"`
+	EndedAt         time.Time  `json:"ended_at"`
+	WallSeconds     float64    `json:"wall_seconds"`
+	Usage           Usage      `json:"usage"`
+	FinalTotal      *int64     `json:"final_total_tokens,omitempty"`
+	Requests        []Request  `json:"requests"`
+	ToolCalls       int        `json:"tool_calls"`
+	UsedPctStart    *float64   `json:"window_used_percent_start"`
+	UsedPctEnd      *float64   `json:"window_used_percent_end"`
+	ResetsAt        *time.Time `json:"window_resets_at,omitempty"`
+	TestsPass       *bool      `json:"tests_pass"`
+	FirekeeperTotal *int64     `json:"firekeeper_total,omitempty"`
+	NotLogged       []string   `json:"not_logged,omitempty"`
+	Error           string     `json:"error,omitempty"`
+
+	// Derived when a report is built; not stored.
+	GapPrevSec       *float64 `json:"gap_since_previous_run_seconds,omitempty"`
+	GapSameEffortSec *float64 `json:"gap_since_previous_same_effort_seconds,omitempty"`
 }
 
-func (r *Result) fill(st RolloutStats) {
-	r.SessionID = st.SessionID
-	r.CLIVersion = st.CLIVersion
-	r.Model = strings.Join(st.Models, "+")
-	r.EffortRecorded = strings.Join(st.Efforts, "+")
-	r.Usage = st.Usage
-	r.FinalTotal = st.Final.Total
-	r.Requests = st.Requests
-	r.ToolCalls = st.ToolCalls
-	r.FirstInput = st.First.Input
-	r.FirstCached = st.First.Cached
-	r.UsedPctStart = st.UsedPercentStart
-	r.UsedPctEnd = st.UsedPercentEnd
+func (r *Result) fill(d RunData) {
+	r.SessionID = d.SessionID
+	r.Version = d.Version
+	r.Model = strings.Join(d.Models, "+")
+	r.EffortRecorded = strings.Join(d.Efforts, "+")
+	r.Requests = d.Requests
+	r.Usage = d.Sum()
+	if d.Final != nil {
+		t := d.Final.Total
+		r.FinalTotal = &t
+	}
+	r.ToolCalls = d.ToolCalls
+	r.UsedPctStart, r.UsedPctEnd, r.ResetsAt = d.UsedPercentStart, d.UsedPercentEnd, d.ResetsAt
+}
+
+func (r Result) ok() bool { return r.Error == "" && r.SessionID != "" && len(r.Requests) > 0 }
+
+func (r Result) logs(field string) bool {
+	for _, f := range r.NotLogged {
+		if f == field {
+			return false
+		}
+	}
+	return true
 }
 
 // Fresh is ordinary input: neither read from nor written to the cache.
@@ -65,21 +85,53 @@ func (r *Result) fill(st RolloutStats) {
 // Fresh + Cached + CacheWrite + Output == Total.
 func (r Result) Fresh() int64 { return max(r.Usage.Input-r.Usage.Cached-r.Usage.CacheWrite, 0) }
 
-// CacheHitPct is cache reads over all input (input_tokens includes cached).
+// CacheHitPct is cache reads over all input.
 func (r Result) CacheHitPct() float64 { return pct(r.Usage.Cached, r.Usage.Input) }
 
 // CacheState says whether the first request already found a cached prefix.
 func (r Result) CacheState() string {
-	if r.Requests == 0 {
+	if len(r.Requests) == 0 {
 		return ""
 	}
-	if r.FirstCached == 0 {
+	if r.Requests[0].Cached == 0 {
 		return "cold"
 	}
 	return "warm"
 }
 
-func (r Result) ok() bool { return r.Error == "" && r.Source == "rollout" }
+// FirstCachedPct is the first request's cache-hit rate.
+func (r Result) FirstCachedPct() float64 {
+	if len(r.Requests) == 0 {
+		return 0
+	}
+	return pct(r.Requests[0].Cached, r.Requests[0].Input)
+}
+
+// LaterMisses lists the 1-based request numbers after the first whose
+// input was less than half cached.
+func (r Result) LaterMisses() []int {
+	var out []int
+	for i, q := range r.Requests {
+		if i > 0 && q.Input > 0 && 2*q.Cached < q.Input {
+			out = append(out, i+1)
+		}
+	}
+	return out
+}
+
+func (r Result) firstAt() time.Time {
+	if len(r.Requests) > 0 && !r.Requests[0].At.IsZero() {
+		return r.Requests[0].At
+	}
+	return r.StartedAt
+}
+
+func (r Result) lastAt() time.Time {
+	if n := len(r.Requests); n > 0 && !r.Requests[n-1].At.IsZero() {
+		return r.Requests[n-1].At
+	}
+	return r.EndedAt
+}
 
 func pct(a, b int64) float64 {
 	if b == 0 {
@@ -88,180 +140,416 @@ func pct(a, b int64) float64 {
 	return 100 * float64(a) / float64(b)
 }
 
-// Row is the mean of one effort's runs of one kind.
+// Row is one effort's statistics within a group.
 type Row struct {
 	Effort      string   `json:"effort"`
-	Kind        string   `json:"kind"`
-	Runs        int      `json:"runs"`
-	Total       float64  `json:"total"`
-	TotalMin    int64    `json:"total_min"`
-	TotalMax    int64    `json:"total_max"`
-	Fresh       float64  `json:"fresh_input"`
-	Cached      float64  `json:"cache_read"`
-	CacheWrite  float64  `json:"cache_write"`
-	Output      float64  `json:"output"`
-	Reasoning   float64  `json:"reasoning_output"`
-	CacheHitPct float64  `json:"cache_hit_percent"` // sum cached / sum input
-	Requests    float64  `json:"requests"`
-	ToolCalls   float64  `json:"tool_calls"`
-	Wall        float64  `json:"wall_seconds"`
+	N           int      `json:"n"`
+	CacheHit    Summary  `json:"cache_hit_percent"`
+	Total       Summary  `json:"total_tokens"`
+	Output      Summary  `json:"output_tokens"`
+	Reasoning   *Summary `json:"reasoning_tokens"` // nil when not logged
+	Wall        Summary  `json:"wall_seconds"`
+	Fresh       float64  `json:"fresh_input_mean"`
+	Cached      float64  `json:"cache_read_mean"`
+	CacheWrite  *float64 `json:"cache_write_mean"` // nil when not logged
+	Requests    float64  `json:"requests_mean"`
+	FirstCached float64  `json:"first_request_cached_percent_mean"`
 	Passed      int      `json:"tests_passed"`
 	Cold        int      `json:"cold_starts"`
-	WindowDelta *float64 `json:"window_used_percent_delta,omitempty"`
+	LaterMiss   int      `json:"runs_with_later_miss"`
+	WindowDelta *float64 `json:"window_used_percent_delta_mean,omitempty"`
+}
+
+// Pair is one pairwise comparison between efforts.
+type Pair struct {
+	Metric     string  `json:"metric"`
+	A          string  `json:"a"`
+	B          string  `json:"b"`
+	NA         int     `json:"n_a"`
+	NB         int     `json:"n_b"`
+	Diff       float64 `json:"mean_diff_b_minus_a"`
+	DiffLo     float64 `json:"diff_ci95_lo"`
+	DiffHi     float64 `json:"diff_ci95_hi"`
+	U          float64 `json:"u"`
+	P          float64 `json:"p"`
+	PHolm      float64 `json:"p_holm"`
+	Sufficient bool    `json:"sufficient_n"`
+}
+
+// ReqRow is the cache picture at one request number for one effort.
+type ReqRow struct {
+	Effort      string  `json:"effort"`
+	Index       string  `json:"request"`
+	Runs        int     `json:"runs"`
+	InputMean   float64 `json:"input_mean"`
+	CachedShare float64 `json:"cached_percent"`
+	// UncachedShare is this request number's share of all the effort's
+	// uncached input (fresh + cache write).
+	UncachedShare float64 `json:"share_of_uncached_percent"`
+}
+
+// GapBin groups runs by the time since the previous run.
+type GapBin struct {
+	Label       string  `json:"gap"`
+	N           int     `json:"n"`
+	CacheHit    float64 `json:"cache_hit_percent_mean"`
+	FirstCached float64 `json:"first_request_cached_percent_mean"`
+	Cold        int     `json:"cold_starts"`
+}
+
+// Group is one harness, model and kind.
+type Group struct {
+	Harness    string   `json:"harness"`
+	Model      string   `json:"model"`
+	Kind       string   `json:"kind"`
+	NotLogged  []string `json:"not_logged,omitempty"`
+	Rows       []Row    `json:"efforts"`
+	Pairs      []Pair   `json:"pairwise"`
+	PerRequest []ReqRow `json:"per_request"`
+	GapBins    []GapBin `json:"by_gap"`
+	HourBins   []GapBin `json:"by_local_time"`
+	Small      []string `json:"too_few_runs,omitempty"`
 }
 
 // Report is everything the benchmark writes.
 type Report struct {
 	GeneratedAt time.Time `json:"generated_at"`
-	Model       string    `json:"model"`
-	Efforts     []string  `json:"efforts"`
-	Reps        int       `json:"reps"`
-	Seed        uint64    `json:"seed"`
-	Order       string    `json:"order"`
-	Prompt      string    `json:"prompt"`
-	Rows        []Row     `json:"means"`
+	Batches     []string  `json:"batches"`
+	Groups      []Group   `json:"groups"`
 	Runs        []Result  `json:"runs"`
 	Notes       []string  `json:"notes"`
 }
 
-func newReport(o options, results []Result, prompt string) Report {
-	rep := Report{
-		GeneratedAt: time.Now().UTC(), Model: o.model, Efforts: o.efforts, Reps: o.reps,
-		Seed: o.seed, Order: o.order, Prompt: strings.TrimSpace(prompt), Runs: results, Notes: []string{},
+const maxReqIndex = 10
+
+var gapEdges = []struct {
+	label string
+	upTo  float64 // seconds
+}{{"< 1 min", 60}, {"1–5 min", 300}, {"5–30 min", 1800}, {"30 min–2 h", 7200}, {"> 2 h", math.Inf(1)}}
+
+func buildReport(runs []Result, seed uint64) Report {
+	rep := Report{GeneratedAt: time.Now().UTC(), Runs: runs, Notes: []string{}}
+	batches := map[string]bool{}
+	prompts := map[string]bool{}
+	for _, r := range runs {
+		batches[r.Batch] = true
+		if r.PromptID != "" {
+			prompts[r.PromptID] = true
+		}
 	}
-	models := map[string]bool{}
-	for _, r := range results {
-		if r.ok() {
-			models[r.Model] = true
-			if r.EffortRecorded != "" && r.EffortRecorded != r.Effort {
-				rep.Notes = append(rep.Notes, fmt.Sprintf("run %d asked for effort %s but the rollout records %s", r.Run, r.Effort, r.EffortRecorded))
+	rep.Batches = sortedKeys(batches)
+	if len(prompts) > 1 {
+		rep.Notes = append(rep.Notes, "the runs used different prompts ("+strings.Join(sortedKeys(prompts), ", ")+"); filter with --batch")
+	}
+	deriveGaps(rep.Runs)
+
+	type gkey struct{ h, m, k string }
+	groups := map[gkey][]Result{}
+	var order []gkey
+	for _, r := range rep.Runs {
+		switch {
+		case !r.ok():
+			if r.Error != "" {
+				rep.Notes = append(rep.Notes, fmt.Sprintf("%s run %s/%d (%s) not counted: %s", r.Harness, r.Batch, r.PlanIndex+1, r.Effort, r.Error))
 			}
-			if r.FinalTotal != 0 && r.FinalTotal != r.Usage.Total {
-				rep.Notes = append(rep.Notes, fmt.Sprintf("run %d: summed per-request usage (%d) differs from Codex's running total (%d)", r.Run, r.Usage.Total, r.FinalTotal))
-			}
-		} else if r.Error != "" {
-			rep.Notes = append(rep.Notes, fmt.Sprintf("run %d (%s) not counted: %s", r.Run, r.Effort, r.Error))
+			continue
+		case r.EffortRecorded != "" && r.EffortRecorded != r.Effort:
+			rep.Notes = append(rep.Notes, fmt.Sprintf("%s run %s/%d asked for effort %s but recorded %s", r.Harness, r.Batch, r.PlanIndex+1, r.Effort, r.EffortRecorded))
+		case r.FinalTotal != nil && *r.FinalTotal != r.Usage.Total:
+			rep.Notes = append(rep.Notes, fmt.Sprintf("%s run %s/%d: summed per-request usage (%d) differs from the harness total (%d)", r.Harness, r.Batch, r.PlanIndex+1, r.Usage.Total, *r.FinalTotal))
+		case r.FirekeeperTotal != nil && *r.FirekeeperTotal != r.Usage.Total:
+			rep.Notes = append(rep.Notes, fmt.Sprintf("%s run %s/%d: firekeeper window total %d differs from %d", r.Harness, r.Batch, r.PlanIndex+1, *r.FirekeeperTotal, r.Usage.Total))
 		}
-	}
-	if len(models) > 1 {
-		names := make([]string, 0, len(models))
-		for m := range models {
-			names = append(names, m)
+		k := gkey{r.Harness, emptyOr(r.Model, r.ModelRequested), r.Kind}
+		if _, seen := groups[k]; !seen {
+			order = append(order, k)
 		}
-		sort.Strings(names)
-		rep.Notes = append(rep.Notes, "runs used different models ("+strings.Join(names, ", ")+"); pin one with --model")
+		groups[k] = append(groups[k], r)
 	}
-	if rep.Model == "" && len(models) == 1 {
-		for m := range models {
-			rep.Model = m
-		}
-	}
-	for _, kind := range []string{"run", "warm-repeat"} {
-		for _, e := range o.efforts {
-			if row, ok := aggregate(results, e, kind); ok {
-				rep.Rows = append(rep.Rows, row)
+	matched, checked := 0, 0
+	for _, r := range rep.Runs {
+		if r.ok() && r.FirekeeperTotal != nil {
+			checked++
+			if *r.FirekeeperTotal == r.Usage.Total {
+				matched++
 			}
 		}
+	}
+	if checked > 0 {
+		rep.Notes = append(rep.Notes, fmt.Sprintf("firekeeper window cross-check: %d of %d checked runs match", matched, checked))
+	}
+	sort.SliceStable(order, func(i, j int) bool {
+		a, b := order[i], order[j]
+		if a.k != b.k {
+			return a.k == "run"
+		}
+		if a.h != b.h {
+			return a.h < b.h
+		}
+		return a.m < b.m
+	})
+	for gi, k := range order {
+		rep.Groups = append(rep.Groups, buildGroup(k.h, k.m, k.k, groups[k], seed+uint64(gi)*1000))
 	}
 	return rep
 }
 
-func aggregate(results []Result, effort, kind string) (Row, bool) {
-	row := Row{Effort: effort, Kind: kind}
-	var input, cached int64
-	var delta float64
-	haveDelta := true
-	for _, r := range results {
-		if r.Effort != effort || r.Kind != kind || !r.ok() {
-			continue
-		}
-		row.Runs++
-		t := r.Usage.Total
-		if row.Runs == 1 || t < row.TotalMin {
-			row.TotalMin = t
-		}
-		row.TotalMax = max(row.TotalMax, t)
-		row.Total += float64(t)
-		row.Fresh += float64(r.Fresh())
-		row.Cached += float64(r.Usage.Cached)
-		row.CacheWrite += float64(r.Usage.CacheWrite)
-		row.Output += float64(r.Usage.Output)
-		row.Reasoning += float64(r.Usage.Reasoning)
-		row.Requests += float64(r.Requests)
-		row.ToolCalls += float64(r.ToolCalls)
-		row.Wall += r.WallSeconds
-		input += r.Usage.Input
-		cached += r.Usage.Cached
-		if r.TestsPass != nil && *r.TestsPass {
-			row.Passed++
-		}
-		if r.CacheState() == "cold" {
-			row.Cold++
-		}
-		if r.UsedPctStart != nil && r.UsedPctEnd != nil {
-			delta += *r.UsedPctEnd - *r.UsedPctStart
-		} else {
-			haveDelta = false
+// deriveGaps sets, for each run, the time from the previous run's last
+// request (same harness and model, any effort: the same prompt prefix) and
+// from the previous run of the same effort to this run's start.
+func deriveGaps(runs []Result) {
+	idx := make([]int, 0, len(runs))
+	for i, r := range runs {
+		if r.ok() {
+			idx = append(idx, i)
 		}
 	}
-	if row.Runs == 0 {
-		return row, false
+	sort.SliceStable(idx, func(a, b int) bool { return runs[idx[a]].StartedAt.Before(runs[idx[b]].StartedAt) })
+	last := map[string]time.Time{}
+	lastEffort := map[string]time.Time{}
+	for _, i := range idx {
+		r := &runs[i]
+		key := r.Harness + "\x00" + emptyOr(r.Model, r.ModelRequested)
+		ekey := key + "\x00" + r.Effort
+		if t, ok := last[key]; ok {
+			g := max(0, r.StartedAt.Sub(t).Seconds())
+			r.GapPrevSec = &g
+		}
+		if t, ok := lastEffort[ekey]; ok {
+			g := max(0, r.StartedAt.Sub(t).Seconds())
+			r.GapSameEffortSec = &g
+		}
+		last[key] = r.lastAt()
+		lastEffort[ekey] = r.lastAt()
 	}
-	n := float64(row.Runs)
-	for _, f := range []*float64{&row.Total, &row.Fresh, &row.Cached, &row.CacheWrite, &row.Output, &row.Reasoning, &row.Requests, &row.ToolCalls, &row.Wall} {
-		*f /= n
-	}
-	row.CacheHitPct = pct(cached, input)
-	if haveDelta {
-		d := delta / n
-		row.WindowDelta = &d
-	}
-	return row, true
 }
 
-// crossCheck asks `firekeeper window --provider codex --json` for the same
-// sessions and records Firekeeper's total next to the benchmark's own. Only
-// the benchmark's sessions are read from its output; nothing else is kept.
-func crossCheck(o options, rep *Report) {
-	if o.firekeeper == "off" {
-		return
+func buildGroup(harness, model, kind string, runs []Result, seed uint64) Group {
+	g := Group{Harness: harness, Model: model, Kind: kind, NotLogged: runs[0].NotLogged}
+	byEffort := map[string][]Result{}
+	var efforts []string
+	for _, r := range runs {
+		if _, ok := byEffort[r.Effort]; !ok {
+			efforts = append(efforts, r.Effort)
+		}
+		byEffort[r.Effort] = append(byEffort[r.Effort], r)
+	}
+	sort.SliceStable(efforts, func(i, j int) bool { return effortRank(efforts[i]) < effortRank(efforts[j]) })
+	metric := func(rs []Result, f func(Result) float64) []float64 {
+		out := make([]float64, len(rs))
+		for i, r := range rs {
+			out[i] = f(r)
+		}
+		return out
+	}
+	hit := func(r Result) float64 { return r.CacheHitPct() }
+	total := func(r Result) float64 { return float64(r.Usage.Total) }
+	for ei, e := range efforts {
+		rs := byEffort[e]
+		s := seed + uint64(ei)*10
+		row := Row{
+			Effort: e, N: len(rs),
+			CacheHit: summarize(metric(rs, hit), s+1),
+			Total:    summarize(metric(rs, total), s+2),
+			Output:   summarize(metric(rs, func(r Result) float64 { return float64(r.Usage.Output) }), s+3),
+			Wall:     summarize(metric(rs, func(r Result) float64 { return r.WallSeconds }), s+5),
+		}
+		if rs[0].logs(fieldReasoning) {
+			sum := summarize(metric(rs, func(r Result) float64 { return float64(r.Usage.Reasoning) }), s+4)
+			row.Reasoning = &sum
+		}
+		row.Fresh = mean(metric(rs, func(r Result) float64 { return float64(r.Fresh()) }))
+		row.Cached = mean(metric(rs, func(r Result) float64 { return float64(r.Usage.Cached) }))
+		if rs[0].logs(fieldCacheWrite) {
+			w := mean(metric(rs, func(r Result) float64 { return float64(r.Usage.CacheWrite) }))
+			row.CacheWrite = &w
+		}
+		row.Requests = mean(metric(rs, func(r Result) float64 { return float64(len(r.Requests)) }))
+		row.FirstCached = mean(metric(rs, Result.FirstCachedPct))
+		var delta float64
+		haveDelta := rs[0].logs(fieldWindow)
+		for _, r := range rs {
+			if r.TestsPass != nil && *r.TestsPass {
+				row.Passed++
+			}
+			if r.CacheState() == "cold" {
+				row.Cold++
+			}
+			if len(r.LaterMisses()) > 0 {
+				row.LaterMiss++
+			}
+			if r.UsedPctStart != nil && r.UsedPctEnd != nil {
+				delta += *r.UsedPctEnd - *r.UsedPctStart
+			} else {
+				haveDelta = false
+			}
+		}
+		if haveDelta {
+			d := delta / float64(len(rs))
+			row.WindowDelta = &d
+		}
+		if row.N < minCI {
+			g.Small = append(g.Small, fmt.Sprintf("%s (n=%d)", e, row.N))
+		}
+		g.Rows = append(g.Rows, row)
+		g.PerRequest = append(g.PerRequest, perRequest(e, rs)...)
+	}
+
+	// Pairwise tests, Holm-corrected within each metric.
+	for mi, m := range []struct {
+		name string
+		f    func(Result) float64
+	}{{"cache_hit_percent", hit}, {"total_tokens", total}} {
+		var pairs []Pair
+		for i := 0; i < len(efforts); i++ {
+			for j := i + 1; j < len(efforts); j++ {
+				a, b := metric(byEffort[efforts[i]], m.f), metric(byEffort[efforts[j]], m.f)
+				p := Pair{Metric: m.name, A: efforts[i], B: efforts[j], NA: len(a), NB: len(b), Diff: mean(b) - mean(a),
+					Sufficient: len(a) >= minTest && len(b) >= minTest}
+				u := mannWhitney(a, b)
+				p.U, p.P = math.Min(u.U1, u.U2), u.P
+				p.DiffLo, p.DiffHi = bootstrapDiffCI(a, b, bootstrapB, seed+uint64(100*mi+10*i+j))
+				pairs = append(pairs, p)
+			}
+		}
+		ps := make([]float64, len(pairs))
+		for i, p := range pairs {
+			ps[i] = p.P
+		}
+		for i, adj := range holm(ps) {
+			pairs[i].PHolm = adj
+		}
+		g.Pairs = append(g.Pairs, pairs...)
+	}
+
+	// Cache-hit against the gap since the previous run, and by local time.
+	g.GapBins = make([]GapBin, len(gapEdges)+1)
+	g.GapBins[0].Label = "first run"
+	for i, e := range gapEdges {
+		g.GapBins[i+1].Label = e.label
+	}
+	hours := []string{"00–06", "06–12", "12–18", "18–24"}
+	g.HourBins = make([]GapBin, len(hours))
+	for i, h := range hours {
+		g.HourBins[i].Label = h
+	}
+	addBin := func(b *GapBin, r Result) {
+		b.N++
+		b.CacheHit += r.CacheHitPct()
+		b.FirstCached += r.FirstCachedPct()
+		if r.CacheState() == "cold" {
+			b.Cold++
+		}
+	}
+	for _, r := range runs {
+		bin := 0
+		if r.GapPrevSec != nil {
+			for i, e := range gapEdges {
+				if *r.GapPrevSec < e.upTo {
+					bin = i + 1
+					break
+				}
+			}
+		}
+		addBin(&g.GapBins[bin], r)
+		addBin(&g.HourBins[r.StartedAt.Local().Hour()/6], r)
+	}
+	for _, bins := range [][]GapBin{g.GapBins, g.HourBins} {
+		for i := range bins {
+			if bins[i].N > 0 {
+				bins[i].CacheHit /= float64(bins[i].N)
+				bins[i].FirstCached /= float64(bins[i].N)
+			}
+		}
+	}
+	return g
+}
+
+func perRequest(effort string, rs []Result) []ReqRow {
+	type acc struct {
+		runs                  int
+		input, cached, uncach int64
+	}
+	accs := make([]acc, maxReqIndex+1)
+	var allUncached int64
+	for _, r := range rs {
+		for i, q := range r.Requests {
+			k := min(i, maxReqIndex)
+			accs[k].runs++
+			accs[k].input += q.Input
+			accs[k].cached += q.Cached
+			u := max(q.Input-q.Cached, 0)
+			accs[k].uncach += u
+			allUncached += u
+		}
+	}
+	var out []ReqRow
+	for k, a := range accs {
+		if a.runs == 0 {
+			continue
+		}
+		label := strconv.Itoa(k + 1)
+		if k == maxReqIndex {
+			label = strconv.Itoa(maxReqIndex+1) + "+"
+		}
+		out = append(out, ReqRow{
+			Effort: effort, Index: label, Runs: a.runs, InputMean: float64(a.input) / float64(a.runs),
+			CachedShare: pct(a.cached, a.input), UncachedShare: pct(a.uncach, allUncached),
+		})
+	}
+	return out
+}
+
+// effortRank orders known efforts from least to most reasoning.
+func effortRank(e string) int {
+	order := []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
+	for i, o := range order {
+		if o == e {
+			return i
+		}
+	}
+	return len(order)
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// crossCheck asks `firekeeper window --provider <p> --json` for the run's
+// session and returns Firekeeper's total. Only that session is read from the
+// output; nothing else is kept.
+func crossCheck(o options, h harness, sessionID string) *int64 {
+	if o.firekeeper == "off" || sessionID == "" {
+		return nil
 	}
 	bin := o.firekeeper
 	if bin == "" {
 		var err error
 		if bin, err = exec.LookPath("firekeeper"); err != nil {
-			rep.Notes = append(rep.Notes, "firekeeper not on PATH; cross-check skipped (totals come from the Codex rollouts, the same files Firekeeper reads)")
-			return
+			return nil
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "window", "--provider", "codex", "--json")
-	cmd.Env = append(os.Environ(), "CODEX_HOME="+o.codexHome, "FIREKEEPER_NO_UPDATE_CHECK=1", "FIREKEEPER_NO_PROMPT=1")
+	cmd := exec.CommandContext(ctx, bin, "window", "--provider", h.Provider(), "--json")
+	cmd.Env = append(append(os.Environ(), "FIREKEEPER_NO_UPDATE_CHECK=1", "FIREKEEPER_NO_PROMPT=1"), h.Env(o)...)
 	out, err := cmd.Output()
 	if err != nil {
-		rep.Notes = append(rep.Notes, "firekeeper window failed; cross-check skipped")
-		return
+		return nil
 	}
 	totals, err := firekeeperTotals(out)
 	if err != nil {
-		rep.Notes = append(rep.Notes, "could not read firekeeper window --json; cross-check skipped")
-		return
+		return nil
 	}
-	mismatches, matched := 0, 0
-	for i := range rep.Runs {
-		r := &rep.Runs[i]
-		t, ok := totals[r.SessionID]
-		if !ok || r.SessionID == "" {
-			continue
-		}
-		matched++
-		r.FirekeeperTotal = &t
-		if t != r.Usage.Total {
-			mismatches++
-		}
+	if t, ok := totals[sessionID]; ok {
+		return &t
 	}
-	rep.Notes = append(rep.Notes, fmt.Sprintf("firekeeper window cross-check: %d runs found, %d totals differ (runs older than 5 hours are outside the window)", matched, mismatches))
+	return nil
 }
 
 // firekeeperTotals maps session id to total tokens from `window --json`.
@@ -300,15 +588,19 @@ func newRedactor(o options) *redactor {
 		}
 	}
 	// Longest first, so the repo path wins over the workdir and home.
-	add(filepath.Join(o.workdir, "bench-repo"), "<bench-repo>")
-	add(o.out, "<results>")
+	if o.workdir != "" {
+		add(filepath.Join(o.workdir, "bench-repo"), "<bench-repo>")
+	}
+	add(o.out, "<report>")
+	add(o.store, "<store>")
 	add(o.workdir, "<workdir>")
 	add(o.codexHome, "<codex-home>")
+	add(os.TempDir(), "<tmp>")
 	if home, err := os.UserHomeDir(); err == nil {
 		add(home, "~")
 	}
 	if u, err := user.Current(); err == nil {
-		r.word(filepath.Base(u.Username), "<user>") // DOMAIN\\user on Windows
+		r.word(filepath.Base(u.Username), "<user>") // DOMAIN\user on Windows
 	}
 	if h, err := os.Hostname(); err == nil {
 		r.word(h, "<host>")
@@ -339,7 +631,8 @@ func (r *redactor) String(s string) string {
 		}
 	}
 	for i, re := range r.words {
-		s = re.ReplaceAllString(s, r.wordR[i])
+		// Twice, because adjacent matches share a separator.
+		s = re.ReplaceAllString(re.ReplaceAllString(s, r.wordR[i]), r.wordR[i])
 	}
 	return s
 }
@@ -351,18 +644,26 @@ func (r *redactor) ID(id string) string {
 	return shortID(id)
 }
 
-func (rep Report) writeAll(dir string, red *redactor) error {
+// redacted returns a copy safe to write: short session ids, scrubbed text.
+func (rep Report) redacted(red *redactor) Report {
 	out := rep
 	out.Runs = append([]Result(nil), rep.Runs...)
 	for i := range out.Runs {
 		out.Runs[i].SessionID = red.ID(out.Runs[i].SessionID)
 		out.Runs[i].Error = red.String(out.Runs[i].Error)
+		out.Runs[i].Version = red.String(out.Runs[i].Version)
 	}
-	for i := range out.Notes {
-		out.Notes[i] = red.String(out.Notes[i])
+	out.Notes = make([]string, len(rep.Notes))
+	for i, n := range rep.Notes {
+		out.Notes[i] = red.String(n)
 	}
-	var md, js, cs, html bytes.Buffer
-	out.writeMarkdown(&md, red)
+	return out
+}
+
+func (rep Report) writeAll(dir string, red *redactor) error {
+	out := rep.redacted(red)
+	var md, js, cs, rq, html bytes.Buffer
+	out.writeMarkdown(&md, &redactor{off: true})
 	enc := json.NewEncoder(&js)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(out); err != nil {
@@ -371,10 +672,14 @@ func (rep Report) writeAll(dir string, red *redactor) error {
 	if err := out.writeCSV(&cs); err != nil {
 		return err
 	}
+	if err := out.writeRequestsCSV(&rq); err != nil {
+		return err
+	}
 	if err := out.writeHTML(&html); err != nil {
 		return err
 	}
-	for name, b := range map[string][]byte{"summary.md": md.Bytes(), "results.json": js.Bytes(), "results.csv": cs.Bytes(), "chart.html": html.Bytes()} {
+	for name, b := range map[string][]byte{"summary.md": md.Bytes(), "results.json": js.Bytes(), "results.csv": cs.Bytes(),
+		"requests.csv": rq.Bytes(), "chart.html": html.Bytes()} {
 		if err := os.WriteFile(filepath.Join(dir, name), b, 0o600); err != nil {
 			return err
 		}
@@ -382,42 +687,138 @@ func (rep Report) writeAll(dir string, red *redactor) error {
 	return nil
 }
 
-func (rep Report) writeMarkdown(w io.Writer, red *redactor) {
-	fmt.Fprintf(w, "# Codex reasoning effort vs tokens\n\n")
-	fmt.Fprintf(w, "Model: %s. Same prompt, same repo state, fresh `codex exec` session per run, %d rep(s), order %s (seed %d).\n\n",
-		emptyOr(rep.Model, "unknown"), rep.Reps, rep.Order, rep.Seed)
-	fmt.Fprintln(w, "| effort | runs | total tokens (mean) | min–max | fresh input | cache read | cache write | output | reasoning | cache hit % | requests | tool calls | wall s | tests pass | 5h window Δ% |")
-	fmt.Fprintln(w, "|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
-	for _, r := range rep.Rows {
-		name := r.Effort
-		if r.Kind != "run" {
-			name += " (warm repeat)"
+func fmtSummary(s Summary, digits int) string {
+	f := "%." + strconv.Itoa(digits) + "f"
+	v := func(x float64) string {
+		if digits == 0 {
+			return comma(int64(math.Round(x)))
 		}
-		fmt.Fprintf(w, "| %s | %d | %s | %s–%s | %s | %s | %s | %s | %s | %.1f | %.1f | %.1f | %.0f | %d/%d | %s |\n",
-			name, r.Runs, comma(int64(r.Total)), comma(r.TotalMin), comma(r.TotalMax), comma(int64(r.Fresh)), comma(int64(r.Cached)),
-			comma(int64(r.CacheWrite)), comma(int64(r.Output)), comma(int64(r.Reasoning)), r.CacheHitPct, r.Requests, r.ToolCalls, r.Wall,
-			r.Passed, r.Runs, optPct(r.WindowDelta))
+		return fmt.Sprintf(f, x)
 	}
-	fmt.Fprint(w, "\n## Runs\n\n")
-	fmt.Fprintln(w, "| # | rep | effort | kind | session | total | fresh | cache read | output | reasoning | hit % | requests | first request | wall s | tests |")
-	fmt.Fprintln(w, "|--:|--:|---|---|---|--:|--:|--:|--:|--:|--:|--:|---|--:|---|")
-	for _, r := range rep.Runs {
-		first := ""
-		if st := r.CacheState(); st != "" {
-			first = fmt.Sprintf("%s (%s of %s cached)", st, comma(r.FirstCached), comma(r.FirstInput))
+	if s.CILo == nil {
+		return v(s.Mean) + " (CI: n<" + strconv.Itoa(minCI) + ")"
+	}
+	return fmt.Sprintf("%s [%s, %s]", v(s.Mean), v(*s.CILo), v(*s.CIHi))
+}
+
+func fmtP(p float64) string {
+	if p < 0.001 {
+		return "<0.001"
+	}
+	return fmt.Sprintf("%.3f", p)
+}
+
+func (rep Report) writeMarkdown(w io.Writer, red *redactor) {
+	fmt.Fprintf(w, "# Reasoning effort vs tokens and cache\n\n")
+	fmt.Fprintf(w, "%d stored runs from %d batch(es). Same prompt and repo state, a fresh session per run. Means with 95%% bootstrap intervals [lo, hi]; sd is the run-to-run spread.\n",
+		len(rep.Runs), len(rep.Batches))
+	for _, g := range rep.Groups {
+		title := g.Harness + " · " + emptyOr(g.Model, "unknown model")
+		if g.Kind != "run" {
+			title += " · warm repeats"
 		}
+		fmt.Fprintf(w, "\n## %s\n\n", title)
+		if len(g.NotLogged) > 0 {
+			fmt.Fprintf(w, "Not logged by %s, shown as n/a: %s. Its system prompt and tools differ from other harnesses, so compare it as this harness's cost for the task, not as a model property.\n\n", g.Harness, strings.Join(g.NotLogged, ", "))
+		}
+		if len(g.Small) > 0 {
+			fmt.Fprintf(w, "**Too few runs for intervals or tests:** %s. Collect at least %d per effort (more for real trends; see the README).\n\n", strings.Join(g.Small, ", "), minCI)
+		}
+		fmt.Fprintln(w, "| effort | n | cache hit % | median | sd | total tokens | sd | output | reasoning | wall s | fresh | cache read | cache write | requests | 1st req cached % | cold | runs w/ later miss | tests | 5h Δ% |")
+		fmt.Fprintln(w, "|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|")
+		for _, r := range g.Rows {
+			reason, write := "n/a", "n/a"
+			if r.Reasoning != nil {
+				reason = fmtSummary(*r.Reasoning, 0)
+			}
+			if r.CacheWrite != nil {
+				write = comma(int64(*r.CacheWrite))
+			}
+			delta := "n/a"
+			if r.WindowDelta != nil {
+				delta = fmt.Sprintf("%+.2f", *r.WindowDelta)
+			}
+			fmt.Fprintf(w, "| %s | %d | %s | %.1f | %.1f | %s | %s | %s | %s | %s | %s | %s | %s | %.1f | %.1f | %d | %d | %d/%d | %s |\n",
+				r.Effort, r.N, fmtSummary(r.CacheHit, 1), r.CacheHit.Median, r.CacheHit.SD, fmtSummary(r.Total, 0), comma(int64(r.Total.SD)),
+				fmtSummary(r.Output, 0), reason, fmtSummary(r.Wall, 0), comma(int64(r.Fresh)), comma(int64(r.Cached)), write,
+				r.Requests, r.FirstCached, r.Cold, r.LaterMiss, r.Passed, r.N, delta)
+		}
+		if len(g.Pairs) > 0 {
+			fmt.Fprint(w, "\n### Pairwise (Mann-Whitney U, two-sided, Holm-corrected per metric)\n\n")
+			fmt.Fprintln(w, "| metric | a → b | n | mean diff (b−a) [95% CI] | U | p | p (Holm) | |")
+			fmt.Fprintln(w, "|---|---|--:|--:|--:|--:|--:|---|")
+			for _, p := range g.Pairs {
+				verdict := ""
+				switch {
+				case !p.Sufficient:
+					verdict = "n too small"
+				case p.PHolm < 0.05:
+					verdict = "**significant**"
+				default:
+					verdict = "not significant"
+				}
+				d := 1
+				if p.Metric == "total_tokens" {
+					d = 0
+				}
+				f := "%+." + strconv.Itoa(d) + "f [%+." + strconv.Itoa(d) + "f, %+." + strconv.Itoa(d) + "f]"
+				fmt.Fprintf(w, "| %s | %s → %s | %d/%d | %s | %.1f | %s | %s | %s |\n", p.Metric, p.A, p.B, p.NA, p.NB,
+					fmt.Sprintf(f, p.Diff, p.DiffLo, p.DiffHi), p.U, fmtP(p.P), fmtP(p.PHolm), verdict)
+			}
+		}
+		fmt.Fprint(w, "\n### Where the cache misses are (by request number)\n\n")
+		fmt.Fprint(w, "Cached % is cache read ÷ input at that request; \"share of uncached\" is how much of the effort's uncached input (fresh + cache write) lands there. A later miss is a request after the first that was under half cached.\n\n")
+		fmt.Fprintln(w, "| effort | request | runs | mean input | cached % | share of uncached % |")
+		fmt.Fprintln(w, "|---|--:|--:|--:|--:|--:|")
+		for _, q := range g.PerRequest {
+			fmt.Fprintf(w, "| %s | %s | %d | %s | %.1f | %.1f |\n", q.Effort, q.Index, q.Runs, comma(int64(q.InputMean)), q.CachedShare, q.UncachedShare)
+		}
+		fmt.Fprint(w, "\n### Cache hit vs time since the previous run (same harness and model)\n\n")
+		fmt.Fprintln(w, "| gap | runs | cache hit % | 1st request cached % | cold starts |")
+		fmt.Fprintln(w, "|---|--:|--:|--:|--:|")
+		for _, b := range g.GapBins {
+			if b.N > 0 {
+				fmt.Fprintf(w, "| %s | %d | %.1f | %.1f | %d |\n", b.Label, b.N, b.CacheHit, b.FirstCached, b.Cold)
+			}
+		}
+		fmt.Fprintln(w, "\n| local time | runs | cache hit % | 1st request cached % | cold starts |")
+		fmt.Fprintln(w, "|---|--:|--:|--:|--:|")
+		for _, b := range g.HourBins {
+			if b.N > 0 {
+				fmt.Fprintf(w, "| %s | %d | %.1f | %.1f | %d |\n", b.Label, b.N, b.CacheHit, b.FirstCached, b.Cold)
+			}
+		}
+	}
+	const maxRows = 60
+	fmt.Fprintf(w, "\n## Runs")
+	shown := rep.Runs
+	if len(shown) > maxRows {
+		shown = shown[len(shown)-maxRows:]
+		fmt.Fprintf(w, " (latest %d of %d; all in results.csv)", maxRows, len(rep.Runs))
+	}
+	fmt.Fprintln(w, "\n\n| batch/# | harness | effort | kind | session | local start | gap | total | hit % | 1st req | later misses | requests | reasoning | wall s | tests |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|--:|--:|--:|---|---|--:|--:|--:|---|")
+	for _, r := range shown {
 		tests := "n/a"
 		if r.TestsPass != nil {
 			tests = map[bool]string{true: "pass", false: "fail"}[*r.TestsPass]
 		}
-		if r.Error != "" {
+		if !r.ok() {
 			tests = "error"
 		}
-		fmt.Fprintf(w, "| %d | %d | %s | %s | %s | %s | %s | %s | %s | %s | %.1f | %d | %s | %.0f | %s |\n",
-			r.Run, r.Rep, r.Effort, r.Kind, red.ID(r.SessionID), comma(r.Usage.Total), comma(r.Fresh()), comma(r.Usage.Cached),
-			comma(r.Usage.Output), comma(r.Usage.Reasoning), r.CacheHitPct(), r.Requests, first, r.WallSeconds, tests)
+		first := ""
+		if st := r.CacheState(); st != "" {
+			first = fmt.Sprintf("%s %.0f%%", st, r.FirstCachedPct())
+		}
+		reason := comma(r.Usage.Reasoning)
+		if !r.logs(fieldReasoning) {
+			reason = "n/a"
+		}
+		fmt.Fprintf(w, "| %s/%d | %s | %s | %s | %s | %s | %s | %s | %.1f | %s | %s | %d | %s | %.0f | %s |\n",
+			r.Batch, r.PlanIndex+1, r.Harness, r.Effort, r.Kind, red.ID(r.SessionID), r.StartedAt.Local().Format("Jan 2 15:04"),
+			fmtGap(r.GapPrevSec), comma(r.Usage.Total), r.CacheHitPct(), first, intsList(r.LaterMisses()), len(r.Requests), reason, r.WallSeconds, tests)
 	}
-	fmt.Fprintln(w, "\nCache hit % = cache read / input (Codex input_tokens already includes cached tokens). Fresh input = input − cache read − cache write. Total = input + output; reasoning is part of output. \"cold\" means the first request of the run found nothing cached.")
+	fmt.Fprintln(w, "\nCache hit % = cache read ÷ input (input includes cache reads and writes). Fresh = input − cache read − cache write. Total = input + output; reasoning is part of output. \"cold\" = the run's first request found nothing cached.")
 	for _, n := range rep.Notes {
 		fmt.Fprintf(w, "\n- note: %s", red.String(n))
 	}
@@ -426,9 +827,38 @@ func (rep Report) writeMarkdown(w io.Writer, red *redactor) {
 	}
 }
 
+func fmtGap(s *float64) string {
+	if s == nil {
+		return "–"
+	}
+	switch {
+	case *s < 120:
+		return fmt.Sprintf("%.0fs", *s)
+	case *s < 7200:
+		return fmt.Sprintf("%.0fm", *s/60)
+	default:
+		return fmt.Sprintf("%.1fh", *s/3600)
+	}
+}
+
+func intsList(xs []int) string {
+	if len(xs) == 0 {
+		return ""
+	}
+	s := make([]string, len(xs))
+	for i, x := range xs {
+		s[i] = "#" + strconv.Itoa(x)
+	}
+	return strings.Join(s, " ")
+}
+
 func (rep Report) writeCSV(w io.Writer) error {
 	cw := csv.NewWriter(w)
-	_ = cw.Write([]string{"run", "rep", "effort", "kind", "model", "effort_recorded", "session", "total", "input", "fresh_input", "cache_read", "cache_write", "output", "reasoning_output", "cache_hit_pct", "requests", "tool_calls", "first_request_input", "first_request_cached", "cache_state", "wall_seconds", "tests_pass", "window_used_pct_start", "window_used_pct_end", "firekeeper_total", "error"})
+	_ = cw.Write([]string{"batch", "plan_index", "rep", "harness", "effort", "kind", "model", "effort_recorded", "session", "started_local", "hour_local",
+		"gap_prev_s", "gap_same_effort_s", "total", "input", "fresh_input", "cache_read", "cache_write", "output", "reasoning_output", "cache_hit_pct",
+		"requests", "first_request_cached_pct", "cache_state", "later_misses", "tool_calls", "wall_seconds", "tests_pass",
+		"window_used_pct_start", "window_used_pct_end", "firekeeper_total", "not_logged", "error"})
+	i := func(v int64) string { return strconv.FormatInt(v, 10) }
 	for _, r := range rep.Runs {
 		tests := ""
 		if r.TestsPass != nil {
@@ -436,25 +866,45 @@ func (rep Report) writeCSV(w io.Writer) error {
 		}
 		fk := ""
 		if r.FirekeeperTotal != nil {
-			fk = strconv.FormatInt(*r.FirekeeperTotal, 10)
+			fk = i(*r.FirekeeperTotal)
 		}
-		i := func(v int64) string { return strconv.FormatInt(v, 10) }
+		write, reason := i(r.Usage.CacheWrite), i(r.Usage.Reasoning)
+		if !r.logs(fieldCacheWrite) {
+			write = "n/a"
+		}
+		if !r.logs(fieldReasoning) {
+			reason = "n/a"
+		}
+		local := r.StartedAt.Local()
 		_ = cw.Write([]string{
-			strconv.Itoa(r.Run), strconv.Itoa(r.Rep), r.Effort, r.Kind, r.Model, r.EffortRecorded, r.SessionID,
-			i(r.Usage.Total), i(r.Usage.Input), i(r.Fresh()), i(r.Usage.Cached), i(r.Usage.CacheWrite), i(r.Usage.Output), i(r.Usage.Reasoning),
-			fmt.Sprintf("%.2f", r.CacheHitPct()), strconv.Itoa(r.Requests), strconv.Itoa(r.ToolCalls), i(r.FirstInput), i(r.FirstCached), r.CacheState(),
-			fmt.Sprintf("%.1f", r.WallSeconds), tests, optNum(r.UsedPctStart), optNum(r.UsedPctEnd), fk, r.Error,
+			r.Batch, strconv.Itoa(r.PlanIndex + 1), strconv.Itoa(r.Rep), r.Harness, r.Effort, r.Kind, r.Model, r.EffortRecorded, r.SessionID,
+			local.Format("2006-01-02 15:04"), strconv.Itoa(local.Hour()), optNum(r.GapPrevSec), optNum(r.GapSameEffortSec),
+			i(r.Usage.Total), i(r.Usage.Input), i(r.Fresh()), i(r.Usage.Cached), write, i(r.Usage.Output), reason,
+			fmt.Sprintf("%.2f", r.CacheHitPct()), strconv.Itoa(len(r.Requests)), fmt.Sprintf("%.2f", r.FirstCachedPct()), r.CacheState(),
+			intsList(r.LaterMisses()), strconv.Itoa(r.ToolCalls), fmt.Sprintf("%.1f", r.WallSeconds), tests,
+			optNum(r.UsedPctStart), optNum(r.UsedPctEnd), fk, strings.Join(r.NotLogged, " "), r.Error,
 		})
 	}
 	cw.Flush()
 	return cw.Error()
 }
 
-func optPct(f *float64) string {
-	if f == nil {
-		return "n/a"
+func (rep Report) writeRequestsCSV(w io.Writer) error {
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"batch", "plan_index", "harness", "effort", "kind", "session", "request", "seconds_from_start", "input", "cache_read", "cache_write", "uncached", "cached_pct", "output", "reasoning_output"})
+	i := func(v int64) string { return strconv.FormatInt(v, 10) }
+	for _, r := range rep.Runs {
+		for k, q := range r.Requests {
+			off := ""
+			if !q.At.IsZero() && !r.StartedAt.IsZero() {
+				off = fmt.Sprintf("%.1f", q.At.Sub(r.StartedAt).Seconds())
+			}
+			_ = cw.Write([]string{r.Batch, strconv.Itoa(r.PlanIndex + 1), r.Harness, r.Effort, r.Kind, r.SessionID, strconv.Itoa(k + 1), off,
+				i(q.Input), i(q.Cached), i(q.CacheWrite), i(max(q.Input-q.Cached, 0)), fmt.Sprintf("%.2f", pct(q.Cached, q.Input)), i(q.Output), i(q.Reasoning)})
+		}
 	}
-	return fmt.Sprintf("%+.1f", *f)
+	cw.Flush()
+	return cw.Error()
 }
 
 func optNum(f *float64) string {
@@ -479,105 +929,15 @@ func comma(n int64) string {
 	return s
 }
 
-// writeHTML renders a self-contained page: inline CSS and SVG, no scripts,
-// no external requests.
-func (rep Report) writeHTML(w io.Writer) error {
-	type bar struct {
-		Label                         string
-		Y                             float64
-		FreshW, CachedW, WriteW, OutW float64
-		Total, Fresh, Cached, Out     string
-		Hit                           float64
-		HitW, ReasonW                 float64
-		Reasoning                     string
-	}
-	var maxTotal, maxReason float64
-	runs := []Row{}
-	for _, r := range rep.Rows {
-		runs = append(runs, r)
-		maxTotal = max(maxTotal, r.Total)
-		maxReason = max(maxReason, r.Reasoning)
-	}
-	const width = 440.0
-	scale := func(v, m float64) float64 {
-		if m == 0 {
-			return 0
-		}
-		return width * v / m
-	}
-	bars := make([]bar, len(runs))
-	for i, r := range runs {
-		label := r.Effort
-		if r.Kind != "run" {
-			label += " (warm)"
-		}
-		bars[i] = bar{
-			Label: label, Y: float64(10 + i*34),
-			FreshW: scale(r.Fresh, maxTotal), CachedW: scale(r.Cached, maxTotal), WriteW: scale(r.CacheWrite, maxTotal), OutW: scale(r.Output, maxTotal),
-			Total: comma(int64(r.Total)), Fresh: comma(int64(r.Fresh)), Cached: comma(int64(r.Cached)), Out: comma(int64(r.Output)),
-			Hit: r.CacheHitPct, HitW: width * r.CacheHitPct / 100, ReasonW: scale(r.Reasoning, maxReason), Reasoning: comma(int64(r.Reasoning)),
-		}
-	}
-	return htmlPage.Execute(w, map[string]any{
-		"R": rep, "Bars": bars, "H": 20 + len(bars)*34,
-		"Generated": rep.GeneratedAt.Format("Jan 2 2006 15:04 MST"),
-	})
-}
+var palette = []string{"#4c9be8", "#2bb673", "#f2a541", "#e4572e", "#9b5de5", "#00a6a6", "#777777"}
 
-var htmlPage = template.Must(template.New("bench").Funcs(template.FuncMap{
-	"f1": func(f float64) string { return fmt.Sprintf("%.1f", f) },
-	"n": func(v any) string {
-		switch x := v.(type) {
-		case float64:
-			return comma(int64(x))
-		case int64:
-			return comma(x)
+func effortColor(efforts []string, e string) string {
+	for i, x := range efforts {
+		if x == e {
+			return palette[i%len(palette)]
 		}
-		return fmt.Sprint(v)
-	},
-	"add": func(a ...float64) float64 {
-		var s float64
-		for _, v := range a {
-			s += v
-		}
-		return s
-	},
-}).Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Codex reasoning effort vs tokens</title>
-<style>body{font:14px -apple-system,system-ui,sans-serif;margin:2rem auto;max-width:980px;color:#222;padding:0 1rem}
-h1{font-size:20px}h2{font-size:16px;margin-top:2rem}svg text{font:12px -apple-system,system-ui,sans-serif}
-.k span{display:inline-block;width:10px;height:10px;margin:0 4px 0 12px}table{border-collapse:collapse;font-size:12px}td,th{padding:3px 8px;border-bottom:1px solid #eee;text-align:right}td:nth-child(-n+4),th:nth-child(-n+4){text-align:left}.mute{color:#777}</style></head><body>
-<h1>Codex reasoning effort vs tokens</h1>
-<p>Model <b>{{if .R.Model}}{{.R.Model}}{{else}}unknown{{end}}</b>. Same prompt and repo state, fresh session per run, {{.R.Reps}} rep(s), means per effort.</p>
-<h2>Mean tokens per run</h2>
-<div class="k"><span style="background:#e4572e"></span>fresh input<span style="background:#4c9be8"></span>cache read<span style="background:#f2a541"></span>cache write<span style="background:#2bb673"></span>output (incl. reasoning)</div>
-<svg width="900" height="{{.H}}" role="img">{{range .Bars}}
-<text x="0" y="{{add .Y 17}}">{{.Label}}</text>
-<rect x="130" y="{{.Y}}" width="{{.FreshW}}" height="24" fill="#e4572e"/>
-<rect x="{{add 130 .FreshW}}" y="{{.Y}}" width="{{.CachedW}}" height="24" fill="#4c9be8"/>
-<rect x="{{add 130 .FreshW .CachedW}}" y="{{.Y}}" width="{{.WriteW}}" height="24" fill="#f2a541"/>
-<rect x="{{add 130 .FreshW .CachedW .WriteW}}" y="{{.Y}}" width="{{.OutW}}" height="24" fill="#2bb673"/>
-<text x="{{add 136 .FreshW .CachedW .WriteW .OutW}}" y="{{add .Y 17}}">{{.Total}} ({{.Fresh}} fresh, {{.Cached}} cached, {{.Out}} out)</text>{{end}}
-</svg>
-<h2>Cache hit % (cache read ÷ input)</h2>
-<svg width="900" height="{{.H}}" role="img">{{range .Bars}}
-<text x="0" y="{{add .Y 17}}">{{.Label}}</text>
-<rect x="130" y="{{.Y}}" width="440" height="24" fill="#eee"/><rect x="130" y="{{.Y}}" width="{{.HitW}}" height="24" fill="#4c9be8"/>
-<text x="580" y="{{add .Y 17}}">{{f1 .Hit}}%</text>{{end}}
-</svg>
-<h2>Mean reasoning output tokens</h2>
-<svg width="900" height="{{.H}}" role="img">{{range .Bars}}
-<text x="0" y="{{add .Y 17}}">{{.Label}}</text>
-<rect x="130" y="{{.Y}}" width="{{.ReasonW}}" height="24" fill="#9b5de5"/>
-<text x="{{add 136 .ReasonW}}" y="{{add .Y 17}}">{{.Reasoning}}</text>{{end}}
-</svg>
-<h2>Means per effort</h2>
-<table><tr><th>effort</th><th>runs</th><th>total</th><th>fresh input</th><th>cache read</th><th>cache write</th><th>output</th><th>reasoning</th><th>hit %</th><th>requests</th><th>wall s</th><th>tests</th></tr>
-{{range .R.Rows}}<tr><td>{{.Effort}}{{if ne .Kind "run"}} (warm){{end}}</td><td>{{.Runs}}</td><td>{{n .Total}}</td><td>{{n .Fresh}}</td><td>{{n .Cached}}</td><td>{{n .CacheWrite}}</td><td>{{n .Output}}</td><td>{{n .Reasoning}}</td><td>{{f1 .CacheHitPct}}</td><td>{{f1 .Requests}}</td><td>{{printf "%.0f" .Wall}}</td><td>{{.Passed}}/{{.Runs}}</td></tr>
-{{end}}</table>
-<h2>Runs</h2>
-<table><tr><th>#</th><th>rep</th><th>effort</th><th>kind</th><th>session</th><th>total</th><th>fresh</th><th>cache read</th><th>output</th><th>reasoning</th><th>hit %</th><th>requests</th><th>first request</th><th>wall s</th></tr>
-{{range .R.Runs}}<tr><td>{{.Run}}</td><td>{{.Rep}}</td><td>{{.Effort}}</td><td>{{.Kind}}</td><td>{{.SessionID}}</td><td>{{n .Usage.Total}}</td><td>{{n .Fresh}}</td><td>{{n .Usage.Cached}}</td><td>{{n .Usage.Output}}</td><td>{{n .Usage.Reasoning}}</td><td>{{f1 .CacheHitPct}}</td><td>{{.Requests}}</td><td>{{.CacheState}}{{if .Error}} error{{end}}</td><td>{{printf "%.0f" .WallSeconds}}</td></tr>
-{{end}}</table>
-{{range .R.Notes}}<p class="mute">note: {{.}}</p>{{end}}
-<p class="mute">Read from local Codex rollouts. Token counts are what Codex logged, not a billing statement. Generated {{.Generated}}.</p>
-</body></html>`))
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(e))
+	return palette[int(h.Sum32())%len(palette)]
+}

@@ -1,11 +1,16 @@
-// Command effort-bench runs one fixed coding task through `codex exec` at
-// several reasoning efforts and compares the token use of each run: fresh
-// input, cache reads, cache writes, output, reasoning output and cache-hit
-// rate. Everything is read from the local Codex rollouts (the files
-// Firekeeper reads) and written to local files; the benchmark itself sends
-// nothing anywhere, though each Codex run of course talks to its model.
+// Command effort-bench runs one fixed coding task through an agent CLI
+// (`codex exec`, optionally `opencode run`) at several reasoning efforts and
+// compares the token use of each run: fresh input, cache reads, cache
+// writes, output, reasoning output and cache-hit rate, per run and per
+// request. Runs accumulate in a local store across batches, 5-hour windows
+// and days; `report` aggregates them with summary statistics and pairwise
+// tests. Everything is read from local records and written to local files;
+// the benchmark itself sends nothing anywhere, though each agent run of
+// course talks to its model.
 //
-//	go run ./scripts/effort-bench --model <model>
+//	go run ./scripts/effort-bench --model <model> --reps <n>
+//	go run ./scripts/effort-bench --resume
+//	go run ./scripts/effort-bench report
 //
 // See README.md next to this file.
 package main
@@ -30,27 +35,44 @@ import (
 //go:embed seed prompt.txt
 var assets embed.FS
 
+// Recommended scale: 50 runs per effort detects a 5-point cache-hit
+// difference at sd ~9 (see README); four efforts make 200 runs of ~100K
+// tokens. The caps default to that matrix with headroom.
+const (
+	defaultMaxRuns   = 200
+	defaultMaxTokens = 25_000_000
+)
+
 type options struct {
+	harnesses     []string
 	efforts       []string
 	reps          int
 	model         string
 	codex         string
 	codexHome     string
+	opencode      string
 	promptFile    string
 	workdir       string
+	store         string
 	out           string
 	seed          uint64
 	order         string
 	warmRepeat    bool
 	maxRuns       int
+	batch         int
 	maxTokens     int64
 	stopAtUsedPct float64
 	timeout       time.Duration
 	dryRun        bool
+	resume        bool
+	newBatch      bool
 	noRedact      bool
 	userConfig    bool
 	codexArgs     []string
+	opencodeArgs  []string
 	firekeeper    string
+	// report filters
+	filterModel, filterHarness, filterBatch string
 }
 
 type listFlag []string
@@ -63,7 +85,10 @@ func main() {
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	opts, err := parseFlags(args, stderr)
+	if len(args) > 0 && args[0] == "report" {
+		return runReport(args[1:], stdout, stderr)
+	}
+	opts, err := parseFlags(args, stderr, false)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -72,128 +97,280 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	red := newRedactor(opts)
-	plan := buildPlan(opts)
-	if len(plan) > opts.maxRuns {
-		fmt.Fprintf(stderr, "effort-bench: the matrix is %d runs, over --max-runs %d; lower --reps or --efforts, or raise --max-runs\n", len(plan), opts.maxRuns)
-		return 2
+	stored, err := loadRuns(opts.store)
+	if err != nil {
+		fmt.Fprintln(stderr, "effort-bench: read store:", err)
+		return 1
 	}
-	prompt, err := loadPrompt(opts.promptFile)
+
+	plan, err := loadPlan(opts.store)
 	if err != nil {
 		fmt.Fprintln(stderr, "effort-bench:", err)
-		return 2
+		return 1
 	}
+	switch {
+	case opts.resume:
+		if plan == nil {
+			fmt.Fprintln(stderr, "effort-bench: nothing to resume: no plan in the store")
+			return 2
+		}
+		// The batch keeps its own settings.
+		opts.model, opts.efforts, opts.harnesses, opts.reps = plan.Model, plan.Efforts, plan.Harnesses, plan.Reps
+	default:
+		if plan != nil && len(remaining(plan, stored)) > 0 && !opts.newBatch && !opts.dryRun {
+			fmt.Fprintf(stderr, "effort-bench: batch %s still has %d of %d runs left; continue it with --resume, or start another with --new\n",
+				plan.Batch, len(remaining(plan, stored)), len(plan.Items))
+			return 2
+		}
+		prompt, err := loadPrompt(opts.promptFile)
+		if err != nil {
+			fmt.Fprintln(stderr, "effort-bench:", err)
+			return 2
+		}
+		plan = buildPlan(opts, prompt, time.Now())
+		if opts.maxRuns > 0 && len(plan.Items) > opts.maxRuns {
+			fmt.Fprintf(stderr, "effort-bench: the matrix is %d runs, over --max-runs %d; lower --reps or --efforts, or raise --max-runs (0 = no limit)\n", len(plan.Items), opts.maxRuns)
+			return 2
+		}
+	}
+	hs := map[string]harness{}
+	for _, name := range plan.Harnesses {
+		h, err := harnessFor(name)
+		if err != nil {
+			fmt.Fprintln(stderr, "effort-bench:", err)
+			return 2
+		}
+		hs[name] = h
+	}
+	todo := remaining(plan, stored)
 	repo := filepath.Join(opts.workdir, "bench-repo")
 
 	if opts.dryRun {
-		fmt.Fprintf(stdout, "dry run: %d Codex runs (seed %d, order %s), nothing executed\n", len(plan), opts.seed, opts.order)
-		fmt.Fprintf(stdout, "model: %s\nprompt (%d bytes): %s\n\n", emptyOr(opts.model, "(Codex default; pass --model to pin it)"), len(prompt), strings.TrimSpace(prompt))
-		for i, p := range plan {
-			fmt.Fprintf(stdout, "%2d. rep %d  %-7s %-11s %s\n", i+1, p.Rep, p.Effort, p.Kind, red.String(strings.Join(codexArgv(opts, p.Effort, repo), " ")))
+		fmt.Fprintf(stdout, "dry run: batch of %d runs (%d left), harness %s, seed %d, order %s; nothing executed\n",
+			len(plan.Items), len(todo), strings.Join(plan.Harnesses, ","), plan.Seed, plan.Order)
+		fmt.Fprintf(stdout, "model: %s\nprompt %s (%d bytes): %s\n\n", emptyOr(plan.Model, "(harness default; pass --model to pin it)"), plan.PromptID, len(plan.Prompt), plan.Prompt)
+		for i, p := range todo {
+			if i == 20 && len(todo) > 24 {
+				fmt.Fprintf(stdout, "... %d more\n", len(todo)-20)
+				break
+			}
+			argv, _ := hs[p.Harness].Command(opts, p.Effort, repo, plan.Prompt)
+			fmt.Fprintf(stdout, "%3d. rep %d  %-8s %-7s %-11s %s\n", p.Index+1, p.Rep, p.Harness, p.Effort, p.Kind, red.String(shellQuote(argv)))
 		}
-		fmt.Fprintf(stdout, "\nbudget guard: stop after a run once tokens > %d or the 5-hour window is >= %.0f%% used\n", opts.maxTokens, opts.stopAtUsedPct)
-		fmt.Fprintf(stdout, "results would go to %s\n", red.String(opts.out))
+		fmt.Fprintf(stdout, "\nstops: %s\n", stopsLine(opts))
+		fmt.Fprintf(stdout, "estimate at ~100K tokens per run: %s tokens for the runs left\n", comma(int64(len(todo))*100_000))
+		fmt.Fprintf(stdout, "store: %s (%d runs stored)\n", red.String(opts.store), len(stored))
 		return 0
 	}
 
-	if _, err := exec.LookPath(opts.codex); err != nil {
-		fmt.Fprintf(stderr, "effort-bench: Codex CLI %q not found: %v\n", opts.codex, err)
-		return 1
+	if len(todo) == 0 {
+		fmt.Fprintf(stderr, "batch %s is complete (%d runs)\n", plan.Batch, len(plan.Items))
+		return writeStoreReport(opts, stdout, stderr, red)
+	}
+	if reason := windowBlocked(opts, stored, time.Now()); reason != "" {
+		fmt.Fprintln(stderr, reason)
+		fmt.Fprintln(stderr, resumeHint(opts))
+		return 0
+	}
+	for name := range hs {
+		bin := map[string]string{"codex": opts.codex, "opencode": opts.opencode}[name]
+		if _, err := exec.LookPath(bin); err != nil {
+			fmt.Fprintf(stderr, "effort-bench: %s CLI %q not found: %v\n", name, bin, err)
+			return 1
+		}
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		fmt.Fprintln(stderr, "effort-bench: git is required to reset the throwaway repo")
 		return 1
 	}
-	logs := filepath.Join(opts.workdir, "logs")
-	for _, d := range []string{opts.out, logs} {
-		if err := os.MkdirAll(d, 0o700); err != nil {
-			fmt.Fprintln(stderr, "effort-bench:", err)
+	if !opts.resume {
+		if err := savePlan(opts.store, plan); err != nil {
+			fmt.Fprintln(stderr, "effort-bench: save plan:", err)
 			return 1
 		}
 	}
-
-	var results []Result
-	var tokens int64
-	stopped := ""
-	for i, p := range plan {
-		fmt.Fprintf(stderr, "[%d/%d] rep %d %s %s ... ", i+1, len(plan), p.Rep, p.Effort, p.Kind)
-		r := runOne(opts, p, i+1, repo, logs, prompt)
-		r.Error = red.String(r.Error)
-		results = append(results, r)
-		tokens += r.Usage.Total
-		if r.Error != "" {
-			fmt.Fprintf(stderr, "error: %s\n", r.Error)
-		} else {
-			fmt.Fprintf(stderr, "%s tokens, %.1f%% cache hit, %.0fs\n", comma(r.Usage.Total), r.CacheHitPct(), r.WallSeconds)
-		}
-		if tokens > opts.maxTokens {
-			stopped = fmt.Sprintf("stopped after run %d: %s tokens used, over --max-tokens %s", i+1, comma(tokens), comma(opts.maxTokens))
-		}
-		if r.UsedPctEnd != nil && *r.UsedPctEnd >= opts.stopAtUsedPct {
-			stopped = fmt.Sprintf("stopped after run %d: the 5-hour window is %.0f%% used (--stop-at-used-percent %.0f)", i+1, *r.UsedPctEnd, opts.stopAtUsedPct)
-		}
-		if stopped != "" {
-			fmt.Fprintln(stderr, stopped)
-			break
-		}
-	}
-
-	rep := newReport(opts, results, prompt)
-	if stopped != "" {
-		rep.Notes = append(rep.Notes, stopped)
-	}
-	crossCheck(opts, &rep)
-	if err := rep.writeAll(opts.out, red); err != nil {
+	logs := filepath.Join(opts.workdir, "logs")
+	if err := os.MkdirAll(logs, 0o700); err != nil {
 		fmt.Fprintln(stderr, "effort-bench:", err)
 		return 1
 	}
-	rep.writeMarkdown(stdout, red)
-	// The real path goes to stderr only, so a screenshot of stdout stays redacted.
-	fmt.Fprintf(stderr, "\nwrote %s (summary.md, results.csv, results.json, chart.html)\n", opts.out)
-	return 0
+
+	fmt.Fprintf(stderr, "batch %s: %d of %d runs left\n", plan.Batch, len(todo), len(plan.Items))
+	var tokens int64
+	ran, failures := 0, 0
+	stopped := ""
+	for _, p := range todo {
+		fmt.Fprintf(stderr, "[%d/%d] rep %d %s %s %s ... ", p.Index+1, len(plan.Items), p.Rep, p.Harness, p.Effort, p.Kind)
+		r := runOne(opts, hs[p.Harness], plan, p, repo, logs)
+		r.Error = red.String(r.Error)
+		if _, err := appendRun(opts.store, r); err != nil {
+			fmt.Fprintln(stderr, "\neffort-bench: save run:", err)
+			return 1
+		}
+		ran++
+		tokens += r.Usage.Total
+		if r.Error != "" {
+			failures++
+			fmt.Fprintf(stderr, "error: %s\n", r.Error)
+		} else {
+			failures = 0
+			fmt.Fprintf(stderr, "%s tokens, %.1f%% cache hit, %.0fs\n", comma(r.Usage.Total), r.CacheHitPct(), r.WallSeconds)
+		}
+		switch {
+		case opts.maxTokens > 0 && tokens > opts.maxTokens:
+			stopped = fmt.Sprintf("stopped: %s tokens used in this session, over --max-tokens %s", comma(tokens), comma(opts.maxTokens))
+		case opts.stopAtUsedPct > 0 && r.UsedPctEnd != nil && *r.UsedPctEnd >= opts.stopAtUsedPct:
+			stopped = fmt.Sprintf("stopped: Codex reports the 5-hour window %.0f%% used (--stop-at-used-percent %.0f)%s",
+				*r.UsedPctEnd, opts.stopAtUsedPct, resetsText(r.ResetsAt))
+		case failures >= 3:
+			stopped = "stopped: 3 runs in a row failed; check the logs in " + red.String(logs)
+		case opts.batch > 0 && ran >= opts.batch:
+			stopped = fmt.Sprintf("stopped: ran --batch %d", opts.batch)
+		}
+		if stopped != "" {
+			break
+		}
+	}
+	left := len(todo) - ran
+	if stopped != "" && left > 0 {
+		fmt.Fprintf(stderr, "\n%s. %d of %d runs in batch %s are left.\n%s\n", stopped, left, len(plan.Items), plan.Batch, resumeHint(opts))
+	} else {
+		fmt.Fprintf(stderr, "\nbatch %s complete\n", plan.Batch)
+	}
+	return writeStoreReport(opts, stdout, stderr, red)
 }
 
-func parseFlags(args []string, stderr io.Writer) (options, error) {
+func resetsText(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return ", resets " + t.Local().Format("Jan 2 15:04 MST")
+}
+
+func resumeHint(o options) string {
+	cmd := "go run ./scripts/effort-bench --resume"
+	if o.storeSet() {
+		cmd += " --store " + shellQuote([]string{o.store})
+	}
+	return "Resume with: " + cmd
+}
+
+func (o options) storeSet() bool { return o.store != defaultStore() }
+
+// windowBlocked refuses to start while the last stored Codex run reported
+// the 5-hour window over the threshold and that window has not reset yet.
+func windowBlocked(o options, runs []Result, now time.Time) string {
+	if o.stopAtUsedPct <= 0 {
+		return ""
+	}
+	for i := len(runs) - 1; i >= 0; i-- {
+		r := runs[i]
+		if r.UsedPctEnd == nil {
+			continue
+		}
+		if *r.UsedPctEnd >= o.stopAtUsedPct && r.ResetsAt != nil && r.ResetsAt.After(now) {
+			return fmt.Sprintf("not starting: the last run saw the 5-hour window %.0f%% used (--stop-at-used-percent %.0f)%s",
+				*r.UsedPctEnd, o.stopAtUsedPct, resetsText(r.ResetsAt))
+		}
+		return ""
+	}
+	return ""
+}
+
+func stopsLine(o options) string {
+	var parts []string
+	if o.maxTokens > 0 {
+		parts = append(parts, "after "+comma(o.maxTokens)+" tokens")
+	}
+	if o.stopAtUsedPct > 0 {
+		parts = append(parts, fmt.Sprintf("when the 5-hour window reaches %.0f%%", o.stopAtUsedPct))
+	}
+	if o.batch > 0 {
+		parts = append(parts, fmt.Sprintf("after %d runs", o.batch))
+	}
+	if len(parts) == 0 {
+		return "none (runs the whole batch)"
+	}
+	return strings.Join(parts, ", ") + "; --resume continues"
+}
+
+func defaultStore() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		return filepath.Join(home, ".firekeeper-effort-bench")
+	}
+	return filepath.Join(os.TempDir(), "firekeeper-effort-bench-store")
+}
+
+func parseFlags(args []string, stderr io.Writer, report bool) (options, error) {
 	var o options
-	fs := flag.NewFlagSet("effort-bench", flag.ContinueOnError)
+	name := "effort-bench"
+	if report {
+		name += " report"
+	}
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	efforts := fs.String("efforts", "low,medium,high,xhigh", "comma-separated model_reasoning_effort values")
-	fs.IntVar(&o.reps, "reps", 2, "repetitions per effort")
-	fs.StringVar(&o.model, "model", "", "model passed to codex exec -m (pin it; the same for every run)")
-	fs.StringVar(&o.codex, "codex", "codex", "Codex CLI binary")
-	fs.StringVar(&o.codexHome, "codex-home", "", "Codex home (default $CODEX_HOME or ~/.codex)")
-	fs.StringVar(&o.promptFile, "prompt", "", "prompt file (default: the built-in prompt.txt)")
-	fs.StringVar(&o.workdir, "workdir", "", "scratch directory for the throwaway repo and logs (default: a temp dir)")
-	fs.StringVar(&o.out, "out", "", "results directory (default: <workdir>/results-<time>)")
-	fs.Uint64Var(&o.seed, "seed", 1, "seed for the per-rep run order")
-	fs.StringVar(&o.order, "order", "shuffle", "run order inside each rep: shuffle or fixed")
-	fs.BoolVar(&o.warmRepeat, "warm-repeat", false, "repeat each run immediately once more and report it separately (doubles the cost)")
-	fs.IntVar(&o.maxRuns, "max-runs", 10, "refuse to start a matrix with more runs than this")
-	fs.Int64Var(&o.maxTokens, "max-tokens", 4_000_000, "stop once the runs so far used more tokens than this")
-	fs.Float64Var(&o.stopAtUsedPct, "stop-at-used-percent", 80, "stop once Codex reports the 5-hour window at least this % used")
-	fs.DurationVar(&o.timeout, "timeout", 20*time.Minute, "time limit per Codex run")
-	fs.BoolVar(&o.dryRun, "dry-run", false, "print the plan and Codex commands without running anything")
+	fs.StringVar(&o.store, "store", defaultStore(), "directory that accumulates runs (runs.jsonl) and the current batch (plan.json)")
+	fs.StringVar(&o.out, "out", "", "report directory (default: <store>/report)")
 	fs.BoolVar(&o.noRedact, "no-redact", false, "keep paths, user name, host name and full session ids in the output")
-	fs.BoolVar(&o.userConfig, "use-user-config", false, "load ~/.codex/config.toml (default: --ignore-user-config, so MCP servers and profiles do not skew runs)")
-	var extra listFlag
-	fs.Var(&extra, "codex-arg", "extra argument for codex exec (repeatable)")
 	fs.StringVar(&o.firekeeper, "firekeeper", "", "firekeeper binary for the cross-check (default: firekeeper on PATH; \"off\" to skip)")
+	var harnesses, efforts *string
+	var extra, ocExtra listFlag
+	if report {
+		fs.StringVar(&o.filterModel, "model", "", "only runs of this model")
+		fs.StringVar(&o.filterHarness, "harness", "", "only runs of this harness")
+		fs.StringVar(&o.filterBatch, "batch", "", "only runs of this batch")
+		fs.Uint64Var(&o.seed, "seed", 1, "seed for the bootstrap intervals")
+	} else {
+		harnesses = fs.String("harness", "codex", "comma-separated harnesses: codex, opencode")
+		efforts = fs.String("efforts", "low,medium,high,xhigh", "comma-separated reasoning efforts")
+		fs.IntVar(&o.reps, "reps", 2, "repetitions per effort (and harness)")
+		fs.StringVar(&o.model, "model", "", "model for every run (Codex -m; OpenCode openai/<model>); pin it")
+		fs.StringVar(&o.codex, "codex", "codex", "Codex CLI binary")
+		fs.StringVar(&o.codexHome, "codex-home", "", "Codex home (default $CODEX_HOME or ~/.codex)")
+		fs.StringVar(&o.opencode, "opencode", "opencode", "OpenCode CLI binary")
+		fs.StringVar(&o.promptFile, "prompt", "", "prompt file (default: the built-in prompt.txt)")
+		fs.StringVar(&o.workdir, "workdir", "", "scratch directory for the throwaway repo and logs (default: a temp dir)")
+		fs.Uint64Var(&o.seed, "seed", 0, "seed for the run order (default: from the time)")
+		fs.StringVar(&o.order, "order", "shuffle", "run order inside each rep: shuffle or fixed")
+		fs.BoolVar(&o.warmRepeat, "warm-repeat", false, "repeat each run immediately once more and report it separately (doubles the cost)")
+		fs.IntVar(&o.maxRuns, "max-runs", defaultMaxRuns, "refuse a batch with more runs than this (0 = no limit)")
+		fs.IntVar(&o.batch, "batch", 0, "run at most this many runs now, then stop; --resume continues (0 = all)")
+		fs.Int64Var(&o.maxTokens, "max-tokens", defaultMaxTokens, "stop once this session used more tokens than this (0 = no limit)")
+		fs.Float64Var(&o.stopAtUsedPct, "stop-at-used-percent", 80, "stop once Codex reports the 5-hour window at least this % used (0 = never)")
+		fs.DurationVar(&o.timeout, "timeout", 20*time.Minute, "time limit per run")
+		fs.BoolVar(&o.dryRun, "dry-run", false, "print the plan and commands without running anything")
+		fs.BoolVar(&o.resume, "resume", false, "continue the store's current batch with its own settings")
+		fs.BoolVar(&o.newBatch, "new", false, "start a new batch even though the current one is unfinished")
+		fs.BoolVar(&o.userConfig, "use-user-config", false, "Codex: load ~/.codex/config.toml (default: --ignore-user-config)")
+		fs.Var(&extra, "codex-arg", "extra argument for codex exec (repeatable)")
+		fs.Var(&ocExtra, "opencode-arg", "extra argument for opencode run (repeatable)")
+	}
 	if err := fs.Parse(args); err != nil {
 		return o, err
 	}
 	if fs.NArg() > 0 {
 		return o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
-	o.codexArgs = extra
-	for _, e := range strings.Split(*efforts, ",") {
-		if e = strings.TrimSpace(e); e != "" {
-			o.efforts = append(o.efforts, e)
-		}
+	if o.out == "" {
+		o.out = filepath.Join(o.store, "report")
 	}
-	if len(o.efforts) == 0 || o.reps < 1 {
-		return o, errors.New("need at least one effort and --reps >= 1")
+	if report {
+		return o, nil
+	}
+	o.codexArgs, o.opencodeArgs = extra, ocExtra
+	o.efforts = splitList(*efforts)
+	o.harnesses = splitList(*harnesses)
+	if len(o.efforts) == 0 || len(o.harnesses) == 0 || o.reps < 1 {
+		return o, errors.New("need at least one effort, one harness and --reps >= 1")
 	}
 	if o.order != "shuffle" && o.order != "fixed" {
 		return o, fmt.Errorf("--order must be shuffle or fixed, not %q", o.order)
+	}
+	if o.resume && o.newBatch {
+		return o, errors.New("use --resume or --new, not both")
+	}
+	if o.seed == 0 {
+		o.seed = uint64(time.Now().UnixNano())
 	}
 	if o.codexHome == "" {
 		o.codexHome = os.Getenv("CODEX_HOME")
@@ -208,38 +385,57 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	if o.workdir == "" {
 		o.workdir = filepath.Join(os.TempDir(), "firekeeper-effort-bench")
 	}
-	if o.out == "" {
-		o.out = filepath.Join(o.workdir, "results-"+time.Now().Format("20060102-150405"))
-	}
 	return o, nil
 }
 
-// Planned is one Codex run in the matrix.
-type Planned struct {
-	Rep    int
-	Effort string
-	Kind   string // "run", or "warm-repeat" for the immediate repeat
+func splitList(s string) []string {
+	var out []string
+	for _, e := range strings.Split(s, ",") {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
-// buildPlan lists the runs: every effort once per rep, shuffled inside each
-// rep (seeded, so the order is reproducible) to spread drift in time across
-// efforts.
-func buildPlan(o options) []Planned {
+// Planned is one run in a batch.
+type Planned struct {
+	Index   int    `json:"index"`
+	Harness string `json:"harness"`
+	Rep     int    `json:"rep"`
+	Effort  string `json:"effort"`
+	Kind    string `json:"kind"` // "run", or "warm-repeat" for the immediate repeat
+}
+
+// buildPlan lists the runs: every harness and effort once per rep, shuffled
+// inside each rep (seeded, so the order is reproducible) to spread drift in
+// time and cache state across efforts.
+func buildPlan(o options, prompt string, now time.Time) *Plan {
+	p := &Plan{
+		Batch: newBatchID(now, o.seed), CreatedAt: now.UTC(), Harnesses: o.harnesses, Model: o.model,
+		Efforts: o.efforts, Reps: o.reps, Seed: o.seed, Order: o.order,
+		Prompt: strings.TrimSpace(prompt), PromptID: promptID(strings.TrimSpace(prompt)),
+	}
 	rng := rand.New(rand.NewPCG(o.seed, 0x9e3779b97f4a7c15))
-	var plan []Planned
+	type cell struct{ h, e string }
 	for rep := 1; rep <= o.reps; rep++ {
-		order := append([]string(nil), o.efforts...)
-		if o.order == "shuffle" {
-			rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+		var cells []cell
+		for _, h := range o.harnesses {
+			for _, e := range o.efforts {
+				cells = append(cells, cell{h, e})
+			}
 		}
-		for _, e := range order {
-			plan = append(plan, Planned{Rep: rep, Effort: e, Kind: "run"})
+		if o.order == "shuffle" {
+			rng.Shuffle(len(cells), func(i, j int) { cells[i], cells[j] = cells[j], cells[i] })
+		}
+		for _, c := range cells {
+			p.Items = append(p.Items, Planned{Index: len(p.Items), Harness: c.h, Rep: rep, Effort: c.e, Kind: "run"})
 			if o.warmRepeat {
-				plan = append(plan, Planned{Rep: rep, Effort: e, Kind: "warm-repeat"})
+				p.Items = append(p.Items, Planned{Index: len(p.Items), Harness: c.h, Rep: rep, Effort: c.e, Kind: "warm-repeat"})
 			}
 		}
 	}
-	return plan
+	return p
 }
 
 func loadPrompt(path string) (string, error) {
@@ -251,24 +447,21 @@ func loadPrompt(path string) (string, error) {
 	return string(b), err
 }
 
-// codexArgv is the codex exec command line for one run; the prompt goes on
-// stdin ("-").
-func codexArgv(o options, effort, repo string) []string {
-	argv := []string{o.codex, "exec", "--json"}
-	if o.model != "" {
-		argv = append(argv, "-m", o.model)
+// shellQuote joins argv for display, quoting arguments with spaces.
+func shellQuote(argv []string) string {
+	out := make([]string, len(argv))
+	for i, a := range argv {
+		if a == "" || strings.ContainsAny(a, " \t'\"$`\\") {
+			a = "'" + strings.ReplaceAll(a, "'", `'\''`) + "'"
+		}
+		out[i] = a
 	}
-	argv = append(argv, "-c", "model_reasoning_effort="+effort, "--sandbox", "workspace-write")
-	if !o.userConfig {
-		argv = append(argv, "--ignore-user-config")
-	}
-	argv = append(argv, o.codexArgs...)
-	return append(argv, "-C", repo, "-")
+	return strings.Join(out, " ")
 }
 
 // resetRepo recreates the throwaway repo at the same path with the same
 // files and the same commit, so every run sees an identical starting state
-// (and an identical cwd in Codex's environment context).
+// (and an identical cwd in the harness's environment context).
 func resetRepo(repo string) error {
 	// Git object files are read-only, which stops RemoveAll on Windows.
 	_ = filepath.WalkDir(repo, func(path string, d fs.DirEntry, err error) error {
@@ -315,75 +508,50 @@ func resetRepo(repo string) error {
 	return nil
 }
 
-func runOne(o options, p Planned, n int, repo, logs, prompt string) Result {
-	r := Result{Run: n, Rep: p.Rep, Effort: p.Effort, Kind: p.Kind, ModelRequested: o.model}
+func runOne(o options, h harness, plan *Plan, p Planned, repo, logs string) Result {
+	r := Result{
+		Harness: h.Name(), Batch: plan.Batch, PlanIndex: p.Index, Rep: p.Rep, Effort: p.Effort, Kind: p.Kind,
+		ModelRequested: plan.Model, PromptID: plan.PromptID, NotLogged: h.NotLogged(),
+	}
 	if err := resetRepo(repo); err != nil {
 		r.Error = "reset repo: " + err.Error()
 		return r
 	}
-	argv := codexArgv(o, p.Effort, repo)
+	argv, stdin := h.Command(o, p.Effort, repo, plan.Prompt)
 	ctx, cancel := context.WithTimeout(context.Background(), o.timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = repo
-	cmd.Stdin = strings.NewReader(prompt)
-	cmd.Env = append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1", "CODEX_HOME="+o.codexHome)
+	cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = append(append(os.Environ(), "PYTHONDONTWRITEBYTECODE=1"), h.Env(o)...)
 	var stdout bytes.Buffer
-	stderrFile, err := os.Create(filepath.Join(logs, fmt.Sprintf("run-%02d.stderr", n)))
-	if err == nil {
-		defer stderrFile.Close()
-		cmd.Stderr = stderrFile
+	name := fmt.Sprintf("%s-%03d", plan.Batch, p.Index)
+	if f, err := os.Create(filepath.Join(logs, name+".stderr")); err == nil {
+		defer f.Close()
+		cmd.Stderr = f
 	}
 	cmd.Stdout = &stdout
-	start := time.Now()
+	r.StartedAt = time.Now().UTC()
 	runErr := cmd.Run()
-	r.WallSeconds = time.Since(start).Seconds()
-	_ = os.WriteFile(filepath.Join(logs, fmt.Sprintf("run-%02d.jsonl", n)), stdout.Bytes(), 0o600)
+	r.EndedAt = time.Now().UTC()
+	r.WallSeconds = r.EndedAt.Sub(r.StartedAt).Seconds()
+	_ = os.WriteFile(filepath.Join(logs, name+".jsonl"), stdout.Bytes(), 0o600)
 	if runErr != nil {
-		r.Error = "codex exec: " + runErr.Error()
+		r.Error = h.Name() + ": " + runErr.Error()
 		if ctx.Err() != nil {
-			r.Error = "codex exec timed out after " + o.timeout.String()
+			r.Error = h.Name() + " timed out after " + o.timeout.String()
 		}
 	}
-
-	id, execUsage := ThreadIDFromExecJSON(bytes.NewReader(stdout.Bytes()))
-	path, err := FindRollout(o.codexHome, id)
+	d, err := h.Collect(o, stdout.Bytes(), r.StartedAt)
 	if err != nil {
-		path, err = newestRollout(o.codexHome, start)
-	}
-	if err != nil {
-		r.Error = joinErr(r.Error, "find rollout: "+err.Error())
-		if execUsage != nil {
-			r.Usage = *execUsage // codex exec's own turn usage, no rollout detail
-			r.Source = "codex-exec-json"
-		}
+		r.Error = joinErr(r.Error, err.Error())
+		r.SessionID = d.SessionID
 		return r
 	}
-	st, err := ParseRolloutFile(path)
-	if err != nil {
-		r.Error = joinErr(r.Error, "read rollout: "+err.Error())
-		return r
-	}
-	r.fill(st)
-	r.Source = "rollout"
+	r.fill(d)
 	r.TestsPass = runTests(repo)
+	r.FirekeeperTotal = crossCheck(o, h, r.SessionID)
 	return r
-}
-
-// newestRollout is the fallback when the thread id is unknown: the newest
-// rollout written since the run started.
-func newestRollout(codexHome string, since time.Time) (string, error) {
-	matches, _ := filepath.Glob(filepath.Join(codexHome, "sessions", "*", "*", "*", "rollout-*.jsonl"))
-	best, bestAt := "", since.Add(-time.Second)
-	for _, m := range matches {
-		if info, err := os.Stat(m); err == nil && info.ModTime().After(bestAt) {
-			best, bestAt = m, info.ModTime()
-		}
-	}
-	if best == "" {
-		return "", errors.New("no rollout written during the run")
-	}
-	return best, nil
 }
 
 // runTests reports whether the task's tests pass after the run, or nil when
@@ -414,4 +582,54 @@ func emptyOr(s, fallback string) string {
 		return fallback
 	}
 	return s
+}
+
+func runReport(args []string, stdout, stderr io.Writer) int {
+	opts, err := parseFlags(args, stderr, true)
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		fmt.Fprintln(stderr, "effort-bench report:", err)
+		return 2
+	}
+	return writeStoreReport(opts, stdout, stderr, newRedactor(opts))
+}
+
+// writeStoreReport aggregates every stored run that matches the filters.
+func writeStoreReport(o options, stdout, stderr io.Writer, red *redactor) int {
+	runs, err := loadRuns(o.store)
+	if err != nil {
+		fmt.Fprintln(stderr, "effort-bench: read store:", err)
+		return 1
+	}
+	var keep []Result
+	for _, r := range runs {
+		if (o.filterModel == "" || r.Model == o.filterModel || r.ModelRequested == o.filterModel) &&
+			(o.filterHarness == "" || r.Harness == o.filterHarness) &&
+			(o.filterBatch == "" || r.Batch == o.filterBatch) {
+			keep = append(keep, r)
+		}
+	}
+	if len(keep) == 0 {
+		fmt.Fprintln(stderr, "effort-bench: no stored runs match")
+		return 1
+	}
+	seed := o.seed
+	if seed == 0 {
+		seed = 1
+	}
+	rep := buildReport(keep, seed)
+	if err := os.MkdirAll(o.out, 0o700); err != nil {
+		fmt.Fprintln(stderr, "effort-bench:", err)
+		return 1
+	}
+	if err := rep.writeAll(o.out, red); err != nil {
+		fmt.Fprintln(stderr, "effort-bench:", err)
+		return 1
+	}
+	rep.writeMarkdown(stdout, red)
+	// The real path goes to stderr only, so a screenshot of stdout stays redacted.
+	fmt.Fprintf(stderr, "\nwrote %s (summary.md, results.csv, results.json, chart.html) from %d stored runs\n", o.out, len(keep))
+	return 0
 }
