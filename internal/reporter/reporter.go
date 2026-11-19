@@ -21,20 +21,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/redact"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/redact"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 
 	// Register the transcript sources the reporter can read.
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/cursor"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/gemini"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/kimi"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/claude"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/codex"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/copilot"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/cursor"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/gemini"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/kimi"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/opencode"
 )
 
 // DefaultServer is the hosted dashboard, used when no server is configured.

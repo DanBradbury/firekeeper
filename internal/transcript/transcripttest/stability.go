@@ -12,9 +12,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
-	"github.com/DanBradbury/firekeeper/pkg/contract"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/pkg/contract"
 )
 
 // SeqCase is one fixture for RunSeqStability.

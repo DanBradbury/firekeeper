@@ -231,7 +231,7 @@ try {
 
     # 7b. A releases URL that is not https (or file://, or http:// to this
     # machine) is refused before any download (SEC-26-4, #30).
-    foreach ($url in @('http://example.invalid/releases', 'HTTP://github.com/DanBradbury/firekeeper/releases', 'ftp://example.invalid/releases', 'releases', '//example.invalid/releases', 'file://example.invalid/share/releases')) {
+    foreach ($url in @('http://example.invalid/releases', 'HTTP://github.com/firekeeper-ai/firekeeper/releases', 'ftp://example.invalid/releases', 'releases', '//example.invalid/releases', 'file://example.invalid/share/releases')) {
         $dir = Join-Path $work 'bin-url'
         $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $url; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1' } @('-Version', 'v1.2.3')
         Check (($r.Code -ne 0) -and ($r.Output -match 'must use https://') -and -not (Test-Path -LiteralPath $dir)) "insecure FIREKEEPER_RELEASES_URL rejected: $url"

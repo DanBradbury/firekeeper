@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
 )
 
 func useFontDir(t *testing.T, dir string, err error) {

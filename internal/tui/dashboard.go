@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/version"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 )
 
 // dashboard.go renders the Processes tab as a panel dashboard: summary panels

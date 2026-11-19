@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/iconfont"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
 )
 
 // iconSetupTools is the order the setup panel previews the logos in.

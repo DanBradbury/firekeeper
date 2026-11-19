@@ -33,11 +33,11 @@ const (
 )
 
 const (
-	defaultURL   = "https://api.github.com/repos/DanBradbury/firekeeper/releases/latest"
-	scriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.sh"
+	defaultURL   = "https://api.github.com/repos/firekeeper-ai/firekeeper/releases/latest"
+	scriptURLFmt = "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/%s/install.sh"
 	// windowsScriptURLFmt is the PowerShell installer for the same tag.
-	windowsScriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.ps1"
-	brewFormula         = "DanBradbury/tap/firekeeper"
+	windowsScriptURLFmt = "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/%s/install.ps1"
+	brewFormula         = "firekeeper-ai/tap/firekeeper"
 	fetchTimeout        = 2 * time.Second
 	maxBody             = 1 << 20
 )

@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/DanBradbury/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
 )
 
 // iconMode selects how a harness name is marked in the dashboard.

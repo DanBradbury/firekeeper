@@ -3,8 +3,8 @@ package tui
 import (
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // demoModel runs the real Firekeeper views against synthetic, in-memory data,

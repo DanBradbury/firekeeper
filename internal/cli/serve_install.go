@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/DanBradbury/firekeeper/internal/serverinstall"
+	"github.com/firekeeper-ai/firekeeper/internal/serverinstall"
 )
 
 const (
@@ -23,7 +23,7 @@ const (
 	// asking to install the server.
 	NoPromptEnv = "FIREKEEPER_NO_PROMPT"
 
-	brewFormula = "DanBradbury/tap/firekeeper-server"
+	brewFormula = "firekeeper-ai/tap/firekeeper-server"
 )
 
 // installEnv is everything the install offer reads from the outside world.

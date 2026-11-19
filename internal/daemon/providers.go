@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // DetectProviders finds supported transcript providers without reading their

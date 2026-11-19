@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Unlimited command width prevents long installation paths hiding harness names.

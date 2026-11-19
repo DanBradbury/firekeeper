@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/claudecloud"
 )
 
 // stubBackfill records the config and answers as a pass that planned one

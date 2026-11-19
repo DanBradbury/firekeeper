@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // codexPage adapts the Codex snapshot to the shared Usage layout: quota

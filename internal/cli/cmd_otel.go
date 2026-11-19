@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 )
 
 func runOtelListen(args []string, stdout, stderr io.Writer) int {

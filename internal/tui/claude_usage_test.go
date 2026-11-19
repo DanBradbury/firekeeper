@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 func writeClaudeTranscript(t *testing.T, root, project, id string, modified time.Time, lines ...string) {

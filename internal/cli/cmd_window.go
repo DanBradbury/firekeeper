@@ -12,10 +12,10 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/window"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/window"
 )
 
 // windowLimits returns the Claude 5-hour or weekly limit when limits are on.

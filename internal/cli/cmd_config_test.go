@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // testConfigHome is the home every main test reads its config from, so no

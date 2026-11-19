@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/DanBradbury/firekeeper/internal/fsutil"
+	"github.com/firekeeper-ai/firekeeper/internal/fsutil"
 	"os"
 	"path/filepath"
 	"runtime"

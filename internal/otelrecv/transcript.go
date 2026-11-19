@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript/claude"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/claude"
 )
 
 // SessionUsage is Firekeeper's view of one Claude Code session on disk.

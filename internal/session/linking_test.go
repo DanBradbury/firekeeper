@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // setExplicitIDs does for groups built in a test what Discover does before

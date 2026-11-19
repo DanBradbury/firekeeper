@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 )
 
 // recent.go lists recently active sessions across providers in the idle

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestParseProcessesFiltersClassifiesAndSanitizes(t *testing.T) {

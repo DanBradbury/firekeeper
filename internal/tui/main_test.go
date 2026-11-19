@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
 )
 
 // Claude limits are on by default, so no test may reach the real config,

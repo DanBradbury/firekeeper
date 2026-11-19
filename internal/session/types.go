@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const (

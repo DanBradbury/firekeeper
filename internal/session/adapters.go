@@ -1,6 +1,6 @@
 package session
 
-import "github.com/DanBradbury/firekeeper/pkg/event"
+import "github.com/firekeeper-ai/firekeeper/pkg/event"
 
 // providerAdapter is one provider's implementation of process
 // classification (concern 1) and process-to-session linking with metadata

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 // These tests use macOS tools, so this file only builds on macOS.

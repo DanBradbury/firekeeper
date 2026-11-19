@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 func stubReport(t *testing.T, summary reporter.Summary, err error) *reporter.Config {

@@ -7,7 +7,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/DanBradbury/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
 )
 
 // fontDir finds the user's font folder; tests replace it.

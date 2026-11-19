@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 )
 
 func runTelemetry(args []string, stdout, stderr io.Writer) int {

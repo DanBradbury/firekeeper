@@ -315,7 +315,7 @@ warning on the dashboard and sets `undercount_warning` on
 is not uploaded. Why the calls exist is described in the
 [Flamerix gist](https://gist.github.com/flamerix-ai/c3905705cc4205e5de3011fa2e74efce);
 Firekeeper does not ship that hook. Exact accounting is being investigated
-in [issue #21](https://github.com/DanBradbury/firekeeper/issues/21).
+in [issue #21](https://github.com/firekeeper-ai/firekeeper/issues/21).
 
 Copilot usage reads local history from read-only `session-store.db` and, when
 an authenticated Copilot/GitHub CLI token is available, fetches plan AI-credit
@@ -533,11 +533,11 @@ never uses `sudo`.
 that is writable, otherwise `~/.local/bin` (created; a `PATH` hint is printed
 if it is not on your `PATH`). If `firekeeper` lives under a Homebrew prefix
 Firekeeper does not write there. It offers to run `brew install
-DanBradbury/tap/firekeeper-server` instead, and downloads directly only if
+firekeeper-ai/tap/firekeeper-server` instead, and downloads directly only if
 `brew` is not installed.
 
 Release builds of `firekeeper` have the offer switched on, pointing at
-`DanBradbury/firekeeper-server-releases`. Builds made with plain `go build`
+`firekeeper-ai/firekeeper-server-releases`. Builds made with plain `go build`
 leave it off. To try it against another release server, or to turn it on in
 such a build, point it at one:
 
@@ -549,7 +549,7 @@ Setting `FIREKEEPER_SERVER_RELEASES_URL` enables the offer. The URL must be
 https; plain http is accepted only for `127.0.0.1`, `::1` and `localhost`, and
 only through this variable. Redirects to non-https are refused. The release config
 bakes the default in with `-ldflags "-X
-github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."`; the
+github.com/firekeeper-ai/firekeeper/internal/serverinstall.ReleasesURL=..."`; the
 environment variable wins over it.
 
 #### Updating the server from `serve`
@@ -591,12 +591,12 @@ is set.
 #### Release layout contract
 
 For whoever publishes the server (task A6). The repository is the public,
-binaries-only `DanBradbury/firekeeper-server-releases`.
+binaries-only `firekeeper-ai/firekeeper-server-releases`.
 
-- Latest release: `https://api.github.com/repos/DanBradbury/firekeeper-server-releases/releases/latest`,
+- Latest release: `https://api.github.com/repos/firekeeper-ai/firekeeper-server-releases/releases/latest`,
   read for `tag_name` (for example `v1.4.0`; letters, digits and `._+-` only).
 - Assets, at
-  `https://github.com/DanBradbury/firekeeper-server-releases/releases/download/<tag>/<asset>`:
+  `https://github.com/firekeeper-ai/firekeeper-server-releases/releases/download/<tag>/<asset>`:
   - `firekeeper-server_<version>_<os>_<arch>.tar.gz`, where `<version>` is the
     tag without a leading `v`, `<os>` is `darwin` or `linux`, and `<arch>` is
     `amd64` or `arm64`. The archive holds exactly two regular files at its

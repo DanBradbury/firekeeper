@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 // discoverSessions is replaced in tests so snapshot never scans real processes.

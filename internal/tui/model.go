@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/winterm"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/winterm"
 )
 
 const (

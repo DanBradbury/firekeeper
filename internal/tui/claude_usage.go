@@ -13,11 +13,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/claudecloud"
 )
 
 // claudeUsageHistoryLimit bounds the session browser, like the Codex and

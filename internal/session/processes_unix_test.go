@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // The scan needs BSD or Linux ps, hence the build constraint. A stand-in

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/serverinstall"
+	"github.com/firekeeper-ai/firekeeper/internal/serverinstall"
 )
 
 type fakeRelease struct {
@@ -319,7 +319,7 @@ func TestInstallHomebrewBranch(t *testing.T) {
 	if len(ran) != 1 || ran[0] != brew {
 		t.Errorf("brew runs: %v", ran)
 	}
-	if !strings.Contains(stderr.String(), "brew install DanBradbury/tap/firekeeper-server") {
+	if !strings.Contains(stderr.String(), "brew install firekeeper-ai/tap/firekeeper-server") {
 		t.Errorf("no brew suggestion:\n%s", stderr.String())
 	}
 	if *rel.requests != 0 {
@@ -343,7 +343,7 @@ func TestInstallHomebrewDeclined(t *testing.T) {
 	if code := runServe(nil, nil, &stderr); code != 2 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(stderr.String(), "brew install DanBradbury/tap/firekeeper-server") || *rel.requests != 0 {
+	if !strings.Contains(stderr.String(), "brew install firekeeper-ai/tap/firekeeper-server") || *rel.requests != 0 {
 		t.Errorf("%s", stderr.String())
 	}
 }

@@ -13,7 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 func TestReadCodexUsageResponses(t *testing.T) {

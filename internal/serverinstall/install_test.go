@@ -408,8 +408,8 @@ func TestResolveRules(t *testing.T) {
 	if !ok || err != nil || s.AllowLoopbackHTTP {
 		t.Errorf("build-time https: %v %v %v", s, ok, err)
 	}
-	if s.latestURL() != "https://api.github.com/repos/DanBradbury/firekeeper-server-releases/releases/latest" ||
-		s.downloadURL("v1", "a.tar.gz") != "https://github.com/DanBradbury/firekeeper-server-releases/releases/download/v1/a.tar.gz" {
+	if s.latestURL() != "https://api.github.com/repos/firekeeper-ai/firekeeper-server-releases/releases/latest" ||
+		s.downloadURL("v1", "a.tar.gz") != "https://github.com/firekeeper-ai/firekeeper-server-releases/releases/download/v1/a.tar.gz" {
 		t.Errorf("production URLs: %s %s", s.latestURL(), s.downloadURL("v1", "a.tar.gz"))
 	}
 	// The env value overrides the build-time one.

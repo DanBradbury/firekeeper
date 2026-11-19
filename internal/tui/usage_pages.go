@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // usage_pages.go adapts the Copilot, Kimi and Claude snapshots to the shared

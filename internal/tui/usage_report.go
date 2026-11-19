@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
 )
 
 // Status values of a provider in the usage report.

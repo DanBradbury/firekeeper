@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 )
 
 // Poller limits. A pass downloads at most DefaultMaxFetch sessions; when it

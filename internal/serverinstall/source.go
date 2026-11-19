@@ -21,7 +21,7 @@ const (
 
 	// ProductionBase is the intended public, binaries-only release
 	// repository. It is a constant for the owner to switch on, not a default.
-	ProductionBase = "https://github.com/DanBradbury/firekeeper-server-releases"
+	ProductionBase = "https://github.com/firekeeper-ai/firekeeper-server-releases"
 
 	// BinaryName is the only executable the archives carry.
 	BinaryName = "firekeeper-server"
@@ -29,7 +29,7 @@ const (
 
 // ReleasesURL is the build-time release base URL, set with
 //
-//	-ldflags "-X github.com/DanBradbury/firekeeper/internal/serverinstall.ReleasesURL=..."
+//	-ldflags "-X github.com/firekeeper-ai/firekeeper/internal/serverinstall.ReleasesURL=..."
 //
 // Empty means the feature is disabled. Release builds leave it empty.
 var ReleasesURL = ""
@@ -111,7 +111,7 @@ func (s Source) Host() string {
 // latestURL and downloadURL build the two kinds of request.
 func (s Source) latestURL() string {
 	if s.Base == ProductionBase {
-		return "https://api.github.com/repos/DanBradbury/firekeeper-server-releases/releases/latest"
+		return "https://api.github.com/repos/firekeeper-ai/firekeeper-server-releases/releases/latest"
 	}
 	return s.Base + "/latest"
 }
