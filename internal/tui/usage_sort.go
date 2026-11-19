@@ -116,18 +116,7 @@ func (m *model) cycleUsageSort(column usageSortColumn) {
 	if next == m.usageSort {
 		return
 	}
-	selected := ""
-	if page := m.usagePage(); len(page.Sessions) > 0 {
-		selected = page.Sessions[page.Cursor].ID
-	}
-	m.usageSort = next
-	m.codexHistoryCursor, m.copilotHistoryCursor, m.kimiHistoryCursor, m.claudeHistoryCursor = 0, 0, 0, 0
-	for index, session := range m.usagePage().Sessions {
-		if session.ID == selected {
-			*m.usageCursorRef() = index
-			break
-		}
-	}
+	m.keepUsageSelection(func() { m.usageSort = next })
 }
 
 // usageSortKey is the key that cycles column, as the header click replays it.

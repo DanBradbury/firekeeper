@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -38,12 +39,6 @@ func filterUsageSessions(sessions []usageSession, query string) []usageSession {
 	return append(titled, other...)
 }
 
-// usageFilterActive reports whether the session list is narrowed or the
-// query is being typed.
-func (m model) usageFilterActive() bool {
-	return m.usageFilterEditing || strings.TrimSpace(m.usageFilter) != ""
-}
-
 // startUsageFilter begins typing a query when there is a session list to filter.
 func (m *model) startUsageFilter() {
 	if m.usagePage().Total == 0 {
@@ -65,6 +60,26 @@ func (m *model) setUsageFilter(query string) {
 func (m *model) clearUsageFilter() {
 	m.usageFilterEditing = false
 	m.setUsageFilter("")
+}
+
+// clearUsageFilters is Esc outside typing: the query and the project.
+func (m *model) clearUsageFilters() {
+	m.clearUsageFilter()
+	if m.usageProject != "" {
+		m.keepUsageSelection(func() { m.usageProject = "" })
+	}
+}
+
+// usageNoMatchText says why a narrowed list is empty.
+func usageNoMatchText(page usagePage) string {
+	text := "No " + page.Label + " sessions"
+	if page.Project != "" {
+		text += " in project " + sanitizeProcessCommand(page.Project)
+	}
+	if filter := strings.TrimSpace(page.Filter); filter != "" {
+		text += fmt.Sprintf(" match %q", filter)
+	}
+	return text + "."
 }
 
 // updateUsageFilterKey handles keys while the query is being typed: text
@@ -115,20 +130,33 @@ func (m *model) appendUsageFilter(runes []rune) {
 	m.setUsageFilter(string(query))
 }
 
-// usageFilterLine is the row above the session list that shows the query,
-// a caret while it is typed, and how to change it.
+// usageFilterLine is the row above the session list that shows the project
+// and the query, a caret while it is typed, and how to change them.
 func usageFilterLine(page usagePage, width int) string {
+	line := ""
+	if page.Project != "" {
+		line += dashPaint("project ", usageMutedColor, false) + dashPaint(sanitizeProcessCommand(page.Project), dashTeal, true)
+	}
 	query := page.Filter // appendUsageFilter keeps printable runes only
-	hint := "/ edit · esc clear"
 	if page.FilterEditing {
 		query += "▏"
+	}
+	if query != "" {
+		if line != "" {
+			line += dashPaint("  ", usageMutedColor, false)
+		}
+		line += dashPaint("filter ", usageMutedColor, false) + dashPaint(query, dashOrange, true)
+	}
+	hint := "/ search · esc clear"
+	switch {
+	case page.FilterEditing:
 		hint = "enter keep · esc clear"
+	case strings.TrimSpace(page.Filter) != "":
+		hint = "/ edit · esc clear"
 	}
-	label := dashPaint("filter ", usageMutedColor, false)
-	value := dashPaint(query, dashOrange, true)
-	used := ansi.StringWidth("filter ") + ansi.StringWidth(query)
+	used := ansi.StringWidth(line)
 	if used+2+ansi.StringWidth(hint) > width {
-		return ansi.Truncate(label+value, width, "…")
+		return ansi.Truncate(line, width, "…")
 	}
-	return label + value + dashPaint(strings.Repeat(" ", width-used-ansi.StringWidth(hint))+hint, usageMutedColor, false)
+	return line + dashPaint(strings.Repeat(" ", width-used-ansi.StringWidth(hint))+hint, usageMutedColor, false)
 }

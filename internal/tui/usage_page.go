@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -83,7 +82,12 @@ type usagePage struct {
 	Total         int
 	Filter        string
 	FilterEditing bool
-	Sort          usageSort
+	// Project is the one project shown, or empty for all of them.
+	Project string
+	// ProjectSessions is the list before the project filter, which the
+	// projects panel rolls up so every project stays there to pick.
+	ProjectSessions []usageSession
+	Sort            usageSort
 }
 
 // usagePage is the active provider's page with the session order and filter
@@ -91,8 +95,9 @@ type usagePage struct {
 func (m model) usagePage() usagePage {
 	page := m.providerUsagePage()
 	page.Total = len(page.Sessions)
-	page.Filter, page.FilterEditing, page.Sort = m.usageFilter, m.usageFilterEditing, m.usageSort
-	page.Sessions = filterUsageSessions(sortUsageSessions(page.Sessions, m.usageSort), m.usageFilter)
+	page.Filter, page.FilterEditing, page.Project, page.Sort = m.usageFilter, m.usageFilterEditing, m.usageProject, m.usageSort
+	page.ProjectSessions = filterUsageSessions(sortUsageSessions(page.Sessions, m.usageSort), m.usageFilter)
+	page.Sessions = filterUsageProject(page.ProjectSessions, m.usageProject)
 	page.Cursor = min(max(page.Cursor, 0), max(len(page.Sessions)-1, 0))
 	return page
 }
@@ -296,33 +301,24 @@ func (m model) usageDaysPanel(page usagePage, height int) []string {
 // list on the left, and on the right the selected session's details above a
 // per-project token rollup. Narrow terminals show the list alone.
 func (m model) usageSessionRow(page usagePage, height int, now time.Time) []string {
-	history := page.Sessions
+	history := page.ProjectSessions
 	body := height - 2
 	title := usageSessionsTitle(page)
 	if m.width < 80 {
 		return dashBox(title, usageSessionLines(page, m.width-4, body, now), m.width, height, dashBlue)
 	}
-	rightWidth := m.width / 3
-	if m.width >= 120 {
-		rightWidth = m.width * 2 / 5
-	}
+	rightWidth := usageRightWidth(m.width)
 	leftWidth := m.width - rightWidth
 	left := dashBox(title, usageSessionLines(page, leftWidth-4, body, now), leftWidth, height, dashBlue)
 
-	var right []string
 	projects := fmt.Sprintf("projects · last %d", len(history))
-	switch {
-	case height < usageDetailMinRows:
-		right = dashBox(projects, usageProjectLines(history, body), rightWidth, height, dashTeal)
-	default:
-		detail := min(usageDetailRows, height)
-		if height-detail < 4 {
-			detail = height // too little left for a projects panel
-		}
+	detail, _, projectsHeight := usageRightPanels(height)
+	var right []string
+	if detail > 0 {
 		right = dashBox("session", usageSessionDetailLines(page), rightWidth, detail, dashTeal)
-		if rest := height - detail; rest >= 4 {
-			right = append(right, dashBox(projects, usageProjectLines(history, rest-2), rightWidth, rest, dashTeal)...)
-		}
+	}
+	if projectsHeight > 0 {
+		right = append(right, dashBox(projects, usageProjectLines(history, projectsHeight-2, page.Project), rightWidth, projectsHeight, dashTeal)...)
 	}
 	rows := make([]string, height)
 	for row := range rows {
@@ -331,16 +327,32 @@ func (m model) usageSessionRow(page usagePage, height int, now time.Time) []stri
 	return rows
 }
 
+// usageRightWidth is the width of the detail and projects column beside the
+// session list on terminals 80 columns or wider.
+func usageRightWidth(width int) int {
+	if width >= 120 {
+		return width * 2 / 5
+	}
+	return width / 3
+}
+
 func usageSessionsTitle(page usagePage) string {
 	title := "sessions"
 	filter := strings.TrimSpace(page.Filter)
+	narrowed := filter != "" || page.Project != ""
 	switch {
-	case filter != "" && len(page.Sessions) == 0:
-		title += fmt.Sprintf(" · 0 of %d · filter %q", page.Total, filter)
-	case filter != "":
-		title += fmt.Sprintf(" · %d/%d of %d · filter %q", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions), page.Total, filter)
+	case narrowed && len(page.Sessions) == 0:
+		title += fmt.Sprintf(" · 0 of %d", page.Total)
+	case narrowed:
+		title += fmt.Sprintf(" · %d/%d of %d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions), page.Total)
 	case len(page.Sessions) > 0:
 		title += fmt.Sprintf(" · %d/%d", min(page.Cursor+1, len(page.Sessions)), len(page.Sessions))
+	}
+	if page.Project != "" {
+		title += " · project " + sanitizeProcessCommand(page.Project)
+	}
+	if filter != "" {
+		title += fmt.Sprintf(" · filter %q", filter)
 	}
 	if label := page.Sort.label(); label != "" && len(page.Sessions) > 0 {
 		title += " · " + label
@@ -357,7 +369,7 @@ type usageListLayout struct {
 
 func usageSessionListLayout(page usagePage, rows int) usageListLayout {
 	layout := usageListLayout{capacity: rows}
-	if (page.FilterEditing || strings.TrimSpace(page.Filter) != "") && rows >= 2 {
+	if (page.FilterEditing || strings.TrimSpace(page.Filter) != "" || page.Project != "") && rows >= 2 {
 		layout.filter = true
 		layout.capacity--
 	}
@@ -387,7 +399,7 @@ func usageSessionLines(page usagePage, width, rows int, now time.Time) []string 
 		lines = append(lines, usageFilterLine(page, width))
 	}
 	if len(page.Sessions) == 0 {
-		return append(lines, dashPaint(fmt.Sprintf("No %s sessions match %q.", page.Label, strings.TrimSpace(page.Filter)), usageMutedColor, false))
+		return append(lines, dashPaint(usageNoMatchText(page), usageMutedColor, false))
 	}
 	columns := usageSessionColumns(width, page.Sessions)
 	if layout.header {
@@ -405,57 +417,6 @@ func usageProjectName(session usageSession) string {
 		return "unknown"
 	}
 	return filepath.Base(session.WorkDir)
-}
-
-// usageProjectLines rolls the history up by working directory name, largest
-// token total first.
-func usageProjectLines(history []usageSession, rows int) []string {
-	type total struct {
-		name     string
-		tokens   int64
-		sessions int
-	}
-	byName := map[string]*total{}
-	var totals []*total
-	for _, session := range history {
-		name := usageProjectName(session)
-		entry := byName[name]
-		if entry == nil {
-			entry = &total{name: name}
-			byName[name] = entry
-			totals = append(totals, entry)
-		}
-		entry.tokens += session.Tokens
-		entry.sessions++
-	}
-	if len(totals) == 0 {
-		return []string{dashPaint("No project data.", usageMutedColor, false)}
-	}
-	sort.SliceStable(totals, func(i, j int) bool {
-		if totals[i].tokens != totals[j].tokens {
-			return totals[i].tokens > totals[j].tokens
-		}
-		return totals[i].name < totals[j].name
-	})
-	countWidth := 0
-	for _, entry := range totals {
-		countWidth = max(countWidth, len(fmt.Sprintf("×%d", entry.sessions)))
-	}
-	var lines []string
-	for index, entry := range totals {
-		if index == rows-1 && len(totals) > rows {
-			lines = append(lines, dashPaint(fmt.Sprintf("+%d more", len(totals)-index), usageMutedColor, false))
-			break
-		}
-		lines = append(lines,
-			usageSplit(
-				dashPaint(entry.name, usageBrightColor, true),
-				dashPaint(dashCell(formatTokenCount(entry.tokens), 7, true), dashYellow, true)+
-					dashPaint("  "+dashCell(fmt.Sprintf("×%d", entry.sessions), countWidth, true), dashOrange, false),
-			),
-		)
-	}
-	return lines
 }
 
 // usageAgo is a compact relative time such as 5m, 3h or 2d.

@@ -647,25 +647,26 @@ func (m model) usageFooter() string {
 	keys := []footerKey{{"←/→", "provider"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}
 	page := m.usagePage()
 	switch {
-	case strings.TrimSpace(m.usageFilter) != "":
+	case strings.TrimSpace(m.usageFilter) != "" || m.usageProject != "":
 		keys = append([]footerKey{{"/", "filter"}, {"esc", "clear filter"}}, keys...)
 	case page.Total > 0:
 		keys = append([]footerKey{{"/", "filter"}}, keys...)
 	}
 	if len(page.Sessions) > 0 {
 		keys = append([]footerKey{{"↑↓", "session"}, {"enter", "chat"}}, keys...)
-		// The sort hint goes after the filter one.
+		// The sort and project hints go after the filter one.
 		for index := range keys {
 			if keys[index].key == "/" {
-				keys = slices.Insert(keys, index+1, footerKey{"t/a", "sort"})
+				keys = slices.Insert(keys, index+1, footerKey{"t/a", "sort"}, footerKey{"p", "project"})
 				break
 			}
 		}
 	}
-	// Too wide: shorten actions, and drop the sort hint (? help lists the
-	// keys, and the headers show the order) before shortening the rest.
+	// Too wide: shorten actions, and drop the project and sort hints (?
+	// help lists the keys, and the list shows the order and project) before
+	// shortening the rest.
 	_, available := footerVersion(m.width)
-	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"t/a", ""}, {"esc", "clear"}, {"r", "reload"}} {
+	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"p", ""}, {"t/a", ""}, {"esc", "clear"}, {"r", "reload"}} {
 		if footerKeysWidth(keys, 1) <= available {
 			break
 		}
