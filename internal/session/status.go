@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 
@@ -39,42 +40,43 @@ func (d *discoverer) readRolloutParentThreadID(path string) string {
 // readRolloutStatus reads the latest state and cumulative token usage from
 // the tail of a rollout, falling back to the whole file when the tail shows
 // no state.
-func (d *discoverer) readRolloutStatus(path string) (State, TokenBreakdown, error) {
+func (d *discoverer) readRolloutStatus(path string) (State, TokenBreakdown, string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return SessionStateUnknown, TokenBreakdown{}, err
+		return SessionStateUnknown, TokenBreakdown{}, "", err
 	}
 	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
-		return SessionStateUnknown, TokenBreakdown{}, err
+		return SessionStateUnknown, TokenBreakdown{}, "", err
 	}
 	start := max(info.Size()-RolloutStatusTailBytes, 0)
 	if start > 0 {
 		if _, err := file.Seek(start, io.SeekStart); err != nil {
-			return SessionStateUnknown, TokenBreakdown{}, err
+			return SessionStateUnknown, TokenBreakdown{}, "", err
 		}
 		reader := bufio.NewReader(file)
 
 		if _, err := reader.ReadBytes('\n'); err != nil && !errors.Is(err, io.EOF) {
-			return SessionStateUnknown, TokenBreakdown{}, err
+			return SessionStateUnknown, TokenBreakdown{}, "", err
 		}
-		state, tokens, err := d.scanRolloutStatus(reader)
+		state, tokens, effort, err := d.scanRolloutStatus(reader)
 		if err == nil && state != SessionStateUnknown {
-			return state, tokens, nil
+			return state, tokens, effort, nil
 		}
 	}
 
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return SessionStateUnknown, TokenBreakdown{}, err
+		return SessionStateUnknown, TokenBreakdown{}, "", err
 	}
 	return d.scanRolloutStatus(bufio.NewReader(file))
 }
 
-func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakdown, error) {
+func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakdown, string, error) {
 	state := SessionStateUnknown
 	var tokens TokenBreakdown
+	var effort string
 	pendingInput := make(map[string]bool)
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -91,6 +93,10 @@ func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakd
 					tokens = TokenBreakdown{Input: max(total.Input-cached, 0), Output: max(total.Output, 0), CacheRead: cached}
 				}
 				switch {
+				case event.Type == "turn_context":
+					// The effort of the latest turn; a turn without one keeps
+					// the last known value.
+					effort = cmp.Or(effortLabel(event.Payload.Effort), effort)
 				case event.Type == "event_msg" && event.Payload.Type == "task_started":
 					state = SessionStateActive
 					clear(pendingInput)
@@ -112,10 +118,10 @@ func (d *discoverer) scanRolloutStatus(reader *bufio.Reader) (State, TokenBreakd
 			}
 		}
 		if errors.Is(err, io.EOF) {
-			return state, tokens, nil
+			return state, tokens, effort, nil
 		}
 		if err != nil {
-			return state, tokens, err
+			return state, tokens, effort, err
 		}
 	}
 }
@@ -163,3 +169,40 @@ func (s *State) UnmarshalJSON(data []byte) error {
 	}
 	return nil
 }
+
+// maxEffortLength bounds a recorded effort label. Real values are one short
+// word such as "low", "medium", "high", "xhigh" or "max".
+const maxEffortLength = 16
+
+// normalizeEffort returns value as a lower-case effort label, or "" when it is
+// empty or not a plain word, so a provider's unexpected data never reaches the
+// terminal.
+func normalizeEffort(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || len(value) > maxEffortLength {
+		return ""
+	}
+	for _, r := range value {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' && r != '_' {
+			return ""
+		}
+	}
+	return value
+}
+
+// effortLabel reads an effort from a JSON value. A value that is not a string,
+// such as null or an object a provider adds later, gives "" and never fails the
+// record it sits in.
+func effortLabel(raw json.RawMessage) string {
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return normalizeEffort(value)
+}
+
+// NormalizeEffort is normalizeEffort for callers outside the package.
+func NormalizeEffort(value string) string { return normalizeEffort(value) }
+
+// EffortLabel is effortLabel for callers outside the package.
+func EffortLabel(raw json.RawMessage) string { return effortLabel(raw) }

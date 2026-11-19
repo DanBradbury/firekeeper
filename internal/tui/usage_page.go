@@ -44,9 +44,12 @@ type usageField struct {
 // detail and project panels show.
 type usageSession struct {
 	ID, Title, WorkDir, Branch, Model string
-	Tokens                            int64
-	UpdatedAt                         time.Time
-	Details                           []usageField
+	// Effort is the reasoning effort, shown after the model; empty when the
+	// provider does not record one.
+	Effort    string
+	Tokens    int64
+	UpdatedAt time.Time
+	Details   []usageField
 }
 
 // usageCard is one box in the card row. Lines receives the body rows
@@ -552,7 +555,7 @@ func usageSessionDetailLines(page usagePage) []string {
 		lines = append(lines, usageFieldLine("Branch", session.Branch, dashBlue))
 	}
 	lines = append(lines,
-		usageFieldLine("Model", session.Model, usageTextColor),
+		usageFieldLine("Model", usageModelLabel(session), usageTextColor),
 		usageFieldLine("Tokens", formatTokenCount(session.Tokens), dashYellow),
 		usageFieldLine("Updated", formatSessionTime(session.UpdatedAt), usageTextColor),
 	)
@@ -659,4 +662,13 @@ func usageTotalDays(dates []string, tokens []int64, inner int) []string {
 		lines = append(lines, usageMetricBarLine(dayLabel(date, last), tokens[index], peak, inner, last))
 	}
 	return lines
+}
+
+// usageModelLabel is the model name, followed by the reasoning effort when the
+// provider recorded one. It is empty with no model, so the line shows a dash.
+func usageModelLabel(session usageSession) string {
+	if session.Model == "" || session.Effort == "" {
+		return session.Model
+	}
+	return session.Model + " · " + session.Effort
 }

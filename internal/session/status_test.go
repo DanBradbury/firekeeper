@@ -11,7 +11,7 @@ import (
 // rolloutState scans a rollout for its latest state, ignoring token usage.
 func rolloutState(t *testing.T, lines string) State {
 	t.Helper()
-	state, _, err := (&discoverer{}).scanRolloutStatus(bufio.NewReader(strings.NewReader(lines)))
+	state, _, _, err := (&discoverer{}).scanRolloutStatus(bufio.NewReader(strings.NewReader(lines)))
 	if err != nil {
 		t.Fatal(err)
 	}

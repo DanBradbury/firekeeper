@@ -1173,3 +1173,21 @@ func TestSummaryCountsSubagentTokensButNotSubagentSessions(t *testing.T) {
 		t.Fatalf("tokens = %d, tool = %+v; subagent tokens are still spent by the runtime", summary.tokens, summary.tools[0])
 	}
 }
+
+func TestSessionModelLabel(t *testing.T) {
+	tests := []struct {
+		name    string
+		session sessionInfo
+		want    string
+	}{
+		{"model and effort", sessionInfo{model: "gpt-6.1-sol", effort: "high"}, "gpt-6.1-sol · high"},
+		{"model only", sessionInfo{model: "gpt-6.1-sol"}, "gpt-6.1-sol"},
+		{"effort without model", sessionInfo{effort: "high"}, "unknown · high"},
+		{"nothing", sessionInfo{}, "unknown"},
+	}
+	for _, tt := range tests {
+		if got := sessionModelLabel(tt.session); got != tt.want {
+			t.Errorf("%s: label = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

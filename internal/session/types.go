@@ -1,6 +1,7 @@
 package session
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/pkg/event"
@@ -8,8 +9,12 @@ import (
 
 const (
 	CopilotEventTailBytes = int64(4 << 20)
-	CopilotLogHeadBytes   = int64(256 << 10)
-	CopilotLogTailBytes   = int64(4 << 20)
+	// CopilotEffortHeadBytes is how much of the start of a Copilot events file
+	// CopilotSessionEffort reads. The first model change is written within the
+	// first kilobyte.
+	CopilotEffortHeadBytes = int64(64 << 10)
+	CopilotLogHeadBytes    = int64(256 << 10)
+	CopilotLogTailBytes    = int64(4 << 20)
 )
 
 type CopilotWorkspaceMetadata struct {
@@ -45,6 +50,7 @@ type CopilotStoredMetadata struct {
 type CopilotEventMetadata struct {
 	State      State
 	Model      string
+	Effort     string
 	UpdatedAt  time.Time
 	TokensUsed int64
 	Tokens     TokenBreakdown
@@ -54,12 +60,13 @@ type CopilotEvent struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
 	Data      struct {
-		RequestID          string `json:"requestId"`
-		Model              string `json:"model"`
-		NewModel           string `json:"newModel"`
-		CurrentModel       string `json:"currentModel"`
-		OutputTokens       int64  `json:"outputTokens"`
-		ConversationTokens int64  `json:"conversationTokens"`
+		RequestID          string          `json:"requestId"`
+		Model              string          `json:"model"`
+		NewModel           string          `json:"newModel"`
+		CurrentModel       string          `json:"currentModel"`
+		ReasoningEffort    json.RawMessage `json:"reasoningEffort"`
+		OutputTokens       int64           `json:"outputTokens"`
+		ConversationTokens int64           `json:"conversationTokens"`
 		ResponseChunk      struct {
 			Usage *struct {
 				Prompt     int64 `json:"prompt_tokens"`
@@ -104,11 +111,15 @@ type ProcessInfo struct {
 }
 
 type Info struct {
-	ID          string
-	Name        string
-	State       State
-	CWD         string
-	Model       string
+	ID    string
+	Name  string
+	State State
+	CWD   string
+	Model string
+	// Effort is the reasoning effort the provider recorded for the latest
+	// turn, such as "medium" or "high". It is empty when the provider does not
+	// record one.
+	Effort      string
 	Source      string
 	Repository  string
 	GitBranch   string
@@ -215,9 +226,10 @@ type RolloutSessionMetaRecord struct {
 type RolloutStatusEvent struct {
 	Type    string `json:"type"`
 	Payload struct {
-		Type   string `json:"type"`
-		Name   string `json:"name"`
-		CallID string `json:"call_id"`
+		Type   string          `json:"type"`
+		Name   string          `json:"name"`
+		CallID string          `json:"call_id"`
+		Effort json.RawMessage `json:"effort"`
 		Info   *struct {
 			Total *struct {
 				Input  int64 `json:"input_tokens"`

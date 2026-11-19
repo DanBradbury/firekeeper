@@ -66,6 +66,7 @@ type sessionInfo struct {
 	state             sessionState
 	cwd               string
 	model             string
+	effort            string
 	source            string
 	repository        string
 	gitBranch         string

@@ -5,6 +5,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/session"
@@ -19,13 +20,16 @@ func codexStatePath() (string, error)              { return session.CodexStatePa
 func emptyFallback(value, fallback string) string  { return session.EmptyFallback(value, fallback) }
 func normalizeTTY(value string) string             { return session.NormalizeTTY(value) }
 func sanitizeProcessCommand(command string) string { return session.SanitizeProcessCommand(command) }
+func normalizeEffort(value string) string          { return session.NormalizeEffort(value) }
+func effortLabel(raw json.RawMessage) string       { return session.EffortLabel(raw) }
+func copilotSessionEffort(home, id string) string  { return session.CopilotSessionEffort(home, id) }
 
 func fromProcessInfo(v session.ProcessInfo) processInfo {
 	return processInfo{tool: v.Tool, pid: v.PID, ppid: v.PPID, tty: v.TTY, elapsed: v.Elapsed, command: v.Command}
 }
 
 func fromSessionInfo(v session.Info) sessionInfo {
-	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed, tokens: v.Tokens, undercountWarning: v.UndercountWarning, subagent: v.Subagent, parentID: v.ParentID, agentName: v.AgentName}
+	return sessionInfo{id: v.ID, name: v.Name, state: sessionState(v.State), cwd: v.CWD, model: v.Model, effort: v.Effort, source: v.Source, repository: v.Repository, gitBranch: v.GitBranch, rolloutPath: v.RolloutPath, updatedAt: v.UpdatedAt, tokensUsed: v.TokensUsed, tokens: v.Tokens, undercountWarning: v.UndercountWarning, subagent: v.Subagent, parentID: v.ParentID, agentName: v.AgentName}
 }
 
 func fromProcessGroup(v session.ProcessGroup) processGroup {

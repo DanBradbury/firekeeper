@@ -64,7 +64,7 @@ Linux (amd64 and arm64) is best effort.
 2. Open another terminal window, tab, or pane on the same machine, as the same
    user, and run `firekeeper` from any directory.
 3. The **Processes** view should show your running agents within a couple of
-   seconds. Select a row to see its project, state, model, and available tokens.
+   seconds. Select a row to see its project, state, model (with the reasoning effort for Codex, Claude Code and Copilot CLI, when the session records one), and available tokens. The Usage tab's session panel shows the effort too.
 
 | Key | What to do |
 | --- | --- |

@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -329,17 +330,18 @@ func ClaudeConfigDir() (string, error) { return standalone().claudeConfigDir() }
 // claudeRecord holds the transcript fields discovery reads. Message text is
 // only inspected for the interrupt marker and is never kept.
 type claudeRecord struct {
-	Type        string `json:"type"`
-	Subtype     string `json:"subtype"`
-	Timestamp   string `json:"timestamp"`
-	SessionID   string `json:"sessionId"`
-	CWD         string `json:"cwd"`
-	GitBranch   string `json:"gitBranch"`
-	Entrypoint  string `json:"entrypoint"`
-	IsSidechain bool   `json:"isSidechain"`
-	IsMeta      bool   `json:"isMeta"`
-	AITitle     string `json:"aiTitle"`
-	AgentName   string `json:"agentName"`
+	Type        string          `json:"type"`
+	Subtype     string          `json:"subtype"`
+	Timestamp   string          `json:"timestamp"`
+	SessionID   string          `json:"sessionId"`
+	CWD         string          `json:"cwd"`
+	GitBranch   string          `json:"gitBranch"`
+	Entrypoint  string          `json:"entrypoint"`
+	IsSidechain bool            `json:"isSidechain"`
+	IsMeta      bool            `json:"isMeta"`
+	AITitle     string          `json:"aiTitle"`
+	AgentName   string          `json:"agentName"`
+	Effort      json.RawMessage `json:"effort"`
 	Message     *struct {
 		ID         string          `json:"id"`
 		Model      string          `json:"model"`
@@ -379,6 +381,7 @@ type claudeTranscriptMetadata struct {
 	CWD        string
 	GitBranch  string
 	Model      string
+	Effort     string
 	Entrypoint string
 	State      State
 	StartedAt  time.Time
@@ -432,6 +435,7 @@ func (d *discoverer) readClaudeTranscriptMetadata(path string) (Info, error) {
 		State:             meta.State,
 		CWD:               d.sanitizeProcessCommand(meta.CWD),
 		Model:             d.sanitizeProcessCommand(meta.Model),
+		Effort:            meta.Effort,
 		Source:            d.emptyFallback(d.sanitizeProcessCommand(meta.Entrypoint), "Claude Code"),
 		GitBranch:         d.sanitizeProcessCommand(meta.GitBranch),
 		RolloutPath:       path,
@@ -507,6 +511,7 @@ func (d *discoverer) trackClaudeRecord(meta *claudeTranscriptMetadata, rec claud
 		if rec.Message != nil && rec.Message.Model != "" && rec.Message.Model != "<synthetic>" {
 			meta.Model = rec.Message.Model
 		}
+		meta.Effort = cmp.Or(effortLabel(rec.Effort), meta.Effort)
 		if rec.Message != nil && rec.Message.Usage != nil {
 			usage := rec.Message.Usage
 			key := rec.Message.ID

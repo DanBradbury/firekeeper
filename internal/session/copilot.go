@@ -511,6 +511,7 @@ func (d *discoverer) loadCopilotSession(home, id string, stored CopilotStoredMet
 		State:       state,
 		CWD:         d.sanitizeProcessCommand(cwd),
 		Model:       d.sanitizeProcessCommand(model),
+		Effort:      events.Effort,
 		Source:      d.sanitizeProcessCommand(source),
 		Repository:  d.sanitizeProcessCommand(repository),
 		GitBranch:   d.sanitizeProcessCommand(d.firstNonEmpty(workspace.Branch, stored.Branch)),
@@ -559,6 +560,11 @@ func (d *discoverer) scanCopilotEvents(reader io.Reader) (CopilotEventMetadata, 
 			metadata.UpdatedAt = timestamp
 		}
 		metadata.Model = d.firstNonEmpty(event.Data.NewModel, event.Data.CurrentModel, event.Data.Model, metadata.Model)
+		if event.Type == "session.model_change" {
+			// A model change names the effort the new model runs at; none
+			// means the model has no effort setting, so the old value ends.
+			metadata.Effort = effortLabel(event.Data.ReasoningEffort)
+		}
 		outputTokens += event.Data.OutputTokens
 		if event.Data.ConversationTokens > conversationTokens {
 			conversationTokens = event.Data.ConversationTokens
