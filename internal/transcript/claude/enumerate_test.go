@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 )
 
 func writeHistorical(t *testing.T, dir, id, content string, mtime time.Time) string {

@@ -10,24 +10,24 @@ These methods install a prebuilt binary; you do not need Go.
 ### macOS — Homebrew
 
 ```sh
-brew install DanBradbury/tap/firekeeper
+brew install firekeeper-ai/tap/firekeeper
 ```
 
 ### macOS or Linux — install script
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh
 ```
 
 ### Windows — PowerShell 5.1 or 7
 
 ```powershell
-irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex
 ```
 
 The script commands download and execute code. You can inspect
 [install.sh](../install.sh) or [install.ps1](../install.ps1) first, or get a
-binary from [GitHub Releases](https://github.com/DanBradbury/firekeeper/releases).
+binary from [GitHub Releases](https://github.com/firekeeper-ai/firekeeper/releases).
 See [Windows verification](#verify-before-you-install-windows) for a step-by-step
 manual download and checksum check.
 
@@ -72,7 +72,7 @@ The install script puts the binary in `~/.local/bin` (set
 directory is not on your `PATH`. It never uses `sudo`. It verifies the
 download against the release's SHA-256 checksums and installs nothing if they
 do not match. Pin a release with
-`curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh -s -- --version vX.Y.Z`.
+`curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh -s -- --version vX.Y.Z`.
 
 The PowerShell script installs `firekeeper.exe` to
 `%LOCALAPPDATA%\Programs\firekeeper` (set `FIREKEEPER_INSTALL_DIR` to an
@@ -94,11 +94,11 @@ checksum check compares the zip with `checksums.txt` from the same GitHub
 release. That catches a corrupted download, not a compromised repository or
 release: a SHA-256 match proves integrity against the release, not who made
 it. To read what you run first, pin the script to a release tag. Pick the tag
-from the [releases page](https://github.com/DanBradbury/firekeeper/releases):
+from the [releases page](https://github.com/firekeeper-ai/firekeeper/releases):
 
 ```powershell
 $v = 'v0.8.0'
-Invoke-WebRequest "https://raw.githubusercontent.com/DanBradbury/firekeeper/$v/install.ps1" -OutFile install.ps1 -UseBasicParsing
+Invoke-WebRequest "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/$v/install.ps1" -OutFile install.ps1 -UseBasicParsing
 notepad .\install.ps1   # read it before running it
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Version $v
 ```
@@ -114,7 +114,7 @@ hashes with `Get-FileHash`, and unzip only if they match.
 $v = 'v0.8.0'
 $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
 $zip = "firekeeper_$($v.TrimStart('v'))_windows_$arch.zip"
-$base = "https://github.com/DanBradbury/firekeeper/releases/download/$v"
+$base = "https://github.com/firekeeper-ai/firekeeper/releases/download/$v"
 Invoke-WebRequest "$base/$zip" -OutFile $zip -UseBasicParsing
 Invoke-WebRequest "$base/checksums.txt" -OutFile checksums.txt -UseBasicParsing
 $want = ((Get-Content checksums.txt) -match "  $([regex]::Escape($zip))$" -split '\s+')[0]
@@ -144,7 +144,7 @@ When you start `firekeeper` in a terminal it checks GitHub for a newer
 release (one unauthenticated request per launch) and asks whether to
 update. Homebrew installs run `brew update` and then `brew upgrade`, and the
 update counts as done only when Homebrew reports the new version as installed
-and linked; others re-run the install script (`install.ps1` on Windows) for that
+and linked, after which `brew cleanup` removes the versions it replaced; others re-run the install script (`install.ps1` on Windows) for that
 exact version. Choose "Skip this version" to stop asking about it, or
 set `FIREKEEPER_NO_UPDATE_CHECK=1` to turn the check off. Builds from source
 never check.
@@ -163,7 +163,7 @@ go build -o firekeeper .
 Or install with Go:
 
 ```sh
-go install github.com/DanBradbury/firekeeper@latest
+go install github.com/firekeeper-ai/firekeeper@latest
 ```
 
 Put the binary on your `PATH`, then run `firekeeper`. A build made this way

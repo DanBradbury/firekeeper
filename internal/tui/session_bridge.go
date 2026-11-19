@@ -7,7 +7,7 @@ package tui
 import (
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 func copilotHome() (string, error)                 { return session.CopilotHome() }

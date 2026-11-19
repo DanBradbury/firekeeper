@@ -13,7 +13,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/serverinstall"
+	"github.com/firekeeper-ai/firekeeper/internal/serverinstall"
 )
 
 // The serve install and update tests run the server they install. On Unix

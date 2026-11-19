@@ -5,7 +5,7 @@ import (
 	"io"
 	"slices"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 // WriteReconcile compares telemetry totals with transcript-derived totals.

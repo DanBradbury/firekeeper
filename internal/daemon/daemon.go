@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/claudecloud"
 )
 
 const (

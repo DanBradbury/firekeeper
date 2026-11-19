@@ -3,8 +3,8 @@ package tui
 import (
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // demoModel runs the real Firekeeper views against synthetic, in-memory data,
@@ -74,6 +74,8 @@ func (d demoModel) updateKey(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case d.model.helpOpen:
 		// Help consumes its own next key.
+	case d.model.activeTab == usageTab && d.model.usageFilterEditing:
+		// Typing a session filter: every key is text or a filter edit.
 	case d.model.chat.open:
 		switch key.String() {
 		case "e", "o":

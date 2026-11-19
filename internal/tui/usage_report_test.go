@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
 )
 
 func TestBuildUsageReport(t *testing.T) {

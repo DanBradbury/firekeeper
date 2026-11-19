@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/serverinstall"
+	"github.com/firekeeper-ai/firekeeper/internal/serverinstall"
 )
 
 // serverScript is a fake firekeeper-server (see fakeServerBody): it answers

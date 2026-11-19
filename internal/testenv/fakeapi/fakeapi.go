@@ -27,8 +27,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/contract"
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/contract"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Limits from docs/api.md.

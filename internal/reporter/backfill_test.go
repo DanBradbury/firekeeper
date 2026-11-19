@@ -18,10 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/codex"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/codex"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 )
 
 // historyFixture is a home directory with several ended Codex sessions, the

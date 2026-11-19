@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/daemon"
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/transcript/claudecloud"
-	"github.com/DanBradbury/firekeeper/internal/version"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/daemon"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/claudecloud"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 )
 
 // configHome locates the home directory the config file is read from. It

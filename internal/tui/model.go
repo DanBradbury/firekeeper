@@ -13,10 +13,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/winterm"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/winterm"
 )
 
 const (
@@ -157,6 +157,10 @@ type model struct {
 	mouse                   mouseState
 	menu                    *contextMenu
 	notice                  string
+	usageFilter             string
+	usageFilterEditing      bool
+	usageSort               usageSort
+	usageProject            string
 	recentSessions          []recentSession
 	recentCursor            int
 	recentLoading           bool
@@ -244,6 +248,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.open {
 			return m.updateChat(msg)
+		}
+		if m.activeTab == usageTab && m.usageFilterEditing {
+			return m.updateUsageFilterKey(msg)
 		}
 		if msg.String() == "o" {
 			if cmd := m.openShownExport(); cmd != nil {
@@ -348,6 +355,26 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.beginOverviewRefresh()
 				}
 				return m, m.beginUsageRefresh()
+			}
+		case "/":
+			if m.activeTab == usageTab {
+				m.startUsageFilter()
+			}
+		case "esc":
+			if m.activeTab == usageTab {
+				m.clearUsageFilters()
+			}
+		case "p":
+			if m.activeTab == usageTab {
+				m.toggleSelectedUsageProject()
+			}
+		case "t":
+			if m.activeTab == usageTab {
+				m.cycleUsageSort(usageSortTokens)
+			}
+		case "a":
+			if m.activeTab == usageTab {
+				m.cycleUsageSort(usageSortUpdated)
 			}
 		case "R":
 			if m.idleListActive() {

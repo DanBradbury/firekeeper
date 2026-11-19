@@ -55,7 +55,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Version is the API version the embedded fixtures describe.

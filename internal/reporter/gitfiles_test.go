@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 // gitT0 is the synthetic repository's base time, in unix seconds.

@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 # "package test" pairs that skip by design: a subprocess helper that only
 # runs as a child of another test, and an opt-in benchmark.
-allowed='github.com/DanBradbury/firekeeper/internal/daemon TestHelperDaemon'
+allowed='github.com/firekeeper-ai/firekeeper/internal/daemon TestHelperDaemon'
 
 if [ "$#" -eq 0 ]; then
 	set -- -race ./...

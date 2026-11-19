@@ -223,7 +223,7 @@ func (s *Service) check() error {
 		return errors.New("the firekeeper executable path is not absolute")
 	}
 	if transientExecutable(s.Executable) {
-		return errors.New("firekeeper is running from a temporary build (go run?); install it first, for example with go install github.com/DanBradbury/firekeeper@latest, and run that binary")
+		return errors.New("firekeeper is running from a temporary build (go run?); install it first, for example with go install github.com/firekeeper-ai/firekeeper@latest, and run that binary")
 	}
 	return nil
 }

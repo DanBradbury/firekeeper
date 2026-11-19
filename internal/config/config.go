@@ -23,7 +23,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // Environment variables.

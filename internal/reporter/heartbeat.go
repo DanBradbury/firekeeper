@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 type heartbeatSession struct {

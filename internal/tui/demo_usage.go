@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
 )
 
 // seedDemoUsage provides only invented in-memory snapshots. Every renderer

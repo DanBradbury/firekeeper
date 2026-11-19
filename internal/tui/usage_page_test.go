@@ -40,7 +40,7 @@ func TestUsageCardsFloatValuesRight(t *testing.T) {
 		"projects": usageProjectLines([]usageSession{
 			{WorkDir: "/w/game-sync", Tokens: 673800000},
 			{WorkDir: "/w/other", Tokens: 1500},
-		}, 5),
+		}, 5, ""),
 		"copilot plan": copilotPlanLines(copilotUsageSnapshot{Plan: copilotPlanDetails{Available: true, Name: "pro", UsedCredits: 481, TotalCredits: 7000}}),
 	}
 	for name, lines := range rows {

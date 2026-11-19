@@ -2,7 +2,7 @@
 
 **One terminal dashboard for all your coding agents.**
 
-[![CI](https://github.com/DanBradbury/firekeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/DanBradbury/firekeeper/actions/workflows/ci.yml)
+[![CI](https://github.com/firekeeper-ai/firekeeper/actions/workflows/ci.yml/badge.svg)](https://github.com/firekeeper-ai/firekeeper/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 See which agents are working or need attention, read their latest replies,
@@ -28,13 +28,13 @@ is needed.
 **macOS — Homebrew**
 
 ```sh
-brew install DanBradbury/tap/firekeeper
+brew install firekeeper-ai/tap/firekeeper
 ```
 
 **macOS or Linux — install script**
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh
 ```
 
 Installs to `~/.local/bin` without `sudo`. Follow the installer's `PATH`
@@ -43,7 +43,7 @@ hint if that directory is not on your path.
 **Windows — PowerShell 5.1 or 7**
 
 ```powershell
-irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\Programs\firekeeper` and adds it to your user
@@ -110,6 +110,11 @@ You do **not** need `login`, `serve`, or `daemon install` to use this dashboard.
   Usage breaks history down by model and lets you open past
   conversations. Both list only providers with local usage data, so agents
   you don't use stay out of the way. See [what each provider reports](https://firekeeper.ai/docs/usage/).
+  In Usage's session list, `/` filters by title (sessions whose project or
+  branch match follow), `p` shows only the selected session's project (or
+  click a project in the projects panel), and `t` or `a`, or a click on the
+  TOKENS or AGO header, sorts by tokens or age; press again to reverse, a
+  third time for newest first. Esc clears the filters.
 - **Read without interrupting.** The chat view follows new prompts and replies
   live, read-only. Return to the agent's own terminal to reply or approve work.
   With `firekeeper-server` installed, `e` saves the session as a standalone
@@ -267,7 +272,7 @@ are the stable, importable pieces of that contract.
 Firekeeper is an early-stage project. macOS is the main target, Linux is best
 effort, and Windows is supported but has had the least real-world use. Expect adapters and metadata handling
 to evolve as the agent CLIs change. Bug reports and requests for more agents
-are welcome as [issues](https://github.com/DanBradbury/firekeeper/issues).
+are welcome as [issues](https://github.com/firekeeper-ai/firekeeper/issues).
 
 ## License
 

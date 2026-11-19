@@ -10,8 +10,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/DanBradbury/firekeeper/internal/iconfont"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 func withIconMode(t *testing.T, mode iconMode) {

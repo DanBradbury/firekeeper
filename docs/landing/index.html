@@ -49,7 +49,7 @@
       <li class="opt"><a href="#pricing">Pricing</a></li>
       <li class="opt"><a href="#privacy">Privacy</a></li>
       <li class="opt"><a href="/docs/">Docs</a></li>
-      <li class="gh"><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
+      <li class="gh"><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></li>
       <li><button class="theme" type="button" aria-label="Toggle color theme" data-theme-toggle><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18Z" fill="currentColor"/></svg></button></li>
       <li><a class="btn btn-primary" href="#install">Install</a></li>
     </ul>
@@ -66,7 +66,7 @@
     <p class="lede reveal d2">See which agents are working or need attention, read their replies, and check token usage without hunting through tabs. One tool, three views: a terminal dashboard, a macOS menu bar app, and an optional web dashboard. Keep launching your agents as usual; run <code>firekeeper</code> beside them.</p>
     <div class="cta reveal d3">
       <a class="btn btn-ember" href="#install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 4v12m0 0-5-5m5 5 5-5M5 20h14"/></svg>Install free</a>
-      <div class="cmd"><span class="p">$</span><code>brew install DanBradbury/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy the Homebrew command" data-copy="brew install DanBradbury/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
+      <div class="cmd"><span class="p">$</span><code>brew install firekeeper-ai/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy the Homebrew command" data-copy="brew install firekeeper-ai/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
     </div>
     <p class="meta reveal d3">Free and open source, Apache 2.0 · macOS, Linux (best effort), Windows 10 1809+ and 11 · No account, server, or wrappers · <a href="/docs/usage/#network">Usage and update checks can contact the network</a></p>
 
@@ -328,7 +328,7 @@
       <div><span class="kicker">Optional · Reporting</span><h2>Stay local. Add a web dashboard only if you need it.</h2></div>
       <div>
         <p><b>The terminal dashboard is complete on its own.</b> Sending history to a server is a separate opt-in workflow: <code>backfill</code> and the daemon read your agents' local history, redact it, and upload it to the dashboard server you name, over an open API.</p>
-        <p>Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. If you enable uploads, session metadata and full transcripts go through best-effort redaction, and the server's operator can read them. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
+        <p>Preview first with <code>firekeeper backfill --all --dry-run</code>; it uploads nothing. If you enable uploads, session metadata and full transcripts go through best-effort redaction, and the server's operator can read them. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Reporting guide</a>.</p>
       </div>
     </div>
     <figure class="frame" id="web-dashboard">
@@ -355,38 +355,38 @@
       <div><h3>Redacted first</h3><p>Every event passes through redaction before it leaves the machine.</p></div>
       <div><h3>You pick the server</h3><p>Uploads go only to the server you name, over HTTPS unless it is on this machine, with a token bound to this machine.</p></div>
     </div>
-    <p class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">Read what is uploaded and what is not caught</a> before you turn uploads on.</p>
+    <p class="callout"><strong>Plain talk:</strong> redaction is best effort, and whoever operates a server can read what is uploaded. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">Read what is uploaded and what is not caught</a> before you turn uploads on.</p>
   </section>
 
   <!-- INSTALL -->
   <section class="section" id="install">
-    <div class="head-row"><h2 style="font-size:clamp(30px,3.6vw,40px);letter-spacing:-.025em">Install</h2><a class="btn btn-outline" href="https://github.com/DanBradbury/firekeeper/releases">All releases</a></div>
+    <div class="head-row"><h2 style="font-size:clamp(30px,3.6vw,40px);letter-spacing:-.025em">Install</h2><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper/releases">All releases</a></div>
     <div class="rows">
       <div class="row">
         <h3>macOS<small>Homebrew · recommended</small></h3>
         <div>
-          <div class="cmd block"><span class="p">$</span><code>brew install DanBradbury/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy Homebrew install" data-copy="brew install DanBradbury/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
+          <div class="cmd block"><span class="p">$</span><code>brew install firekeeper-ai/tap/firekeeper</code><button class="copy" type="button" aria-label="Copy Homebrew install" data-copy="brew install firekeeper-ai/tap/firekeeper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
           <p>Upgrade later with <code>brew upgrade firekeeper</code>. No Homebrew? Use the macOS / Linux script below.</p>
         </div>
       </div>
       <div class="row">
         <h3>macOS / Linux<small>Install script</small></h3>
         <div>
-          <div class="cmd block"><span class="p">$</span><code>curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh</code><button class="copy" type="button" aria-label="Copy install script command" data-copy="curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
-          <p>Installs to <code>~/.local/bin</code> without <code>sudo</code> and checks the binary against the release's SHA-256 checksums. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">Command not found?</a></p>
+          <div class="cmd block"><span class="p">$</span><code>curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh</code><button class="copy" type="button" aria-label="Copy install script command" data-copy="curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
+          <p>Installs to <code>~/.local/bin</code> without <code>sudo</code> and checks the binary against the release's SHA-256 checksums. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">Command not found?</a></p>
         </div>
       </div>
       <div class="row">
         <h3>Windows<small>PowerShell 5.1 or 7</small></h3>
         <div>
-          <div class="cmd block"><span class="p">&gt;</span><code>irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex</code><button class="copy" type="button" aria-label="Copy PowerShell install" data-copy="irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
-          <p>Installs to <code>%LOCALAPPDATA%\Programs\firekeeper</code>, adds it to your user <code>PATH</code>, needs no administrator rights. Binaries are not code-signed. <kbd>s</kbd> raises the terminal window but not the tab. <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#windows">What differs on Windows</a>.</p>
+          <div class="cmd block"><span class="p">&gt;</span><code>irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex</code><button class="copy" type="button" aria-label="Copy PowerShell install" data-copy="irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
+          <p>Installs to <code>%LOCALAPPDATA%\Programs\firekeeper</code>, adds it to your user <code>PATH</code>, needs no administrator rights. Binaries are not code-signed. <kbd>s</kbd> raises the terminal window but not the tab. <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#windows">What differs on Windows</a>.</p>
         </div>
       </div>
       <div class="row">
         <h3>From source<small>Go 1.26+</small></h3>
         <div>
-          <div class="cmd block"><span class="p">$</span><code>go install github.com/DanBradbury/firekeeper@latest</code><button class="copy" type="button" aria-label="Copy go install" data-copy="go install github.com/DanBradbury/firekeeper@latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
+          <div class="cmd block"><span class="p">$</span><code>go install github.com/firekeeper-ai/firekeeper@latest</code><button class="copy" type="button" aria-label="Copy go install" data-copy="go install github.com/firekeeper-ai/firekeeper@latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button></div>
           <p>Builds from source report their version as <code>dev</code> and never check for updates.</p>
         </div>
       </div>
@@ -395,9 +395,9 @@
       <div><strong>Verify</strong><code>firekeeper --version</code></div>
       <div><strong>Launch</strong><code>firekeeper</code> in another terminal</div>
       <div><strong>Learn the controls</strong>Press <kbd>?</kbd> inside the dashboard</div>
-      <div><strong>Remove later</strong><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#uninstall">Uninstall steps</a></div>
+      <div><strong>Remove later</strong><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md#uninstall">Uninstall steps</a></div>
     </div>
-    <p class="fine">The script commands download and execute code. Prefer to inspect first? See <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md">verification, version pinning, and manual installation</a>. <a href="/docs/quick-start/#install">Read the installation steps without the command pills</a>.</p>
+    <p class="fine">The script commands download and execute code. Prefer to inspect first? See <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md">verification, version pinning, and manual installation</a>. <a href="/docs/quick-start/#install">Read the installation steps without the command pills</a>.</p>
   </section>
 
   <!-- PRICING -->
@@ -460,20 +460,20 @@
   <section class="section closing">
     <h2>Keep the fire going.<br>Watch every agent from one place.</h2>
     <p>Free, open source, and running in a minute.</p>
-    <div class="cta"><a class="btn btn-ember" href="#install">Install free</a><a class="btn btn-outline" href="https://github.com/DanBradbury/firekeeper">Star on GitHub</a></div>
+    <div class="cta"><a class="btn btn-ember" href="#install">Install free</a><a class="btn btn-outline" href="https://github.com/firekeeper-ai/firekeeper">Star on GitHub</a></div>
   </section>
 
   <footer class="section">
     <div class="foot">
       <a class="brand" href="#top"><img src="/favicon.svg" alt="" width="20" height="20">Firekeeper</a>
       <ul>
-        <li><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></li>
-        <li><a href="https://github.com/DanBradbury/firekeeper/releases">Releases</a></li>
+        <li><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></li>
+        <li><a href="https://github.com/firekeeper-ai/firekeeper/releases">Releases</a></li>
         <li><a href="/docs/">Docs</a></li>
-        <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/api.md">API</a></li>
+        <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/api.md">API</a></li>
         <li><a href="/terms">Terms</a></li>
         <li><a href="/refund">Refunds</a></li>
-        <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+        <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
         <li><a href="/contact">Contact</a></li>
       </ul>
     </div>

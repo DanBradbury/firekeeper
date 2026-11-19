@@ -13,7 +13,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 func TestReadCodexUsageResponses(t *testing.T) {
@@ -456,7 +456,7 @@ func TestCodexProjectLinesSortByTokens(t *testing.T) {
 		{WorkDir: "/x/big", Tokens: 500},
 		{WorkDir: "/y/big", Tokens: 500},
 		{Tokens: 50},
-	}, 10)
+	}, 10, "")
 	got := ansi.Strip(strings.Join(lines, "\n"))
 	if !(strings.Index(got, "big") < strings.Index(got, "unknown") && strings.Index(got, "unknown") < strings.Index(got, "small")) {
 		t.Fatalf("unexpected order:\n%s", got)

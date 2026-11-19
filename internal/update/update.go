@@ -33,11 +33,11 @@ const (
 )
 
 const (
-	defaultURL   = "https://api.github.com/repos/DanBradbury/firekeeper/releases/latest"
-	scriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.sh"
+	defaultURL   = "https://api.github.com/repos/firekeeper-ai/firekeeper/releases/latest"
+	scriptURLFmt = "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/%s/install.sh"
 	// windowsScriptURLFmt is the PowerShell installer for the same tag.
-	windowsScriptURLFmt = "https://raw.githubusercontent.com/DanBradbury/firekeeper/%s/install.ps1"
-	brewFormula         = "DanBradbury/tap/firekeeper"
+	windowsScriptURLFmt = "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/%s/install.ps1"
+	brewFormula         = "firekeeper-ai/tap/firekeeper"
 	fetchTimeout        = 2 * time.Second
 	maxBody             = 1 << 20
 )
@@ -295,6 +295,11 @@ func installBrew(ctx context.Context, version string, out, errOut io.Writer) err
 	if err := got.check(version); err != nil {
 		return fail(err)
 	}
+	// HOMEBREW_NO_INSTALL_CLEANUP above also stops brew from removing the
+	// version it just replaced, so every update would leave one more keg in the
+	// Cellar. Prune this formula only; an old keg that is still running stays
+	// valid until it exits. A failed cleanup costs disk space, not the update.
+	_ = brew(&log, "cleanup", brewFormula)
 	return nil
 }
 

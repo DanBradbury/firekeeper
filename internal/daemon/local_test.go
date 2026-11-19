@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 const systemdShow = "systemctl --user show firekeeper.service --property=LoadState,ActiveState,SubState,MainPID,ExecMainStatus"

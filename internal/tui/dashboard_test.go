@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 )
 
 func dashboardTestModel() model {
@@ -321,7 +321,7 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 		{"usage copilot", usageTab, copilotProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
 		{"usage kimi", usageTab, kimiProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
 		{"usage claude", usageTab, claudeProvider, false, "[ Usage ]", []string{"←/→ provider", "r refresh"}},
-		{"usage with history", usageTab, codexProvider, true, "[ Usage ]", []string{"↑↓ session", "enter chat", "←/→ provider", "r refresh"}},
+		{"usage with history", usageTab, codexProvider, true, "[ Usage ]", []string{"↑↓ session", "enter chat", "/ filter", "r refresh"}},
 	}
 	for _, tt := range tests {
 		for _, width := range []int{80, 140} {
@@ -359,8 +359,13 @@ func TestShortcutHintsStayInFooter(t *testing.T) {
 						t.Errorf("footer missing %q: %q", hint, footer)
 					}
 				}
-				if !strings.Contains(footer, "tab switch") && !(tt.tab == processesTab && strings.Contains(footer, "tab next")) {
+				// Crowded footers shorten some actions at 80 columns.
+				compact := width == 80 && (tt.tab == processesTab || tt.withHistory)
+				if !strings.Contains(footer, "tab switch") && !(compact && strings.Contains(footer, "tab next")) {
 					t.Errorf("footer missing tab hint: %q", footer)
+				}
+				if tt.tab == usageTab && !strings.Contains(footer, "←/→ provider") && !(compact && strings.Contains(footer, "←/→ prov")) {
+					t.Errorf("footer missing provider hint: %q", footer)
 				}
 				if tt.tab == processesTab {
 					if !strings.Contains(footer, "s switch terminal") && !(width == 80 && strings.Contains(footer, "s terminal")) {

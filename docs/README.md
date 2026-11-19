@@ -7,6 +7,7 @@ running on your machine. Install it, start your agents as usual, and run
 **New here? [Install and find your first session](https://firekeeper.ai/docs/quick-start/).**
 For everyday use, start with these guides:
 
+- [Ways to use Firekeeper](https://firekeeper.ai/docs/products/): the CLI, the Mac menu bar app, and the web dashboard
 - [Quick start](https://firekeeper.ai/docs/quick-start/)
 - [How to work with Firekeeper](https://firekeeper.ai/docs/how-to-work/)
 - [Understand usage](https://firekeeper.ai/docs/usage/)

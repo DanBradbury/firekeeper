@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 func TestValidOpenCodeSessionID(t *testing.T) {

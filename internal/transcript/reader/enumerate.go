@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // HeadBytes is the most an enumerator reads from the start of a transcript

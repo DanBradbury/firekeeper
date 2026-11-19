@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
-	"github.com/DanBradbury/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
 )
 
 // newClaudeLimitsClient is a variable so tests never read a real Keychain.

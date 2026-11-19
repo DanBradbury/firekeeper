@@ -4,7 +4,7 @@
 // readers, reporter and TUI keep one short spelling.
 package transcript
 
-import "github.com/DanBradbury/firekeeper/pkg/event"
+import "github.com/firekeeper-ai/firekeeper/pkg/event"
 
 type (
 	// Provider names the harness that produced a transcript.

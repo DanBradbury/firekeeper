@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 type sessionState = session.State

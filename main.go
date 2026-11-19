@@ -13,10 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"golang.org/x/term"
 
-	"github.com/DanBradbury/firekeeper/internal/cli"
-	"github.com/DanBradbury/firekeeper/internal/tui"
-	"github.com/DanBradbury/firekeeper/internal/update"
-	"github.com/DanBradbury/firekeeper/internal/version"
+	"github.com/firekeeper-ai/firekeeper/internal/cli"
+	"github.com/firekeeper-ai/firekeeper/internal/tui"
+	"github.com/firekeeper-ai/firekeeper/internal/update"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 )
 
 func main() {

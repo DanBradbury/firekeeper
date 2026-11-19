@@ -1,4 +1,4 @@
-module github.com/DanBradbury/firekeeper
+module github.com/firekeeper-ai/firekeeper
 
 go 1.26.0
 

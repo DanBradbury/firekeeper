@@ -1,6 +1,6 @@
 # Opt-in local OpenTelemetry receiver
 
-Research for [issue #21](https://github.com/DanBradbury/firekeeper/issues/21).
+Research for [issue #21](https://github.com/firekeeper-ai/firekeeper/issues/21).
 This note answers the issue's questions from Anthropic's Claude Code
 monitoring docs, then describes the experimental commands on this branch.
 Those commands are off unless you run them. They listen on `127.0.0.1` only

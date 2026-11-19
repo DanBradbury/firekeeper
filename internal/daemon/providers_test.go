@@ -7,7 +7,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 func TestDetectProviders(t *testing.T) {

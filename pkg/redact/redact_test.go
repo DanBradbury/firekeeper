@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
-	"github.com/DanBradbury/firekeeper/pkg/redact"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/redact"
 )
 
 func TestPublicEntryPoints(t *testing.T) {

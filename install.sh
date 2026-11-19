@@ -1,14 +1,14 @@
 #!/bin/sh
 # Install Firekeeper from a GitHub release.
 #
-#   curl -fsSL https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.sh | sh
 #   curl -fsSL .../install.sh | sh -s -- --version v0.1.0
 #
 # Installs to ~/.local/bin, or to $FIREKEEPER_INSTALL_DIR. Never uses sudo.
 # FIREKEEPER_RELEASES_URL overrides the release location (used by the tests).
 set -eu
 
-RELEASES_URL="${FIREKEEPER_RELEASES_URL:-https://github.com/DanBradbury/firekeeper/releases}"
+RELEASES_URL="${FIREKEEPER_RELEASES_URL:-https://github.com/firekeeper-ai/firekeeper/releases}"
 INSTALL_DIR="${FIREKEEPER_INSTALL_DIR:-${HOME:-}/.local/bin}"
 
 say() { printf '%s\n' "$*"; }

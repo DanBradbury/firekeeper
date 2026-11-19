@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,7 +18,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
 )
 
 const copilotSessionHistoryLimit = 500
@@ -640,9 +641,46 @@ func formatCommaInt(value int64) string {
 }
 
 func (m model) usageFooter() string {
+	if m.usageFilterEditing {
+		return renderFooterKeys([]footerKey{{"type", "filter"}, {"enter", "keep"}, {"esc", "clear"}, {"↑↓", "session"}, {"ctrl+c", "quit"}}, m.width)
+	}
 	keys := []footerKey{{"←/→", "provider"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}
-	if m.usageSessionCount() > 0 {
+	page := m.usagePage()
+	switch {
+	case strings.TrimSpace(m.usageFilter) != "" || m.usageProject != "":
+		keys = append([]footerKey{{"/", "filter"}, {"esc", "clear filter"}}, keys...)
+	case page.Total > 0:
+		keys = append([]footerKey{{"/", "filter"}}, keys...)
+	}
+	if len(page.Sessions) > 0 {
 		keys = append([]footerKey{{"↑↓", "session"}, {"enter", "chat"}}, keys...)
+		// The sort and project hints go after the filter one.
+		for index := range keys {
+			if keys[index].key == "/" {
+				keys = slices.Insert(keys, index+1, footerKey{"t/a", "sort"}, footerKey{"p", "project"})
+				break
+			}
+		}
+	}
+	// Too wide: shorten actions, and drop the project and sort hints (?
+	// help lists the keys, and the list shows the order and project) before
+	// shortening the rest.
+	_, available := footerVersion(m.width)
+	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"p", ""}, {"t/a", ""}, {"esc", "clear"}, {"r", "reload"}} {
+		if footerKeysWidth(keys, 1) <= available {
+			break
+		}
+		for index := range keys {
+			if keys[index].key != compact.key {
+				continue
+			}
+			if compact.action == "" {
+				keys = slices.Delete(keys, index, index+1)
+			} else {
+				keys[index].action = compact.action
+			}
+			break
+		}
 	}
 	return renderFooterKeys(keys, m.width)
 }
