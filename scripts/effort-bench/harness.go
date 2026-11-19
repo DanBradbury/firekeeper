@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
 )
 
 // harness is one agent CLI that can run the task headless with a chosen
