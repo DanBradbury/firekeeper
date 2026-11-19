@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/pkg/contract"
+	"github.com/firekeeper-ai/firekeeper/pkg/contract"
 )
 
 func call(t *testing.T, h http.Handler, method, path, token string, body []byte) *httptest.ResponseRecorder {

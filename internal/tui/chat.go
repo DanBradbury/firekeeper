@@ -6,18 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/claude"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/codex"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/copilot"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/cursor"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/gemini"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/kimi"
-	_ "github.com/DanBradbury/firekeeper/internal/transcript/opencode"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/claude"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/codex"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/copilot"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/cursor"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/gemini"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/kimi"
+	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/opencode"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
 )
 
 // chat.go renders the c view: the user and assistant messages of the selected

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // Synthetic secrets assembled at run time so the source never holds a
@@ -270,7 +270,7 @@ func parse(line []byte) (Event, error) {
 	return rec.event(), nil
 }
 $ go test ./internal/transcript/...
-ok  	github.com/DanBradbury/firekeeper/internal/transcript	0.012s
+ok  	github.com/firekeeper-ai/firekeeper/internal/transcript	0.012s
 --- PASS: TestRead (0.00s)
 commit 3f786850e387550fdab836ed7e6dc881de23001b on branch main; see docs/event.schema.json.
 `

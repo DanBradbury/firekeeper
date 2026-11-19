@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 // realRunner runs the real ps and lsof, but keeps only ps lines for the

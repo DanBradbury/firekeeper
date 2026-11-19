@@ -17,7 +17,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
 )
 
 const copilotSessionHistoryLimit = 500

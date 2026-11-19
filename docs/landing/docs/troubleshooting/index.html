@@ -13,7 +13,7 @@
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
-  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/DanBradbury/firekeeper">GitHub</a></nav>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></nav>
 </div></header>
 <div class="layout">
   <nav class="sidebar" aria-label="Documentation">
@@ -31,9 +31,9 @@
     </ul>
     <p class="nav-label">Reference on GitHub</p>
     <ul>
-      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
-      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
-      <li><a href="https://github.com/DanBradbury/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
     </ul>
   </nav>
   <main id="main">
@@ -45,7 +45,7 @@
     <p>First check that the installer finished successfully. The macOS/Linux script installs to <code>~/.local/bin</code> by default but does not change your shell configuration. In bash or zsh, add that directory for the current session:</p>
     <pre><code>export PATH="$HOME/.local/bin:$PATH"
 firekeeper --version</code></pre>
-    <p>Use your custom directory instead if you set <code>FIREKEEPER_INSTALL_DIR</code>. For persistent shell configuration, see <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">the installation guide</a>.</p>
+    <p>Use your custom directory instead if you set <code>FIREKEEPER_INSTALL_DIR</code>. For persistent shell configuration, see <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/install.md#if-your-shell-says-firekeeper-command-not-found">the installation guide</a>.</p>
     <p>On Windows, the installer updates your user PATH and the terminal running it. Reopen other terminal windows to pick up that change. A manual install, or an install with PATH updates disabled, needs the installation directory added to your user PATH.</p>
     <p>For Homebrew, follow Homebrew's shell setup instructions if <code>brew</code> itself is missing. For a Go install, add <code>GOBIN</code> (or the <code>bin</code> directory under <code>go env GOPATH</code>) to PATH.</p>
     <h2 id="missing-session">My agent is not in Processes</h2>
@@ -67,7 +67,7 @@ firekeeper --version</code></pre>
         <tr><td>Cursor CLI</td><td><code>CURSOR_CONFIG_DIR</code></td></tr>
       </tbody>
     </table></div>
-    <p>Provider formats can change. Check the <a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/reference.md#supported-providers">supported layouts</a>, especially if you run an older Kimi CLI or OpenCode version. Do not copy or modify provider databases to make discovery work.</p>
+    <p>Provider formats can change. Check the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#supported-providers">supported layouts</a>, especially if you run an older Kimi CLI or OpenCode version. Do not copy or modify provider databases to make discovery work.</p>
     <h2 id="wrong-session">The runtime has missing or wrong details</h2>
     <p>Finding a process and finding its conversation are separate steps. A runtime may be visible before Firekeeper can match metadata. Several agents of the same provider in one directory can also make directory-based matching ambiguous.</p>
     <p>Check the session ID, directory, and the agent's own terminal before acting. Separate project worktrees can make directory-based matches less ambiguous, but are not required. On Windows, Codex matches use directory and recency because open-file discovery is unavailable.</p>
@@ -87,10 +87,10 @@ firekeeper --version</code></pre>
     <h2 id="report">Report a problem safely</h2>
     <p>Get the installed version:</p>
     <pre><code>firekeeper --version</code></pre>
-    <p><a href="https://github.com/DanBradbury/firekeeper/issues">Open an issue</a> with the Firekeeper version, operating system, terminal application, agent CLI version, expected behavior, and a short reproduction. Include the displayed error only after checking it for private information.</p>
+    <p><a href="https://github.com/firekeeper-ai/firekeeper/issues">Open an issue</a> with the Firekeeper version, operating system, terminal application, agent CLI version, expected behavior, and a short reproduction. Include the displayed error only after checking it for private information.</p>
     <div class="callout"><p><strong>Keep provider data private.</strong> Do not attach real transcripts, session databases, credentials, full command lines, or unreviewed snapshots. Crop or redact screenshots that show project names, paths, prompts, or replies. A synthetic example is preferable.</p></div>
     <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/keyboard/"><small>Previous</small>&larr; Keyboard shortcuts</a><a href="/docs/"><small>Back to</small>Documentation home &rarr;</a></nav>
-    <footer class="page-footer"><a href="https://github.com/DanBradbury/firekeeper/blob/main/docs/landing/docs/troubleshooting/index.html">Edit this page on GitHub</a>.</footer>
+    <footer class="page-footer"><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/landing/docs/troubleshooting/index.html">Edit this page on GitHub</a>.</footer>
   </main>
 </div>
 </body>

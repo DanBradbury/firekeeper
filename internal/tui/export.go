@@ -16,13 +16,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/redact"
-	"github.com/DanBradbury/firekeeper/internal/serverbin"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
-	"github.com/DanBradbury/firekeeper/internal/transcript/reader"
-	"github.com/DanBradbury/firekeeper/pkg/event"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/redact"
+	"github.com/firekeeper-ai/firekeeper/internal/serverbin"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // export.go saves the open chat's session as one standalone HTML page, the

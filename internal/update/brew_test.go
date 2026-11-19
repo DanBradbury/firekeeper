@@ -90,7 +90,7 @@ func TestBrewFormulaStateCheck(t *testing.T) {
 		{
 			name:    "stale tap, nothing to upgrade",
 			state:   brewFormulaState{Formula: "0.10.2", Linked: "0.10.2"},
-			wantErr: []string{"still at 0.10.2", "nothing to upgrade to 0.10.3", "brew update", "brew upgrade DanBradbury/tap/firekeeper"},
+			wantErr: []string{"still at 0.10.2", "nothing to upgrade to 0.10.3", "brew update", "brew upgrade firekeeper-ai/tap/firekeeper"},
 		},
 		{
 			name:    "formula version unknown",

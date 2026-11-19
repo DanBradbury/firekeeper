@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/DanBradbury/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
 	"net/http"
 	"net/http/httptest"
 	"os"

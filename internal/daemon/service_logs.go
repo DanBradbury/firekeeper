@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/DanBradbury/firekeeper/internal/fsutil"
+	"github.com/firekeeper-ai/firekeeper/internal/fsutil"
 	"io"
 	"os"
 	"time"

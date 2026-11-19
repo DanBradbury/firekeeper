@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/serverinstall"
-	"github.com/DanBradbury/firekeeper/internal/update"
+	"github.com/firekeeper-ai/firekeeper/internal/serverinstall"
+	"github.com/firekeeper-ai/firekeeper/internal/update"
 )
 
 const (

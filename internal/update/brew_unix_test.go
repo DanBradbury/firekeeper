@@ -148,7 +148,7 @@ func TestInstallHomebrew(t *testing.T) {
 			var out, errOut strings.Builder
 			err := Install(context.Background(), "0.10.3", exe, &out, &errOut)
 
-			if got := readState(t, state, "calls"); !strings.HasPrefix(got, "update\nupgrade DanBradbury/tap/firekeeper") {
+			if got := readState(t, state, "calls"); !strings.HasPrefix(got, "update\nupgrade firekeeper-ai/tap/firekeeper") {
 				t.Errorf("brew calls = %q, want update, then upgrade", got)
 			}
 			if got := readState(t, state, "linked"); got != tt.wantLinked {

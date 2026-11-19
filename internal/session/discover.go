@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
 )
 
 // Options configures discovery. Zero values use the local environment.

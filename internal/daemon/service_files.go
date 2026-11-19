@@ -63,7 +63,7 @@ func systemdUnit(s *Service) []byte {
 	b.WriteString(`# Written by firekeeper daemon install. Remove it with firekeeper daemon uninstall.
 [Unit]
 Description=Firekeeper daemon: uploads agent session transcripts to a Firekeeper dashboard
-Documentation=https://github.com/DanBradbury/firekeeper
+Documentation=https://github.com/firekeeper-ai/firekeeper
 
 [Service]
 Type=simple

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/DanBradbury/firekeeper/internal/version"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 )
 
 func runVersion(args []string, stdout, stderr io.Writer) int {

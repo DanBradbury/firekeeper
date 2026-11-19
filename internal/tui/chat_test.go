@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 const chatTestSessionID = "0199c3d4-e5f6-7a8b-9c0d-0000000000c4"

@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
 )
 
 // snapshot --json runs the real discovery (with fixture process output)

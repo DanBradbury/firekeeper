@@ -7,11 +7,11 @@ Downloads the release zip for this machine's architecture, checks its SHA-256
 against the release's checksums.txt, and installs firekeeper.exe for the
 current user. It never needs administrator rights.
 
-  irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+  irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex
 
 To pick a version or a directory when piping, set the variables first:
 
-  $env:FIREKEEPER_VERSION = 'v0.1.0'; irm https://raw.githubusercontent.com/DanBradbury/firekeeper/main/install.ps1 | iex
+  $env:FIREKEEPER_VERSION = 'v0.1.0'; irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 | iex
 
 Installs to %LOCALAPPDATA%\Programs\firekeeper and adds that directory to the
 user's PATH. Open a new terminal afterwards, or use the current one, which is
@@ -203,7 +203,7 @@ function Test-AbsolutePath([string]$Path) {
 function Install-Firekeeper {
     $releasesUrl = $env:FIREKEEPER_RELEASES_URL
     if (-not $releasesUrl) {
-        $releasesUrl = 'https://github.com/DanBradbury/firekeeper/releases'
+        $releasesUrl = 'https://github.com/firekeeper-ai/firekeeper/releases'
         if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows) {
             Fail 'this installer is for Windows. On macOS and Linux use install.sh.'
         }

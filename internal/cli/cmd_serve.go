@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/DanBradbury/firekeeper/internal/serverbin"
+	"github.com/firekeeper-ai/firekeeper/internal/serverbin"
 )
 
 // The dashboard server is not part of this program. It ships as the separate,
@@ -73,7 +73,7 @@ func runServe(args []string, _, stderr io.Writer) int {
 func printServerMissing(stderr io.Writer) {
 	fmt.Fprint(stderr, `firekeeper serve: the dashboard server is a separate commercial binary, firekeeper-server, and it was not found.
 It is not part of this download. Read about it in the README, section "The dashboard server":
-  https://github.com/DanBradbury/firekeeper#the-dashboard-server
+  https://github.com/firekeeper-ai/firekeeper#the-dashboard-server
 If you already have it, put it next to firekeeper or on your PATH, or point at it:
   FIREKEEPER_SERVER_BIN=/path/to/firekeeper-server firekeeper serve
 `)

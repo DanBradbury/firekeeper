@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv"
 )
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"

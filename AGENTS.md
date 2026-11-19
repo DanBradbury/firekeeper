@@ -3,7 +3,7 @@
 ## Project identity
 
 - Project: **Firekeeper**
-- Go module: `github.com/DanBradbury/firekeeper`
+- Go module: `github.com/firekeeper-ai/firekeeper`
 - Command: `firekeeper`
 - Product: local, keyboard-driven terminal dashboard for monitoring coding-agent harnesses.
 - Current harness support: Codex, GitHub Copilot CLI, Claude Code, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI process discovery, each with a session metadata adapter.
@@ -11,7 +11,7 @@
 
 Keep Firekeeper compatible with normal agent CLI workflows. Running `firekeeper` with no subcommand must stay free of daemons, proxies, wrapper commands, remote flags, and changed launch procedures, and must never upload anything. Transcript reporting (see "Reporting") is an explicit, opt-in set of subcommands: `snapshot`, `export`, `report`, `backfill`, `daemon`, and `login`. `serve` is only a handoff: it execs the separate, commercial `firekeeper-server` binary (see `internal/cli/cmd_serve.go`), whose source is not in this repository. It is not part of the client and must not be needed by it. The dashboard's HTML export (`e` in the chat view, `internal/tui/export.go`) also runs it, as `firekeeper-server share` with the session on stdin, only on that key press, and fails with a message when it is missing; it never offers to install it. Do not make agent CLIs depend on any of them.
 
-`internal/serverinstall` (standard library only) can download `firekeeper-server` for `serve`. It is disabled unless a release source is configured: release builds set it with `-X ...serverinstall.ReleasesURL` in `.goreleaser.yaml` (the public `DanBradbury/firekeeper-server-releases` repository, equal to `serverinstall.ProductionBase`), and `FIREKEEPER_SERVER_RELEASES_URL` overrides it at run time. Plain `go build` and `go run` builds leave it off. `serve` also offers to update a server it found (`internal/cli/serve_update.go`: 1 update, 2 not now, 3 skip), and undoes an update the license does not cover. Rule: nothing in this repository downloads anything without an explicit interactive yes, and only from `serve`; the update check is one GET for the latest tag and is silenced by `FIREKEEPER_NO_UPDATE_CHECK`. Never prompt when stdin or stderr is not a terminal, or `CI` or `FIREKEEPER_NO_PROMPT` is set. The release layout is documented in `docs/reference.md`.
+`internal/serverinstall` (standard library only) can download `firekeeper-server` for `serve`. It is disabled unless a release source is configured: release builds set it with `-X ...serverinstall.ReleasesURL` in `.goreleaser.yaml` (the public `firekeeper-ai/firekeeper-server-releases` repository, equal to `serverinstall.ProductionBase`), and `FIREKEEPER_SERVER_RELEASES_URL` overrides it at run time. Plain `go build` and `go run` builds leave it off. `serve` also offers to update a server it found (`internal/cli/serve_update.go`: 1 update, 2 not now, 3 skip), and undoes an update the license does not cover. Rule: nothing in this repository downloads anything without an explicit interactive yes, and only from `serve`; the update check is one GET for the latest tag and is silenced by `FIREKEEPER_NO_UPDATE_CHECK`. Never prompt when stdin or stderr is not a terminal, or `CI` or `FIREKEEPER_NO_PROMPT` is set. The release layout is documented in `docs/reference.md`.
 
 ## Before changing code
 
@@ -46,7 +46,7 @@ When creating or modifying shell scripts (`*.sh`), run `shellcheck` on each touc
 
 GitHub CI runs more than the local checks: Linux tests through `scripts/ci-go-test.sh` (which fails on any skipped test outside a short allowlist), macOS AppleScript tests (set `FIREKEEPER_MACOS_INTEGRATION=1` to run them locally), a Windows job (build, vet, `go test ./...`, the Windows-only tests named in `ci.yml`, which must run and pass, and `scripts/test-install.ps1` under PowerShell 7 and 5.1, and once more with 5.1 started under PowerShell 7's PSModulePath, as self-update does from a pwsh session), the installer tests (`scripts/test-install.sh`, and `scripts/test-install.ps1`, which also runs under PowerShell 7 on Linux), a GoReleaser snapshot build that must report the injected version, and (in `security.yml`, also weekly) `govulncheck` plus a `gitleaks` scan of the full history. A test fixture or doc example that trips gitleaks gets a narrow allowlist entry in `.gitleaks.toml`. CI uses the Go version declared in `go.mod`, so do not use APIs newer than that version. A green local run usually means CI passes, but does not guarantee it.
 
-Release builds set version information with `-ldflags "-X github.com/DanBradbury/firekeeper/internal/version.Version=..."` (also `Commit` and `Date`). A wrong `-X` path fails silently and the binary reports `dev`.
+Release builds set version information with `-ldflags "-X github.com/firekeeper-ai/firekeeper/internal/version.Version=..."` (also `Commit` and `Date`). A wrong `-X` path fails silently and the binary reports `dev`.
 
 Useful manual check:
 
@@ -364,7 +364,7 @@ Firekeeper has an opt-in way to send session metadata and full transcripts to a 
 
 ### Ground rules
 
-- Go module `github.com/DanBradbury/firekeeper`; the root `main` package must stay installable with `go install github.com/DanBradbury/firekeeper@latest`.
+- Go module `github.com/firekeeper-ai/firekeeper`; the root `main` package must stay installable with `go install github.com/firekeeper-ai/firekeeper@latest`.
 - New code goes in `internal/` packages: `session`, `transcript`, `redact`, `reporter`, `daemon`, `config`, `cli`, `tui`, `version`. Keep `main.go` thin. The TUI lives in `internal/tui`; do not rewrite or reformat it unless a task asks for that. The only importable packages are `pkg/event` and `pkg/redact`; keep them dependency-light and do not export more than other programs need.
 - No cgo. Reading provider SQLite files goes through `internal/sqlitejson`, which runs `sqlite3 -readonly -json` when the command exists and reads the file read-only in-process with `modernc.org/sqlite` when it does not (Windows ships no `sqlite3`). Call sites pass the same arguments either way and must not depend on which ran.
 - Provider data is read-only, as above, and `CODEX_HOME`, `COPILOT_HOME`, `KIMI_CODE_HOME`, `GEMINI_CLI_HOME`, and `CURSOR_CONFIG_DIR` are honored.

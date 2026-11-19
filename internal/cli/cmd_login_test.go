@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/config"
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/testenv/fakeapi"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/config"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv/fakeapi"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // syncBuffer is a bytes.Buffer safe to read while a command is writing.

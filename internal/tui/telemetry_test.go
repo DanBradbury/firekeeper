@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 )
 
 func TestMarqueeLeavesFittingTextAlone(t *testing.T) {

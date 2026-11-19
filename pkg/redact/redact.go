@@ -8,8 +8,8 @@
 package redact
 
 import (
-	"github.com/DanBradbury/firekeeper/internal/redact"
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/internal/redact"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 type (

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/winterm"
+	"github.com/firekeeper-ai/firekeeper/internal/winterm"
 )
 
 // matrixProviders is every harness the dashboard can discover. Switching must

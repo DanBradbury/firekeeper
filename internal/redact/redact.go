@@ -23,7 +23,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/DanBradbury/firekeeper/pkg/event"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Kind names a class of scrubbed content. It appears in the replacement

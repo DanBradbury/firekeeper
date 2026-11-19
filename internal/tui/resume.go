@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // resume.go reopens a recent session with its harness's own resume flag in a

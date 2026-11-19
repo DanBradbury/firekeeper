@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 func TestResumeArgs(t *testing.T) {

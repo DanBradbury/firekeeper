@@ -6,8 +6,8 @@ import (
 	"io"
 	"syscall/js"
 
-	"github.com/DanBradbury/firekeeper/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/firekeeper-ai/firekeeper/internal/tui"
 )
 
 type browserOutput struct{}

@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/version"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/version"
 
-	"github.com/DanBradbury/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 )
 
 func dashboardTestModel() model {

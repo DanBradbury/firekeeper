@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/reporter"
-	"github.com/DanBradbury/firekeeper/internal/session"
-	"github.com/DanBradbury/firekeeper/internal/testenv/fakeapi"
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/reporter"
+	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/testenv/fakeapi"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // pollHarness wires a Poller to the fake cloud API, the fake dashboard, the

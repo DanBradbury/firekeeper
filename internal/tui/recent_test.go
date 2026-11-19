@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DanBradbury/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
 
 // TestLoadRecentSessionsReadsProviderTranscripts runs the real Claude

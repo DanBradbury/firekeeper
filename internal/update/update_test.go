@@ -210,7 +210,7 @@ func TestInstallOnWindowsValidatesVersionFirst(t *testing.T) {
 }
 
 func TestWindowsScriptURLNamesTheTag(t *testing.T) {
-	if got := fmt.Sprintf(windowsScriptURLFmt, "v1.2.3"); got != "https://raw.githubusercontent.com/DanBradbury/firekeeper/v1.2.3/install.ps1" {
+	if got := fmt.Sprintf(windowsScriptURLFmt, "v1.2.3"); got != "https://raw.githubusercontent.com/firekeeper-ai/firekeeper/v1.2.3/install.ps1" {
 		t.Fatalf("url = %q", got)
 	}
 }
