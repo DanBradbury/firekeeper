@@ -35,6 +35,9 @@ const (
 	hitUsageSession
 	// hitUsageSort is a sortable column header; index is its usageSortColumn.
 	hitUsageSort
+	// hitUsageProject is a row of the projects panel; index is into
+	// usageProjectTotals of the page's ProjectSessions.
+	hitUsageProject
 )
 
 // hit is the interactive element under a screen cell.
@@ -134,6 +137,9 @@ func (m model) hitTest(x, y int) hit {
 		if column, ok := m.usageSortColumnAt(x, row-1, rows-1); ok {
 			return hit{hitUsageSort, int(column)}
 		}
+		if index, ok := m.usageProjectAt(x, row-1, rows-1); ok {
+			return hit{hitUsageProject, index}
+		}
 	}
 	return hit{}
 }
@@ -204,11 +210,7 @@ func (m model) usageSessionListAt(pageRows int) (usageSessionList, bool) {
 	}
 	listWidth := m.width
 	if m.width >= 80 {
-		right := m.width / 3
-		if m.width >= 120 {
-			right = m.width * 2 / 5
-		}
-		listWidth = m.width - right
+		listWidth = m.width - usageRightWidth(m.width)
 	}
 	list := usageSessionList{page: page, layout: usageSessionListLayout(page, geometry.sessions-2), width: listWidth - 4, headerRow: -1}
 	list.rowTop = geometry.usageSessionsTop() + 1
@@ -380,6 +382,13 @@ func (m model) leftPress(at cell) (tea.Model, tea.Cmd) {
 		// double click.
 		m.mouse.lastPress = time.Time{}
 		return m.Update(keyRunes(usageSortKey(usageSortColumn(target.index))))
+	case hitUsageProject:
+		// Like a header, each click toggles, so it is never a double click.
+		m.mouse.lastPress = time.Time{}
+		if totals := usageProjectTotals(m.usagePage().ProjectSessions); target.index < len(totals) {
+			m.toggleUsageProject(totals[target.index].name)
+		}
+		return m, nil
 	default:
 		if double {
 			m.startWordSelection(at)

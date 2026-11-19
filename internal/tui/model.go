@@ -160,6 +160,7 @@ type model struct {
 	usageFilter             string
 	usageFilterEditing      bool
 	usageSort               usageSort
+	usageProject            string
 	recentSessions          []recentSession
 	recentCursor            int
 	recentLoading           bool
@@ -361,7 +362,11 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "esc":
 			if m.activeTab == usageTab {
-				m.clearUsageFilter()
+				m.clearUsageFilters()
+			}
+		case "p":
+			if m.activeTab == usageTab {
+				m.toggleSelectedUsageProject()
 			}
 		case "t":
 			if m.activeTab == usageTab {

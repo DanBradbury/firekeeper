@@ -43,7 +43,7 @@ var helpSections = []helpSection{
 		{"Esc / c / q", "Back"},
 	}},
 	{"Mouse", []helpKey{
-		{"Click", "Switch tabs and provider chips; select a session row; sort by a Usage column header"},
+		{"Click", "Switch tabs and provider chips; select a session row; sort by a Usage column header; show one project"},
 		{"Double-click", "On a row: switch terminal or open chat. Elsewhere: select a token"},
 		{"Right-click", "Context menu for the row, chat, or view under the pointer"},
 		{"Wheel", "Scroll the list or chat"},
@@ -60,6 +60,8 @@ var helpSections = []helpSection{
 		{"/", "Filter sessions: title matches first, then project or branch"},
 		{"Enter / Esc", "Keep the filter / clear it"},
 		{"t / a", "Sort by tokens / age (or click TOKENS / AGO); again to reverse, a third time to reset"},
+		{"p", "Show only the selected session's project (or click it in projects); again for all"},
+		{"Esc", "Clear the filter and the project"},
 		{"r", "Refresh selected provider"},
 	}},
 }
