@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ways to use Firekeeper | Firekeeper docs</title>
+<meta name="description" content="Firekeeper comes three ways: the open-source terminal dashboard, a macOS menu bar app, and a web dashboard at dashboard.firekeeper.ai.">
+<link rel="canonical" href="https://firekeeper.ai/docs/products/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/products/" aria-current="page">Ways to use Firekeeper</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Start here</p>
+    <h1>Ways to use Firekeeper</h1>
+    <p class="lede">One view of your coding agents, in three places: your terminal, your Mac's menu bar, and your browser. Start with the terminal dashboard; add the others when they help.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#cli">Terminal dashboard (CLI)</a><a href="#mac-app">Mac menu bar app</a><a href="#web-dashboard">Web dashboard</a><a href="#compare">Which one?</a></nav>
+
+    <div class="cards cards-3">
+      <section class="card"><h2>Terminal dashboard</h2><p>Free and open source. Watch agents, read replies, check usage from a terminal.</p><a href="#cli">About the CLI &darr;</a></section>
+      <section class="card"><h2>Mac menu bar app</h2><p>Agents, states, and limits one click away in the macOS menu bar.</p><a href="#mac-app">About the Mac app &darr;</a></section>
+      <section class="card"><h2>Web dashboard</h2><p>Session history, search, and usage across all your machines.</p><a href="#web-dashboard">About the web dashboard &darr;</a></section>
+    </div>
+
+    <h2 id="cli">Terminal dashboard (CLI)</h2>
+    <p>The <code>firekeeper</code> command is the core of Firekeeper. It is free, open source under Apache 2.0, and developed in the public <a href="https://github.com/firekeeper-ai/firekeeper">firekeeper-ai/firekeeper</a> repository. It runs on macOS, Windows 10 1809+ and 11, and Linux (best effort).</p>
+    <p>Launch your agents the way you always do, then run <code>firekeeper</code> in another terminal. It finds Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI on its own. You need no account, server, wrapper, or background service.</p>
+    <h3>What it does</h3>
+    <ul>
+      <li><strong>Processes:</strong> every running agent with its project, branch, model, and state: working, waiting, or needing your input.</li>
+      <li><strong>Conversation:</strong> press <kbd>c</kbd> to read a session's chat as it happens, and <kbd>s</kbd> to jump to the terminal it runs in.</li>
+      <li><strong>Overview and Usage:</strong> token history from your agents' local files, plus the 5-hour and weekly limits where a provider reports them.</li>
+      <li><strong>Scripting:</strong> <code>firekeeper snapshot --json</code> prints every discovered session, and <code>firekeeper window</code> breaks the current 5-hour or weekly window down by session.</li>
+      <li><strong>Read-only:</strong> it never changes your agents' databases, logs, or launch commands, and the dashboard uploads no conversations.</li>
+    </ul>
+    <h3>Install</h3>
+    <pre><code>brew install firekeeper-ai/tap/firekeeper</code></pre>
+    <p>The <a href="/docs/quick-start/#install">quick start</a> has the install script for macOS and Linux, the PowerShell command for Windows, and your first session. The CLI is also what connects a machine to the web dashboard, described <a href="#web-dashboard">below</a>.</p>
+
+    <h2 id="mac-app">Mac menu bar app</h2>
+    <p>Firekeeper for Mac puts your agents in the macOS menu bar. Click its icon to open a panel with every running session; you do not need a terminal window open to keep an eye on them.</p>
+    <p><a class="btn" href="/download/mac" download>Download for macOS (.dmg)</a></p>
+    <p class="fine">Requires macOS 13 or later and the <code>firekeeper</code> CLI. Looking for an older version? See <a href="https://github.com/firekeeper-ai/firekeeper-releases/releases">all Mac app releases</a>.</p>
+    <h3>What it does</h3>
+    <ul>
+      <li><strong>Every agent at a glance:</strong> each session sits under its project, with its task, state, and how long it has run. Subagents nest under the session that started them.</li>
+      <li><strong>Back to the terminal:</strong> click a session and the terminal it runs in comes to the front: iTerm2, Terminal, or Ghostty.</li>
+      <li><strong>Know when it needs you:</strong> the menu bar icon shows how many agents are waiting for your input.</li>
+      <li><strong>Limits in view:</strong> your 5-hour and weekly limits, and how much of each window is left, as your agents report them on this Mac.</li>
+      <li><strong>Your own panel:</strong> add, resize, and reorder widgets (limits per provider, live agents, the last 24 hours, recent sessions). Right-click the menu bar icon and choose <strong>Edit panel</strong>.</li>
+      <li><strong>Filter:</strong> press <kbd>&#8984;K</kbd> in the panel to filter sessions by project, agent, or branch.</li>
+      <li><strong>Usage reviews:</strong> right-click a provider's usage to export its 5-hour or weekly window as an HTML page.</li>
+    </ul>
+    <h3>Install</h3>
+    <ol>
+      <li>Install the CLI first, if you have not (see <a href="#cli">above</a>). The app reads sessions through it.</li>
+      <li>Download the DMG, open it, and drag <strong>Firekeeper</strong> to Applications.</li>
+      <li>Open Firekeeper from Applications. Enter the license key from the email you received after buying.</li>
+      <li>The first time you click a session, macOS asks permission to control your terminal. Allow it so the app can bring that terminal forward.</li>
+    </ol>
+    <p>The app checks for a new version when it starts and every six hours. When one is ready, the panel shows <strong>Update now</strong>. Like the CLI, it is read-only and works locally: it uploads nothing.</p>
+
+    <h2 id="web-dashboard">Web dashboard</h2>
+    <p>The web dashboard at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a> keeps your agent history in one place, from every machine you link. It is optional: the CLI and the Mac app work without it.</p>
+    <h3>What it does</h3>
+    <ul>
+      <li><strong>Overview:</strong> agent time, tokens, merged pull requests, and estimated spend for the last 7 days or 4 weeks, against the period before, with daily goals.</li>
+      <li><strong>Sessions:</strong> every session from every machine, newest first. Search the full text of your transcripts and filter by machine, agent, project, or state. Filtered views keep their filters in the address, so you can share them.</li>
+      <li><strong>Transcripts:</strong> read any session's conversation, with token counts on each event, and export it as a standalone HTML page.</li>
+      <li><strong>Usage:</strong> daily tokens by model for 7, 30, or 90 days, totals by project, and an estimated cost from providers' list prices.</li>
+      <li><strong>Skills:</strong> which agent skills your sessions used, and how often.</li>
+      <li><strong>Machines:</strong> each linked computer and whether it is reporting.</li>
+    </ul>
+    <h3>Connect a machine</h3>
+    <p>The CLI sends history to the dashboard only after you link the machine and choose which agents to send. Sign in at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>, then run:</p>
+    <pre><code>firekeeper login                      # approve this machine in your browser
+firekeeper backfill --all --dry-run   # see what would be sent; uploads nothing
+firekeeper backfill --all             # confirm, then send past sessions
+firekeeper daemon install             # keep sending new sessions in the background</code></pre>
+    <p><code>firekeeper whoami</code> shows which account and server this machine reports to. <code>firekeeper logout</code> unlinks it.</p>
+    <div class="callout"><p><strong>Read before you upload.</strong> Uploads include session metadata and full transcripts. Every event goes through redaction first, but redaction is best effort, and whoever runs the server can read what you send. See <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> and the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">reporting reference</a>.</p></div>
+    <p>Prefer to keep it on your own hardware? <code>firekeeper serve</code> starts the same dashboard on this machine through the separate <code>firekeeper-server</code> program, free for local use. A shared, self-hosted server for a team needs a license. See <a href="/#pricing">pricing</a>.</p>
+
+    <h2 id="compare">Which one should I use?</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Terminal dashboard</th><th>Mac menu bar app</th><th>Web dashboard</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Best for</th><td>Watching and reading agents while you work</td><td>A glance at states and limits without a terminal</td><td>History, search, and usage over time</td></tr>
+          <tr><th scope="row">Runs on</th><td>macOS, Windows, Linux</td><td>macOS 13+</td><td>Any browser</td></tr>
+          <tr><th scope="row">Sessions shown</th><td>Running now, plus local history</td><td>Running now, plus recent sessions</td><td>Everything you upload, from every linked machine</td></tr>
+          <tr><th scope="row">Data leaves your machine</th><td>No transcripts</td><td>No</td><td>Yes, after you opt in</td></tr>
+          <tr><th scope="row">Price</th><td>Free, open source</td><td>License key</td><td>See <a href="/#pricing">pricing</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/"><small>Previous</small>&larr; Introduction</a><a href="/docs/quick-start/"><small>Next</small>Quick start &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/landing/docs/products/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>
