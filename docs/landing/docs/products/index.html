@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ways to use Firekeeper | Firekeeper docs</title>
-<meta name="description" content="Firekeeper comes three ways: the open-source terminal dashboard, a macOS menu bar app, and a web dashboard at dashboard.firekeeper.ai.">
+<meta name="description" content="Firekeeper comes three ways: the free, open-source terminal dashboard, the licensed Firekeeper Menu Bar for macOS, and the licensed web dashboard.">
 <link rel="canonical" href="https://firekeeper.ai/docs/products/">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/docs/docs.css">
@@ -30,6 +30,12 @@
       <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
       <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
     </ul>
+    <p class="nav-label">Licensed, opt-in</p>
+    <ul>
+      <li><a href="/docs/menu-bar/">Firekeeper Menu Bar</a></li>
+      <li><a href="/docs/hosted/">Hosted dashboard</a></li>
+      <li><a href="/docs/server/">Firekeeper Server</a></li>
+    </ul>
     <p class="nav-label">Reference on GitHub</p>
     <ul>
       <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
@@ -40,17 +46,17 @@
   <main id="main">
     <p class="eyebrow">Start here</p>
     <h1>Ways to use Firekeeper</h1>
-    <p class="lede">One view of your coding agents, in three places: your terminal, your Mac's menu bar, and your browser. Start with the terminal dashboard; add the others when they help.</p>
-    <nav class="on-page" aria-label="On this page"><a href="#cli">Terminal dashboard (CLI)</a><a href="#mac-app">Mac menu bar app</a><a href="#web-dashboard">Web dashboard</a><a href="#compare">Which one?</a></nav>
+    <p class="lede">One view of your coding agents, in three places: your terminal, your Mac's menu bar, and your browser. The terminal dashboard is free and open source. Firekeeper Menu Bar and the web dashboard are licensed, opt-in offerings; add them when they help.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#cli">Terminal dashboard (CLI)</a><a href="#mac-app">Firekeeper Menu Bar</a><a href="#web-dashboard">Web dashboard</a><a href="#compare">Which one?</a></nav>
 
     <div class="cards cards-3">
       <section class="card"><h2>Terminal dashboard</h2><p>Free and open source. Watch agents, read replies, check usage from a terminal.</p><a href="#cli">About the CLI &darr;</a></section>
-      <section class="card"><h2>Mac menu bar app</h2><p>Agents, states, and limits one click away in the macOS menu bar.</p><a href="#mac-app">About the Mac app &darr;</a></section>
-      <section class="card"><h2>Web dashboard</h2><p>Session history, search, and usage across all your machines.</p><a href="#web-dashboard">About the web dashboard &darr;</a></section>
+      <section class="card"><h2>Firekeeper Menu Bar</h2><p>Licensed, macOS. Agents, states, and limits one click away in the menu bar.</p><a href="#mac-app">About Firekeeper Menu Bar &darr;</a></section>
+      <section class="card"><h2>Web dashboard</h2><p>Licensed. Session history, search, and usage across your machines.</p><a href="#web-dashboard">About the web dashboard &darr;</a></section>
     </div>
 
     <h2 id="cli">Terminal dashboard (CLI)</h2>
-    <p>The <code>firekeeper</code> command is the core of Firekeeper. It is free, open source under Apache 2.0, and developed in the public <a href="https://github.com/firekeeper-ai/firekeeper">firekeeper-ai/firekeeper</a> repository. It runs on macOS, Windows 10 1809+ and 11, and Linux (best effort).</p>
+    <p>The Firekeeper CLI (the <code>firekeeper</code> command) is the core of Firekeeper. It is free, open source under Apache 2.0, and developed in the public <a href="https://github.com/firekeeper-ai/firekeeper">firekeeper-ai/firekeeper</a> repository. It runs on macOS, Windows 10 1809+ and 11, and Linux (best effort).</p>
     <p>Launch your agents the way you always do, then run <code>firekeeper</code> in another terminal. It finds Claude Code, Codex, GitHub Copilot CLI, Kimi Code, OpenCode, Gemini CLI, and Cursor CLI on its own. You need no account, server, wrapper, or background service.</p>
     <h3>What it does</h3>
     <ul>
@@ -62,10 +68,14 @@
     </ul>
     <h3>Install</h3>
     <pre><code>brew install firekeeper-ai/tap/firekeeper</code></pre>
-    <p>The <a href="/docs/quick-start/#install">quick start</a> has the install script for macOS and Linux, the PowerShell command for Windows, and your first session. The CLI is also what connects a machine to the web dashboard, described <a href="#web-dashboard">below</a>.</p>
+    <p>These commands install only the Firekeeper CLI. They do not install Firekeeper Menu Bar or sign you up for the Hosted dashboard. The <a href="/docs/quick-start/#install">quick start</a> has the install script for macOS and Linux, the PowerShell command for Windows, and your first session. The CLI is also what connects a machine to the web dashboard, described <a href="#web-dashboard">below</a>.</p>
 
-    <h2 id="mac-app">Mac menu bar app</h2>
-    <p>Firekeeper for Mac puts your agents in the macOS menu bar. Click its icon to open a panel with every running session; you do not need a terminal window open to keep an eye on them.</p>
+    <h2 id="mac-app">Firekeeper Menu Bar</h2>
+    <p>Firekeeper Menu Bar is a licensed macOS app. It is not part of the open-source CLI, and the terminal dashboard does not need it. <a href="/docs/menu-bar/">More about Firekeeper Menu Bar</a>.</p>
+    <!-- TODO(#115, open question 2): the download link and install steps below predate the marketing
+         refresh. Confirm the Firekeeper Menu Bar install and launch path and which license tiers
+         include it, then reconcile them with /docs/menu-bar/. -->
+    <p>It puts your agents in the macOS menu bar. Click its icon to open a panel with every running session; you do not need a terminal window open to keep an eye on them.</p>
     <p><a class="btn" href="/download/mac" download>Download for macOS (.dmg)</a></p>
     <p class="fine">Requires macOS 13 or later and the <code>firekeeper</code> CLI. Looking for an older version? See <a href="https://github.com/firekeeper-ai/firekeeper-releases/releases">all Mac app releases</a>.</p>
     <h3>What it does</h3>
@@ -88,7 +98,13 @@
     <p>The app checks for a new version when it starts and every six hours. When one is ready, the panel shows <strong>Update now</strong>. Like the CLI, it is read-only and works locally: it uploads nothing.</p>
 
     <h2 id="web-dashboard">Web dashboard</h2>
-    <p>The web dashboard at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a> keeps your agent history in one place, from every machine you link. It is optional: the CLI and the Mac app work without it.</p>
+    <p>The web dashboard is the browser UI for browsing, searching, and charting sessions reported to Firekeeper Server or the Hosted dashboard. It keeps your agent history in one place, from every machine you link. It is licensed and optional: the terminal dashboard and Firekeeper Menu Bar work without it.</p>
+    <h3>Three ways to run it</h3>
+    <ul>
+      <li><strong>Free local mode:</strong> you run Firekeeper Server on this machine, on loopback, for one user, with no license key. Every dashboard feature works. See <a href="/docs/server/">Firekeeper Server</a>.</li>
+      <li><strong>Self-hosted Firekeeper Server:</strong> you run it on a server you control. A Personal, Team, or Enterprise license is required for remote or shared use.</li>
+      <li><strong>Hosted dashboard:</strong> we run it at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>. Buy a license, open the signup link emailed to the license address, sign in, then run <code>firekeeper login</code>. See <a href="/docs/hosted/">Hosted dashboard</a>.</li>
+    </ul>
     <h3>What it does</h3>
     <ul>
       <li><strong>Overview:</strong> agent time, tokens, merged pull requests, and estimated spend for the last 7 days or 4 weeks, against the period before, with daily goals.</li>
@@ -99,25 +115,26 @@
       <li><strong>Machines:</strong> each linked computer and whether it is reporting.</li>
     </ul>
     <h3>Connect a machine</h3>
-    <p>The CLI sends history to the dashboard only after you link the machine and choose which agents to send. Sign in at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>, then run:</p>
-    <pre><code>firekeeper login                      # approve this machine in your browser
+    <p>The CLI sends history to a server only after you link the machine and choose which agents to send. For the Hosted dashboard, buy a license and sign in with your emailed signup link first (existing customers can <a href="https://dashboard.firekeeper.ai">sign in</a>), then run:</p>
+    <pre><code>firekeeper login                      # approve this machine in your browser (Hosted dashboard)
+firekeeper login --server URL         # or link to a self-hosted Firekeeper Server
 firekeeper backfill --all --dry-run   # see what would be sent; uploads nothing
 firekeeper backfill --all             # confirm, then send past sessions
 firekeeper daemon install             # keep sending new sessions in the background</code></pre>
-    <p><code>firekeeper whoami</code> shows which account and server this machine reports to. <code>firekeeper logout</code> unlinks it.</p>
-    <div class="callout"><p><strong>Read before you upload.</strong> Uploads include session metadata and full transcripts. Every event goes through redaction first, but redaction is best effort, and whoever runs the server can read what you send. See <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> and the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">reporting reference</a>.</p></div>
-    <p>Prefer to keep it on your own hardware? <code>firekeeper serve</code> starts the same dashboard on this machine through the separate <code>firekeeper-server</code> program, free for local use. A shared, self-hosted server for a team needs a license. See <a href="/#pricing">pricing</a>.</p>
+    <p>With no <code>--server</code>, <code>firekeeper login</code> links this machine to the Hosted dashboard. <code>firekeeper whoami</code> shows which account and server this machine reports to. <code>firekeeper logout</code> unlinks it.</p>
+    <div class="callout"><p><strong>Read before you upload.</strong> Uploads include session metadata and full transcripts. Every event goes through redaction first, but redaction is best effort, and whoever operates the server can read what you send; on the Hosted dashboard that is Lucky Daisy. See <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> and the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">reporting reference</a>.</p></div>
+    <p>Prefer to keep it on your own hardware? <code>firekeeper serve</code> starts the same web dashboard on this machine through the separate <code>firekeeper-server</code> program, free in free local mode. A shared, self-hosted server for a team needs a license. See <a href="/#pricing">pricing</a>.</p>
 
     <h2 id="compare">Which one should I use?</h2>
     <div class="table-wrap">
       <table>
-        <thead><tr><th></th><th>Terminal dashboard</th><th>Mac menu bar app</th><th>Web dashboard</th></tr></thead>
+        <thead><tr><th></th><th>Terminal dashboard</th><th>Firekeeper Menu Bar</th><th>Web dashboard</th></tr></thead>
         <tbody>
           <tr><th scope="row">Best for</th><td>Watching and reading agents while you work</td><td>A glance at states and limits without a terminal</td><td>History, search, and usage over time</td></tr>
           <tr><th scope="row">Runs on</th><td>macOS, Windows, Linux</td><td>macOS 13+</td><td>Any browser</td></tr>
           <tr><th scope="row">Sessions shown</th><td>Running now, plus local history</td><td>Running now, plus recent sessions</td><td>Everything you upload, from every linked machine</td></tr>
           <tr><th scope="row">Data leaves your machine</th><td>No transcripts</td><td>No</td><td>Yes, after you opt in</td></tr>
-          <tr><th scope="row">Price</th><td>Free, open source</td><td>License key</td><td>See <a href="/#pricing">pricing</a></td></tr>
+          <tr><th scope="row">Price</th><td>Free, open source</td><td>Licensed</td><td>Free local mode; a license for remote, shared, or hosted use. See <a href="/#pricing">pricing</a></td></tr>
         </tbody>
       </table>
     </div>

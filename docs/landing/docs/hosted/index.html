@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hosted dashboard | Firekeeper docs</title>
+<meta name="description" content="The Hosted dashboard is the Firekeeper web dashboard operated by Lucky Daisy at dashboard.firekeeper.ai. Access follows a purchased license: buy, use the emailed signup link, sign in, then run firekeeper login.">
+<link rel="canonical" href="https://firekeeper.ai/docs/hosted/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/products/">Ways to use Firekeeper</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Licensed, opt-in</p>
+    <ul>
+      <li><a href="/docs/menu-bar/">Firekeeper Menu Bar</a></li>
+      <li><a href="/docs/hosted/" aria-current="page">Hosted dashboard</a></li>
+      <li><a href="/docs/server/">Firekeeper Server</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Licensed, opt-in</p>
+    <h1>Hosted dashboard</h1>
+    <p class="lede">The same web dashboard as Firekeeper Server, operated by Lucky Daisy at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>. Access comes with a purchased license.</p>
+    <nav class="on-page" aria-label="On this page"><a href="#compare">Which one?</a><a href="#access">Get access</a><a href="#data">What is sent</a><a href="#terms">Terms</a><a href="#faq">Missing signup link</a><a href="#local">Stay local</a></nav>
+    <p>The Hosted dashboard is licensed and opt-in. It is not the free terminal dashboard, and it is not self-hosted Firekeeper Server. There is no open sign-up and no request-access form. Its legal name in the license terms is <strong>Hosted Instance</strong>.</p>
+    <h2 id="compare">Which one is which?</h2>
+    <div class="table-wrap" role="region" aria-label="Where the dashboard runs" tabindex="0">
+      <table>
+        <thead><tr><th scope="col">Option</th><th scope="col">Who runs it</th><th scope="col">What you need</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Terminal dashboard</strong></td><td>You, in a terminal, locally.</td><td>Nothing. Free and open source. Uploads no transcripts.</td></tr>
+          <tr><td><strong>Free local mode</strong></td><td>You, on this machine: Firekeeper Server on loopback, one user.</td><td>No license key. See <a href="/docs/server/">Firekeeper Server</a>.</td></tr>
+          <tr><td><strong>Self-hosted Firekeeper Server</strong></td><td>You, on a server you control.</td><td>A Personal, Team, or Enterprise license for remote or shared use. Link a machine with <code>firekeeper login --server URL</code>.</td></tr>
+          <tr><td><strong>Hosted dashboard</strong></td><td>Lucky Daisy, at <a href="https://dashboard.firekeeper.ai">dashboard.firekeeper.ai</a>.</td><td>A purchased license. Access follows the license.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h2 id="access">Get access</h2>
+    <ol>
+      <li><strong>Buy a license</strong> at <a href="https://firekeeper.ai/#pricing">firekeeper.ai/#pricing</a>.</li>
+      <li><strong>Check your email</strong> for the signup link. It is sent to the address the license is registered to; allow up to one business day. <!-- TODO(#115, open question 3): confirm whether the signup link arrives in the same email as the license key, and that every paid tier (including Personal renewals and Enterprise sold through contact) receives one. --></li>
+      <li><strong>Open the link and sign in.</strong> Existing customers: <a href="https://dashboard.firekeeper.ai">Sign in</a>.</li>
+      <li><strong>Run <code>firekeeper login</code></strong> on this machine. With no <code>--server</code>, it links to the Hosted dashboard. Approve the machine in your browser.</li>
+      <li><strong>Nothing is uploaded yet.</strong> Preview what would be sent, then report only the agents you allow:
+<pre><code>firekeeper backfill --all --dry-run   # uploads nothing
+firekeeper report --dry-run           # uploads nothing</code></pre></li>
+    </ol>
+    <p>See the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">reporting reference</a> for <code>backfill</code>, <code>report</code>, and <code>daemon install</code>, and <code>firekeeper whoami</code> to check which server and account a machine reports to.</p>
+    <h2 id="data">What data is sent</h2>
+    <p>Opt-in reporting uploads session metadata and transcripts after best-effort redaction. Redaction is not a guarantee, and the operator, Lucky Daisy, can read what is uploaded. Read <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#what-is-uploaded-and-what-is-not-caught">what is uploaded and what is not caught</a> before you turn uploads on, and preview with <code>--dry-run</code>.</p>
+    <h2 id="terms">Pricing and terms</h2>
+    <p>Access comes with a purchased license. No separate Hosted price is published, and there is no Hosted SLA.</p>
+    <!-- TODO(#115, open question 4): keep this disclosure until the Hosted Instance terms in
+         the EULA are updated. Updating the EULA is a private-repo follow-up, not part of this change. -->
+    <div class="callout"><p><strong>Early-access service.</strong> The current Hosted Instance terms still describe an early-access service with no availability, support, or data-retention commitment, and say data may be wiped at any time without notice. See the <a href="/terms">terms</a>.</p></div>
+    <h2 id="faq">I bought a license but didn't get a signup link</h2>
+    <p>Check the inbox for the email the license is registered to, and your spam folder. Allow up to one business day. If it still has not arrived, use the <a href="/contact">contact form</a>.</p>
+    <!-- TODO(#115, open question 7): add a published support email here once confirmed; do not invent one. -->
+    <h2 id="local">If you would rather not upload to us</h2>
+    <p>Use only the terminal dashboard, which uploads nothing, or run <a href="/docs/server/">Firekeeper Server</a> yourself.</p>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/menu-bar/"><small>Previous</small>&larr; Firekeeper Menu Bar</a><a href="/docs/server/"><small>Next</small>Firekeeper Server &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/landing/docs/hosted/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>

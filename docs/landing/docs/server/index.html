@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firekeeper Server | Firekeeper docs</title>
+<meta name="description" content="Firekeeper Server is the commercial firekeeper-server binary that serves the web dashboard. It is free in free local mode on your own machine and needs a license for remote or shared use.">
+<link rel="canonical" href="https://firekeeper.ai/docs/server/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/docs/docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><img src="/favicon.svg" alt="" width="26" height="26">Firekeeper</a>
+  <nav class="header-links" aria-label="Main"><a href="/docs/">Docs</a><a href="https://github.com/firekeeper-ai/firekeeper">GitHub</a></nav>
+</div></header>
+<div class="layout">
+  <nav class="sidebar" aria-label="Documentation">
+    <p class="nav-label">Start here</p>
+    <ul>
+      <li><a href="/docs/">Introduction</a></li>
+      <li><a href="/docs/products/">Ways to use Firekeeper</a></li>
+      <li><a href="/docs/quick-start/">Quick start</a></li>
+      <li><a href="/docs/how-to-work/">How to work with Firekeeper</a></li>
+    </ul>
+    <p class="nav-label">Using Firekeeper</p>
+    <ul>
+      <li><a href="/docs/usage/">Understand usage</a></li>
+      <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
+      <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
+    </ul>
+    <p class="nav-label">Licensed, opt-in</p>
+    <ul>
+      <li><a href="/docs/menu-bar/">Firekeeper Menu Bar</a></li>
+      <li><a href="/docs/hosted/">Hosted dashboard</a></li>
+      <li><a href="/docs/server/" aria-current="page">Firekeeper Server</a></li>
+    </ul>
+    <p class="nav-label">Reference on GitHub</p>
+    <ul>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Optional reporting</a></li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/PRIVACY.md">Privacy</a></li>
+    </ul>
+  </nav>
+  <main id="main">
+    <p class="eyebrow">Licensed, opt-in</p>
+    <h1>Firekeeper Server</h1>
+    <p class="lede">The commercial <code>firekeeper-server</code> binary that serves the web dashboard: browse, search, and chart sessions reported to it.</p>
+    <p>Firekeeper Server is a separate product from the Firekeeper CLI. Its source is not in the open-source repository, and it is not covered by the CLI's Apache 2.0 license. The terminal dashboard does not need it.</p>
+    <h2 id="free-local">Free local mode</h2>
+    <p>Run Firekeeper Server on this machine, with no license key, and it runs in free local mode: loopback only, one user, no accounts or tokens, every dashboard feature. It will not bind to a public address or serve other accounts until you add a license.</p>
+    <pre><code>firekeeper serve</code></pre>
+    <p><code>firekeeper serve</code> hands over to the separate <code>firekeeper-server</code> program.</p>
+    <!-- TODO(#115, open question 6): confirm whether `firekeeper serve` in current release builds
+         offers to auto-download Firekeeper Server. README.md and docs/reference.md have disagreed,
+         so this page does not say. -->
+    <h2 id="licensed">Self-hosted, with a license</h2>
+    <p>For remote or shared use (binding beyond loopback, or using accounts and tokens) you need a Personal, Team, or Enterprise license. See <a href="/#pricing">pricing</a>. Link each machine to your server with <code>firekeeper login --server URL</code>.</p>
+    <h2 id="hosted">Or let us run it</h2>
+    <p>The <a href="/docs/hosted/">Hosted dashboard</a> is the same web dashboard, operated by Lucky Daisy. Access comes with a purchased license.</p>
+    <h2 id="more">More</h2>
+    <ul>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#installing-the-server-from-serve">Installing the server from <code>serve</code></a> in the reference</li>
+      <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md#reporting">Reporting reference</a> and the <a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/api.md">HTTP API</a></li>
+      <li>Session HTML export: with <code>firekeeper-server</code> installed locally, press <kbd>e</kbd> in the terminal dashboard's chat view to save a standalone HTML page. It needs no license key and uploads nothing.</li>
+    </ul>
+    <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/hosted/"><small>Previous</small>&larr; Hosted dashboard</a><a href="/docs/"><small>Back to</small>Documentation home &rarr;</a></nav>
+    <footer class="page-footer"><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/landing/docs/server/index.html">Edit this page on GitHub</a>.</footer>
+  </main>
+</div>
+</body>
+</html>

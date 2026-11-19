@@ -484,8 +484,10 @@ Reporting is a set of explicit subcommands: `report`, `backfill`, `daemon`,
 and `daemon` send session metadata and full transcripts to a dashboard server
 that speaks the [open API](api.md). Nothing is sent until you allow
 providers with `--provider`, `backfill --all`, the `FIREKEEPER_PROVIDERS`
-variable, or the config file, and point at a server (`https://dashboard.firekeeper.ai`
-by default). `report --dry-run` shows what would be sent without opening a
+variable, or the config file, and point at a server. With no `--server`, the
+default is the [Hosted dashboard](https://firekeeper.ai/docs/hosted/) at
+`https://dashboard.firekeeper.ai`; pass `--server URL` for a self-hosted
+Firekeeper Server. `report --dry-run` shows what would be sent without opening a
 connection. Agent CLIs never depend on any of these commands.
 
 ```sh
@@ -505,7 +507,7 @@ firekeeper config show                # print the merged configuration, token ma
 `export` is a placeholder that prints `not implemented` and exits with
 status 2. `serve` hands over to the separate `firekeeper-server` binary and exits
 with status 2 when it cannot find it (see the
-[README](../README.md#the-dashboard-server)).
+[README](../README.md#firekeeper-server-and-the-web-dashboard)).
 
 ### Installing the server from `serve`
 
@@ -513,6 +515,10 @@ When `serve` cannot find `firekeeper-server`, it can offer to install it. This
 is off unless a release source is configured, which release builds of
 Firekeeper do not do yet; until then `serve` prints its instructions and exits
 with status 2, as above.
+<!-- TODO(#115, open question 6): this paragraph ("release builds do not do yet")
+     and "Release builds of `firekeeper` have the offer switched on" below
+     contradict each other, and the README has disagreed too. Confirm what
+     current release builds do before rewording either. -->
 
 When on, the offer is made only if stdin and stderr are terminals and neither
 `CI` nor `FIREKEEPER_NO_PROMPT` is set. Otherwise `serve` behaves as if it were
@@ -881,8 +887,15 @@ after the normal interval, never the one-minute catch-up. The same credential ru
 On a server that supports linking, a machine connects without anyone copying a token:
 
 ```sh
-firekeeper login   # or: firekeeper login --server https://dash.example
+firekeeper login                                  # the Hosted dashboard, https://dashboard.firekeeper.ai
+firekeeper login --server https://dash.example    # a self-hosted Firekeeper Server
 ```
+
+With no `--server` (and no `$FIREKEEPER_SERVER` or configured server),
+`login` links this machine to the Hosted dashboard, which is operated by Lucky
+Daisy. Access to it follows a purchased license: buy a license, open the signup
+link emailed to the address the license is registered to, sign in, then run
+`firekeeper login`. See [the Hosted dashboard](https://firekeeper.ai/docs/hosted/).
 
 It prints a URL and a short code and waits. Open the URL (sign in if asked),
 check that the page shows the same code, name the machine, and approve; the

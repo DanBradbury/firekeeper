@@ -30,6 +30,12 @@
       <li><a href="/docs/keyboard/">Keyboard shortcuts</a></li>
       <li><a href="/docs/troubleshooting/">Troubleshooting</a></li>
     </ul>
+    <p class="nav-label">Licensed, opt-in</p>
+    <ul>
+      <li><a href="/docs/menu-bar/">Firekeeper Menu Bar</a></li>
+      <li><a href="/docs/hosted/">Hosted dashboard</a></li>
+      <li><a href="/docs/server/">Firekeeper Server</a></li>
+    </ul>
     <p class="nav-label">Reference on GitHub</p>
     <ul>
       <li><a href="https://github.com/firekeeper-ai/firekeeper/blob/main/docs/reference.md">Full reference</a></li>
@@ -41,7 +47,7 @@
     <p class="eyebrow">Start here</p>
     <h1>How to work with Firekeeper</h1>
     <p class="lede">Keep Firekeeper beside your agent terminals. Use it to decide where to look next, then do the work in the agent itself.</p>
-    <nav class="on-page" aria-label="On this page"><a href="#watch">Watch</a><a href="#read">Read</a><a href="#switch">Switch</a><a href="#remote">Remote work</a></nav>
+    <nav class="on-page" aria-label="On this page"><a href="#watch">Watch</a><a href="#read">Read</a><a href="#switch">Switch</a><a href="#menu-bar">Menu bar</a><a href="#remote">Remote work</a></nav>
     <h2 id="watch">Watch several agents at once</h2>
     <p>Start your agents as usual, in separate tabs, windows, or multiplexer panes. Open another terminal and run <code>firekeeper</code>. Leave it on <strong>Processes</strong> while they work.</p>
     <p>The list refreshes every two seconds. Each row represents a runtime and its child processes, not necessarily a single conversation. A <code>+N</code> next to the session ID means the runtime has more sessions.</p>
@@ -70,6 +76,8 @@
       <li><strong>Linux:</strong> terminal switching is not supported. Use your terminal or multiplexer controls.</li>
     </ul>
     <p>Firekeeper also attempts to focus a matching Herdr pane on macOS before raising the terminal. Herdr is optional; Firekeeper does not create or manage its sessions.</p>
+    <h2 id="menu-bar">From the menu bar</h2>
+    <p>On macOS, <a href="/docs/menu-bar/">Firekeeper Menu Bar</a> is a licensed way to see which agents are working or need attention and jump to their terminals, without opening the terminal dashboard. It is not part of the Firekeeper CLI, and you do not need it to follow this guide.</p>
     <h2 id="check-usage">Check usage between tasks</h2>
     <p>Press <kbd>Tab</kbd> to open <strong>Overview</strong> for provider totals and available limits. Tab again to <strong>Usage</strong> for model breakdowns and historical sessions. Use <kbd>Left</kbd> / <kbd>Right</kbd> to switch providers there.</p>
     <p>These views answer different questions from Processes: a session can disappear from the live list when its runtime exits but remain in local usage history. Read <a href="/docs/usage/">Understand usage</a> before treating token totals as a quota or bill.</p>
@@ -78,6 +86,7 @@
     <pre><code>ssh you@workbox
 firekeeper</code></pre>
     <p>This monitors that host, not your laptop and remote host together. Terminal switching does not focus a local terminal through SSH. Firekeeper is not a multiplexer: it does not keep agents alive when SSH disconnects. Use your existing session-management workflow for that.</p>
+    <p>SSH is not a multi-machine view. For one browser view of sessions from several machines, use the web dashboard: a self-hosted <a href="/docs/server/">Firekeeper Server</a>, or the <a href="/docs/hosted/">Hosted dashboard</a> (buy a license, open the emailed signup link, sign in, then run <code>firekeeper login</code>).</p>
     <h2 id="finish">Close the dashboard, leave the work running</h2>
     <p>Press <kbd>q</kbd> from a main view to quit, or <kbd>Ctrl+C</kbd> from anywhere. Only Firekeeper exits. Run <code>firekeeper</code> again to rediscover the agents still running.</p>
     <nav class="page-nav" aria-label="Previous and next pages"><a href="/docs/quick-start/"><small>Previous</small>&larr; Quick start</a><a href="/docs/usage/"><small>Next</small>Understand usage &rarr;</a></nav>

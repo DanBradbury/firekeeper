@@ -1,13 +1,17 @@
 # Firekeeper documentation
 
-Firekeeper is a free, open-source terminal dashboard for coding agents
-running on your machine. Install it, start your agents as usual, and run
+The Firekeeper CLI is a free, open-source terminal dashboard for coding
+agents running on your machine. Install it, start your agents as usual, and run
 `firekeeper` in another terminal. No Firekeeper account or server is needed.
+[Firekeeper Menu Bar](https://firekeeper.ai/docs/menu-bar/) and the web
+dashboard ([free local mode, Firekeeper Server](https://firekeeper.ai/docs/server/),
+or the [Hosted dashboard](https://firekeeper.ai/docs/hosted/)) are separate,
+licensed, opt-in offerings.
 
 **New here? [Install and find your first session](https://firekeeper.ai/docs/quick-start/).**
 For everyday use, start with these guides:
 
-- [Ways to use Firekeeper](https://firekeeper.ai/docs/products/): the CLI, the Mac menu bar app, and the web dashboard
+- [Ways to use Firekeeper](https://firekeeper.ai/docs/products/): the CLI, Firekeeper Menu Bar, and the web dashboard
 - [Quick start](https://firekeeper.ai/docs/quick-start/)
 - [How to work with Firekeeper](https://firekeeper.ai/docs/how-to-work/)
 - [Understand usage](https://firekeeper.ai/docs/usage/)
@@ -25,8 +29,8 @@ For everyday use, start with these guides:
 
 The usage guides live in [landing/docs/](landing/docs/). Each guide is a
 static `index.html` with shared styles in `docs.css`. No JavaScript or build
-step is required. Keep the sidebar and previous/next links consistent when
-adding a page, and add its URL to [landing/sitemap.xml](landing/sitemap.xml).
+step is required. Keep the sidebar and previous/next links consistent on every page when
+adding one, and add its URL to [landing/sitemap.xml](landing/sitemap.xml).
 The Markdown references above remain the detailed technical documentation;
 link to them rather than duplicating the full command and configuration reference.
 
