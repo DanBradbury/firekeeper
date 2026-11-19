@@ -57,6 +57,8 @@ var helpSections = []helpSection{
 		{"← → / h l", "Switch provider"},
 		{"Enter", "Open the selected session's chat"},
 		{"↑ ↓ / j k", "Select a session (PgUp/PgDn/Home/End also work)"},
+		{"/", "Filter sessions: title matches first, then project or branch"},
+		{"Enter / Esc", "Keep the filter / clear it"},
 		{"r", "Refresh selected provider"},
 	}},
 }

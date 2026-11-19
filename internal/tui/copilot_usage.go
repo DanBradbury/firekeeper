@@ -640,9 +640,31 @@ func formatCommaInt(value int64) string {
 }
 
 func (m model) usageFooter() string {
+	if m.usageFilterEditing {
+		return renderFooterKeys([]footerKey{{"type", "filter"}, {"enter", "keep"}, {"esc", "clear"}, {"↑↓", "session"}, {"ctrl+c", "quit"}}, m.width)
+	}
 	keys := []footerKey{{"←/→", "provider"}, {"r", "refresh"}, {"tab", "switch"}, {"?", "help"}, {"q", "quit"}}
-	if m.usageSessionCount() > 0 {
+	page := m.usagePage()
+	switch {
+	case strings.TrimSpace(m.usageFilter) != "":
+		keys = append([]footerKey{{"/", "filter"}, {"esc", "clear filter"}}, keys...)
+	case page.Total > 0:
+		keys = append([]footerKey{{"/", "filter"}}, keys...)
+	}
+	if len(page.Sessions) > 0 {
 		keys = append([]footerKey{{"↑↓", "session"}, {"enter", "chat"}}, keys...)
+	}
+	_, available := footerVersion(m.width)
+	for _, compact := range []footerKey{{"tab", "next"}, {"←/→", "prov"}, {"esc", "clear"}, {"r", "reload"}} {
+		if footerKeysWidth(keys, 1) <= available {
+			break
+		}
+		for index := range keys {
+			if keys[index].key == compact.key {
+				keys[index].action = compact.action
+				break
+			}
+		}
 	}
 	return renderFooterKeys(keys, m.width)
 }

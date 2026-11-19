@@ -157,6 +157,8 @@ type model struct {
 	mouse                   mouseState
 	menu                    *contextMenu
 	notice                  string
+	usageFilter             string
+	usageFilterEditing      bool
 	recentSessions          []recentSession
 	recentCursor            int
 	recentLoading           bool
@@ -244,6 +246,9 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.open {
 			return m.updateChat(msg)
+		}
+		if m.activeTab == usageTab && m.usageFilterEditing {
+			return m.updateUsageFilterKey(msg)
 		}
 		if msg.String() == "o" {
 			if cmd := m.openShownExport(); cmd != nil {
@@ -348,6 +353,14 @@ func (m model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.beginOverviewRefresh()
 				}
 				return m, m.beginUsageRefresh()
+			}
+		case "/":
+			if m.activeTab == usageTab {
+				m.startUsageFilter()
+			}
+		case "esc":
+			if m.activeTab == usageTab {
+				m.clearUsageFilter()
 			}
 		case "R":
 			if m.idleListActive() {

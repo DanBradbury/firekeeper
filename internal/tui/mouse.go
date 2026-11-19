@@ -200,14 +200,15 @@ func (m model) usageSessionIndexAt(x, pageRow, pageRows int) (int, bool) {
 	if x < 1 || x >= listWidth-1 {
 		return 0, false
 	}
-	body := geometry.sessions - 2
+	layout := usageSessionListLayout(page, geometry.sessions-2)
 	first := geometry.usageSessionsTop() + 1
-	capacity := body
-	if body >= 4 {
+	if layout.filter {
 		first++
-		capacity--
 	}
-	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, capacity)
+	if layout.header {
+		first++
+	}
+	start, end := usageSessionWindow(len(page.Sessions), page.Cursor, layout.capacity)
 	if offset := pageRow - first; offset >= 0 && offset < end-start {
 		return start + offset, true
 	}
@@ -219,6 +220,11 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	x, y := msg.X, msg.Y
+	if msg.Action == tea.MouseActionPress && (msg.Button == tea.MouseButtonLeft || msg.Button == tea.MouseButtonRight) {
+		// A click ends typing a session filter and keeps it, so menu
+		// entries replay their keys as actions, not as filter edits.
+		m.usageFilterEditing = false
+	}
 	switch {
 	case msg.Button == tea.MouseButtonWheelUp || msg.Button == tea.MouseButtonWheelDown:
 		if msg.Action != tea.MouseActionPress {
