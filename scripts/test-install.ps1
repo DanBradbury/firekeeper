@@ -383,7 +383,7 @@ try {
                 Set-RawUserPath @{ Value = $seeded; Kind = $expand }
                 $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = (Join-Path $env:USERPROFILE $leaf); FIREKEEPER_NO_MODIFY_PATH = '' } @('-Version', 'v1.2.3')
                 $after = Get-RawUserPath
-                Check (($r.Code -eq 0) -and ($after.Value -ceq $seeded) -and ($after.Kind -eq $expand) -and ($r.Output -notmatch 'Added')) "an entry that expands to the install directory is not added again (got $($after.Value))"
+                Check (($r.Code -eq 0) -and ($after.Value -ceq $seeded) -and ($after.Kind -eq $expand) -and ($r.Output -notmatch 'to your user PATH')) "an entry that expands to the install directory is not added again (got $($after.Value))"
                 Remove-Item -LiteralPath (Join-Path $env:USERPROFILE $leaf) -Recurse -Force -ErrorAction SilentlyContinue
             }
             finally {
