@@ -5,6 +5,8 @@
 #   curl -fsSL .../install.sh | sh -s -- --version v0.1.0
 #
 # Installs to ~/.local/bin, or to $FIREKEEPER_INSTALL_DIR. Never uses sudo.
+# Also adds fk, a short name for firekeeper, unless --no-fk is given or
+# something called fk already exists.
 # FIREKEEPER_RELEASES_URL overrides the release location (used by the tests).
 set -eu
 
@@ -19,17 +21,20 @@ die() {
 
 usage() {
 	cat <<'USAGE'
-Usage: install.sh [--version vX.Y.Z]
+Usage: install.sh [--version vX.Y.Z] [--no-fk]
 
 Installs the firekeeper binary from a GitHub release. Without --version it
-installs the latest release.
+installs the latest release. It also adds fk, a short name for firekeeper,
+unless --no-fk is given or something called fk already exists.
 
 Environment:
   FIREKEEPER_INSTALL_DIR  install directory (default ~/.local/bin)
+  FIREKEEPER_NO_FK        set to any value to skip the fk short name
 USAGE
 }
 
 requested=""
+no_fk="${FIREKEEPER_NO_FK:-}"
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--version)
@@ -39,6 +44,10 @@ while [ $# -gt 0 ]; do
 		;;
 	--version=*)
 		requested="${1#--version=}"
+		shift
+		;;
+	--no-fk)
+		no_fk=1
 		shift
 		;;
 	-h | --help)
@@ -123,6 +132,24 @@ chmod 755 "$INSTALL_DIR/.firekeeper.new"
 mv -f "$INSTALL_DIR/.firekeeper.new" "$INSTALL_DIR/firekeeper"
 
 say "Installed $INSTALL_DIR/firekeeper"
+
+# fk is a short name for firekeeper: a relative symlink beside it, so it keeps
+# pointing at the binary when an update replaces it. Anything else already
+# called fk, in the install directory or on PATH, is left alone.
+fk="$INSTALL_DIR/fk"
+if [ -n "$no_fk" ]; then
+	:
+elif [ -L "$fk" ] && [ "$(readlink "$fk")" = firekeeper ]; then
+	:
+elif [ -e "$fk" ] || [ -L "$fk" ]; then
+	say "Skipped the fk short name: $fk already exists."
+elif other=$(command -v fk 2>/dev/null) && [ -n "$other" ]; then
+	say "Skipped the fk short name: fk is already $other."
+elif ln -s firekeeper "$fk" 2>/dev/null; then
+	say "Added $fk as a short name for firekeeper."
+else
+	say "Could not add the fk short name in $INSTALL_DIR; firekeeper works as usual."
+fi
 case ":${PATH:-}:" in
 *":$INSTALL_DIR:"*) ;;
 *)

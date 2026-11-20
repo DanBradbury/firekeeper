@@ -284,6 +284,57 @@ try {
     $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = "http://127.0.0.1:$port"; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_VERSION = '' }
     Check (($r.Code -eq 0) -and ((Get-Content -Raw (Join-Path $dir 'firekeeper.exe')) -eq 'firekeeper 1.2.4')) "latest release resolved through the redirect ($($r.Output.Trim()))"
 
+    # 9a. fk.cmd is added beside firekeeper.exe and runs it.
+    $dir = Join-Path $work 'bin-fk1'
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '' } @('-Version', 'v1.2.3')
+    $fk = Join-Path $dir 'fk.cmd'
+    Check (($r.Code -eq 0) -and (Test-Path -LiteralPath $fk) -and ((Get-Content -Raw $fk) -match '"%~dp0firekeeper\.exe" %\*')) "fk.cmd added ($($r.Output.Trim()))"
+    Check ($r.Output -match 'so fk is a short name') 'fk.cmd addition reported'
+    if ($onWindows) {
+        # cmd.exe stands in for firekeeper.exe: fk.cmd must pass the
+        # arguments through and return the exit code.
+        Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination (Join-Path $dir 'firekeeper.exe') -Force
+        & $fk /c exit 7
+        Check ($LASTEXITCODE -eq 7) "fk.cmd passes arguments and the exit code through (got $LASTEXITCODE)"
+    }
+
+    # 9b. A reinstall keeps its own fk.cmd, quietly.
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '' } @('-Version', 'v1.2.3')
+    Check (($r.Code -eq 0) -and (Test-Path -LiteralPath $fk) -and ($r.Output -notmatch 'fk short name|so fk is')) "reinstall is quiet about its own fk.cmd ($($r.Output.Trim()))"
+
+    # 9b2. An fk.cmd from an earlier install.ps1 is brought up to date, quietly.
+    [System.IO.File]::WriteAllText($fk, "@echo off`r`nrem fk: a short name for firekeeper, added by install.ps1.`r`nold`r`n")
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '' } @('-Version', 'v1.2.3')
+    Check (($r.Code -eq 0) -and ((Get-Content -Raw $fk) -match 'firekeeper\.exe" %\*') -and ($r.Output -notmatch 'fk short name|so fk is')) "older fk.cmd replaced quietly ($($r.Output.Trim()))"
+
+    # 9c. Another fk.cmd in the install directory is left alone.
+    $dir = Join-Path $work 'bin-fk2'
+    New-Directory $dir
+    [System.IO.File]::WriteAllText((Join-Path $dir 'fk.cmd'), 'mine')
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '' } @('-Version', 'v1.2.3')
+    Check (($r.Code -eq 0) -and ((Get-Content -Raw (Join-Path $dir 'fk.cmd')) -eq 'mine') -and ($r.Output -match 'fk.cmd already exists')) "existing fk.cmd kept ($($r.Output.Trim()))"
+
+    # 9d. An fk elsewhere on PATH is not shadowed.
+    $otherFk = Join-Path $work 'otherfk'
+    New-Directory $otherFk
+    if ($onWindows) { [System.IO.File]::WriteAllText((Join-Path $otherFk 'fk.cmd'), '@echo other') }
+    else {
+        [System.IO.File]::WriteAllText((Join-Path $otherFk 'fk'), "#!/bin/sh`necho other`n")
+        & chmod 755 (Join-Path $otherFk 'fk')
+    }
+    $dir = Join-Path $work 'bin-fk3'
+    $sep = [System.IO.Path]::PathSeparator
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = ''; PATH = "$otherFk$sep$env:PATH" } @('-Version', 'v1.2.3')
+    Check (($r.Code -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $dir 'fk.cmd')) -and ($r.Output -match 'fk is already')) "fk on PATH not shadowed ($($r.Output.Trim()))"
+
+    # 9e. -NoFk and FIREKEEPER_NO_FK skip fk.cmd.
+    $dir = Join-Path $work 'bin-fk4'
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '' } @('-Version', 'v1.2.3', '-NoFk')
+    Check (($r.Code -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $dir 'fk.cmd'))) '-NoFk skips fk.cmd'
+    $dir = Join-Path $work 'bin-fk5'
+    $r = Run-Installer @{ FIREKEEPER_RELEASES_URL = $base; FIREKEEPER_INSTALL_DIR = $dir; FIREKEEPER_NO_MODIFY_PATH = '1'; FIREKEEPER_NO_FK = '1' } @('-Version', 'v1.2.3')
+    Check (($r.Code -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $dir 'fk.cmd'))) 'FIREKEEPER_NO_FK skips fk.cmd'
+
     if ($onWindows) {
         # 10. A running firekeeper.exe can be upgraded: Windows renames, but will not overwrite, a running program.
         $dir = Join-Path $work 'bin9'

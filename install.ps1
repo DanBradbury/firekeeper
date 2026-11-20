@@ -15,12 +15,14 @@ To pick a version or a directory when piping, set the variables first:
 
 Installs to %LOCALAPPDATA%\Programs\firekeeper and adds that directory to the
 user's PATH. Open a new terminal afterwards, or use the current one, which is
-updated too.
+updated too. It also adds fk.cmd, so fk is a short name for firekeeper, unless
+something called fk already exists.
 
 Environment:
   FIREKEEPER_VERSION       release to install, such as v0.1.0 (default: latest)
   FIREKEEPER_INSTALL_DIR   install directory (an absolute path)
   FIREKEEPER_NO_MODIFY_PATH  set to any value to leave PATH alone
+  FIREKEEPER_NO_FK         set to any value to skip the fk short name
   FIREKEEPER_RELEASES_URL  release location (used by the tests): https://,
                            file://, or http:// to this machine only
 
@@ -32,12 +34,16 @@ Directory for firekeeper.exe, as an absolute path.
 
 .PARAMETER NoPathUpdate
 Do not add the install directory to the user's PATH.
+
+.PARAMETER NoFk
+Do not add fk, the short name for firekeeper.
 #>
 [CmdletBinding()]
 param(
     [string]$Version = $env:FIREKEEPER_VERSION,
     [string]$InstallDir = $env:FIREKEEPER_INSTALL_DIR,
-    [switch]$NoPathUpdate
+    [switch]$NoPathUpdate,
+    [switch]$NoFk
 )
 
 $ErrorActionPreference = 'Stop'
@@ -200,6 +206,43 @@ function Test-AbsolutePath([string]$Path) {
     return ($Path -match '^[A-Za-z]:[\\/]') -or ($Path -match '^[\\/]{2}[^\\/]')
 }
 
+# FkShortcut is fk.cmd, which runs the firekeeper.exe beside it with the same
+# arguments and returns its exit code.
+$FkShortcut = "@echo off`r`nrem fk: a short name for firekeeper, added by install.ps1.`r`n`"%~dp0firekeeper.exe`" %*`r`nexit /b %ERRORLEVEL%`r`n"
+
+# Install-FkShortcut writes fk.cmd into Dir, so fk runs firekeeper. A batch
+# file rather than a link: a symbolic link needs administrator rights or
+# Developer Mode, and a hard link would keep the old firekeeper.exe after an
+# update renames it. Anything else already called fk, in Dir or on PATH, is
+# left alone. Failing to write it never fails the install.
+function Install-FkShortcut([string]$Dir) {
+    $shortcut = Join-Path $Dir 'fk.cmd'
+    $ours = $false
+    if ([System.IO.File]::Exists($shortcut)) {
+        $current = [System.IO.File]::ReadAllText($shortcut)
+        if ($current -ceq $FkShortcut) { return }
+        # An fk.cmd from an earlier install.ps1 is replaced; anything else is kept.
+        if (-not $current.Contains('added by install.ps1')) {
+            Write-Host "Skipped the fk short name: $shortcut already exists."
+            return
+        }
+        $ours = $true
+    }
+    $other = $null
+    if (-not $ours) { $other = Get-Command fk -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    if ($other) {
+        $where = $other.Source
+        if (-not $where) { $where = "a PowerShell $($other.CommandType.ToString().ToLowerInvariant())" }
+        Write-Host "Skipped the fk short name: fk is already $where."
+        return
+    }
+    try {
+        [System.IO.File]::WriteAllText($shortcut, $FkShortcut)
+        if (-not $ours) { Write-Host "Added $shortcut, so fk is a short name for firekeeper." }
+    }
+    catch { Write-Host "Could not add the fk short name in ${Dir}; firekeeper works as usual." }
+}
+
 function Install-Firekeeper {
     $releasesUrl = $env:FIREKEEPER_RELEASES_URL
     if (-not $releasesUrl) {
@@ -296,6 +339,7 @@ function Install-Firekeeper {
     }
 
     Write-Host "Installed $target"
+    if (-not ($NoFk -or $env:FIREKEEPER_NO_FK)) { Install-FkShortcut $InstallDir }
 
     if ($NoPathUpdate -or $env:FIREKEEPER_NO_MODIFY_PATH) {
         Write-Host "Left PATH alone. Add $InstallDir to it to run firekeeper from anywhere."
