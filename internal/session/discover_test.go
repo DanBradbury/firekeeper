@@ -8,13 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
@@ -609,85 +609,39 @@ func TestDiscoverLinksSingleProvider(t *testing.T) {
 	}
 }
 
-func TestParallelCallsEveryIndexOnceWithinBound(t *testing.T) {
-	limit := runtime.GOMAXPROCS(0)
-	for _, n := range []int{0, 1, 2, limit, 3*limit + 1} {
-		t.Run(fmt.Sprint(n), func(t *testing.T) {
-			calls := make([]int, n)
-			var mu sync.Mutex
-			running, peak := 0, 0
-			parallel(n, func(i int) {
-				mu.Lock()
-				running++
-				peak = max(peak, running)
-				mu.Unlock()
-				time.Sleep(time.Millisecond)
-				calls[i]++
-				mu.Lock()
-				running--
-				mu.Unlock()
-			})
-			for i, c := range calls {
-				if c != 1 {
-					t.Fatalf("index %d called %d times", i, c)
-				}
-			}
-			if peak > limit {
-				t.Fatalf("peak concurrency %d exceeds GOMAXPROCS %d", peak, limit)
-			}
-		})
-	}
-}
-
-func TestParallelNegativeCountCallsNothing(t *testing.T) {
-	parallel(-1, func(int) { t.Fatal("fn called for negative n") })
-}
-
-// A panic in one call reaches parallel's caller, on the caller's goroutine,
-// after every other call has returned. It keeps the original value and the
-// stack of the goroutine that panicked, and with several panics it is the
-// first by index.
-func TestParallelPanicReachesCaller(t *testing.T) {
-	cause := errors.New("fixture panic")
+// With one provider, Link runs on Discover's goroutine, and a panic still
+// names that provider, also when it comes from per-file work inside Link
+// whose index is not the provider's.
+func TestDiscoverSingleProviderLinkPanicNamesProvider(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		panics    map[int]any
-		want      string
-		unwrapped error
+		name  string
+		panic func()
 	}{
-		{"error value", map[int]any{3: cause}, "fixture panic", cause},
-		{"string value", map[int]any{3: "fixture panic"}, "fixture panic", nil},
-		{"two calls", map[int]any{5: "later", 1: "first"}, "first", nil},
+		{"direct", func() { panic("fixture panic") }},
+		{"nested", func() {
+			parallel.Bounded(5, func(i int) {
+				if i == 4 {
+					panic("fixture panic")
+				}
+			})
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			const n = 8
-			var finished atomic.Int32
+			replaceLinks(t, func(_ int, _ event.Provider, _ []*ProcessGroup) error {
+				tc.panic()
+				return nil
+			})
 			var caught any
 			func() {
 				defer func() { caught = recover() }()
-				parallel(n, func(i int) {
-					if value, ok := tc.panics[i]; ok {
-						panic(value)
-					}
-					finished.Add(1)
-				})
+				_, _ = Discover(context.Background(), Options{Home: t.TempDir(), Run: psOnly("20 1 ttys002 00:01 kimi\n")})
 			}()
-			err, ok := caught.(error)
+			lp, ok := caught.(*linkPanic)
 			if !ok {
-				t.Fatalf("recovered %v, want the call's panic as an error", caught)
+				t.Fatalf("recovered %#v, want a *linkPanic", caught)
 			}
-			message := err.Error()
-			if want := "panic in parallel discovery work: " + tc.want; !strings.HasPrefix(message, want) {
-				t.Errorf("panic = %.80q, want it to start with %q", message, want)
-			}
-			if !strings.Contains(message, "TestParallelPanicReachesCaller") {
-				t.Error("panic message lost the stack of the goroutine that panicked")
-			}
-			if got := errors.Unwrap(err); got != tc.unwrapped {
-				t.Errorf("Unwrap = %v, want %v", got, tc.unwrapped)
-			}
-			if got, want := int(finished.Load()), n-len(tc.panics); got != want {
-				t.Errorf("%d other calls finished before the panic was raised, want %d", got, want)
+			if want := "panic linking " + ToolName(event.ProviderKimi) + " sessions: "; !strings.HasPrefix(lp.Error(), want) {
+				t.Errorf("panic = %.80q, want it to start with %q", lp.Error(), want)
 			}
 		})
 	}

@@ -84,7 +84,7 @@ func TestUsageShowsRefreshErrorsWithCachedData(t *testing.T) {
 		if !strings.Contains(view, "Usage refresh failed: temporary failure") {
 			t.Errorf("provider %d: refresh error not visible", provider)
 		}
-		if !strings.Contains(view, "╭─lifetime") {
+		if !strings.Contains(view, "╭─Lifetime") {
 			t.Errorf("provider %d: cached usage not visible", provider)
 		}
 	}

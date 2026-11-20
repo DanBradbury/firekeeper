@@ -98,7 +98,7 @@ func (m model) viewProcesses(contentRows int) string {
 	}
 	lines = append(lines, m.dashSessionsPanel(layout)...)
 	if layout.detail > 0 {
-		lines = append(lines, dashBox("session", m.dashSelectedDetail(m.width-4), m.width, layout.detail, dashBlue)...)
+		lines = append(lines, dashBox("Session", m.dashSelectedDetail(m.width-4), m.width, layout.detail, dashBlue)...)
 	}
 	for len(lines) < contentRows {
 		lines = append(lines, dashFit("", m.width, usagePanelColor))
@@ -197,7 +197,7 @@ func (m model) dashSessionsPanel(layout dashLayout) []string {
 		end := min(m.processScroll+m.processPageSize(), len(lines))
 		body = append(body, lines[min(m.processScroll, end):end]...)
 	}
-	title := fmt.Sprintf("sessions (%d)", len(m.processGroups))
+	title := fmt.Sprintf("Sessions (%d)", len(m.processGroups))
 	if !layout.boxed {
 		for index := range body {
 			body[index] = dashFit(body[index], m.width, usagePanelColor)
@@ -704,10 +704,10 @@ func (m model) dashSummaryPanels(height int) []string {
 		accent string
 		body   func(width int) []string
 	}{
-		{"summary", dashBlue, summary.summaryLines},
+		{"Summary", dashBlue, summary.summaryLines},
 		{m.dashTokensTitle(), dashYellow, m.dashTokenLines},
-		{"providers", dashPurple, summary.providerLines},
-		{"projects", dashGreen, summary.projectLines},
+		{"Providers", dashPurple, summary.providerLines},
+		{"Projects", dashGreen, summary.projectLines},
 	}
 	count := 1
 	switch {
@@ -1127,9 +1127,9 @@ func (m model) selectedSession() (processGroup, sessionInfo, bool) {
 func (m model) dashTokensTitle() string {
 	_, session, ok := m.selectedSession()
 	if !ok {
-		return "tokens"
+		return "Tokens"
 	}
-	return "tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
+	return "Tokens (" + sanitizeProcessCommand(dashProjectName(session)) + "/" + dashShortID(session.id) + ")"
 }
 
 // dashTokenLines breaks down the selected session's tokens into input,

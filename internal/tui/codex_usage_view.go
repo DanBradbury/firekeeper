@@ -21,9 +21,9 @@ func (m model) codexPage() usagePage {
 		Err:         m.codexUsageErr,
 		HistoryErr:  m.codexHistoryErr,
 		Cards: []usageCard{
-			{"limits", dashBlue, func(rows int) []string { return m.codexLimitLines(rows, now) }},
-			{"lifetime", dashYellow, func(rows int) []string { return m.codexLifetimeLines() }},
-			{"active models", dashPurple, func(rows int) []string {
+			{"Limits", dashBlue, func(rows int) []string { return m.codexLimitLines(rows, now) }},
+			{"Lifetime", dashYellow, func(rows int) []string { return m.codexLifetimeLines() }},
+			{"Active models", dashPurple, func(rows int) []string {
 				models := colorModelUsageWithAssignments(activeCodexModelUsage(m.processGroups), colors)
 				return usageModelCardLines(models, rows, "No active model usage.")
 			}},

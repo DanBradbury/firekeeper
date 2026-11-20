@@ -160,8 +160,8 @@ func TestCopilotUsageViewShowsLocalHistory(t *testing.T) {
 	view := m.View()
 	plain := ansi.Strip(view)
 	for _, expected := range []string{
-		"[ Usage ]", "[ COPILOT ]", "╭─plan", "╭─lifetime", "Allowance: GitHub billing",
-		"AI credits", "0 / 7,000", "7.5", "42", "╭─tokens by day · model", "2.3M",
+		"[ Usage ]", "[ COPILOT ]", "╭─Plan", "╭─Lifetime", "Allowance: GitHub billing",
+		"AI credits", "0 / 7,000", "7.5", "42", "╭─Tokens by day · model", "2.3M",
 		"CLAUDE SONNET 4.6", "12.5M", "GPT 5", "800.0K",
 	} {
 		if !strings.Contains(plain, expected) {

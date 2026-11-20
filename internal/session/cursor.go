@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
@@ -107,7 +108,7 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	// reads are independent, and a transcript tail is up to
 	// CursorTranscriptTailBytes.
 	loaded := make([]bool, len(groupIndexes))
-	parallel(len(groupIndexes), func(i int) {
+	parallel.Bounded(len(groupIndexes), func(i int) {
 		index := groupIndexes[i]
 		id, ok := ids[index]
 		if !ok {

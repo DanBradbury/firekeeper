@@ -50,8 +50,8 @@ func (m model) copilotPage() usagePage {
 		Err:         m.copilotUsageErr,
 		HistoryErr:  m.copilotHistoryErr,
 		Cards: []usageCard{
-			{"plan", dashBlue, func(rows int) []string { return copilotPlanLines(snapshot) }},
-			{"lifetime", dashYellow, func(rows int) []string {
+			{"Plan", dashBlue, func(rows int) []string { return copilotPlanLines(snapshot) }},
+			{"Lifetime", dashYellow, func(rows int) []string {
 				return []string{
 					usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
 					usageStat("Calls", formatTokenCount(summary.ModelCalls), ""),
@@ -60,7 +60,7 @@ func (m model) copilotPage() usagePage {
 					usageStat("In / out", formatTokenCount(summary.InputTokens)+" / "+formatTokenCount(summary.OutputTokens), ""),
 				}
 			}},
-			{"models", dashPurple, func(rows int) []string {
+			{"Models", dashPurple, func(rows int) []string {
 				return usageModelCardLines(usageModels(models, colors), rows, "No local Copilot CLI model usage.")
 			}},
 		},
@@ -145,14 +145,14 @@ func (m model) kimiPage() usagePage {
 		HasData:     snapshot.hasData(),
 		Err:         m.kimiUsageErr,
 		Cards: []usageCard{
-			{"lifetime", dashYellow, func(rows int) []string {
+			{"Lifetime", dashYellow, func(rows int) []string {
 				return []string{
 					usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
 					usageStat("Turns", fmt.Sprintf("%d", summary.Turns), ""),
 					usageStat("Tokens", formatTokenCount(summary.LifetimeTokens), dashYellow),
 				}
 			}},
-			{"tokens", dashBlue, func(rows int) []string {
+			{"Tokens", dashBlue, func(rows int) []string {
 				return []string{
 					usageStat("Input", formatTokenCount(summary.InputTokens), ""),
 					usageStat("Cache read", formatTokenCount(summary.CacheRead), ""),
@@ -161,7 +161,7 @@ func (m model) kimiPage() usagePage {
 					usageNote("Quota: Kimi Code /usage"),
 				}
 			}},
-			{"models", dashPurple, func(rows int) []string {
+			{"Models", dashPurple, func(rows int) []string {
 				return usageModelCardLines(usageModels(models, colors), rows, "No local Kimi Code token records.")
 			}},
 		},
@@ -214,7 +214,7 @@ func (m model) claudePage() usagePage {
 
 	cards := []usageCard{}
 	if limits := claudeLimitWindows(snapshot.Limits); len(limits) > 0 {
-		cards = append(cards, usageCard{"limits", dashOrange, func(rows int) []string {
+		cards = append(cards, usageCard{"Limits", dashOrange, func(rows int) []string {
 			now := time.Now()
 			lines := make([]string, 0, len(limits))
 			for _, window := range limits {
@@ -241,7 +241,7 @@ func (m model) claudePage() usagePage {
 		Cursor:   m.claudeHistoryCursor,
 	}
 	page.Cards = append(cards, []usageCard{
-		{"lifetime", dashYellow, func(rows int) []string {
+		{"Lifetime", dashYellow, func(rows int) []string {
 			lines := []string{
 				usageStat("Sessions", fmt.Sprintf("%d", summary.Sessions), ""),
 				usageStat("Responses", fmt.Sprintf("%d", summary.Messages), ""),
@@ -252,7 +252,7 @@ func (m model) claudePage() usagePage {
 			}
 			return lines
 		}},
-		{"tokens", dashBlue, func(rows int) []string {
+		{"Tokens", dashBlue, func(rows int) []string {
 			return []string{
 				usageStat("Input", formatTokenCount(summary.InputTokens), ""),
 				usageStat("Cache read", formatTokenCount(summary.CacheRead), ""),
@@ -261,7 +261,7 @@ func (m model) claudePage() usagePage {
 				usageNote(claudeLimitsNote(snapshot)),
 			}
 		}},
-		{"models", dashPurple, func(rows int) []string {
+		{"Models", dashPurple, func(rows int) []string {
 			return usageModelCardLines(usageModels(models, colors), rows, "No local Claude Code token records.")
 		}},
 	}...)

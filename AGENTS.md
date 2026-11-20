@@ -94,6 +94,9 @@ firekeeper/
 │   ├── sqlitejson/
 │   │   └── Read-only SQLite query as JSON: the sqlite3 command when it is on
 │   │       PATH, an in-process modernc connection when it is not (Windows)
+│   ├── parallel/
+│   │   └── The one fan-out helper: Each (one goroutine per item) and Bounded
+│   │       (at most GOMAXPROCS); panics reach the caller (standard library only)
 │   ├── winterm/
 │   │   └── Windows: find and raise the window hosting a process
 │   ├── fsutil/
@@ -161,6 +164,13 @@ When using goroutines:
   afterwards.
 - Bound the workers: one goroutine per provider for provider work, and at
   most `runtime.GOMAXPROCS(0)` workers for file or subprocess work.
+- Use `internal/parallel` for both: `parallel.Each` (one goroutine per
+  item) for provider work, `parallel.Bounded` for file or subprocess work.
+  Do not write a new `sync.WaitGroup` or semaphore loop for an indexed
+  fan-out. A panic in a call reaches the caller as a `*parallel.Panic`
+  after every call has returned, so Bubble Tea can still recover it. A set
+  of different calls (such as the four sources in `firekeeper usage`) is
+  not an indexed fan-out.
 - Keep shared state (maps, counters, callbacks such as `Skip`) on one
   goroutine, or guard it.
 - Respect the caller's context and timeout.
@@ -397,7 +407,7 @@ Use the simplest representation that provides the guarantees the domain actually
 | Error classification | Sentinel error or typed error |
 | Error propagation | Explicit returns and `%w` wrapping |
 
-Do not introduce wrappers, interfaces, generic frameworks, or additional dependencies without a concrete benefit.
+Do not introduce wrappers, interfaces, generic frameworks, or additional dependencies without a concrete benefit. Removing duplicated code is a concrete benefit (see "No code duplication").
 
 ## Reporting
 
@@ -483,11 +493,30 @@ The reporter and daemon keep per-file read offsets in `~/.firekeeper/state.json`
 
 For user-visible changes, update `README.md` when controls, supported providers, requirements, limitations, or CLI flags change.
 
+## No code duplication
+
+- Do not duplicate code. Before writing a function, check whether the
+  repository already has one that does the job, and use it.
+- When two places need the same logic, put it in one function or package
+  and call it from both. Do not copy it, even with small changes.
+- Put shared code in the package that owns the concept. When no existing
+  package does, add a small internal package for it (as `internal/parallel`
+  is for fan-out), rather than exporting it from an unrelated package.
+- Test code follows the same rule: shared fixtures and helpers go in one
+  `_test.go` helper, `internal/testenv`, or
+  `internal/transcript/transcripttest`.
+- The rule is retroactive. Duplication already in the repository is to be
+  removed, not followed as precedent. Remove it one area per change (for
+  example, every copy of one helper), with tests covering every caller.
+- A shared helper that replaces duplicated code is a concrete benefit under
+  the "Design decision rule", and removing duplication is in scope under
+  "Change discipline".
+
 ## Change discipline
 
 - Keep changes scoped to request.
 - Preserve backward-compatible keyboard controls unless user requests redesign.
-- Avoid broad refactors while fixing provider drift or rendering bugs.
+- Avoid broad refactors while fixing provider drift or rendering bugs. Removing duplication (see "No code duplication") is not a broad refactor when it covers one area.
 - Do not overwrite user edits in dirty worktree.
 - Do not add generated binaries, database copies, provider logs, account metadata, or secrets.
 - Explain remaining platform/provider limitations plainly during handoff.

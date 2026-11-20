@@ -80,7 +80,7 @@ func TestChatOpensWithUserAndAssistantMessages(t *testing.T) {
 		t.Fatalf("messages = %d, want the user prompt and the assistant reply", len(m.chat.messages))
 	}
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"chat (demo/0199c3d4)", "You", "Please add a chat view", "Claude", "Sure, adding the chat view now."} {
+	for _, expected := range []string{"Chat (demo/0199c3d4)", "You", "Please add a chat view", "Claude", "Sure, adding the chat view now."} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("chat view missing %q:\n%s", expected, view)
 		}

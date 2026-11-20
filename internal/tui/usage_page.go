@@ -183,10 +183,10 @@ func (m model) viewUsagePage(contentRows int) string {
 	}
 	page := m.usagePage()
 	if page.Loading && !page.HasData {
-		return m.usageMessageBox("loading", page.LoadingText, contentRows)
+		return m.usageMessageBox("Loading", page.LoadingText, contentRows)
 	}
 	if page.Err != "" && !page.HasData {
-		return m.usageMessageBox("unavailable", page.Err, contentRows)
+		return m.usageMessageBox("Unavailable", page.Err, contentRows)
 	}
 
 	geometry := usageGeometryFor(page, contentRows)
@@ -296,7 +296,7 @@ func (m model) usageCardRow(page usagePage, height int) []string {
 func (m model) usageDaysPanel(page usagePage, height int) []string {
 	dayCount := min(7, max(height-2, 1))
 	suffix, body := page.Days(dayCount, max(m.width-4, 1))
-	return dashBox("tokens by day"+suffix, body, m.width, height, dashGreen)
+	return dashBox("Tokens by day"+suffix, body, m.width, height, dashGreen)
 }
 
 // usageSessionRow is the bottom of the Usage view: the selectable session
@@ -313,11 +313,11 @@ func (m model) usageSessionRow(page usagePage, height int, now time.Time) []stri
 	leftWidth := m.width - rightWidth
 	left := dashBox(title, usageSessionLines(page, leftWidth-4, body, now), leftWidth, height, dashBlue)
 
-	projects := fmt.Sprintf("projects · last %d", len(history))
+	projects := fmt.Sprintf("Projects · last %d", len(history))
 	detail, _, projectsHeight := usageRightPanels(height)
 	var right []string
 	if detail > 0 {
-		right = dashBox("session", usageSessionDetailLines(page), rightWidth, detail, dashTeal)
+		right = dashBox("Session", usageSessionDetailLines(page), rightWidth, detail, dashTeal)
 	}
 	if projectsHeight > 0 {
 		right = append(right, dashBox(projects, usageProjectLines(history, projectsHeight-2, page.Query.Projects), rightWidth, projectsHeight, dashTeal)...)
@@ -339,7 +339,7 @@ func usageRightWidth(width int) int {
 }
 
 func usageSessionsTitle(page usagePage) string {
-	title := "sessions"
+	title := "Sessions"
 	narrowed := !page.Query.empty()
 	switch {
 	case narrowed && len(page.Sessions) == 0:

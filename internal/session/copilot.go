@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
@@ -66,7 +67,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	// Each group's logs are searched on its own goroutine; a group writes
 	// only its own slot.
 	logIDs := make([]string, len(groupIndexes))
-	parallel(len(groupIndexes), func(i int) {
+	parallel.Bounded(len(groupIndexes), func(i int) {
 		group := &groups[groupIndexes[i]]
 		if id, ok := group.explicitSessionID(); ok {
 			logIDs[i] = id
@@ -120,7 +121,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 	// Each session's files are read on its own goroutine: the reads are
 	// independent, and each parses up to CopilotEventTailBytes of events.
 	loaded := make([]bool, len(groupIndexes))
-	parallel(len(groupIndexes), func(i int) {
+	parallel.Bounded(len(groupIndexes), func(i int) {
 		groupIndex := groupIndexes[i]
 		id, ok := mapped[groupIndex]
 		if !ok {

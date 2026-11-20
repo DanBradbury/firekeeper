@@ -313,7 +313,7 @@ func (m model) viewOverview(contentRows int) string {
 		if loading {
 			message = "Looking for providers…"
 		}
-		lines = dashBox("overview", []string{dashPaint(message, usageMutedColor, false)}, m.width, min(contentRows, 3), dashBlue)
+		lines = dashBox("Overview", []string{dashPaint(message, usageMutedColor, false)}, m.width, min(contentRows, 3), dashBlue)
 	} else {
 		// Wide terminals show paired cards; smaller terminals keep full-width meters.
 		columns, gap := 1, 2

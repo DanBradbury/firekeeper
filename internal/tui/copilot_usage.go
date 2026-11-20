@@ -464,9 +464,9 @@ func (m model) viewUsage(contentRows int) string {
 		return selector
 	}
 	if len(m.availableUsageProviders()) == 0 {
-		title, message := "usage", "No providers found."
+		title, message := "Usage", "No providers found."
 		if m.anyUsageLoading() {
-			title, message = "loading", "Looking for providers…"
+			title, message = "Loading", "Looking for providers…"
 		}
 		return selector + "\n" + m.usageMessageBox(title, message, contentRows-1)
 	}

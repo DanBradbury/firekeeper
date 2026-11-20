@@ -90,18 +90,18 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 	for _, expected := range []string{
 		"[ Usage ]",
 		"[ CODEX ]",
-		"╭─limits",
-		"╭─lifetime",
+		"╭─Limits",
+		"╭─Lifetime",
 		"PLUS",
 		"248.7M",
 		"1 available",
 		"Weekly",
 		"32%",
 		"↻ 4d 17h",
-		"╭─tokens by day",
+		"╭─Tokens by day",
 		"Today",
 		"14.6M",
-		"╭─active models",
+		"╭─Active models",
 		"GPT 5.6 SOL",
 		"9.8M",
 		"GPT 5.6 CODEX",
@@ -111,12 +111,12 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 			t.Fatalf("Codex usage view missing %q", expected)
 		}
 	}
-	if cards, days := strings.Index(view, "╭─active models"), strings.Index(view, "╭─tokens by day"); cards < 0 || days < 0 || cards > days {
+	if cards, days := strings.Index(view, "╭─Active models"), strings.Index(view, "╭─Tokens by day"); cards < 0 || days < 0 || cards > days {
 		t.Fatalf("active models card should sit above tokens by day (card at %d, days at %d)", cards, days)
 	}
 }
 
-var modelsCardTitle = regexp.MustCompile("╭─(active )?models")
+var modelsCardTitle = regexp.MustCompile("╭─(Active models|Models)")
 
 // assertModelBreakdownAboveDays fails unless the usage view puts its models
 // card above its tokens by day panel.
@@ -124,7 +124,7 @@ func assertModelBreakdownAboveDays(t *testing.T, view string) {
 	t.Helper()
 	view = ansi.Strip(view)
 	loc := modelsCardTitle.FindStringIndex(view)
-	days := strings.Index(view, "╭─tokens by day")
+	days := strings.Index(view, "╭─Tokens by day")
 	if loc == nil || days < 0 || loc[0] > days {
 		t.Fatalf("usage view should show the models card above tokens by day (models at %v, days at %d):\n%s", loc, days, view)
 	}
@@ -211,7 +211,7 @@ func TestCodexUsageViewUsesModelSplitDailyBars(t *testing.T) {
 		{StartDate: today, Model: "gpt-5.6-codex", Tokens: 100},
 	}}
 	view := m.View()
-	if !strings.Contains(ansi.Strip(view), "tokens by day · model") {
+	if !strings.Contains(ansi.Strip(view), "Tokens by day · model") {
 		t.Fatalf("model daily heading missing:\n%s", view)
 	}
 	colors := modelUsageColorAssignments([]string{"gpt-5.6-sol", "gpt-5.6-codex"})
@@ -328,7 +328,7 @@ func TestCodexUsageArrowsSelectSessionWithoutEnter(t *testing.T) {
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m = updated.(model)
 	view := ansi.Strip(m.View())
-	if m.codexHistoryCursor != 1 || !strings.Contains(view, "▸ Second session") || !strings.Contains(view, "╭─session") || !strings.Contains(view, "/work/two") {
+	if m.codexHistoryCursor != 1 || !strings.Contains(view, "▸ Second session") || !strings.Contains(view, "╭─Session") || !strings.Contains(view, "/work/two") {
 		t.Fatalf("cursor = %d\n%s", m.codexHistoryCursor, view)
 	}
 	for key, want := range map[tea.KeyType]int{tea.KeyHome: 0, tea.KeyEnd: 1} {
@@ -440,7 +440,7 @@ func TestCodexUsageViewShowsRecentSessionsAndProjects(t *testing.T) {
 	}}
 	withUsageData(&m, codexProvider)
 	view := ansi.Strip(m.View())
-	for _, expected := range []string{"╭─sessions", "╭─projects · last 3", "fix parser", "5m", "3h", "2d", "×2"} {
+	for _, expected := range []string{"╭─Sessions", "╭─Projects · last 3", "fix parser", "5m", "3h", "2d", "×2"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
