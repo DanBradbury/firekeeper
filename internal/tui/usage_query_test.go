@@ -93,7 +93,7 @@ func TestUsageQueryProjectAndTextTyped(t *testing.T) {
 		t.Fatalf("sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{`sessions · 1/1 of 6 · project BETA · filter "session"`, "filter project:BETA session", "▸ beta"} {
+	for _, want := range []string{`Sessions · 1/1 of 6 · project BETA · filter "session"`, "filter project:BETA session", "▸ beta"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}

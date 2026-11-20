@@ -77,7 +77,7 @@ func (m model) viewIconSetup(contentRows int) string {
 	}
 	width := min(m.width, 64)
 	height := min(contentRows, len(body)+2)
-	box := dashBox("icon font", body, width, height, dashOrange)
+	box := dashBox("Icon font", body, width, height, dashOrange)
 	left := (m.width - width) / 2
 	top := (contentRows - height) / 2
 	lines := make([]string, 0, contentRows)

@@ -67,7 +67,7 @@ func TestKimiUsageViewShowsLocalHistoryAndQuotaLimitation(t *testing.T) {
 	}
 	rawView := m.viewUsagePage(24)
 	view := ansi.Strip(rawView)
-	for _, expected := range []string{"╭─lifetime", "Turns", "1.2K", "Quota: Kimi Code /usage", "╭─tokens by day", "Today", "KIMI K3"} {
+	for _, expected := range []string{"╭─Lifetime", "Turns", "1.2K", "Quota: Kimi Code /usage", "╭─Tokens by day", "Today", "KIMI K3"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Kimi usage view missing %q:\n%s", expected, view)
 		}

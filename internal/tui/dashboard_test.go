@@ -410,7 +410,7 @@ func TestDashboardShowsSessionsSummaryAndDetail(t *testing.T) {
 	m.processCursor = 1
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"[ Processes ]", "summary", "providers", "projects", "sessions (3)",
+		"[ Processes ]", "Summary", "Providers", "Projects", "Sessions (3)",
 		"Codex", "Copilot", "OpenCode", "Copilot metadata support", "◆ NEEDS INPUT", "● ACTIVE",
 		"1.2M", "019fb33c", "/workspace/firekeeper",
 		"SESSION " + testCopilotSessionID, "repo DanBradbury/api", "feature/x",
@@ -770,7 +770,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 	m.width, m.height = 140, 40
 	view := ansi.Strip(m.View())
 	for _, expected := range []string{
-		"tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
+		"Tokens (firekeeper/019fb33c)", "Total  1.2M", "Input", "50.0K", "Output", "200.0K",
 		"Cache read", "900.0K", "Cache write", "100.0K",
 		"tokens 1.2M (in 50.0K · out 200.0K · cache read 900.0K · cache write 100.0K)",
 	} {
@@ -781,7 +781,7 @@ func TestDashboardShowsSelectedSessionTokenBreakdown(t *testing.T) {
 
 	m.processCursor = 1
 	view = ansi.Strip(m.View())
-	for _, expected := range []string{"tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
+	for _, expected := range []string{"Tokens (api/dc315f47)", "Total  321", "No input/output/cache breakdown"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("dashboard missing %q:\n%s", expected, view)
 		}

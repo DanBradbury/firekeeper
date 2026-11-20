@@ -129,11 +129,11 @@ func TestUsageSortKeysReorderKeepSelectionAndSaySo(t *testing.T) {
 		title  string
 		header string
 	}{
-		{'t', "[id-refactor id-docs id-fix-auth id-fix-ci]", "sessions · 2/4 · most tokens", "TOKENS▼"},
-		{'t', "[id-fix-ci id-fix-auth id-docs id-refactor]", "sessions · 3/4 · fewest tokens", "TOKENS▲"},
-		{'t', "[id-refactor id-fix-auth id-docs id-fix-ci]", "sessions · 3/4─", "TOKENS   AGO"},
-		{'a', "[id-refactor id-fix-auth id-docs id-fix-ci]", "sessions · 3/4 · newest", "AGO▲"},
-		{'a', "[id-fix-ci id-docs id-fix-auth id-refactor]", "sessions · 2/4 · oldest", "AGO▼"},
+		{'t', "[id-refactor id-docs id-fix-auth id-fix-ci]", "Sessions · 2/4 · most tokens", "TOKENS▼"},
+		{'t', "[id-fix-ci id-fix-auth id-docs id-refactor]", "Sessions · 3/4 · fewest tokens", "TOKENS▲"},
+		{'t', "[id-refactor id-fix-auth id-docs id-fix-ci]", "Sessions · 3/4─", "TOKENS   AGO"},
+		{'a', "[id-refactor id-fix-auth id-docs id-fix-ci]", "Sessions · 3/4 · newest", "AGO▲"},
+		{'a', "[id-fix-ci id-docs id-fix-auth id-refactor]", "Sessions · 2/4 · oldest", "AGO▼"},
 	}
 	for _, step := range steps {
 		m, _ = sendKeys(t, m, keyRunes(step.key))
@@ -161,7 +161,7 @@ func TestUsageSortComposesWithFilter(t *testing.T) {
 		t.Fatalf("filtered and sorted = %s", got)
 	}
 	// The selection follows id-fix-auth, now second.
-	if view := ansi.Strip(m.View()); !strings.Contains(view, `sessions · 2/2 of 4 · filter "fix" · fewest tokens`) {
+	if view := ansi.Strip(m.View()); !strings.Contains(view, `Sessions · 2/2 of 4 · filter "fix" · fewest tokens`) {
 		t.Fatalf("title does not show both the filter and the order:\n%s", view)
 	}
 	m, cmd := sendKeys(t, m, tea.KeyMsg{Type: tea.KeyHome}, tea.KeyMsg{Type: tea.KeyEnter})
