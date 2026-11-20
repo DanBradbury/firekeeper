@@ -17,6 +17,7 @@ import (
 	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
 	"github.com/firekeeper-ai/firekeeper/internal/winterm"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const (
@@ -52,12 +53,12 @@ const (
 type processPollMsg time.Time
 
 type processInfo struct {
-	tool    string
-	pid     int
-	ppid    int
-	tty     string
-	elapsed string
-	command string
+	provider event.Provider
+	pid      int
+	ppid     int
+	tty      string
+	elapsed  string
+	command  string
 }
 
 type sessionInfo struct {
@@ -90,7 +91,7 @@ type sessionInfo struct {
 type tokenBreakdown = session.TokenBreakdown
 
 type processGroup struct {
-	tool      string
+	provider  event.Provider
 	root      processInfo
 	processes []processInfo
 	sessions  []sessionInfo
@@ -687,13 +688,13 @@ func retainKnownSessionMetadata(previous, refreshed []processGroup, misses map[i
 	nextMisses := make(map[int]int)
 	known := make(map[int]processGroup, len(previous))
 	for _, group := range previous {
-		if hasSessionMetadataAdapter(group.tool) && len(group.sessions) > 0 {
+		if hasSessionMetadataAdapter(group.provider) && len(group.sessions) > 0 {
 			known[group.root.pid] = group
 		}
 	}
 	for index := range refreshed {
 		group := &refreshed[index]
-		if !hasSessionMetadataAdapter(group.tool) || len(group.sessions) > 0 {
+		if !hasSessionMetadataAdapter(group.provider) || len(group.sessions) > 0 {
 			continue
 		}
 		old, ok := known[group.root.pid]
@@ -722,14 +723,11 @@ func withSessionMetadata(groups []processGroup) []processGroup {
 	return kept
 }
 
-// hasSessionMetadataAdapter reports whether discovery enriches tool's runtimes
-// with session metadata worth retaining across a transient miss.
-func hasSessionMetadataAdapter(tool string) bool {
-	switch tool {
-	case "Codex", "Copilot", "Kimi", "Claude", "OpenCode", "Gemini", "Cursor":
-		return true
-	}
-	return false
+// hasSessionMetadataAdapter reports whether discovery enriches p's runtimes
+// with session metadata worth retaining across a transient miss. Every known
+// provider has an adapter (internal/session's registry test checks it).
+func hasSessionMetadataAdapter(p event.Provider) bool {
+	return p.Valid()
 }
 
 func refreshProcesses() tea.Cmd {

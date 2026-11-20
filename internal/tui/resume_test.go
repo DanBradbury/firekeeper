@@ -85,7 +85,7 @@ func TestResumeKeyOnIdleList(t *testing.T) {
 	m.recentSessions[0].provider = transcript.ProviderClaude
 	m.recentSessions[0].id = "abc-123"
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
-	if cmd == nil || !strings.Contains(next.(model).terminalStatus, "resuming Copilot") {
+	if cmd == nil || !strings.Contains(next.(model).terminalStatus, "resuming Claude") {
 		t.Fatalf("R did not start a resume: %q", next.(model).terminalStatus)
 	}
 	m.recentSessions[0].id = "bad id"

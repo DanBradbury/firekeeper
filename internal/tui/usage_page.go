@@ -62,8 +62,6 @@ type usageCard struct {
 
 // usagePage is everything the shared Usage layout needs from a provider.
 type usagePage struct {
-	// Label is the display name, also used as the chat view's tool name.
-	Label string
 	// Provider is the transcript provider used to open a session's chat.
 	Provider transcript.Provider
 
@@ -165,8 +163,8 @@ func (m *model) openUsageSessionChat() tea.Cmd {
 	}
 	selected := page.Sessions[min(max(page.Cursor, 0), len(page.Sessions)-1)]
 	m.chat = chatState{
-		open: true,
-		tool: page.Label,
+		open:     true,
+		provider: page.Provider,
 		meta: session.Meta{
 			ID:       selected.ID,
 			Provider: string(page.Provider),
@@ -387,12 +385,12 @@ func usageSessionListLayout(page usagePage, rows int) usageListLayout {
 // and kept in view.
 func usageSessionLines(page usagePage, width, rows int, now time.Time) []string {
 	if page.Total == 0 && len(page.Sessions) == 0 {
-		message := "No historical " + page.Label + " sessions."
+		message := "No historical " + providerName(page.Provider) + " sessions."
 		switch {
 		case page.HistoryErr != "":
 			message = "Session history unavailable: " + sanitizeProcessCommand(page.HistoryErr)
 		case page.Loading:
-			message = "Loading historical " + page.Label + " sessions…"
+			message = "Loading historical " + providerName(page.Provider) + " sessions…"
 		}
 		return []string{dashPaint(message, usageMutedColor, false)}
 	}

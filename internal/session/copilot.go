@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // isCopilotDesktopCommand reports whether the lowercased command runs from
@@ -48,7 +50,7 @@ func (d *discoverer) enrichCopilotSessions(groups []ProcessGroup) error {
 		group := &groups[groupIndex]
 		// Only session groups are linked: these providers read no evidence a
 		// server holds a session, and servers never guess (invariant 8).
-		if group.Tool != "Copilot" || group.Role != RoleSession {
+		if group.Provider != event.ProviderCopilot || group.Role != RoleSession {
 			continue
 		}
 		groupIndexes = append(groupIndexes, groupIndex)

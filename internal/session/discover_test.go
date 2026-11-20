@@ -417,7 +417,7 @@ func TestDiscoverLinkWarningsKeepAdapterOrder(t *testing.T) {
 	requireEveryProvider(t)
 	var want []string
 	for _, a := range adapters {
-		want = append(want, toolName(a.Provider())+": fixture "+string(a.Provider())+" failure")
+		want = append(want, ToolName(a.Provider())+": fixture "+string(a.Provider())+" failure")
 	}
 	count := len(adapters)
 	done := make([]chan struct{}, count+1)
@@ -569,7 +569,7 @@ func TestDiscoverLinkPanicReachesCaller(t *testing.T) {
 				t.Fatalf("recovered %v, want the Link's panic as an error", caught)
 			}
 			message := err.Error()
-			if want := "panic linking " + toolName(tc.provider) + " sessions: fixture panic"; !strings.HasPrefix(message, want) {
+			if want := "panic linking " + ToolName(tc.provider) + " sessions: fixture panic"; !strings.HasPrefix(message, want) {
 				t.Errorf("panic = %.80q, want it to start with %q", message, want)
 			}
 			// The stack is the panicking goroutine's: it has the adapter's

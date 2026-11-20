@@ -27,10 +27,10 @@ var adapters = []providerAdapter{
 	openCodeAdapter{}, geminiAdapter{}, cursorAdapter{},
 }
 
-// toolName is the display name stored in ProcessInfo.Tool and
-// ProcessGroup.Tool for p. The follow-up moves it to internal/tui and
-// removes Tool.
-func toolName(p event.Provider) string {
+// ToolName is p's display name, or "" when p is not a known provider.
+// Warnings here and the dashboard (internal/tui) both use it, so a
+// provider is spelled the same way everywhere.
+func ToolName(p event.Provider) string {
 	switch p {
 	case event.ProviderCodex:
 		return "Codex"

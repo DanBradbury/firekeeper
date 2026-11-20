@@ -6,6 +6,8 @@ import (
 	"go/token"
 	"sort"
 	"testing"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // roleNames lists every Role constant. TestAllRolesMatchesSource keeps it
@@ -100,7 +102,7 @@ func TestRoleSwitches(t *testing.T) {
 		for _, listable := range []bool{true, false} {
 			old := openFilesListable
 			openFilesListable = listable
-			groups := []ProcessGroup{{Tool: "Codex", Role: tt.role, Root: ProcessInfo{PID: 1}}}
+			groups := []ProcessGroup{{Provider: event.ProviderCodex, Role: tt.role, Root: ProcessInfo{PID: 1}}}
 			got := len(standalone().unmatchedCodexGroups(groups, map[int][]string{}, map[int]string{})) == 1
 			openFilesListable = old
 			want := tt.codexGuesses

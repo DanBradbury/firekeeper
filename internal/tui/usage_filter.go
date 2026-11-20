@@ -80,7 +80,7 @@ func (m *model) clearUsageFilter() {
 
 // usageNoMatchText says why a narrowed list is empty.
 func usageNoMatchText(page usagePage) string {
-	text := "No " + page.Label + " sessions"
+	text := "No " + providerName(page.Provider) + " sessions"
 	if len(page.Query.Projects) > 0 {
 		text += " in project " + usageProjectList(page.Query.Projects)
 	}

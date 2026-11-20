@@ -10,13 +10,14 @@ import (
 
 	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // annotateClaudeTelemetry attaches exact totals when a session has local
 // telemetry, and the subagent undercount warning when it does not.
 func annotateClaudeTelemetry(groups []processGroup, supplements map[string]otelrecv.Supplement) []processGroup {
 	for gi := range groups {
-		if groups[gi].tool != "Claude" {
+		if groups[gi].provider != event.ProviderClaude {
 			continue
 		}
 		for si := range groups[gi].sessions {

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
 	"github.com/firekeeper-ai/firekeeper/internal/version"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // dashboard.go renders the Processes tab as a panel dashboard: summary panels
@@ -389,7 +390,7 @@ func dashGroupRow(group processGroup, columns []dashColumn, width int, selected,
 		value, color, bold := "", usageTextColor, false
 		switch column.key {
 		case "ai":
-			value, color, bold = toolLabel(group.tool), dashToolColor(group.tool), true
+			value, color, bold = toolLabel(group.provider), providerColor(group.provider), true
 		case "project":
 			value, color, bold = dashProjectName(session), usageBrightColor, true
 		case "title":
@@ -525,25 +526,9 @@ func dashGroupDetail(group processGroup, width int) []string {
 		return dashPaint(name+" ", usageMutedColor, false) + dashPaint(sanitizeProcessCommand(value)+"   ", usageTextColor, false)
 	}
 	if len(group.sessions) == 0 {
-		message := "no session metadata adapter"
-		switch group.tool {
-		case "Codex":
-			message = "no Codex rollout metadata found"
-		case "Copilot":
-			message = "no Copilot session metadata found"
-		case "Kimi":
-			message = "no Kimi session metadata found"
-		case "Gemini":
-			message = "no Gemini CLI session log found"
-		case "Cursor":
-			message = "no Cursor CLI transcript found"
-		case "Claude":
-			message = "no Claude Code transcript found"
-		case "OpenCode":
-			message = "no OpenCode session found"
-		}
+		message := providerMissingMessage(group.provider)
 		lines = append(lines,
-			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(toolLabel(group.tool), dashToolColor(group.tool), true)+
+			dashPaint("RUNTIME ", usageBrightColor, true)+dashPaint(toolLabel(group.provider), providerColor(group.provider), true)+
 				dashPaint(" · "+message, usageMutedColor, false),
 		)
 	}
@@ -643,7 +628,7 @@ type dashSummary struct {
 }
 
 type dashToolSummary struct {
-	tool     string
+	provider event.Provider
 	runtimes int
 	tokens   int64
 }
@@ -656,14 +641,14 @@ type dashProjectSummary struct {
 
 func (m model) dashSummarize() dashSummary {
 	summary := dashSummary{states: make(map[sessionState]int)}
-	tools := map[string]*dashToolSummary{}
+	tools := map[event.Provider]*dashToolSummary{}
 	projects := map[string]*dashProjectSummary{}
 	var projectOrder []string
 	for _, group := range m.processGroups {
-		tool := tools[group.tool]
+		tool := tools[group.provider]
 		if tool == nil {
-			tool = &dashToolSummary{tool: group.tool}
-			tools[group.tool] = tool
+			tool = &dashToolSummary{provider: group.provider}
+			tools[group.provider] = tool
 		}
 		tool.runtimes++
 		if len(group.sessions) == 0 {
@@ -704,7 +689,7 @@ func (m model) dashSummarize() dashSummary {
 		if summary.tools[i].runtimes != summary.tools[j].runtimes {
 			return summary.tools[i].runtimes > summary.tools[j].runtimes
 		}
-		return summary.tools[i].tool < summary.tools[j].tool
+		return providerName(summary.tools[i].provider) < providerName(summary.tools[j].provider)
 	})
 	for _, name := range projectOrder {
 		summary.projects = append(summary.projects, *projects[name])
@@ -807,7 +792,7 @@ func (s dashSummary) providerLines(width int) []string {
 	if len(s.tools) == 1 {
 		tool := s.tools[0]
 		return []string{usageSplit(
-			dashPaint(dashCell(toolLabel(tool.tool), 8+toolIconWidth(), false), dashToolColor(tool.tool), true)+
+			dashPaint(dashCell(toolLabel(tool.provider), 8+toolIconWidth(), false), providerColor(tool.provider), true)+
 				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false),
 			dashPaint(formatTokenCount(tool.tokens), usageTextColor, false),
 		)}
@@ -827,9 +812,9 @@ func (s dashSummary) providerLines(width int) []string {
 			}
 		}
 		lines = append(lines,
-			dashPaint(dashCell(toolLabel(tool.tool), 8+toolIconWidth(), false), dashToolColor(tool.tool), true)+
+			dashPaint(dashCell(toolLabel(tool.provider), 8+toolIconWidth(), false), providerColor(tool.provider), true)+
 				dashPaint(fmt.Sprintf("%3d ", tool.runtimes), usageBrightColor, false)+
-				dashPaint(strings.Repeat("━", filled), dashToolColor(tool.tool), true)+
+				dashPaint(strings.Repeat("━", filled), providerColor(tool.provider), true)+
 				dashPaint(strings.Repeat("━", barWidth-filled), usageTrackColor, false)+
 				dashPaint(fmt.Sprintf(" %7s", formatTokenCount(tool.tokens)), usageTextColor, false),
 		)
@@ -1092,28 +1077,6 @@ func dashStateColor(state sessionState) string {
 		return dashRed
 	default:
 		return usageMutedColor
-	}
-}
-
-func dashToolColor(tool string) string {
-	switch tool {
-	case "Codex":
-		return dashTeal
-	case "Copilot":
-		return dashPurple
-	case "Claude":
-		return dashOrange
-	case "OpenCode":
-		return dashBlue
-	case "Kimi":
-		return dashYellow
-	case "Gemini":
-		return dashGreen
-	case "Cursor":
-		// Cursor's mark is monochrome; red stays the NEEDS INPUT color.
-		return usageBrightColor
-	default:
-		return usageTextColor
 	}
 }
 

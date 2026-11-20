@@ -218,11 +218,11 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		linking.Go(func() {
 			defer func() {
 				if value := recover(); value != nil {
-					linkPanics[index] = &linkPanic{provider: toolName(a.Provider()), value: value, stack: debug.Stack()}
+					linkPanics[index] = &linkPanic{provider: ToolName(a.Provider()), value: value, stack: debug.Stack()}
 				}
 			}()
 			if err := a.Link(d, own); err != nil {
-				linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
+				linkWarnings[index] = ToolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
 			}
 		})
 	}
@@ -292,7 +292,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				cwd = rootCWDs[i]
 			}
 			project := projects[cwd]
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: string(g.Provider), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const chatTestSessionID = "0199c3d4-e5f6-7a8b-9c0d-0000000000c4"
@@ -40,7 +41,7 @@ func chatTestModel(t *testing.T) (model, string) {
 	m := NewModel()
 	m.width, m.height = 100, 30
 	m.processGroups = []processGroup{{
-		tool:      "Claude",
+		provider:  event.ProviderClaude,
 		root:      processInfo{pid: 42, tty: "ttys009", elapsed: "00:10"},
 		processes: []processInfo{{pid: 42, ppid: 1, command: "claude"}},
 		sessions:  []sessionInfo{{id: chatTestSessionID, name: "Chat test", cwd: "/workspace/demo", rolloutPath: path}},
@@ -148,7 +149,7 @@ func TestChatKeysScrollAndClose(t *testing.T) {
 
 func TestChatWithoutSessionMetadataShowsStatus(t *testing.T) {
 	m := NewModel()
-	m.processGroups = []processGroup{{tool: "OpenCode", root: processInfo{pid: 7}}}
+	m.processGroups = []processGroup{{provider: event.ProviderOpenCode, root: processInfo{pid: 7}}}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 	m = updated.(model)
 	if m.chat.open || cmd == nil || !strings.Contains(m.terminalStatus, "no session metadata") {
@@ -160,7 +161,7 @@ func TestChatReportsMissingTranscriptReader(t *testing.T) {
 	m := NewModel()
 	// Every harness discovery classifies has a reader; the message is for
 	// one added without one.
-	m.processGroups = []processGroup{{tool: "Someday", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "k1"}}}}
+	m.processGroups = []processGroup{{provider: event.Provider("someday"), root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "k1"}}}}
 	m = openTestChat(t, m)
 	if !strings.Contains(m.chat.err, "no transcript reader for someday") {
 		t.Fatalf("chat error = %q", m.chat.err)
@@ -184,7 +185,7 @@ func TestChatReadsKimiSession(t *testing.T) {
 	}
 	m := NewModel()
 	m.width, m.height = 100, 30
-	m.processGroups = []processGroup{{tool: "Kimi", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "session_k1", cwd: "/workspace/demo", rolloutPath: path}}}}
+	m.processGroups = []processGroup{{provider: event.ProviderKimi, root: processInfo{pid: 7}, sessions: []sessionInfo{{id: "session_k1", cwd: "/workspace/demo", rolloutPath: path}}}}
 	m = openTestChat(t, m)
 	if m.chat.err != "" {
 		t.Fatalf("chat error: %s", m.chat.err)
@@ -219,7 +220,7 @@ func TestChatReadsGeminiSession(t *testing.T) {
 	}
 	m := NewModel()
 	m.width, m.height = 100, 30
-	m.processGroups = []processGroup{{tool: "Gemini", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
+	m.processGroups = []processGroup{{provider: event.ProviderGemini, root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
 	m = openTestChat(t, m)
 	if m.chat.err != "" {
 		t.Fatalf("chat error: %s", m.chat.err)
@@ -252,7 +253,7 @@ func TestChatReadsCursorSession(t *testing.T) {
 	}
 	m := NewModel()
 	m.width, m.height = 100, 30
-	m.processGroups = []processGroup{{tool: "Cursor", root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
+	m.processGroups = []processGroup{{provider: event.ProviderCursor, root: processInfo{pid: 7}, sessions: []sessionInfo{{id: id, cwd: "/workspace/demo", rolloutPath: path}}}}
 	m = openTestChat(t, m)
 	if m.chat.err != "" {
 		t.Fatalf("chat error: %s", m.chat.err)

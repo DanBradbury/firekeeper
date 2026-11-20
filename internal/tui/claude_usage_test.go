@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func writeClaudeTranscript(t *testing.T, root, project, id string, modified time.Time, lines ...string) {
@@ -204,7 +205,7 @@ func TestClaudeUsageArrowsSelectAndEnterOpensChat(t *testing.T) {
 	}
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(model)
-	if cmd == nil || !m.chat.open || m.chat.meta.ID != "22222222-2222-2222-2222-222222222222" || m.chat.meta.Provider != "claude" || m.chat.tool != "Claude" {
+	if cmd == nil || !m.chat.open || m.chat.meta.ID != "22222222-2222-2222-2222-222222222222" || m.chat.meta.Provider != "claude" || m.chat.provider != event.ProviderClaude {
 		t.Fatalf("chat = %+v", m.chat)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})

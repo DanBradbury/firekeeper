@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestKimiSessionStateLayouts(t *testing.T) {
@@ -59,7 +61,7 @@ func TestEnrichKimiSessionsCurrentStateLayout(t *testing.T) {
 	}}}
 	// The process started 30 s before the newest session's last update.
 	setKimiNow(t, time.UnixMilli(1791460860000).Add(10*time.Second))
-	groups := []ProcessGroup{{Tool: "Kimi", Role: RoleSession, Root: ProcessInfo{PID: 30, Elapsed: "00:40"}}}
+	groups := []ProcessGroup{{Provider: event.ProviderKimi, Role: RoleSession, Root: ProcessInfo{PID: 30, Elapsed: "00:40"}}}
 	if err := d.enrichKimiSessions(groups); err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func press(m model, x, y int) model {
@@ -126,7 +128,7 @@ func TestIdleRecentRowsClickAndDoubleClick(t *testing.T) {
 	}
 	*now = now.Add(50 * time.Millisecond)
 	next, cmd := pressCmd(m, 20, row)
-	if cmd == nil || !next.chat.open || next.chat.tool != "Gemini" {
+	if cmd == nil || !next.chat.open || next.chat.provider != event.ProviderGemini {
 		t.Fatalf("double click did not open the chat: %+v", next.chat)
 	}
 	if got := m.hitTest(20, 1); got.kind != hitNone {

@@ -32,7 +32,6 @@ const (
 
 type recentSession struct {
 	provider transcript.Provider
-	tool     string
 	id       string
 	project  string
 	title    string
@@ -48,27 +47,6 @@ type recentSessionsMsg struct {
 
 // recentSessionsSource loads recent sessions; tests replace it.
 var recentSessionsSource = loadRecentSessions
-
-func recentToolLabel(provider transcript.Provider) string {
-	switch provider {
-	case transcript.ProviderCodex:
-		return "Codex"
-	case transcript.ProviderCopilot:
-		return "Copilot"
-	case transcript.ProviderClaude:
-		return "Claude"
-	case transcript.ProviderOpenCode:
-		return "OpenCode"
-	case transcript.ProviderKimi:
-		return "Kimi"
-	case transcript.ProviderGemini:
-		return "Gemini"
-	case transcript.ProviderCursor:
-		return "Cursor"
-	default:
-		return string(provider)
-	}
-}
 
 // loadRecentSessions enumerates every provider concurrently. A provider that
 // fails or has nothing is left out so one adapter never blocks the rest.
@@ -108,7 +86,6 @@ func loadRecentSessions(ctx context.Context, now time.Time) []recentSession {
 func newRecentSession(provider transcript.Provider, meta session.Meta) recentSession {
 	recent := recentSession{
 		provider: provider,
-		tool:     recentToolLabel(provider),
 		id:       meta.ID,
 		project:  reader.ProjectName(meta.CWD),
 		title:    meta.Title,
@@ -195,8 +172,8 @@ func (m *model) openRecentChat() tea.Cmd {
 	}
 	recent := m.recentSessions[m.recentCursor]
 	m.chat = chatState{
-		open: true,
-		tool: recent.tool,
+		open:     true,
+		provider: recent.provider,
 		meta: session.Meta{
 			ID:          recent.id,
 			Provider:    string(recent.provider),
@@ -235,7 +212,7 @@ func (m model) recentLines(capacity int) []string {
 		}
 		lines = append(lines, pad+
 			dashPaint(marker, markerColor, true)+
-			dashPaint(padText(toolLabel(recent.tool), 9+toolIconWidth()), dashToolColor(recent.tool), true)+
+			dashPaint(padText(toolLabel(recent.provider), 9+toolIconWidth()), providerColor(recent.provider), true)+
 			dashPaint(padText(sanitizeProcessCommand(emptyFallback(recent.project, "—")), 16), usageTextColor, false)+
 			dashPaint(padText(usageAgo(recent.last, now), 5), usageMutedColor, false)+
 			dashPaint(ansi.Truncate(recentTitle(recent), titleWidth, "…"), usageMutedColor, false))

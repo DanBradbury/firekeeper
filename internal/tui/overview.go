@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // overview.go renders the Overview tab: one panel per provider that has data,
@@ -32,11 +34,11 @@ type overviewMeter struct {
 
 // overviewProvider is a provider reduced to what the Overview panel shows.
 type overviewProvider struct {
-	Name    string
-	Accent  string
-	Loading bool
-	Err     string
-	HasData bool
+	// Provider names the card; its title and color come from the provider.
+	Provider event.Provider
+	Loading  bool
+	Err      string
+	HasData  bool
 
 	Meters []overviewMeter
 	// Alerts are red lines such as a reached limit.
@@ -67,7 +69,7 @@ func (m model) overviewProviders(now time.Time) []overviewProvider {
 func (m model) codexOverview(now time.Time) overviewProvider {
 	snapshot := m.codexUsage
 	provider := overviewProvider{
-		Name: "Codex", Accent: dashBlue,
+		Provider: event.ProviderCodex,
 		Loading:  m.codexUsageLoading && !snapshot.hasData(),
 		Err:      m.codexUsageErr,
 		HasData:  snapshot.hasData(),
@@ -114,7 +116,7 @@ func (m model) codexOverview(now time.Time) overviewProvider {
 func (m model) copilotOverview(now time.Time) overviewProvider {
 	snapshot := m.copilotUsage
 	provider := overviewProvider{
-		Name: "Copilot", Accent: dashPurple,
+		Provider: event.ProviderCopilot,
 		Loading:  m.copilotUsageLoading && !snapshot.hasData(),
 		Err:      m.copilotUsageErr,
 		HasData:  snapshot.hasData(),
@@ -144,7 +146,7 @@ func (m model) copilotOverview(now time.Time) overviewProvider {
 func (m model) claudeOverview(now time.Time) overviewProvider {
 	snapshot := m.claudeUsage
 	provider := overviewProvider{
-		Name: "Claude", Accent: dashOrange,
+		Provider: event.ProviderClaude,
 		Loading:  m.claudeUsageLoading && !snapshot.hasData(),
 		Err:      m.claudeUsageErr,
 		HasData:  snapshot.hasData(),
@@ -174,7 +176,7 @@ func (m model) claudeOverview(now time.Time) overviewProvider {
 func (m model) kimiOverview(now time.Time) overviewProvider {
 	snapshot := m.kimiUsage
 	provider := overviewProvider{
-		Name: "Kimi", Accent: dashTeal,
+		Provider: event.ProviderKimi,
 		Loading:  m.kimiUsageLoading && !snapshot.hasData(),
 		Err:      m.kimiUsageErr,
 		HasData:  snapshot.hasData(),
@@ -357,7 +359,7 @@ func (m model) viewOverview(contentRows int) string {
 			cards := make([][]string, 0, columns)
 			for index := row * columns; index < min((row+1)*columns, len(shown)); index++ {
 				provider := shown[index]
-				cards = append(cards, dashBox(toolLabel(provider.Name), bodies[index], cardWidth, height, provider.Accent))
+				cards = append(cards, dashBox(toolLabel(provider.Provider), bodies[index], cardWidth, height, providerColor(provider.Provider)))
 			}
 			for line := 0; line < height; line++ {
 				parts := make([]string, len(cards))

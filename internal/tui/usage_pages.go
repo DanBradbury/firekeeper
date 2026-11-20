@@ -43,7 +43,6 @@ func (m model) copilotPage() usagePage {
 	}
 
 	return usagePage{
-		Label:       "Copilot",
 		Provider:    transcript.ProviderCopilot,
 		Loading:     m.copilotUsageLoading,
 		LoadingText: "Reading local Copilot CLI usage…",
@@ -140,7 +139,6 @@ func (m model) kimiPage() usagePage {
 	}
 
 	return usagePage{
-		Label:       "Kimi",
 		Provider:    transcript.ProviderKimi,
 		Loading:     m.kimiUsageLoading,
 		LoadingText: "Reading local Kimi Code sessions…",
@@ -226,7 +224,6 @@ func (m model) claudePage() usagePage {
 		}})
 	}
 	page := usagePage{
-		Label:       "Claude",
 		Provider:    transcript.ProviderClaude,
 		Loading:     m.claudeUsageLoading,
 		LoadingText: "Reading local Claude Code transcripts…",

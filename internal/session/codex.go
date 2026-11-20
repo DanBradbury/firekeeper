@@ -16,12 +16,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	var rootPIDs []int
 	for _, group := range groups {
-		if group.Tool == "Codex" {
+		if group.Provider == event.ProviderCodex {
 			rootPIDs = append(rootPIDs, group.Root.PID)
 		}
 	}
@@ -45,7 +47,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	// thread, whatever it holds, and is never given a guess.
 	explicit := make(map[int]string)
 	for _, group := range groups {
-		if id, ok := group.explicitSessionID(); ok && group.Tool == "Codex" {
+		if id, ok := group.explicitSessionID(); ok && group.Provider == event.ProviderCodex {
 			explicit[group.Root.PID] = id
 			threadIDs[id] = true
 		}
@@ -84,7 +86,7 @@ func (d *discoverer) enrichCodexSessions(groups []ProcessGroup) error {
 	}
 	for groupIndex := range groups {
 		group := &groups[groupIndex]
-		if group.Tool != "Codex" {
+		if group.Provider != event.ProviderCodex {
 			continue
 		}
 		seen := make(map[string]bool)
@@ -144,7 +146,7 @@ func attachCodexSubagents(groups []ProcessGroup) {
 	var orphans []Info
 	for index := range groups {
 		group := &groups[index]
-		if group.Tool != "Codex" {
+		if group.Provider != event.ProviderCodex {
 			continue
 		}
 		kept := group.Sessions[:0:0]
@@ -164,7 +166,7 @@ func attachCodexSubagents(groups []ProcessGroup) {
 	}
 	for index := range groups {
 		group := &groups[index]
-		if group.Tool != "Codex" || len(group.Sessions) < 2 {
+		if group.Provider != event.ProviderCodex || len(group.Sessions) < 2 {
 			continue
 		}
 		group.Sessions = orderSubagentsUnderParents(group.Sessions)
@@ -178,7 +180,7 @@ func codexSubagentOwner(groups []ProcessGroup, sub Info) *ProcessGroup {
 	var byCWD, byCWDTTY *ProcessGroup
 	for index := range groups {
 		group := &groups[index]
-		if group.Tool != "Codex" || len(group.Sessions) == 0 || group.Sessions[0].Subagent {
+		if group.Provider != event.ProviderCodex || len(group.Sessions) == 0 || group.Sessions[0].Subagent {
 			continue
 		}
 		for _, info := range group.Sessions {
@@ -244,7 +246,7 @@ func orderSubagentsUnderParents(sessions []Info) []Info {
 func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[int][]string, explicit map[int]string) []ProcessGroup {
 	var unmatched []ProcessGroup
 	for _, group := range groups {
-		if group.Tool != "Codex" || len(rollouts[group.Root.PID]) != 0 {
+		if group.Provider != event.ProviderCodex || len(rollouts[group.Root.PID]) != 0 {
 			continue
 		}
 		if _, ok := explicit[group.Root.PID]; ok {
@@ -282,7 +284,7 @@ func (d *discoverer) unmatchedCodexGroups(groups []ProcessGroup, rollouts map[in
 func emptyCodexServers(groups []ProcessGroup, rollouts map[int][]string) []ProcessGroup {
 	var servers []ProcessGroup
 	for _, group := range groups {
-		if group.Tool == "Codex" && group.Role == RoleServer && len(rollouts[group.Root.PID]) == 0 {
+		if group.Provider == event.ProviderCodex && group.Role == RoleServer && len(rollouts[group.Root.PID]) == 0 {
 			servers = append(servers, group)
 		}
 	}
@@ -293,7 +295,7 @@ func emptyCodexServers(groups []ProcessGroup, rollouts map[int][]string) []Proce
 func codexServerPIDs(groups []ProcessGroup) map[int]bool {
 	servers := make(map[int]bool)
 	for _, group := range groups {
-		if group.Tool == "Codex" && group.Role == RoleServer {
+		if group.Provider == event.ProviderCodex && group.Role == RoleServer {
 			servers[group.Root.PID] = true
 		}
 	}
@@ -378,7 +380,7 @@ func (d *discoverer) giveCodexServersHeldThreads(groups, servers []ProcessGroup,
 func (d *discoverer) discoverHeldCodexThreads(groups []ProcessGroup) (map[string]bool, map[int]map[string]bool) {
 	var pids []string
 	for _, group := range groups {
-		if group.Tool != "Codex" {
+		if group.Provider != event.ProviderCodex {
 			continue
 		}
 		for _, process := range group.Processes {

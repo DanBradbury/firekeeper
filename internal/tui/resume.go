@@ -166,7 +166,7 @@ func (m *model) resumeRecent() tea.Cmd {
 	if cwd == "" {
 		cwd = os.Getenv("HOME")
 	}
-	m.terminalStatus = "resuming " + recent.tool + " session…"
+	m.terminalStatus = "resuming " + providerName(recent.provider) + " session…"
 	return func() tea.Msg {
 		app, err := openResumeTab(runtime.GOOS, os.Getenv("TERM_PROGRAM"), line, cwd, runOsascript)
 		return resumeResultMsg{app: app, line: line, err: err}

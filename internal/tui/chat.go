@@ -18,6 +18,7 @@ import (
 	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/kimi"
 	_ "github.com/firekeeper-ai/firekeeper/internal/transcript/opencode"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // chat.go renders the c view: the user and assistant messages of the selected
@@ -39,7 +40,7 @@ type chatMessage struct {
 type chatState struct {
 	open     bool
 	rootPID  int
-	tool     string
+	provider event.Provider
 	meta     session.Meta
 	title    string
 	messages []chatMessage
@@ -76,12 +77,12 @@ func (m *model) openChat() tea.Cmd {
 		return nil
 	}
 	m.chat = chatState{
-		open:    true,
-		rootPID: group.root.pid,
-		tool:    group.tool,
+		open:     true,
+		rootPID:  group.root.pid,
+		provider: group.provider,
 		meta: session.Meta{
 			ID:          info.id,
-			Provider:    strings.ToLower(group.tool),
+			Provider:    string(group.provider),
 			Name:        info.name,
 			State:       info.state,
 			CWD:         info.cwd,
@@ -260,7 +261,7 @@ func (m model) chatPageRows() int { return max(m.height-chromeRows-2, 1) }
 // wrapped to width, with a blank line between messages.
 func (m model) chatLines(width int) []string {
 	var lines []string
-	assistant := m.chat.tool
+	assistant := providerName(m.chat.provider)
 	if assistant == "" {
 		assistant = "Assistant"
 	}
@@ -270,7 +271,7 @@ func (m model) chatLines(width int) []string {
 		}
 		label, color := "You", dashBlue
 		if message.role == transcript.RoleAssistant {
-			label, color = assistant, dashToolColor(m.chat.tool)
+			label, color = assistant, providerColor(m.chat.provider)
 		}
 		header := dashPaint("▍", color, true) + dashPaint(label, color, true)
 		if message.ts != nil {
@@ -331,7 +332,7 @@ func (m model) viewChat(contentRows int) string {
 		}
 		return strings.Join(lines, "\n")
 	}
-	return strings.Join(dashBox(title, body, m.width, contentRows, dashToolColor(m.chat.tool)), "\n")
+	return strings.Join(dashBox(title, body, m.width, contentRows, providerColor(m.chat.provider)), "\n")
 }
 
 func (m model) chatFooter() string {

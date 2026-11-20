@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // demoModel runs the real Firekeeper views against synthetic, in-memory data,
@@ -150,21 +151,22 @@ func (d *demoModel) fillChat() {
 func demoGroups(frame int) []processGroup {
 	states := []sessionState{sessionStateActive, sessionStateWaiting, sessionStateNeedsInput}
 	entries := []struct {
-		tool, project, branch, model, name string
+		provider                     event.Provider
+		project, branch, model, name string
 	}{
-		{"Claude", "atlas-studio", "launch", "claude-sonnet", "Shape the launch page"},
-		{"Codex", "ember-api", "main", "gpt-5", "Triage flaky tests"},
-		{"Copilot", "northwind-docs", "new-guide", "copilot", "Write onboarding guide"},
-		{"Kimi", "blueprint-cli", "prototype", "kimi-k2", "Review command output"},
+		{event.ProviderClaude, "atlas-studio", "launch", "claude-sonnet", "Shape the launch page"},
+		{event.ProviderCodex, "ember-api", "main", "gpt-5", "Triage flaky tests"},
+		{event.ProviderCopilot, "northwind-docs", "new-guide", "copilot", "Write onboarding guide"},
+		{event.ProviderKimi, "blueprint-cli", "prototype", "kimi-k2", "Review command output"},
 	}
 	groups := make([]processGroup, 0, len(entries))
 	for i, entry := range entries {
 		pid := 1100 + i*100
 		state := states[(i+frame/3)%len(states)]
 		groups = append(groups, processGroup{
-			tool:      entry.tool,
-			root:      processInfo{pid: pid, ppid: 1, tty: "demo", elapsed: "00:42", command: entry.tool},
-			processes: []processInfo{{pid: pid, ppid: 1, tty: "demo", elapsed: "00:42", command: entry.tool}},
+			provider:  entry.provider,
+			root:      processInfo{pid: pid, ppid: 1, tty: "demo", elapsed: "00:42", command: providerName(entry.provider)},
+			processes: []processInfo{{pid: pid, ppid: 1, tty: "demo", elapsed: "00:42", command: providerName(entry.provider)}},
 			sessions: []sessionInfo{{
 				id: "demo-session-" + entry.project, name: entry.name, state: state,
 				cwd: "/demo/" + entry.project, repository: entry.project, gitBranch: entry.branch,

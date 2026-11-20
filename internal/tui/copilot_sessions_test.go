@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
@@ -12,8 +14,8 @@ const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
 func TestCopilotProcessDetailsShowProviderMetadata(t *testing.T) {
 	m := testModel()
 	m.processGroups = []processGroup{{
-		tool: "Copilot",
-		root: processInfo{pid: 300, tty: "ttys003", elapsed: "00:42"},
+		provider: event.ProviderCopilot,
+		root:     processInfo{pid: 300, tty: "ttys003", elapsed: "00:42"},
 		processes: []processInfo{{
 			pid: 300, ppid: 1, tty: "ttys003", elapsed: "00:42", command: "copilot",
 		}},
