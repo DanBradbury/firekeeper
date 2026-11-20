@@ -9,11 +9,11 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript/reader"
@@ -75,25 +75,20 @@ func recentToolLabel(provider transcript.Provider) string {
 func loadRecentSessions(ctx context.Context, now time.Time) []recentSession {
 	providers := reader.Registered()
 	results := make([][]recentSession, len(providers))
-	var wg sync.WaitGroup
-	for index, provider := range providers {
+	parallel.Each(len(providers), func(index int) {
+		provider := providers[index]
 		enumerator, ok := reader.EnumeratorFor(provider)
 		if !ok {
-			continue
+			return
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			metas, _ := enumerator.Enumerate(ctx, reader.EnumerateOptions{ModifiedAfter: now.Add(-recentSessionAge)})
-			if len(metas) > recentSessionLimit {
-				metas = metas[:recentSessionLimit]
-			}
-			for _, meta := range metas {
-				results[index] = append(results[index], newRecentSession(provider, meta))
-			}
-		}()
-	}
-	wg.Wait()
+		metas, _ := enumerator.Enumerate(ctx, reader.EnumerateOptions{ModifiedAfter: now.Add(-recentSessionAge)})
+		if len(metas) > recentSessionLimit {
+			metas = metas[:recentSessionLimit]
+		}
+		for _, meta := range metas {
+			results[index] = append(results[index], newRecentSession(provider, meta))
+		}
+	})
 	var all []recentSession
 	for _, part := range results {
 		all = append(all, part...)

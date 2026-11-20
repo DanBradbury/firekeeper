@@ -4,6 +4,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 )
 
 // LoadSupplements reads the telemetry JSONL and merges each session with
@@ -40,13 +42,23 @@ func LoadSupplements(path string) (map[string]Supplement, error) {
 	for _, rec := range recs {
 		grouped[rec.SessionID] = append(grouped[rec.SessionID], rec)
 	}
-	out := make(map[string]Supplement, len(grouped))
-	for id, list := range grouped {
-		usage, err := LoadTranscript(id, "")
+	// Each session's transcript is read on its own worker; results are kept
+	// by index and put in the map on this goroutine.
+	ids := make([]string, 0, len(grouped))
+	for id := range grouped {
+		ids = append(ids, id)
+	}
+	merged := make([]Supplement, len(ids))
+	parallel.Bounded(len(ids), func(i int) {
+		usage, err := LoadTranscript(ids[i], "")
 		if err != nil {
 			usage = SessionUsage{}
 		}
-		out[id] = Merge(usage, list)
+		merged[i] = Merge(usage, grouped[ids[i]])
+	})
+	out := make(map[string]Supplement, len(ids))
+	for i, id := range ids {
+		out[id] = merged[i]
 	}
 	supplementCache.mu.Lock()
 	supplementCache.path = path

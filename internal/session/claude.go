@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 )
 
 // Claude Code reads stay bounded: state and metadata come from the tail of a
@@ -199,7 +201,7 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	// Each transcript is read on its own goroutine: the reads are
 	// independent, and each parses up to ClaudeTranscriptTailBytes of JSON.
 	readErrs := make([]error, len(groupIndexes))
-	parallel(len(groupIndexes), func(i int) {
+	parallel.Bounded(len(groupIndexes), func(i int) {
 		index := groupIndexes[i]
 		path, ok := paths[index]
 		if !ok {

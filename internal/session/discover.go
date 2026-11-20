@@ -9,12 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
 )
 
@@ -143,22 +142,36 @@ func (c commandOutput) Output() ([]byte, error) {
 }
 
 // linkPanic is a panic from one provider's Link, carried from its goroutine
-// to Discover's caller. It keeps the stack of the goroutine that panicked,
-// which the second panic would otherwise lose.
+// to Discover's caller. It names the provider and keeps the stack of the
+// goroutine that panicked, which the second panic would otherwise lose.
 type linkPanic struct {
 	provider string
-	value    any
-	stack    []byte
+	cause    *parallel.Panic
 }
 
 func (p *linkPanic) Error() string {
-	return fmt.Sprintf("panic linking %s sessions: %v\n\n%s", p.provider, p.value, p.stack)
+	return fmt.Sprintf("panic linking %s sessions: %v\n\n%s", p.provider, p.cause.Value, p.cause.Stack)
 }
 
 // Unwrap returns the original panic value when it was an error.
 func (p *linkPanic) Unwrap() error {
-	err, _ := p.value.(error)
-	return err
+	return p.cause.Unwrap()
+}
+
+// linkProviders calls link for each adapter index in active, one goroutine
+// per provider. A panic in a Link reaches the caller as a *linkPanic naming
+// that provider, after every Link has returned; with several, the first in
+// registry order.
+func linkProviders(active []int, link func(index int)) {
+	defer func() {
+		if value := recover(); value != nil {
+			if p, ok := value.(*parallel.Panic); ok {
+				panic(&linkPanic{provider: toolName(adapters[active[p.Index]].Provider()), cause: p})
+			}
+			panic(value)
+		}
+	}()
+	parallel.Each(len(active), func(i int) { link(active[i]) })
 }
 
 // Discover performs one bounded scan. Callers choose their own polling interval.
@@ -200,38 +213,21 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	// groups, so a slow provider does not hold up the others. Each Link gets
 	// only its own provider's groups, which no other goroutine touches. Each
 	// provider's warning is kept at its adapter's index, so the joined
-	// message does not depend on which Link finished first.
-	//
-	// A panic in a Link is caught on its goroutine and raised again here once
-	// every Link has returned, so it reaches the caller as it did when linking
-	// ran on the caller's goroutine. The dashboard depends on that: Bubble Tea
-	// recovers a panic in a command and restores the terminal, which it cannot
-	// do for a panic on a goroutine it did not start.
+	// message does not depend on which Link finished first. A panic in a
+	// Link reaches the caller on its goroutine (see linkProviders).
+	var active []int
+	for index := range adapters {
+		if len(owned[index]) > 0 {
+			active = append(active, index)
+		}
+	}
 	linkWarnings := make([]string, len(adapters))
-	linkPanics := make([]*linkPanic, len(adapters))
-	var linking sync.WaitGroup
-	for index, a := range adapters {
-		own := owned[index]
-		if len(own) == 0 {
-			continue
+	linkProviders(active, func(index int) {
+		a := adapters[index]
+		if err := a.Link(d, owned[index]); err != nil {
+			linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
 		}
-		linking.Go(func() {
-			defer func() {
-				if value := recover(); value != nil {
-					linkPanics[index] = &linkPanic{provider: toolName(a.Provider()), value: value, stack: debug.Stack()}
-				}
-			}()
-			if err := a.Link(d, own); err != nil {
-				linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
-			}
-		})
-	}
-	linking.Wait()
-	for _, caught := range linkPanics {
-		if caught != nil {
-			panic(caught) // the first in registry order, whichever happened first
-		}
-	}
+	})
 	var warnings []string
 	for _, warning := range linkWarnings {
 		if warning != "" {
@@ -251,7 +247,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		}
 	}
 	rootCWDs := make([]string, len(emit))
-	parallel(len(emit), func(i int) {
+	parallel.Bounded(len(emit), func(i int) {
 		g := emit[i]
 		needed := len(g.Sessions) == 0
 		for _, s := range g.Sessions {
@@ -276,7 +272,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 		}
 	}
 	resolved := make([]string, len(cwds))
-	parallel(len(cwds), func(i int) { resolved[i] = d.projectName(cwds[i]) })
+	parallel.Bounded(len(cwds), func(i int) { resolved[i] = d.projectName(cwds[i]) })
 	for i, cwd := range cwds {
 		projects[cwd] = resolved[i]
 	}
@@ -367,60 +363,6 @@ func machineID(home string) (string, error) {
 		return "", errors.New("publish Firekeeper machine-id")
 	}
 	return id, nil
-}
-
-// parallelPanic is a panic from one of parallel's calls, carried from its
-// goroutine to parallel's caller with the stack of the goroutine that
-// panicked.
-type parallelPanic struct {
-	value any
-	stack []byte
-}
-
-func (p *parallelPanic) Error() string {
-	return fmt.Sprintf("panic in parallel discovery work: %v\n\n%s", p.value, p.stack)
-}
-
-// Unwrap returns the original panic value when it was an error.
-func (p *parallelPanic) Unwrap() error {
-	err, _ := p.value.(error)
-	return err
-}
-
-// parallel calls fn(0) through fn(n-1) for per-file and per-command work, on
-// at most runtime.GOMAXPROCS(0) goroutines, and returns once every call has
-// returned. Each fn must write only to its own index of any shared slice. A
-// panic in a call is raised again on the caller's goroutine after every call
-// has returned (the first by index), so it reaches the caller as it would
-// have from a loop.
-func parallel(n int, fn func(i int)) {
-	if n <= 1 {
-		for i := range n {
-			fn(i)
-		}
-		return
-	}
-	panics := make([]*parallelPanic, n)
-	var wg sync.WaitGroup
-	slots := make(chan struct{}, runtime.GOMAXPROCS(0))
-	for i := range n {
-		slots <- struct{}{}
-		wg.Go(func() {
-			defer func() {
-				if value := recover(); value != nil {
-					panics[i] = &parallelPanic{value: value, stack: debug.Stack()}
-				}
-				<-slots
-			}()
-			fn(i)
-		})
-	}
-	wg.Wait()
-	for _, caught := range panics {
-		if caught != nil {
-			panic(caught)
-		}
-	}
 }
 
 // projectName returns the basename of cwd's Git root, else of cwd itself.
