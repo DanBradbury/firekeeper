@@ -14,7 +14,6 @@ func (m model) codexPage() usagePage {
 	now := time.Now()
 	colors := m.codexModelColors()
 	return usagePage{
-		Label:       "Codex",
 		Provider:    transcript.ProviderCodex,
 		Loading:     m.codexUsageLoading,
 		LoadingText: "Fetching Codex account usage…",

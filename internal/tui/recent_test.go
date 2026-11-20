@@ -45,7 +45,7 @@ func TestLoadRecentSessionsReadsProviderTranscripts(t *testing.T) {
 	got := loadRecentSessions(context.Background(), time.Now())
 	for _, s := range got {
 		if s.provider == transcript.ProviderClaude && s.id == id {
-			if s.tool != "Claude" || s.project != "repo" || s.path != path || s.last.IsZero() {
+			if providerName(s.provider) != "Claude" || s.project != "repo" || s.path != path || s.last.IsZero() {
 				t.Fatalf("recent session fields wrong: %+v", s)
 			}
 			return

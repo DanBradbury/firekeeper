@@ -100,14 +100,11 @@ type ProcessInfo struct {
 	Role Role
 	// Invocation is the parsed argument list the classifier used.
 	Invocation invocation
-	// Tool is Provider's display name, toolName(Provider). The follow-up
-	// moves its readers to Provider and removes it.
-	Tool    string
-	PID     int
-	PPID    int
-	TTY     string
-	Elapsed string
-	Command string
+	PID        int
+	PPID       int
+	TTY        string
+	Elapsed    string
+	Command    string
 }
 
 type Info struct {
@@ -177,7 +174,6 @@ type ProcessGroup struct {
 	// Provider and Role are the root process's.
 	Provider event.Provider
 	Role     Role
-	Tool     string
 	Root     ProcessInfo
 	// explicitID is the session id the root's command line names, set by
 	// Discover from the adapter's SessionID before Link (session groups

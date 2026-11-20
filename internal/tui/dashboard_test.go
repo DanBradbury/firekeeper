@@ -14,6 +14,7 @@ import (
 	"github.com/firekeeper-ai/firekeeper/internal/version"
 
 	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func dashboardTestModel() model {
@@ -21,7 +22,7 @@ func dashboardTestModel() model {
 	m.refreshedAt = time.Date(2026, 10, 13, 9, 30, 0, 0, time.UTC)
 	m.processGroups = []processGroup{
 		{
-			tool:      "Codex",
+			provider:  event.ProviderCodex,
 			root:      processInfo{pid: 100, tty: "ttys001", elapsed: "01:23"},
 			processes: []processInfo{{pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:23", command: "codex"}},
 			sessions: []sessionInfo{{
@@ -32,7 +33,7 @@ func dashboardTestModel() model {
 			}},
 		},
 		{
-			tool:      "Copilot",
+			provider:  event.ProviderCopilot,
 			root:      processInfo{pid: 200, tty: "ttys002", elapsed: "00:42"},
 			processes: []processInfo{{pid: 200, ppid: 1, tty: "ttys002", elapsed: "00:42", command: "copilot"}},
 			sessions: []sessionInfo{{
@@ -41,7 +42,7 @@ func dashboardTestModel() model {
 			}},
 		},
 		{
-			tool:      "OpenCode",
+			provider:  event.ProviderOpenCode,
 			root:      processInfo{pid: 300, tty: "ttys003", elapsed: "00:05"},
 			processes: []processInfo{{pid: 300, ppid: 1, tty: "ttys003", elapsed: "00:05", command: "opencode"}},
 		},
@@ -587,9 +588,9 @@ func TestProviderBarsRequireMultipleProviders(t *testing.T) {
 		bar   bool
 	}{
 		{"none", nil, false},
-		{"single", []dashToolSummary{{tool: "Codex", runtimes: 2, tokens: 1200}}, false},
-		{"single without tokens", []dashToolSummary{{tool: "Codex", runtimes: 2}}, false},
-		{"multiple", []dashToolSummary{{tool: "Codex", runtimes: 2, tokens: 1200}, {tool: "Copilot", runtimes: 1, tokens: 600}}, true},
+		{"single", []dashToolSummary{{provider: event.ProviderCodex, runtimes: 2, tokens: 1200}}, false},
+		{"single without tokens", []dashToolSummary{{provider: event.ProviderCodex, runtimes: 2}}, false},
+		{"multiple", []dashToolSummary{{provider: event.ProviderCodex, runtimes: 2, tokens: 1200}, {provider: event.ProviderCopilot, runtimes: 1, tokens: 600}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -815,7 +816,7 @@ func TestDashboardShowsTelemetryAndDropsUndercountWarning(t *testing.T) {
 	}
 	group := func() []processGroup {
 		return []processGroup{{
-			tool:      "Claude",
+			provider:  event.ProviderClaude,
 			root:      processInfo{pid: 9, tty: "ttys009", elapsed: "00:10"},
 			processes: []processInfo{{pid: 9, ppid: 1, tty: "ttys009", elapsed: "00:10", command: "claude"}},
 			sessions: []sessionInfo{{
@@ -934,9 +935,10 @@ func idleRecentModel(width, height int) model {
 	m.processGroups = nil
 	m.width, m.height = width, height
 	now := time.Now()
-	for i, tool := range []string{"Copilot", "Codex", "Claude", "Gemini", "Kimi", "Cursor", "OpenCode"} {
+	for i, provider := range []event.Provider{event.ProviderCopilot, event.ProviderCodex, event.ProviderClaude, event.ProviderGemini, event.ProviderKimi, event.ProviderCursor, event.ProviderOpenCode} {
+		tool := providerName(provider)
 		m.recentSessions = append(m.recentSessions, recentSession{
-			tool: tool, id: fmt.Sprintf("session-%d-abcdef", i), project: "proj" + tool,
+			provider: provider, id: fmt.Sprintf("session-%d-abcdef", i), project: "proj" + tool,
 			title: "title " + tool, last: now.Add(-time.Duration(i+1) * time.Hour),
 		})
 	}
@@ -981,7 +983,7 @@ func TestIdleRecentSelectionScrollsAndOpensChat(t *testing.T) {
 	}
 	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	opened := next.(model)
-	if cmd == nil || !opened.chat.open || opened.chat.tool != "OpenCode" || opened.chat.meta.ID != "session-6-abcdef" {
+	if cmd == nil || !opened.chat.open || opened.chat.provider != event.ProviderOpenCode || opened.chat.meta.ID != "session-6-abcdef" {
 		t.Fatalf("enter did not open the selected session: %+v", opened.chat)
 	}
 }
@@ -1155,8 +1157,8 @@ func TestSubagentRowsDoNotChangeSelectionOrClicks(t *testing.T) {
 func TestSummaryCountsSubagentTokensButNotSubagentSessions(t *testing.T) {
 	m := dashboardTestModel()
 	m.processGroups = []processGroup{{
-		tool: "Codex",
-		root: processInfo{pid: 100, tty: "ttys001"},
+		provider: event.ProviderCodex,
+		root:     processInfo{pid: 100, tty: "ttys001"},
 		sessions: []sessionInfo{
 			{id: "01a19a1a-0000-0000-0000-000000000001", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, tokensUsed: 285_000},
 			{id: "01a19a1a-0000-0000-0000-0000000000e1", cwd: "/work/firekeeper-server", gitBranch: "main", state: sessionStateWaiting, subagent: true, tokensUsed: 65_000},

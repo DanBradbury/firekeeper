@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/firekeeper-ai/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestReadCodexUsageResponses(t *testing.T) {
@@ -77,7 +78,7 @@ func TestCodexUsageViewShowsQuotaAndTokenSummary(t *testing.T) {
 		Daily: []codexDailyUsage{{StartDate: now.Format("2006-01-02"), Tokens: 14556919}},
 	}
 	m.processGroups = []processGroup{{
-		tool: "Codex",
+		provider: event.ProviderCodex,
 		sessions: []sessionInfo{
 			{id: "session-1", model: "gpt-5.6-sol", tokensUsed: 9812345},
 			{id: "session-2", model: "gpt-5.6-codex", tokensUsed: 4100000},

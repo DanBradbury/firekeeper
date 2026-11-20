@@ -19,6 +19,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const copilotSessionHistoryLimit = 500
@@ -473,7 +474,7 @@ func (m model) viewUsage(contentRows int) string {
 }
 
 // usageProviderNames are the selector's providers in usageProvider order.
-var usageProviderNames = []string{"codex", "copilot", "kimi", "claude"}
+var usageProviderNames = []event.Provider{event.ProviderCodex, event.ProviderCopilot, event.ProviderKimi, event.ProviderClaude}
 
 // usageProviderHasData reports whether provider has usage to show. A provider
 // that is missing, or whose refresh failed before it produced data, has none
@@ -521,9 +522,8 @@ func (m *model) normalizeUsageProvider() {
 // usageProviderLabel is a provider's chip label with its icon. The mouse hit
 // test measures the same labels.
 func usageProviderLabel(provider usageProvider) string {
-	name := usageProviderNames[provider]
-	tool := strings.ToUpper(name[:1]) + name[1:]
-	return toolIconPrefix(tool) + strings.ToUpper(name)
+	p := usageProviderNames[provider]
+	return toolIconPrefix(p) + strings.ToUpper(providerName(p))
 }
 
 // usageProviderLabels are the chip labels of every provider.

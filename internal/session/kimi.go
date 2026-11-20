@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // kimiTolerance allows for ps reporting elapsed time in whole seconds and
@@ -36,7 +38,7 @@ var kimiNow = time.Now
 func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 	var pids []string
 	for _, group := range groups {
-		if group.Tool == "Kimi" && group.Role == RoleSession {
+		if group.Provider == event.ProviderKimi && group.Role == RoleSession {
 			pids = append(pids, fmt.Sprint(group.Root.PID))
 		}
 	}
@@ -73,7 +75,7 @@ func (d *discoverer) enrichKimiSessions(groups []ProcessGroup) error {
 	perDir := make(map[string][]runtime)
 	for index := range groups {
 		group := groups[index]
-		if group.Tool != "Kimi" || group.Role != RoleSession {
+		if group.Provider != event.ProviderKimi || group.Role != RoleSession {
 			continue
 		}
 		dir := workDirs[group.Root.PID]

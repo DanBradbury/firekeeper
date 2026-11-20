@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/firekeeper-ai/firekeeper/internal/otelrecv"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestMarqueeLeavesFittingTextAlone(t *testing.T) {
@@ -51,7 +52,7 @@ func TestMarqueeTickAdvancesFrame(t *testing.T) {
 
 func TestBackgroundCallsLineScrollsInTokensPanel(t *testing.T) {
 	m := NewModel()
-	m.processGroups = []processGroup{{tool: "Claude", sessions: []sessionInfo{{
+	m.processGroups = []processGroup{{provider: event.ProviderClaude, sessions: []sessionInfo{{
 		id:            "s1",
 		tokens:        tokenBreakdown{Input: 1},
 		telemetryLine: "Background calls (not in transcripts): 265.9K (prompt suggestions 124.3K)",
@@ -84,7 +85,7 @@ func TestSessionPanelWrapsBackgroundCalls(t *testing.T) {
 		},
 	}
 	groups := annotateClaudeTelemetry([]processGroup{{
-		tool:      "Claude",
+		provider:  event.ProviderClaude,
 		root:      processInfo{pid: 1, tty: "ttys002"},
 		processes: []processInfo{{pid: 1, tty: "ttys002", command: "claude"}},
 		sessions:  []sessionInfo{{id: "s1", tokens: tokenBreakdown{Input: 68, Output: 35_500, CacheRead: 3_200_000}}},

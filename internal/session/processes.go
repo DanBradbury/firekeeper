@@ -53,7 +53,6 @@ func (d *discoverer) groupProcesses(processes []ProcessInfo) []ProcessGroup {
 		groups = append(groups, ProcessGroup{
 			Provider:  root.Provider,
 			Role:      root.Role,
-			Tool:      root.Tool,
 			Root:      root,
 			Processes: members,
 		})
@@ -116,7 +115,6 @@ func (d *discoverer) parseProcesses(output string) []ProcessInfo {
 			Provider:   provider,
 			Role:       role,
 			Invocation: inv,
-			Tool:       toolName(provider),
 			PID:        pid,
 			PPID:       ppid,
 			TTY:        d.normalizeTTY(fields[2]),

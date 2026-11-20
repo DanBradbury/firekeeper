@@ -207,12 +207,12 @@ func TestAdapterRegistry(t *testing.T) {
 		if count[p] != 1 {
 			t.Errorf("provider %q has %d adapters, want 1", p, count[p])
 		}
-		if toolName(p) == "" {
+		if ToolName(p) == "" {
 			t.Errorf("provider %q has no display name", p)
 		}
 	}
-	if toolName("") != "" || toolName("unknown") != "" {
-		t.Error("toolName returned a name for an unknown provider")
+	if ToolName("") != "" || ToolName("unknown") != "" {
+		t.Error("ToolName returned a name for an unknown provider")
 	}
 }
 

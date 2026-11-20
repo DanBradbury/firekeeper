@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestResolveHerdrTargetPrefersNativeSessionIdentity(t *testing.T) {
@@ -180,8 +182,8 @@ func TestFocusHerdrTargetSelectsPaneAndOuterClientTTY(t *testing.T) {
 
 func TestNewTerminalSwitchTargetIncludesSessionAndProcessIdentity(t *testing.T) {
 	target := newTerminalSwitchTarget(processGroup{
-		tool: "Codex",
-		root: processInfo{pid: 100, tty: "ttys001"},
+		provider: event.ProviderCodex,
+		root:     processInfo{pid: 100, tty: "ttys001"},
 		processes: []processInfo{
 			{pid: 100},
 			{pid: 101},

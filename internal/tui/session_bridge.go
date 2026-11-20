@@ -25,7 +25,7 @@ func effortLabel(raw json.RawMessage) string       { return session.EffortLabel(
 func copilotSessionEffort(home, id string) string  { return session.CopilotSessionEffort(home, id) }
 
 func fromProcessInfo(v session.ProcessInfo) processInfo {
-	return processInfo{tool: v.Tool, pid: v.PID, ppid: v.PPID, tty: v.TTY, elapsed: v.Elapsed, command: v.Command}
+	return processInfo{provider: v.Provider, pid: v.PID, ppid: v.PPID, tty: v.TTY, elapsed: v.Elapsed, command: v.Command}
 }
 
 func fromSessionInfo(v session.Info) sessionInfo {
@@ -33,7 +33,7 @@ func fromSessionInfo(v session.Info) sessionInfo {
 }
 
 func fromProcessGroup(v session.ProcessGroup) processGroup {
-	return processGroup{tool: v.Tool, root: fromProcessInfo(v.Root), processes: fromSliceprocessInfo(v.Processes), sessions: fromSlicesessionInfo(v.Sessions)}
+	return processGroup{provider: v.Provider, root: fromProcessInfo(v.Root), processes: fromSliceprocessInfo(v.Processes), sessions: fromSlicesessionInfo(v.Sessions)}
 }
 
 func fromSlicesessionInfo(v []session.Info) []sessionInfo {

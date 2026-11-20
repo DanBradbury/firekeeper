@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // iconMode selects how a harness name is marked in the dashboard.
@@ -38,18 +39,6 @@ const iconCellWidth = 1 + len(iconGap)
 // unicodeIcon is the glyph iconsUnicode uses for every harness; the name's
 // color already tells them apart.
 const unicodeIcon = "●"
-
-// toolFontIcons maps the dashboard's tool names to the private use codepoints
-// scripts/icon-font/build.mjs gives each logo. Keep the two lists in step.
-var toolFontIcons = map[string]string{
-	"Claude":   "",
-	"Codex":    "",
-	"Copilot":  "",
-	"Cursor":   "",
-	"Gemini":   "",
-	"Kimi":     "",
-	"OpenCode": "",
-}
 
 // parseIconMode reads a FIREKEEPER_ICONS value. An empty value means no
 // choice was made (see defaultIconMode); an unrecognized one is an error so
@@ -99,10 +88,10 @@ func defaultIconMode() iconMode {
 
 // toolIcon returns the icon for a tool, or "" when icons are off or the tool
 // has none.
-func toolIcon(tool string) string {
+func toolIcon(p event.Provider) string {
 	switch activeIconMode {
 	case iconsFont:
-		return toolFontIcons[tool]
+		return providerStyles[p].icon
 	case iconsUnicode:
 		return unicodeIcon
 	case iconsOff:
@@ -121,15 +110,15 @@ func toolIconWidth() int {
 }
 
 // toolIconPrefix is the icon and the space after it, or blanks of the same
-// width for a tool with no icon, or "" when icons are off.
-func toolIconPrefix(tool string) string {
-	if icon := toolIcon(tool); icon != "" {
+// width for a provider with no icon, or "" when icons are off.
+func toolIconPrefix(p event.Provider) string {
+	if icon := toolIcon(p); icon != "" {
 		return icon + iconGap
 	}
 	return strings.Repeat(" ", toolIconWidth())
 }
 
-// toolLabel is the tool name with its icon in front, when it has one.
-func toolLabel(tool string) string {
-	return toolIconPrefix(tool) + tool
+// toolLabel is the provider's name with its icon in front, when it has one.
+func toolLabel(p event.Provider) string {
+	return toolIconPrefix(p) + providerName(p)
 }

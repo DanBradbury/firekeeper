@@ -77,7 +77,7 @@ type herdrFocusTarget struct {
 
 func newTerminalSwitchTarget(group processGroup, sessionIndex int) terminalSwitchTarget {
 	target := terminalSwitchTarget{
-		provider: group.tool,
+		provider: providerName(group.provider),
 		tty:      group.root.tty,
 		cwd:      groupWorkingDirectory(group),
 	}

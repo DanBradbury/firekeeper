@@ -12,6 +12,7 @@ import (
 
 	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func withIconMode(t *testing.T, mode iconMode) {
@@ -44,19 +45,19 @@ func TestParseIconMode(t *testing.T) {
 
 func TestToolLabelModes(t *testing.T) {
 	withIconMode(t, iconsOff)
-	if got := toolLabel("Claude"); got != "Claude" {
+	if got := toolLabel(event.ProviderClaude); got != "Claude" {
 		t.Fatalf("off: %q", got)
 	}
 	withIconMode(t, iconsFont)
-	if got := toolLabel("Claude"); got != "  Claude" {
+	if got := toolLabel(event.ProviderClaude); got != "  Claude" {
 		t.Fatalf("font: %q", got)
 	}
 	// A tool with no logo still lines up with the others.
-	if got := toolLabel("Mystery"); got != "   Mystery" {
+	if got := toolLabel(event.Provider("mystery")); got != "   mystery" {
 		t.Fatalf("font, unknown tool: %q", got)
 	}
 	withIconMode(t, iconsUnicode)
-	if got := toolLabel("Codex"); got != "●  Codex" {
+	if got := toolLabel(event.ProviderCodex); got != "●  Codex" {
 		t.Fatalf("unicode: %q", got)
 	}
 }
@@ -64,9 +65,9 @@ func TestToolLabelModes(t *testing.T) {
 func TestToolLabelWidthIsNameWidthPlusIconWidth(t *testing.T) {
 	for _, mode := range []iconMode{iconsOff, iconsFont, iconsUnicode} {
 		withIconMode(t, mode)
-		for tool := range toolFontIcons {
-			if got, want := ansi.StringWidth(toolLabel(tool)), len(tool)+toolIconWidth(); got != want {
-				t.Errorf("mode %d %s: width %d, want %d", mode, tool, got, want)
+		for _, provider := range event.Providers() {
+			if got, want := ansi.StringWidth(toolLabel(provider)), len(providerName(provider))+toolIconWidth(); got != want {
+				t.Errorf("mode %d %s: width %d, want %d", mode, provider, got, want)
 			}
 		}
 	}
@@ -75,9 +76,8 @@ func TestToolLabelWidthIsNameWidthPlusIconWidth(t *testing.T) {
 // Every harness the dashboard can show must have a logo.
 func TestEveryProviderHasFontIcon(t *testing.T) {
 	for _, provider := range transcript.Providers() {
-		label := recentToolLabel(provider)
-		if _, ok := toolFontIcons[label]; !ok {
-			t.Errorf("provider %q (%s) has no font icon", provider, label)
+		if providerStyles[provider].icon == "" {
+			t.Errorf("provider %q has no font icon", provider)
 		}
 	}
 }
@@ -98,12 +98,12 @@ func TestFontIconsMatchBuildScript(t *testing.T) {
 		}
 		script[strings.ToLower(match[1])] = string(rune(code))
 	}
-	if len(script) != len(toolFontIcons) {
-		t.Fatalf("build.mjs has %d glyphs, icons.go has %d", len(script), len(toolFontIcons))
+	if len(script) != len(providerStyles) {
+		t.Fatalf("build.mjs has %d glyphs, providers.go has %d", len(script), len(providerStyles))
 	}
-	for tool, icon := range toolFontIcons {
-		if got := script[strings.ToLower(tool)]; got != icon {
-			t.Errorf("%s: icons.go %U, build.mjs %s", tool, []rune(icon)[0], fmt.Sprintf("%U", []rune(got)))
+	for provider, style := range providerStyles {
+		if got := script[strings.ToLower(providerName(provider))]; got != style.icon {
+			t.Errorf("%s: providers.go %U, build.mjs %s", provider, []rune(style.icon)[0], fmt.Sprintf("%U", []rune(got)))
 		}
 	}
 }
@@ -111,8 +111,8 @@ func TestFontIconsMatchBuildScript(t *testing.T) {
 func TestProviderLinesWithIconsStayWithinWidth(t *testing.T) {
 	withIconMode(t, iconsFont)
 	summary := dashSummary{tools: []dashToolSummary{
-		{tool: "Claude", runtimes: 2, tokens: 1200},
-		{tool: "OpenCode", runtimes: 1, tokens: 300},
+		{provider: event.ProviderClaude, runtimes: 2, tokens: 1200},
+		{provider: event.ProviderOpenCode, runtimes: 1, tokens: 300},
 	}}
 	for _, line := range summary.providerLines(40) {
 		if got := ansi.StringWidth(line); got > 40 {
@@ -171,9 +171,9 @@ func TestDefaultIconModeFollowsInstalledFont(t *testing.T) {
 }
 
 func TestFontIconsFallInsideTheInstalledRange(t *testing.T) {
-	for tool, icon := range toolFontIcons {
-		if r := []rune(icon)[0]; r < iconfont.FirstCodepoint || r > iconfont.LastCodepoint {
-			t.Errorf("%s at %U is outside the Ghostty mapping", tool, r)
+	for provider, style := range providerStyles {
+		if r := []rune(style.icon)[0]; r < iconfont.FirstCodepoint || r > iconfont.LastCodepoint {
+			t.Errorf("%s at %U is outside the Ghostty mapping", provider, r)
 		}
 	}
 }

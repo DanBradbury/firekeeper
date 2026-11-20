@@ -7,15 +7,22 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/firekeeper-ai/firekeeper/internal/iconfont"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
-// iconSetupTools is the order the setup panel previews the logos in.
-var iconSetupTools = []string{"Claude", "Codex", "Copilot", "Cursor", "Gemini", "Kimi", "OpenCode"}
+// iconSetupProviders is the order the setup panel previews the logos in:
+// every provider, alphabetically by display name.
+func iconSetupProviders() []event.Provider {
+	providers := event.Providers()
+	sort.Slice(providers, func(i, j int) bool { return providerName(providers[i]) < providerName(providers[j]) })
+	return providers
+}
 
 // updateIconSetup handles keys while the setup panel blocks the dashboard.
 // Ctrl+C and q quit so the user can restart after changing the setting.
@@ -59,8 +66,8 @@ func (m model) viewIconSetup(contentRows int) string {
 	}
 	text := func(value string) string { return dashPaint(value, usageTextColor, false) }
 	var preview strings.Builder
-	for _, tool := range iconSetupTools {
-		preview.WriteString(toolFontIcons[tool] + iconGap)
+	for _, provider := range iconSetupProviders() {
+		preview.WriteString(providerStyles[provider].icon + iconGap)
 	}
 	body := []string{
 		dashPaint("Logo icons need one iTerm2 setting.", dashOrange, true),

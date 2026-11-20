@@ -9,13 +9,15 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 	m := testModel()
 	m.processGroups = []processGroup{{
-		tool: "Codex",
-		root: processInfo{pid: 101, tty: "ttys001", command: "codex"},
+		provider: event.ProviderCodex,
+		root:     processInfo{pid: 101, tty: "ttys001", command: "codex"},
 		sessions: []sessionInfo{{
 			id:   "019fb33c-c5f4-75f3-b987-228eb484c6ec",
 			name: "Known session metadata",
@@ -24,8 +26,8 @@ func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 
 	updated, _ := m.Update(processResultMsg{
 		groups: []processGroup{{
-			tool: "Codex",
-			root: processInfo{pid: 101, tty: "ttys001", command: "codex"},
+			provider: event.ProviderCodex,
+			root:     processInfo{pid: 101, tty: "ttys001", command: "codex"},
 		}},
 		metadataWarning: "temporary metadata lookup failure",
 		refreshed:       time.Now(),
@@ -38,8 +40,8 @@ func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 
 	updated, _ = m.Update(processResultMsg{
 		groups: []processGroup{{
-			tool: "Codex",
-			root: processInfo{pid: 101, tty: "ttys001", command: "codex"},
+			provider: event.ProviderCodex,
+			root:     processInfo{pid: 101, tty: "ttys001", command: "codex"},
 			sessions: []sessionInfo{{
 				id:   "019fb33c-c5f4-75f3-b987-228eb484c6ed",
 				name: "Fresh session metadata",
@@ -56,12 +58,12 @@ func TestProcessRefreshRetainsKnownMetadataAfterTransientMiss(t *testing.T) {
 func TestProcessRefreshRetainsClaudeMetadata(t *testing.T) {
 	m := testModel()
 	m.processGroups = []processGroup{{
-		tool:     "Claude",
+		provider: event.ProviderClaude,
 		root:     processInfo{pid: 101, tty: "ttys001", command: "claude"},
 		sessions: []sessionInfo{{id: "0199c3d4-e5f6-7a8b-9c0d-000000000001", name: "Known Claude session"}},
 	}}
 	updated, _ := m.Update(processResultMsg{
-		groups:          []processGroup{{tool: "Claude", root: processInfo{pid: 101, tty: "ttys001", command: "claude"}}},
+		groups:          []processGroup{{provider: event.ProviderClaude, root: processInfo{pid: 101, tty: "ttys001", command: "claude"}}},
 		metadataWarning: "temporary metadata lookup failure",
 		refreshed:       time.Now(),
 	})
@@ -77,17 +79,17 @@ func TestProcessRefreshHidesRuntimesWithoutSessionMetadata(t *testing.T) {
 	m := testModel()
 	updated, _ := m.Update(processResultMsg{
 		groups: []processGroup{
-			{tool: "Codex", root: processInfo{pid: 101, tty: "ttys001", command: "codex"}},
+			{provider: event.ProviderCodex, root: processInfo{pid: 101, tty: "ttys001", command: "codex"}},
 			{
-				tool: "Codex",
-				root: processInfo{pid: 202, tty: "ttys002", command: "codex"},
+				provider: event.ProviderCodex,
+				root:     processInfo{pid: 202, tty: "ttys002", command: "codex"},
 				sessions: []sessionInfo{{
 					id:    "019fb33c-c5f4-75f3-b987-228eb484c6ec",
 					name:  "Known Codex session",
 					state: sessionStateUnknown,
 				}},
 			},
-			{tool: "OpenCode", root: processInfo{pid: 303}},
+			{provider: event.ProviderOpenCode, root: processInfo{pid: 303}},
 		},
 		refreshed: time.Now(),
 	})
@@ -106,7 +108,7 @@ func TestProcessRefreshHidesRuntimesWithoutSessionMetadata(t *testing.T) {
 	// A runtime that loses its metadata past the grace period disappears too.
 	for range sessionMetadataGraceRefreshes + 1 {
 		updated, _ = m.Update(processResultMsg{
-			groups:    []processGroup{{tool: "Codex", root: processInfo{pid: 202, tty: "ttys002", command: "codex"}}},
+			groups:    []processGroup{{provider: event.ProviderCodex, root: processInfo{pid: 202, tty: "ttys002", command: "codex"}}},
 			refreshed: time.Now(),
 		})
 		m = updated.(model)
@@ -117,15 +119,15 @@ func TestProcessRefreshHidesRuntimesWithoutSessionMetadata(t *testing.T) {
 }
 
 func TestUnlinkedSessionMessages(t *testing.T) {
-	for tool, want := range map[string]string{
-		"Codex": "no Codex rollout metadata found", "Claude": "no Claude Code transcript found",
-		"OpenCode": "no OpenCode session found", "Kimi": "no Kimi session metadata found",
-		"Copilot": "no Copilot session metadata found", "Gemini": "no Gemini CLI session log found",
-		"Cursor": "no Cursor CLI transcript found", "Other": "no session metadata adapter",
+	for provider, want := range map[event.Provider]string{
+		event.ProviderCodex: "no Codex rollout metadata found", event.ProviderClaude: "no Claude Code transcript found",
+		event.ProviderOpenCode: "no OpenCode session found", event.ProviderKimi: "no Kimi session metadata found",
+		event.ProviderCopilot: "no Copilot session metadata found", event.ProviderGemini: "no Gemini CLI session log found",
+		event.ProviderCursor: "no Cursor CLI transcript found", "other": "no session metadata adapter", "": "no session metadata adapter",
 	} {
-		lines := dashGroupDetail(processGroup{tool: tool, root: processInfo{pid: 1}}, 1000)
+		lines := dashGroupDetail(processGroup{provider: provider, root: processInfo{pid: 1}}, 1000)
 		if len(lines) == 0 || !strings.Contains(ansi.Strip(lines[0]), want) {
-			t.Errorf("%s message = %q, want %q", tool, lines, want)
+			t.Errorf("%q message = %q, want %q", provider, lines, want)
 		}
 	}
 }
@@ -302,8 +304,8 @@ func TestProcessViewSelectsGroups(t *testing.T) {
 	m.processGroups = make([]processGroup, 20)
 	for index := range m.processGroups {
 		m.processGroups[index] = processGroup{
-			tool: "Codex",
-			root: processInfo{pid: index + 1},
+			provider: event.ProviderCodex,
+			root:     processInfo{pid: index + 1},
 		}
 	}
 
@@ -318,8 +320,8 @@ func TestProcessSwitchKeyStartsTerminalFocus(t *testing.T) {
 	m := testModel()
 	m.activeTab = processesTab
 	m.processGroups = []processGroup{{
-		tool: "Codex",
-		root: processInfo{pid: 101, tty: "ttys001"},
+		provider: event.ProviderCodex,
+		root:     processInfo{pid: 101, tty: "ttys001"},
 	}}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
@@ -390,8 +392,8 @@ func TestSwitchTerminalTargetFallsBackWhenHerdrFocusFails(t *testing.T) {
 func TestExpandedProcessGroupShowsSessionAndChildren(t *testing.T) {
 	m := testModel()
 	m.processGroups = []processGroup{{
-		tool: "Codex",
-		root: processInfo{pid: 100, tty: "ttys001", elapsed: "01:23"},
+		provider: event.ProviderCodex,
+		root:     processInfo{pid: 100, tty: "ttys001", elapsed: "01:23"},
 		processes: []processInfo{
 			{pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:23", command: "codex"},
 			{pid: 101, ppid: 100, tty: "ttys001", elapsed: "01:22", command: "codex app-server"},
@@ -468,8 +470,8 @@ func TestTextViewsFitTerminal(t *testing.T) {
 
 func TestRetainKnownSessionMetadataExpiresAfterGrace(t *testing.T) {
 	root := processInfo{pid: 100, command: "codex app-server"}
-	withSession := []processGroup{{tool: "Codex", root: root, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}}}
-	empty := func() []processGroup { return []processGroup{{tool: "Codex", root: root}} }
+	withSession := []processGroup{{provider: event.ProviderCodex, root: root, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}}}
+	empty := func() []processGroup { return []processGroup{{provider: event.ProviderCodex, root: root}} }
 
 	groups, misses := withSession, map[int]int(nil)
 	for refresh := 1; refresh <= sessionMetadataGraceRefreshes; refresh++ {
@@ -490,9 +492,9 @@ func TestRetainKnownSessionMetadataExpiresAfterGrace(t *testing.T) {
 func TestRetainKnownSessionMetadataResetsWhenMetadataReturns(t *testing.T) {
 	root := processInfo{pid: 100, command: "codex"}
 	withSession := func() []processGroup {
-		return []processGroup{{tool: "Codex", root: root, sessions: []sessionInfo{{id: "thread-1"}}}}
+		return []processGroup{{provider: event.ProviderCodex, root: root, sessions: []sessionInfo{{id: "thread-1"}}}}
 	}
-	empty := []processGroup{{tool: "Codex", root: root}}
+	empty := []processGroup{{provider: event.ProviderCodex, root: root}}
 
 	groups, misses := retainKnownSessionMetadata(withSession(), empty, nil)
 	groups, misses = retainKnownSessionMetadata(groups, withSession(), misses)
@@ -500,7 +502,7 @@ func TestRetainKnownSessionMetadataResetsWhenMetadataReturns(t *testing.T) {
 		t.Fatalf("misses = %v, want reset after metadata returned", misses)
 	}
 	for refresh := 1; refresh <= sessionMetadataGraceRefreshes; refresh++ {
-		groups, misses = retainKnownSessionMetadata(groups, []processGroup{{tool: "Codex", root: root}}, misses)
+		groups, misses = retainKnownSessionMetadata(groups, []processGroup{{provider: event.ProviderCodex, root: root}}, misses)
 		if len(groups[0].sessions) != 1 {
 			t.Fatalf("refresh %d: grace period did not restart", refresh)
 		}
@@ -508,8 +510,8 @@ func TestRetainKnownSessionMetadataResetsWhenMetadataReturns(t *testing.T) {
 }
 
 func TestRetainKnownSessionMetadataSkipsChangedRuntime(t *testing.T) {
-	previous := []processGroup{{tool: "Codex", root: processInfo{pid: 100, command: "codex"}, sessions: []sessionInfo{{id: "a"}}}}
-	refreshed := []processGroup{{tool: "Codex", root: processInfo{pid: 100, command: "codex resume"}}}
+	previous := []processGroup{{provider: event.ProviderCodex, root: processInfo{pid: 100, command: "codex"}, sessions: []sessionInfo{{id: "a"}}}}
+	refreshed := []processGroup{{provider: event.ProviderCodex, root: processInfo{pid: 100, command: "codex resume"}}}
 	groups, _ := retainKnownSessionMetadata(previous, refreshed, nil)
 	if len(groups[0].sessions) != 0 {
 		t.Fatal("metadata must not carry over to a different command")
@@ -522,7 +524,7 @@ func TestProcessRefreshDropsClosedCodexSession(t *testing.T) {
 	m := testModel()
 	root := processInfo{pid: 100, command: "codex app-server"}
 	updated, _ := m.Update(processResultMsg{refreshed: time.Now(), groups: []processGroup{
-		{tool: "Codex", root: root, processes: []processInfo{root}, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}},
+		{provider: event.ProviderCodex, root: root, processes: []processInfo{root}, sessions: []sessionInfo{{id: "thread-1", state: sessionStateWaiting}}},
 	}})
 	m = updated.(model)
 	updated, _ = m.Update(processResultMsg{refreshed: time.Now()})

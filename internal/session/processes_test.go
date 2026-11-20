@@ -32,9 +32,6 @@ func TestParseProcessesFiltersClassifiesAndSanitizes(t *testing.T) {
 		t.Fatalf("roles = %s, %s, %s", processes[0].Role, processes[1].Role, processes[2].Role)
 	}
 	for _, p := range processes {
-		if p.Tool != toolName(p.Provider) {
-			t.Fatalf("Tool %q doesn't match provider %q", p.Tool, p.Provider)
-		}
 		if p.Invocation.Program == "" {
 			t.Fatalf("process %d has no invocation", p.PID)
 		}
@@ -48,7 +45,7 @@ func TestParseProcessesFiltersClassifiesAndSanitizes(t *testing.T) {
 }
 
 func proc(p event.Provider, role Role, pid, ppid int) ProcessInfo {
-	return ProcessInfo{Provider: p, Role: role, Tool: toolName(p), PID: pid, PPID: ppid}
+	return ProcessInfo{Provider: p, Role: role, PID: pid, PPID: ppid}
 }
 
 func TestGroupProcessesUsesTopmostMatchingParent(t *testing.T) {
@@ -173,8 +170,8 @@ func TestGroupProcessesRoles(t *testing.T) {
 				}
 			}
 			for _, g := range groups {
-				if g.Provider != g.Root.Provider || g.Role != g.Root.Role || g.Tool != g.Root.Tool {
-					t.Fatalf("group %d has %q %s %q, root has %q %s %q", g.Root.PID, g.Provider, g.Role, g.Tool, g.Root.Provider, g.Root.Role, g.Root.Tool)
+				if g.Provider != g.Root.Provider || g.Role != g.Root.Role {
+					t.Fatalf("group %d has %q %s, root has %q %s", g.Root.PID, g.Provider, g.Role, g.Root.Provider, g.Root.Role)
 				}
 			}
 		})
@@ -200,7 +197,7 @@ func classifyLine(command string) string {
 		return ""
 	}
 	if role == RoleSession {
-		return toolName(provider)
+		return ToolName(provider)
 	}
-	return toolName(provider) + "/" + role.String()
+	return ToolName(provider) + "/" + role.String()
 }

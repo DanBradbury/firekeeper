@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/parallel"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Cursor CLI reads stay bounded: state comes from the tail of a transcript,
@@ -63,7 +64,7 @@ func (d *discoverer) enrichCursorSessions(groups []ProcessGroup) error {
 	for index := range groups {
 		// Only session groups are linked: these providers read no evidence a
 		// server holds a session, and servers never guess (invariant 8).
-		if groups[index].Tool == "Cursor" && groups[index].Role == RoleSession {
+		if groups[index].Provider == event.ProviderCursor && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

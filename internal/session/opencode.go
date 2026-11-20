@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // OpenCode keeps every session in one SQLite database, so a transcript path
@@ -114,7 +116,7 @@ func (d *discoverer) openCodeSessionIDFromArgs(args []string) (string, bool) {
 func (d *discoverer) enrichOpenCodeSessions(groups []ProcessGroup) error {
 	var groupIndexes []int
 	for index := range groups {
-		if groups[index].Tool == "OpenCode" && groups[index].Role == RoleSession {
+		if groups[index].Provider == event.ProviderOpenCode && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

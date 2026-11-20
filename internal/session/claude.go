@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/parallel"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Claude Code reads stay bounded: state and metadata come from the tail of a
@@ -106,7 +107,7 @@ func (d *discoverer) enrichClaudeSessions(groups []ProcessGroup) error {
 	for index := range groups {
 		// Only session groups are linked: these providers read no evidence a
 		// server holds a session, and servers never guess (invariant 8).
-		if groups[index].Tool == "Claude" && groups[index].Role == RoleSession {
+		if groups[index].Provider == event.ProviderClaude && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

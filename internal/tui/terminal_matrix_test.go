@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/firekeeper-ai/firekeeper/internal/winterm"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // matrixProviders is every harness the dashboard can discover. Switching must
 // not depend on which one owns the selected runtime.
-var matrixProviders = []string{"Codex", "Copilot", "Claude", "Kimi", "OpenCode", "Gemini", "Cursor"}
+var matrixProviders = event.Providers()
 
 // macAdapterMarkers maps each AppleScript adapter to text unique to its script.
 var macAdapterMarkers = map[string]string{
@@ -19,12 +20,12 @@ var macAdapterMarkers = map[string]string{
 	"Ghostty":      "com.mitchellh.ghostty",
 }
 
-func matrixGroup(provider, tty string) processGroup {
+func matrixGroup(provider event.Provider, tty string) processGroup {
 	return processGroup{
-		tool: provider,
-		root: processInfo{tool: provider, pid: 100, ppid: 1, tty: tty, command: strings.ToLower(provider)},
+		provider: provider,
+		root:     processInfo{provider: provider, pid: 100, ppid: 1, tty: tty, command: string(provider)},
 		processes: []processInfo{
-			{tool: provider, pid: 101, ppid: 100, tty: tty, command: strings.ToLower(provider) + " helper"},
+			{provider: provider, pid: 101, ppid: 100, tty: tty, command: string(provider) + " helper"},
 		},
 	}
 }
@@ -48,7 +49,7 @@ func fakeOsascript(owner string) func(string, ...string) (string, error) {
 func TestEveryProviderSwitchesToEveryMacTerminal(t *testing.T) {
 	for _, provider := range matrixProviders {
 		for owner := range macAdapterMarkers {
-			t.Run(provider+"/"+owner, func(t *testing.T) {
+			t.Run(string(provider)+"/"+owner, func(t *testing.T) {
 				target := newTerminalSwitchTarget(matrixGroup(provider, "ttys042"), -1)
 				result := switchTerminalTargetWith(target, noHerdr, func(tty, cwd string) (string, error) {
 					return focusTerminalSessionWith(tty, "/work/repo", "darwin", fakeOsascript(owner))
@@ -65,7 +66,7 @@ func TestEveryProviderSwitchesTabsInsideOneTerminalApp(t *testing.T) {
 	// Two runtimes of one provider sit in different tabs: each switch carries
 	// the TTY of the selected runtime, never the other's.
 	for _, provider := range matrixProviders {
-		t.Run(provider, func(t *testing.T) {
+		t.Run(string(provider), func(t *testing.T) {
 			var seen []string
 			run := func(script string, args ...string) (string, error) {
 				if strings.Contains(script, macAdapterMarkers["iTerm2"]) {
@@ -89,7 +90,7 @@ func TestEveryProviderSwitchesTabsInsideOneTerminalApp(t *testing.T) {
 
 func TestEveryProviderSwitchesGhosttyByCWDWhenOtherTerminalsAreClosed(t *testing.T) {
 	for _, provider := range matrixProviders {
-		t.Run(provider, func(t *testing.T) {
+		t.Run(string(provider), func(t *testing.T) {
 			var gotCWD string
 			run := func(script string, args ...string) (string, error) {
 				if strings.Contains(script, macAdapterMarkers["Ghostty"]) {
@@ -99,10 +100,10 @@ func TestEveryProviderSwitchesGhosttyByCWDWhenOtherTerminalsAreClosed(t *testing
 				return "not-running", nil
 			}
 			group := matrixGroup(provider, "ttys077")
-			group.sessions = []sessionInfo{{id: "s1", cwd: "/work/" + provider}}
+			group.sessions = []sessionInfo{{id: "s1", cwd: "/work/" + string(provider)}}
 			target := newTerminalSwitchTarget(group, 0)
 			app, err := focusTerminalSessionWith(target.tty, target.cwd, "darwin", run)
-			if err != nil || app != "Ghostty" || gotCWD != "/work/"+provider {
+			if err != nil || app != "Ghostty" || gotCWD != "/work/"+string(provider) {
 				t.Fatalf("app %q cwd %q err %v", app, gotCWD, err)
 			}
 		})
@@ -141,7 +142,7 @@ func TestEveryProviderSwitchesToWindowsTerminalHost(t *testing.T) {
 		{PID: 101, PPID: 100, Exe: "node.exe"},
 	}
 	for _, provider := range matrixProviders {
-		t.Run(provider, func(t *testing.T) {
+		t.Run(string(provider), func(t *testing.T) {
 			target := newTerminalSwitchTarget(matrixGroup(provider, ""), -1)
 			var candidates []int
 			result := switchTerminalTargetWith(target, noHerdr, func(string, string) (string, error) {

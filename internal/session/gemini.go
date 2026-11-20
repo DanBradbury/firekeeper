@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/parallel"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Gemini CLI reads stay bounded: metadata comes from the first record and the
@@ -88,7 +89,7 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	for index := range groups {
 		// Only session groups are linked: these providers read no evidence a
 		// server holds a session, and servers never guess (invariant 8).
-		if groups[index].Tool == "Gemini" && groups[index].Role == RoleSession {
+		if groups[index].Provider == event.ProviderGemini && groups[index].Role == RoleSession {
 			groupIndexes = append(groupIndexes, index)
 		}
 	}

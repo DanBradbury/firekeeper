@@ -166,7 +166,7 @@ func linkProviders(active []int, link func(index int)) {
 	defer func() {
 		if value := recover(); value != nil {
 			if p, ok := value.(*parallel.Panic); ok {
-				panic(&linkPanic{provider: toolName(adapters[active[p.Index]].Provider()), cause: p})
+				panic(&linkPanic{provider: ToolName(adapters[active[p.Index]].Provider()), cause: p})
 			}
 			panic(value)
 		}
@@ -225,7 +225,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 	linkProviders(active, func(index int) {
 		a := adapters[index]
 		if err := a.Link(d, owned[index]); err != nil {
-			linkWarnings[index] = toolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
+			linkWarnings[index] = ToolName(a.Provider()) + ": " + d.sanitizeProcessCommand(err.Error())
 		}
 	})
 	var warnings []string
@@ -288,7 +288,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				cwd = rootCWDs[i]
 			}
 			project := projects[cwd]
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: strings.ToLower(g.Tool), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: string(g.Provider), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

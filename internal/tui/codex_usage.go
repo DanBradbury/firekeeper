@@ -18,6 +18,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const (
@@ -699,7 +700,7 @@ func activeCodexModelUsage(groups []processGroup) []modelUsage {
 	totals := make(map[string]int64)
 	seen := make(map[string]bool)
 	for _, group := range groups {
-		if group.tool != "Codex" {
+		if group.provider != event.ProviderCodex {
 			continue
 		}
 		for _, session := range group.sessions {

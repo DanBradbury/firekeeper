@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/testenv"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 const testCopilotSessionID = "dc315f47-bf71-4447-b252-5ba9cbad8b51"
@@ -86,7 +87,7 @@ func TestCopilotSessionIDFromPIDLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	group := ProcessGroup{
-		Tool:      "Copilot",
+		Provider:  event.ProviderCopilot,
 		Root:      ProcessInfo{PID: 300, Command: "copilot"},
 		Processes: []ProcessInfo{{PID: 300, Command: "copilot"}},
 	}

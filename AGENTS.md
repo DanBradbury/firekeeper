@@ -242,9 +242,10 @@ Checklist for a new harness:
    may then be matched by directory, after the session groups). It never
    receives tool groups (`Discover` filters them). The shared adapter tests
    must pass.
-5. Add the `event.Provider` constant, its display name in `toolName`
-   (`internal/session`; a missing name leaves `Tool` empty and fails the
-   registry test), and the provider's UI cases (name, colour, icon, message).
+5. Add the `event.Provider` constant, its display name in `ToolName`
+   (`internal/session`; a missing name fails the registry test), and its
+   entry in `providerStyles` (`internal/tui/providers.go`: colour, icon,
+   message; a missing entry fails `TestProviderStylesCoverEveryProvider`).
 6. Add its transcript reader in `internal/transcript/reader`.
 
 ## Session semantics

@@ -6,16 +6,17 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestFromProcessGroupCopiesEveryField(t *testing.T) {
 	updated := time.Date(2026, 10, 13, 12, 0, 0, 0, time.UTC)
 	in := session.ProcessGroup{
-		Tool: "Codex",
-		Root: session.ProcessInfo{Tool: "Codex", PID: 100, PPID: 1, TTY: "ttys001", Elapsed: "01:00", Command: "codex"},
+		Provider: event.ProviderCodex,
+		Root:     session.ProcessInfo{Provider: event.ProviderCodex, PID: 100, PPID: 1, TTY: "ttys001", Elapsed: "01:00", Command: "codex"},
 		Processes: []session.ProcessInfo{
-			{Tool: "Codex", PID: 100, PPID: 1, TTY: "ttys001", Elapsed: "01:00", Command: "codex"},
-			{Tool: "Codex", PID: 101, PPID: 100, TTY: "ttys001", Elapsed: "00:30", Command: "codex exec"},
+			{Provider: event.ProviderCodex, PID: 100, PPID: 1, TTY: "ttys001", Elapsed: "01:00", Command: "codex"},
+			{Provider: event.ProviderCodex, PID: 101, PPID: 100, TTY: "ttys001", Elapsed: "00:30", Command: "codex exec"},
 		},
 		Sessions: []session.Info{{
 			ID: "id-1", Name: "name", State: session.SessionStateNeedsInput, CWD: "/work",
@@ -26,11 +27,11 @@ func TestFromProcessGroupCopiesEveryField(t *testing.T) {
 		}},
 	}
 	want := processGroup{
-		tool: "Codex",
-		root: processInfo{tool: "Codex", pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:00", command: "codex"},
+		provider: event.ProviderCodex,
+		root:     processInfo{provider: event.ProviderCodex, pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:00", command: "codex"},
 		processes: []processInfo{
-			{tool: "Codex", pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:00", command: "codex"},
-			{tool: "Codex", pid: 101, ppid: 100, tty: "ttys001", elapsed: "00:30", command: "codex exec"},
+			{provider: event.ProviderCodex, pid: 100, ppid: 1, tty: "ttys001", elapsed: "01:00", command: "codex"},
+			{provider: event.ProviderCodex, pid: 101, ppid: 100, tty: "ttys001", elapsed: "00:30", command: "codex exec"},
 		},
 		// The dashboard has no use for StartedAt, so it is not copied.
 		sessions: []sessionInfo{{
@@ -47,11 +48,11 @@ func TestFromProcessGroupCopiesEveryField(t *testing.T) {
 }
 
 func TestFromProcessGroupKeepsNilSlicesNil(t *testing.T) {
-	got := fromProcessGroup(session.ProcessGroup{Tool: "Kimi", Root: session.ProcessInfo{PID: 7}})
+	got := fromProcessGroup(session.ProcessGroup{Provider: event.ProviderKimi, Root: session.ProcessInfo{PID: 7}})
 	if got.processes != nil || got.sessions != nil {
 		t.Fatalf("nil slices became %#v and %#v", got.processes, got.sessions)
 	}
-	if got.tool != "Kimi" || got.root.pid != 7 {
+	if got.provider != event.ProviderKimi || got.root.pid != 7 {
 		t.Fatalf("group = %#v", got)
 	}
 }

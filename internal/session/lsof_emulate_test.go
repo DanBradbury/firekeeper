@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func TestEmulateLsofCurrentDirectories(t *testing.T) {
@@ -68,7 +70,7 @@ func TestPSLineParsesLikePS(t *testing.T) {
 		t.Fatalf("parsed %d processes from %q", len(procs), line)
 	}
 	p := procs[0]
-	if p.PID != 4242 || p.PPID != 100 || p.Tool != "Codex" || p.TTY != "" || p.Elapsed != "01:30" {
+	if p.PID != 4242 || p.PPID != 100 || p.Provider != event.ProviderCodex || p.TTY != "" || p.Elapsed != "01:30" {
 		t.Fatalf("process = %+v", p)
 	}
 }

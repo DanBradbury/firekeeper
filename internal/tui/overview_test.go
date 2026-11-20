@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/firekeeper-ai/firekeeper/internal/claudelimits"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 func overviewTestModel(now time.Time) model {
@@ -287,9 +288,9 @@ func TestOverviewProviderIcons(t *testing.T) {
 		for _, width := range []int{80, 150} {
 			m.width = width
 			view := ansi.Strip(m.viewOverview(40))
-			for _, name := range []string{"Codex", "Copilot", "Claude", "Kimi"} {
-				if !strings.Contains(view, "╭─"+toolLabel(name)) {
-					t.Fatalf("mode %d width %d: missing %s header", mode, width, name)
+			for _, provider := range []event.Provider{event.ProviderCodex, event.ProviderCopilot, event.ProviderClaude, event.ProviderKimi} {
+				if !strings.Contains(view, "╭─"+toolLabel(provider)) {
+					t.Fatalf("mode %d width %d: missing %s header", mode, width, provider)
 				}
 			}
 		}
