@@ -402,3 +402,6 @@ if ($script:fails -gt 0) {
     exit 1
 }
 Write-Host 'all checks passed'
+# Exit explicitly: a native command above (fk.cmd /c exit 7) leaves
+# $LASTEXITCODE non-zero, and a CI step that runs this script would report it.
+exit 0
