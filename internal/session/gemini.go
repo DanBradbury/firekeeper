@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 )
 
 // Gemini CLI reads stay bounded: metadata comes from the first record and the
@@ -142,7 +144,7 @@ func (d *discoverer) enrichGeminiSessions(groups []ProcessGroup) error {
 	// Each session log is read on its own goroutine: the reads are
 	// independent, and each parses up to GeminiTranscriptTailBytes.
 	loaded := make([]bool, len(groupIndexes))
-	parallel(len(groupIndexes), func(i int) {
+	parallel.Bounded(len(groupIndexes), func(i int) {
 		index := groupIndexes[i]
 		path, ok := paths[index]
 		if !ok {
