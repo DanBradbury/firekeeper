@@ -106,7 +106,7 @@ func TestUsageFilterTypingNarrowsListAndSaysSo(t *testing.T) {
 		t.Fatalf("filtered sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{`sessions · 1/2 of 4 · filter "FIX"`, "filter FIX▏", "enter keep · esc clear", "Fix auth bug", "fix ci"} {
+	for _, want := range []string{`Sessions · 1/2 of 4 · filter "FIX"`, "filter FIX▏", "enter keep · esc clear", "Fix auth bug", "fix ci"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
@@ -178,7 +178,7 @@ func TestUsageFilterWithoutMatchesSaysSo(t *testing.T) {
 	m := filterTestModel(t)
 	m, _ = sendKeys(t, m, append([]tea.KeyMsg{keyRunes('/')}, typed("nope")...)...)
 	view := ansi.Strip(m.View())
-	for _, want := range []string{`sessions · 0 of 4 · filter "nope"`, `No Codex sessions match "nope".`} {
+	for _, want := range []string{`Sessions · 0 of 4 · filter "nope"`, `No Codex sessions match "nope".`} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}

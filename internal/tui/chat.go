@@ -319,7 +319,7 @@ func (m model) viewChat(contentRows int) string {
 		start := min(m.chat.scroll, len(lines))
 		body = lines[start:min(start+m.chatPageRows(), len(lines))]
 	}
-	title := "chat (" + sanitizeProcessCommand(m.chat.title) + ")"
+	title := "Chat (" + sanitizeProcessCommand(m.chat.title) + ")"
 	if contentRows < 3 {
 		lines := make([]string, contentRows)
 		for index := range lines {

@@ -206,7 +206,7 @@ func TestClaudeUsageUsageTabLimitsCard(t *testing.T) {
 	m.claudeUsage.LimitsOn = true
 	m.claudeUsage.Limits = claudelimits.Limits{SevenDay: &claudelimits.Window{UsedPercent: 88, ResetsAt: now.Add(26 * time.Hour)}}
 	view := ansi.Strip(m.viewUsagePage(30))
-	for _, expected := range []string{"╭─limits", "Weekly", "88%", "↻ 1d", "╭─lifetime", "╭─models"} {
+	for _, expected := range []string{"╭─Limits", "Weekly", "88%", "↻ 1d", "╭─Lifetime", "╭─Models"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("missing %q:\n%s", expected, view)
 		}

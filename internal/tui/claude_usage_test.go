@@ -156,7 +156,7 @@ func TestClaudeUsageViewShowsLocalHistoryAndLimitation(t *testing.T) {
 	}
 	rawView := m.viewUsagePage(24)
 	view := ansi.Strip(rawView)
-	for _, expected := range []string{"╭─lifetime", "Responses", "1.2K", "firekeeper claude-limits enable", "╭─tokens by day", "Today", "CLAUDE OPUS"} {
+	for _, expected := range []string{"╭─Lifetime", "Responses", "1.2K", "firekeeper claude-limits enable", "╭─Tokens by day", "Today", "CLAUDE OPUS"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("Claude usage view missing %q:\n%s", expected, view)
 		}
@@ -227,7 +227,7 @@ func TestUsageViewIsCardsAndWidthSafe(t *testing.T) {
 				t.Fatalf("%v: line width = %d, want 80", provider, got)
 			}
 		}
-		wantTitle := map[usageProvider]string{codexProvider: "limits", copilotProvider: "plan", kimiProvider: "lifetime", claudeProvider: "lifetime"}[provider]
+		wantTitle := map[usageProvider]string{codexProvider: "Limits", copilotProvider: "Plan", kimiProvider: "Lifetime", claudeProvider: "Lifetime"}[provider]
 		if !strings.Contains(ansi.Strip(lines[1]), "╭─"+wantTitle) {
 			t.Fatalf("%v: missing panel border: %q", provider, ansi.Strip(lines[1]))
 		}

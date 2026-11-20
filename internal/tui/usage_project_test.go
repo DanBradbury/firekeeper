@@ -122,7 +122,7 @@ func TestUsageProjectKeyShowsOnlyThatProject(t *testing.T) {
 		t.Fatalf("sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"sessions · 1/1 of 4 · project auth-service", "filter project:auth-service", "/ edit · esc clear", "▸ auth-service", "projects · last 4", "  alpha"} {
+	for _, want := range []string{"Sessions · 1/1 of 4 · project auth-service", "filter project:auth-service", "/ edit · esc clear", "▸ auth-service", "Projects · last 4", "  alpha"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
@@ -157,7 +157,7 @@ func TestUsageProjectComposesWithFilterAndSort(t *testing.T) {
 		t.Fatalf("sessions = %s", got)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{`sessions · 1/2 of 5 · project beta · filter "fix" · most tokens`, "filter project:beta fix", "/ edit · esc clear"} {
+	for _, want := range []string{`Sessions · 1/2 of 5 · project beta · filter "fix" · most tokens`, "filter project:beta fix", "/ edit · esc clear"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
@@ -195,7 +195,7 @@ func TestUsageProjectWithoutMatchesSaysSo(t *testing.T) {
 	m := filterTestModel(t)
 	m.usageFilter = "project:gamma auth"
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"sessions · 0 of 4 · project gamma", `No Codex sessions in project gamma match "auth".`} {
+	for _, want := range []string{"Sessions · 0 of 4 · project gamma", `No Codex sessions in project gamma match "auth".`} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("view missing %q:\n%s", want, view)
 		}
