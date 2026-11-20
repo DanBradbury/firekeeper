@@ -74,6 +74,26 @@ The Windows script updates the current session and your user PATH. Terminals
 already open elsewhere may need to be reopened. If you installed manually or
 disabled PATH changes, add the installation directory to your user PATH.
 
+## The `fk` short name
+
+Homebrew and both install scripts also add `fk`, a short name for
+`firekeeper`: `fk login` is `firekeeper login`. `firekeeper` keeps working;
+`fk` runs the same binary.
+
+- Homebrew links `fk` to `firekeeper` in its `bin` directory.
+- `install.sh` adds a symlink `fk -> firekeeper` beside the binary.
+- `install.ps1` adds `fk.cmd` beside `firekeeper.exe`. It runs through
+  `cmd.exe`, so pressing Ctrl+C in a subcommand that is not the dashboard
+  (such as a foreground `fk daemon`) may ask "Terminate batch job (Y/N)?".
+  Use `firekeeper` there if that bothers you.
+
+The scripts never replace anything else called `fk`. If the install
+directory already has one, or `fk` is already on your `PATH`, they skip it and
+say so. To skip it yourself, pass `--no-fk` to `install.sh` or `-NoFk` to
+`install.ps1`, or set `FIREKEEPER_NO_FK` to any value before piping. A shell
+alias or function named `fk` in your shell configuration takes precedence over
+the installed `fk`.
+
 ## Install locations and version pinning
 
 The install script puts the binary in `~/.local/bin` (set
@@ -187,7 +207,8 @@ reports its version as `dev`. For development, use `go run .`. If
    systemd user service, or, on Windows, the "Firekeeper Daemon" Task
    Scheduler task.
 2. Remove the binary: `brew uninstall firekeeper`, or
-   `rm ~/.local/bin/firekeeper` (or wherever you installed it). On Windows,
+   `rm ~/.local/bin/firekeeper ~/.local/bin/fk` (or wherever you installed
+   it; remove `fk` only if it is the symlink to `firekeeper`). On Windows,
    delete `%LOCALAPPDATA%\Programs\firekeeper` and remove it from your user
    `PATH` (Settings, "Edit environment variables for your account").
 

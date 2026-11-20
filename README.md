@@ -73,6 +73,11 @@ irm https://raw.githubusercontent.com/firekeeper-ai/firekeeper/main/install.ps1 
 Installs to `%LOCALAPPDATA%\Programs\firekeeper` and adds it to your user
 `PATH`; no administrator rights are needed.
 
+Each method also adds `fk`, a short name for `firekeeper` (`fk login`,
+`fk report`); `firekeeper` keeps working as before. The scripts skip `fk` if
+something by that name is already on your `PATH`
+([details](docs/install.md#the-fk-short-name)).
+
 The script commands download and execute code. For manual downloads,
 checksum verification, version pinning, source builds, or uninstalling, see
 [Install and uninstall](docs/install.md).

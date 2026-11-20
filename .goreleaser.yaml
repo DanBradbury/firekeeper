@@ -72,5 +72,10 @@ brews:
     license: Apache-2.0
     # Prereleases do not move the tap.
     skip_upload: auto
+    # fk is a short name for firekeeper, as in install.sh and install.ps1.
+    install: |
+      bin.install "firekeeper"
+      bin.install_symlink "firekeeper" => "fk"
     test: |
       assert_match version.to_s, shell_output("#{bin}/firekeeper --version")
+      assert_match version.to_s, shell_output("#{bin}/fk --version")

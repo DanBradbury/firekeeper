@@ -152,6 +152,45 @@ if FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh -s -- --vers
 	ok "piped to sh"
 else bad "piped to sh"; fi
 
+# 11. fk is added beside firekeeper and runs it.
+dir="$work/bin9"
+out=$(FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.3 2>&1) || true
+if [ -L "$dir/fk" ] && [ "$(readlink "$dir/fk")" = firekeeper ] && [ "$("$dir/fk")" = "firekeeper 1.2.3 (fake)" ]; then
+	ok "fk added and runs firekeeper"
+else bad "fk added and runs firekeeper: $out"; fi
+case "$out" in *"Added $dir/fk"*) ok "fk addition reported" ;; *) bad "fk addition reported: $out" ;; esac
+
+# 12. An upgrade keeps fk, quietly, and fk runs the new binary.
+make_release "$work/releases" v1.2.4
+out=$(FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.4 2>&1) || true
+if [ "$("$dir/fk")" = "firekeeper 1.2.4 (fake)" ]; then ok "fk follows an upgrade"; else bad "fk follows an upgrade: $out"; fi
+case "$out" in *"fk short name"* | *"Added $dir/fk"*) bad "reinstall is quiet about its own fk: $out" ;; *) ok "reinstall is quiet about its own fk" ;; esac
+
+# 13. Another fk in the install directory is left alone.
+dir="$work/bin10"
+mkdir -p "$dir"
+printf 'mine' >"$dir/fk"
+out=$(FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.3 2>&1) || true
+if [ ! -L "$dir/fk" ] && [ "$(cat "$dir/fk")" = mine ] && [ -x "$dir/firekeeper" ]; then ok "existing fk in install dir kept"; else bad "existing fk in install dir kept: $out"; fi
+case "$out" in *"Skipped the fk short name: $dir/fk already exists"*) ok "existing fk in install dir reported" ;; *) bad "existing fk in install dir reported: $out" ;; esac
+
+# 14. An fk elsewhere on PATH is not shadowed.
+mkdir -p "$work/otherfk"
+printf '#!/bin/sh\necho other\n' >"$work/otherfk/fk"
+chmod 755 "$work/otherfk/fk"
+dir="$work/bin11"
+out=$(PATH="$work/otherfk:$PATH" FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.3 2>&1) || true
+if [ ! -e "$dir/fk" ] && [ ! -L "$dir/fk" ] && [ -x "$dir/firekeeper" ]; then ok "fk on PATH not shadowed"; else bad "fk on PATH not shadowed: $out"; fi
+case "$out" in *"fk is already $work/otherfk/fk"*) ok "fk on PATH reported" ;; *) bad "fk on PATH reported: $out" ;; esac
+
+# 15. --no-fk and FIREKEEPER_NO_FK skip fk.
+dir="$work/bin12"
+FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.3 --no-fk >/dev/null 2>&1 || true
+if [ -x "$dir/firekeeper" ] && [ ! -e "$dir/fk" ] && [ ! -L "$dir/fk" ]; then ok "--no-fk skips fk"; else bad "--no-fk skips fk"; fi
+dir="$work/bin13"
+FIREKEEPER_NO_FK=1 FIREKEEPER_RELEASES_URL="$base" FIREKEEPER_INSTALL_DIR="$dir" sh "$installer" --version v1.2.3 >/dev/null 2>&1 || true
+if [ -x "$dir/firekeeper" ] && [ ! -e "$dir/fk" ] && [ ! -L "$dir/fk" ]; then ok "FIREKEEPER_NO_FK skips fk"; else bad "FIREKEEPER_NO_FK skips fk"; fi
+
 [ "$fails" -eq 0 ] || {
 	printf '%d failure(s)\n' "$fails"
 	exit 1
