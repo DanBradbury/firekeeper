@@ -8,7 +8,7 @@ below, each under its own license. The full license texts follow.
 
 | Component | Version |
 | --- | --- |
-| Go standard library and runtime | go1.26.0 |
+| Go standard library and runtime | go1.27.3 |
 | github.com/BurntSushi/toml | v1.5.0 |
 | github.com/aymanbagabas/go-osc52/v2 | v2.0.1 |
 | github.com/charmbracelet/bubbletea | v1.3.10 |
