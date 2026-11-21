@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
 
@@ -364,16 +365,22 @@ var (
 )
 
 // ParseProvider reads a provider name a person typed, in a flag or the
-// config: surrounding spaces and case do not matter. It returns the
+// config: surrounding spaces and the case of ASCII letters do not matter,
+// and any other character makes the name unknown. It returns the
 // canonical provider, ErrNoProvider for an empty name, or an error wrapping
 // ErrUnknownProvider. Data from other programs is checked strictly with
 // Provider.Valid instead.
 func ParseProvider(name string) (transcript.Provider, error) {
-	p := transcript.Provider(strings.ToLower(strings.TrimSpace(name)))
-	switch {
-	case p == "":
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
 		return "", ErrNoProvider
-	case !p.Valid():
+	}
+	// Provider ids are ASCII, so only ASCII letters may differ in case.
+	// Unicode lowercasing would turn look-alikes into ids: the Kelvin sign
+	// in "Kimi" becomes "k", and the Turkish "İ" in "copİlot" becomes "i".
+	nonASCII := strings.IndexFunc(trimmed, func(r rune) bool { return r >= utf8.RuneSelf }) >= 0
+	p := transcript.Provider(strings.ToLower(trimmed))
+	if nonASCII || !p.Valid() {
 		return "", fmt.Errorf("%w %q (want one of %s)", ErrUnknownProvider, name, providerNames())
 	}
 	return p, nil

@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
@@ -18,6 +19,10 @@ func TestParseProvider(t *testing.T) {
 		{"Claude", transcript.ProviderClaude},
 		{" CLAUDE ", transcript.ProviderClaude},
 		{"\tOpenCode\n", transcript.ProviderOpenCode},
+		// Unicode spaces around the name are trimmed: a pasted no-break
+		// space is not part of the name.
+		{"claude\u00a0", transcript.ProviderClaude},
+		{"\u3000codex", transcript.ProviderCodex},
 	} {
 		got, err := ParseProvider(test.in)
 		if err != nil || got != test.want {
@@ -53,6 +58,24 @@ func TestParseProviderRejects(t *testing.T) {
 	}
 }
 
+// Provider ids are ASCII, so a name with any other character is unknown,
+// even one that Unicode lowercasing would turn into an id.
+func TestParseProviderRejectsLookAlikes(t *testing.T) {
+	for _, in := range []string{
+		"\u212Aimi",    // KELVIN SIGN, lowercases to "k"
+		"cop\u0130lot", // LATIN CAPITAL LETTER I WITH DOT ABOVE, lowercases to "i"
+		"gem\u0130n\u0130",
+		"\u212A\u0130M\u0130",
+		"ｃｌａｕｄｅ",       // fullwidth letters
+		"claude\u200b", // ZERO WIDTH SPACE is not trimmed
+		"c\u0301laude", // combining accent
+	} {
+		if got, err := ParseProvider(in); !errors.Is(err, ErrUnknownProvider) || got != "" {
+			t.Errorf("ParseProvider(%q) = %q, %v; want ErrUnknownProvider", in, got, err)
+		}
+	}
+}
+
 func TestParseProvidersSkipsEmptyAndDuplicates(t *testing.T) {
 	got, err := parseProviders(strings.Split("Claude, codex,,claude,", ","))
 	want := []transcript.Provider{transcript.ProviderClaude, transcript.ProviderCodex}
@@ -67,7 +90,7 @@ func TestParseProvidersSkipsEmptyAndDuplicates(t *testing.T) {
 // A typed name either parses to a canonical provider or fails with one of
 // the two errors; it never yields anything else.
 func FuzzParseProvider(f *testing.F) {
-	for _, seed := range []string{"", " ", "claude", "Claude", " CODEX ", "gpt", "open code", "\x00", "ｃｌａｕｄｅ", "ǅ"} {
+	for _, seed := range []string{"", " ", "claude", "Claude", " CODEX ", "gpt", "open code", "\x00", "ｃｌａｕｄｅ", "ǅ", "\u212Aimi", "cop\u0130lot", "claude\u00a0"} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, in string) {
@@ -76,6 +99,17 @@ func FuzzParseProvider(f *testing.F) {
 		case err == nil:
 			if !p.Valid() || !slices.Contains(transcript.Providers(), p) {
 				t.Fatalf("ParseProvider(%q) = %q, not a canonical provider", in, p)
+			}
+			// Only ASCII case may differ: the trimmed input is ASCII and
+			// spells the id.
+			trimmed := strings.TrimSpace(in)
+			for i := 0; i < len(trimmed); i++ {
+				if trimmed[i] >= utf8.RuneSelf {
+					t.Fatalf("ParseProvider(%q) = %q from non-ASCII input", in, p)
+				}
+			}
+			if !strings.EqualFold(trimmed, string(p)) {
+				t.Fatalf("ParseProvider(%q) = %q, which the input does not spell", in, p)
 			}
 		case errors.Is(err, ErrNoProvider), errors.Is(err, ErrUnknownProvider):
 			if p != "" {
