@@ -49,7 +49,7 @@ type Source struct {
 // Otherwise the session id is matched against rollout file names under
 // sessions/ and archived_sessions/, the same way open rollouts are matched.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderCodex) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderCodex {
 		return nil, nil
 	}
 	if meta.RolloutPath != "" {

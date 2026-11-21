@@ -74,7 +74,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			continue
 		}
 		meta.ID = sessionIDFromPath(c.path)
-		meta.Provider = string(transcript.ProviderClaude)
+		meta.Provider = transcript.ProviderClaude
 		meta.State = session.SessionStateEnded
 		meta.RolloutPath = c.path
 		meta.LastActivityAt = &c.mtime

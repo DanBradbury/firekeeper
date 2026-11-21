@@ -133,12 +133,12 @@ type Bucket struct {
 
 // Report is the breakdown of one window.
 type Report struct {
-	GeneratedAt time.Time `json:"generated_at"`
-	Provider    string    `json:"provider"`
-	Period      Period    `json:"period"`
-	Basis       Basis     `json:"basis"`
-	Start       time.Time `json:"window_start"`
-	End         time.Time `json:"window_end"`
+	GeneratedAt time.Time           `json:"generated_at"`
+	Provider    transcript.Provider `json:"provider"`
+	Period      Period              `json:"period"`
+	Basis       Basis               `json:"basis"`
+	Start       time.Time           `json:"window_start"`
+	End         time.Time           `json:"window_end"`
 	// UsedPercent is the provider's own figure when it reported one.
 	UsedPercent *float64  `json:"used_percent"`
 	Total       Tokens    `json:"tokens"`
@@ -226,7 +226,7 @@ func Build(ctx context.Context, now time.Time, opts Options) (Report, error) {
 
 func newReport(now time.Time, provider transcript.Provider, period Period, basis Basis, start, end time.Time) Report {
 	r := Report{
-		GeneratedAt: now.UTC(), Provider: string(provider), Period: period, Basis: basis,
+		GeneratedAt: now.UTC(), Provider: provider, Period: period, Basis: basis,
 		Start: start.UTC(), End: end.UTC(),
 		Sessions: []Session{}, ByModel: []Group{}, ByProject: []Group{}, Notes: []string{},
 	}

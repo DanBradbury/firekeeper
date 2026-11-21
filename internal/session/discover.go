@@ -15,6 +15,7 @@ import (
 
 	"github.com/firekeeper-ai/firekeeper/internal/parallel"
 	"github.com/firekeeper-ai/firekeeper/internal/sqlitejson"
+	"github.com/firekeeper-ai/firekeeper/pkg/event"
 )
 
 // Options configures discovery. Zero values use the local environment.
@@ -51,12 +52,12 @@ type Options struct {
 // token breakdowns remain zero; aggregate tokens are retained in TokensUsed.
 // Discovery does not scan full transcripts to infer unavailable totals.
 type Meta struct {
-	ID        string `json:"session_id"`
-	PID       int    `json:"pid"`
-	TTY       string `json:"tty"`
-	MachineID string `json:"machine_id"`
-	Project   string `json:"project"`
-	Provider  string `json:"provider"`
+	ID        string         `json:"session_id"`
+	PID       int            `json:"pid"`
+	TTY       string         `json:"tty"`
+	MachineID string         `json:"machine_id"`
+	Project   string         `json:"project"`
+	Provider  event.Provider `json:"provider"`
 	// Origin is "cloud" for a session that ran on a hosted service and was
 	// imported, and empty for one that ran on this machine.
 	Origin string `json:"-"`
@@ -288,7 +289,7 @@ func Discover(ctx context.Context, opts Options) ([]Meta, error) {
 				cwd = rootCWDs[i]
 			}
 			project := projects[cwd]
-			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: string(g.Provider), Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
+			metas = append(metas, Meta{ID: s.ID, PID: g.Root.PID, TTY: g.Root.TTY, MachineID: machine, Project: project, Provider: g.Provider, Title: s.Name, Branch: s.GitBranch, StartedAt: optionalTime(s.StartedAt), LastActivityAt: optionalTime(s.UpdatedAt), Name: s.Name, State: s.State, CWD: cwd, Model: s.Model, Source: s.Source, Repository: s.Repository, GitBranch: s.GitBranch, RolloutPath: s.RolloutPath, UpdatedAt: s.UpdatedAt, TokensUsed: s.TokensUsed, UndercountWarning: s.UndercountWarning, ParentID: s.ParentID, AgentName: s.AgentName, AgentRole: s.AgentRole, ForkedFromID: s.ForkedFrom, Runtime: *g})
 		}
 	}
 	if err := ctx.Err(); err != nil {

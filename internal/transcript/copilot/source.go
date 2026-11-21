@@ -50,7 +50,7 @@ type Source struct {
 // to the same session. Otherwise the file is looked up by session id under
 // session-state/.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderCopilot) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderCopilot {
 		return nil, nil
 	}
 	if meta.RolloutPath != "" && filepath.Base(meta.RolloutPath) == eventsFile {

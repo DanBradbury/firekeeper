@@ -49,7 +49,7 @@ type Source struct {
 // against session directories in every work directory bucket. Subagent logs
 // are not returned; see NOTES.md.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderKimi) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderKimi {
 		return nil, nil
 	}
 	if !validID(meta.ID) {

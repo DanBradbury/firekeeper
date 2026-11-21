@@ -68,7 +68,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		}
 		meta := session.Meta{
 			ID:          id,
-			Provider:    string(transcript.ProviderKimi),
+			Provider:    transcript.ProviderKimi,
 			State:       session.SessionStateEnded,
 			RolloutPath: c.path,
 			Source:      "Kimi Code",

@@ -60,7 +60,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		}
 		meta := session.Meta{
 			ID:             row.ID,
-			Provider:       string(transcript.ProviderOpenCode),
+			Provider:       transcript.ProviderOpenCode,
 			State:          session.SessionStateEnded,
 			CWD:            clean(row.Directory),
 			Model:          clean(session.OpenCodeModel([]byte(row.Model))),

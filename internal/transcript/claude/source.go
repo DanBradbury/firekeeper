@@ -51,7 +51,7 @@ type Source struct {
 // in every project directory. Subagent transcripts are not returned; see
 // NOTES.md.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderClaude) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderClaude {
 		return nil, nil
 	}
 	if !session.ValidUUID(meta.ID) {

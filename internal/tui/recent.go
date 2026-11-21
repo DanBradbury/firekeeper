@@ -171,7 +171,7 @@ func (m *model) openRecentChat() tea.Cmd {
 		provider: recent.provider,
 		meta: session.Meta{
 			ID:          recent.id,
-			Provider:    string(recent.provider),
+			Provider:    recent.provider,
 			CWD:         recent.cwd,
 			RolloutPath: recent.path,
 		},
@@ -221,12 +221,12 @@ func recentTitle(recent recentSession) string {
 
 // RecentSessionReport is one row of `firekeeper recent --json`.
 type RecentSessionReport struct {
-	SessionID      string     `json:"session_id"`
-	Provider       string     `json:"provider"`
-	Title          string     `json:"title"`
-	Project        string     `json:"project"`
-	CWD            string     `json:"cwd"`
-	LastActivityAt *time.Time `json:"last_activity_at"`
+	SessionID      string              `json:"session_id"`
+	Provider       transcript.Provider `json:"provider"`
+	Title          string              `json:"title"`
+	Project        string              `json:"project"`
+	CWD            string              `json:"cwd"`
+	LastActivityAt *time.Time          `json:"last_activity_at"`
 }
 
 // RecentReport is the output of `firekeeper recent --json`: the same cross-
@@ -274,7 +274,7 @@ func buildRecentReport(now time.Time, sessions []recentSession) RecentReport {
 	for _, s := range sessions {
 		row := RecentSessionReport{
 			SessionID: s.id,
-			Provider:  string(s.provider),
+			Provider:  s.provider,
 			Title:     emptyFallback(s.title, dashShortID(s.id)),
 			Project:   s.project,
 			CWD:       s.cwd,

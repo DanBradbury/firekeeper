@@ -72,7 +72,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		mtime := c.mtime
 		meta := session.Meta{
 			ID:             session.CursorTranscriptID(c.path),
-			Provider:       string(transcript.ProviderCursor),
+			Provider:       transcript.ProviderCursor,
 			State:          session.SessionStateEnded,
 			CWD:            session.SanitizeProcessCommand(cwd),
 			Project:        reader.ProjectName(cwd),

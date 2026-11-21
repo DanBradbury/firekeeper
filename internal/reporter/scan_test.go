@@ -280,7 +280,7 @@ func TestScanNeverOpensDisallowedOrExcluded(t *testing.T) {
 				t.Fatalf("read %d sessions (%d results), want %d", got.Scan.Read, len(got.Sessions), wantRead)
 			}
 			for _, s := range got.Sessions {
-				if s.Provider != string(transcript.ProviderCodex) {
+				if s.Provider != transcript.ProviderCodex {
 					t.Fatalf("read a %s session", s.Provider)
 				}
 			}

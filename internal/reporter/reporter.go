@@ -116,7 +116,7 @@ func (cfg Config) Uploading() bool {
 
 // SessionResult summarizes one session's pass.
 type SessionResult struct {
-	Provider   string
+	Provider   transcript.Provider
 	SessionID  string
 	Project    string
 	Skipped    string // reason the session was not read, if any
@@ -177,14 +177,14 @@ func RunOnce(ctx context.Context, cfg Config) (Summary, error) {
 	if warning != nil {
 		summary.Warning = warning
 	}
-	seen := map[string]bool{}
-	live := map[string]bool{}
+	seen := map[sessionKey]bool{}
+	live := map[sessionKey]bool{}
 	for _, meta := range metas {
 		if meta.ID == "" {
 			continue // a runtime with no session metadata has no transcript
 		}
-		live[liveKey(meta)] = true
-		key := meta.Provider + "\x00" + meta.ID
+		live[matchKey(meta.Provider, meta.ID)] = true
+		key := sessionKey{provider: meta.Provider, id: meta.ID}
 		if seen[key] {
 			continue
 		}
@@ -328,7 +328,7 @@ func newRun(ctx context.Context, cfg Config) (*run, error) {
 func (r *run) session(ctx context.Context, meta session.Meta) SessionResult {
 	result := SessionResult{Provider: meta.Provider, SessionID: meta.ID, Project: meta.Project,
 		State: stateName(meta.State), LastActivityAt: meta.LastActivityAt}
-	provider := transcript.Provider(meta.Provider)
+	provider := meta.Provider
 	source, ok := r.sources(provider)
 	switch {
 	case !ok:
@@ -511,8 +511,8 @@ type machine struct {
 }
 
 type ingestMeta struct {
-	SessionID string `json:"session_id"`
-	Provider  string `json:"provider"`
+	SessionID string              `json:"session_id"`
+	Provider  transcript.Provider `json:"provider"`
 	// Origin is "cloud" for imported hosted sessions. Empty is omitted, which
 	// servers read as a local session.
 	Origin         string     `json:"origin,omitempty"`
