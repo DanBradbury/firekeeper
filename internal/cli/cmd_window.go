@@ -40,7 +40,15 @@ var windowNow = time.Now
 func runWindow(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("firekeeper window", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	provider := fs.String("provider", string(transcript.ProviderClaude), "provider to review")
+	prov := transcript.ProviderClaude
+	fs.Func("provider", "provider to review (default claude)", func(value string) error {
+		p, err := config.ParseProvider(value)
+		if err != nil {
+			return err
+		}
+		prov = p
+		return nil
+	})
 	weekly := fs.Bool("week", false, "review the weekly window instead of the 5-hour one")
 	asJSON := fs.Bool("json", false, "print the breakdown as JSON")
 	htmlPath := fs.String("html", "", "write the breakdown as a standalone HTML page to `file` and print its file:// URL")
@@ -58,12 +66,6 @@ func runWindow(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "firekeeper window: use --json or --html, not both")
 		return 2
 	}
-	prov := transcript.Provider(*provider)
-	if !prov.Valid() {
-		fmt.Fprintf(stderr, "firekeeper window: unknown provider %q\n", *provider)
-		return 2
-	}
-
 	period := window.PeriodFiveHour
 	timeout := time.Minute
 	if *weekly {

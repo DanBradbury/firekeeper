@@ -264,7 +264,7 @@ func newRun(ctx context.Context, cfg Config) (*run, error) {
 	}
 	for _, p := range cfg.Providers {
 		if !p.Valid() {
-			return nil, fmt.Errorf("unknown provider %q", p)
+			return nil, fmt.Errorf("%w %q", config.ErrUnknownProvider, p)
 		}
 		r.allowed[p] = true
 	}

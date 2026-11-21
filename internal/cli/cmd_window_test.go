@@ -25,15 +25,37 @@ func stubWindow(t *testing.T) {
 
 func TestWindowRejectsBadInput(t *testing.T) {
 	stubWindow(t)
-	for _, args := range [][]string{
-		{"--provider", "nope"},
-		{"--json", "--html", "x.html"},
-		{"extra"},
-		{"--bogus"},
+	for _, test := range []struct {
+		args   []string
+		stderr string
+	}{
+		{[]string{"--provider", "nope"}, `unknown provider "nope"`},
+		{[]string{"--provider", ""}, "no provider given"},
+		{[]string{"--json", "--html", "x.html"}, "not both"},
+		{[]string{"extra"}, "unexpected argument"},
+		{[]string{"--bogus"}, "not defined"},
 	} {
 		var out, errb bytes.Buffer
-		if code := runWindow(args, &out, &errb); code != 2 {
-			t.Errorf("%v: code %d, want 2 (stderr %q)", args, code, errb.String())
+		if code := runWindow(test.args, &out, &errb); code != 2 || !strings.Contains(errb.String(), test.stderr) {
+			t.Errorf("%v: code %d, stderr %q; want 2 and %q", test.args, code, errb.String(), test.stderr)
+		}
+	}
+}
+
+// --provider accepts a name in any case and with surrounding spaces, like
+// every other command's --provider, and reports the canonical id.
+func TestWindowProviderIgnoresCaseAndSpaces(t *testing.T) {
+	stubWindow(t)
+	for _, name := range []string{"Claude", " claude ", "CLAUDE"} {
+		var out, errb bytes.Buffer
+		if code := runWindow([]string{"--provider", name, "--json"}, &out, &errb); code != 0 {
+			t.Fatalf("--provider %q: code %d: %s", name, code, errb.String())
+		}
+		var got struct {
+			Provider string `json:"provider"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil || got.Provider != "claude" {
+			t.Fatalf("--provider %q: provider %q, %v; want claude", name, got.Provider, err)
 		}
 	}
 }

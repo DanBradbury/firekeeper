@@ -355,16 +355,52 @@ func (c Config) Apply(o Overrides) Config {
 	return c
 }
 
+var (
+	// ErrUnknownProvider is a provider name that is not in
+	// transcript.Providers().
+	ErrUnknownProvider = errors.New("unknown provider")
+	// ErrNoProvider is an empty provider name.
+	ErrNoProvider = errors.New("no provider given")
+)
+
+// ParseProvider reads a provider name a person typed, in a flag or the
+// config: surrounding spaces and case do not matter. It returns the
+// canonical provider, ErrNoProvider for an empty name, or an error wrapping
+// ErrUnknownProvider. Data from other programs is checked strictly with
+// Provider.Valid instead.
+func ParseProvider(name string) (transcript.Provider, error) {
+	p := transcript.Provider(strings.ToLower(strings.TrimSpace(name)))
+	switch {
+	case p == "":
+		return "", ErrNoProvider
+	case !p.Valid():
+		return "", fmt.Errorf("%w %q (want one of %s)", ErrUnknownProvider, name, providerNames())
+	}
+	return p, nil
+}
+
+// providerNames lists every provider, comma separated, for error messages.
+func providerNames() string {
+	providers := transcript.Providers()
+	names := make([]string, len(providers))
+	for i, p := range providers {
+		names[i] = string(p)
+	}
+	return strings.Join(names, ", ")
+}
+
+// parseProviders reads a list of provider names. Empty entries, such as the
+// one after a trailing comma, are skipped; duplicates are kept once.
 func parseProviders(names []string) ([]transcript.Provider, error) {
 	out := []transcript.Provider{}
 	seen := map[transcript.Provider]bool{}
 	for _, n := range names {
-		p := transcript.Provider(strings.ToLower(strings.TrimSpace(n)))
-		if p == "" {
+		p, err := ParseProvider(n)
+		if errors.Is(err, ErrNoProvider) {
 			continue
 		}
-		if !p.Valid() {
-			return nil, fmt.Errorf("unknown provider %q", n)
+		if err != nil {
+			return nil, err
 		}
 		if !seen[p] {
 			seen[p] = true
