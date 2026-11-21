@@ -32,7 +32,7 @@ var (
 
 // Locate returns the cached transcript for meta, if there is one.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderClaude) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderClaude {
 		return nil, nil
 	}
 	if !safeID(meta.ID) {
@@ -120,7 +120,7 @@ func metaFor(dir string, info SessionInfo) session.Meta {
 	cwd := cwdFor(info)
 	meta := session.Meta{
 		ID:          info.ID,
-		Provider:    string(transcript.ProviderClaude),
+		Provider:    transcript.ProviderClaude,
 		Origin:      Origin,
 		State:       session.SessionStateEnded,
 		CWD:         cwd,

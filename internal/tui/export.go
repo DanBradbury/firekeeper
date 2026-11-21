@@ -60,19 +60,19 @@ var errExportServerOld = errors.New("this firekeeper-server cannot export; run `
 // shareSession is the session line `firekeeper-server share` reads first,
 // with the field names of the server's read API.
 type shareSession struct {
-	SessionID      string        `json:"session_id"`
-	Provider       string        `json:"provider"`
-	Origin         string        `json:"origin"`
-	CWD            string        `json:"cwd"`
-	Project        string        `json:"project"`
-	Branch         string        `json:"branch"`
-	Model          string        `json:"model"`
-	State          session.State `json:"state"`
-	Title          string        `json:"title"`
-	StartedAt      *time.Time    `json:"started_at"`
-	LastActivityAt *time.Time    `json:"last_activity_at"`
-	EventCount     int64         `json:"event_count"`
-	Tokens         event.Tokens  `json:"tokens"`
+	SessionID      string              `json:"session_id"`
+	Provider       transcript.Provider `json:"provider"`
+	Origin         string              `json:"origin"`
+	CWD            string              `json:"cwd"`
+	Project        string              `json:"project"`
+	Branch         string              `json:"branch"`
+	Model          string              `json:"model"`
+	State          session.State       `json:"state"`
+	Title          string              `json:"title"`
+	StartedAt      *time.Time          `json:"started_at"`
+	LastActivityAt *time.Time          `json:"last_activity_at"`
+	EventCount     int64               `json:"event_count"`
+	Tokens         event.Tokens        `json:"tokens"`
 }
 
 // shareFile is one changed file in the share header.
@@ -220,7 +220,7 @@ func writeSessionExport(ctx context.Context, meta session.Meta) (string, error) 
 // readSessionForExport reads every event of the session's transcript,
 // redacted, and the header describing it.
 func readSessionForExport(meta session.Meta, home string) (shareHeader, []event.Event, error) {
-	source, ok := reader.For(transcript.Provider(meta.Provider))
+	source, ok := reader.For(meta.Provider)
 	if !ok {
 		return shareHeader{}, nil, fmt.Errorf("no transcript reader for %s sessions", meta.Provider)
 	}
@@ -374,7 +374,7 @@ func exportFilename(meta session.Meta) string {
 		id = "session"
 	}
 	name := "firekeeper"
-	if p := unsafeExportName.ReplaceAllString(meta.Provider, ""); p != "" {
+	if p := unsafeExportName.ReplaceAllString(string(meta.Provider), ""); p != "" {
 		name += "-" + p
 	}
 	return name + "-" + id + ".html"

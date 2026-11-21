@@ -92,7 +92,7 @@ func TestDiscoverFixtureTree(t *testing.T) {
 	if len(metas) != 4 {
 		t.Fatalf("got %d sessions, want four runtimes", len(metas))
 	}
-	expected := map[string]struct {
+	expected := map[event.Provider]struct {
 		id    string
 		state State
 	}{"codex": {codexID, SessionStateWaiting}, "copilot": {copilotID, SessionStateActive}, "kimi": {"kimi-id", SessionStateActive}, "opencode": {"", SessionStateUnknown}}
@@ -222,6 +222,19 @@ func TestMetaReportingContract(t *testing.T) {
 	}
 	if string(got["state"]) != `"NEEDS_INPUT"` {
 		t.Errorf("unexpected wire state %s", got["state"])
+	}
+	// Provider is typed, but its JSON is the plain id, and it decodes back.
+	if string(got["provider"]) != `"codex"` {
+		t.Errorf("unexpected wire provider %s", got["provider"])
+	}
+	var back Meta
+	if err := json.Unmarshal(encoded, &back); err != nil || back.Provider != event.ProviderCodex {
+		t.Errorf("decoded provider %q, %v; want codex", back.Provider, err)
+	}
+	// Decoding does not validate: an unknown id is kept as is, for the
+	// checks that already handle data from other programs to reject.
+	if err := json.Unmarshal([]byte(`{"provider":"zed"}`), &back); err != nil || back.Provider != "zed" {
+		t.Errorf("decoded unknown provider %q, %v; want it kept", back.Provider, err)
 	}
 	var decoded Meta
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
@@ -484,8 +497,8 @@ func TestDiscoverLinkFailureKeepsOtherProviders(t *testing.T) {
 		t.Fatalf("got %d sessions, want %d", len(metas), len(adapters))
 	}
 	for _, m := range metas {
-		want, state := m.Provider+"-session", SessionStateActive
-		if m.Provider == string(event.ProviderClaude) {
+		want, state := string(m.Provider)+"-session", SessionStateActive
+		if m.Provider == event.ProviderClaude {
 			want, state = "", SessionStateUnknown
 		}
 		if m.ID != want || m.State != state {

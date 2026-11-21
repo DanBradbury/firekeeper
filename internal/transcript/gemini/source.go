@@ -55,7 +55,7 @@ func (s *Source) dirs() ([]string, error) {
 // record names this session. Otherwise the log is searched for by id.
 // Subagent logs are not returned; see NOTES.md.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderGemini) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderGemini {
 		return nil, nil
 	}
 	if !session.ValidGeminiSessionID(meta.ID) {

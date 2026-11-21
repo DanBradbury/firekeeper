@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/session"
@@ -49,7 +48,7 @@ type ScanSummary struct {
 // with the state its enumerator reports (ENDED). Exclusion is decided in
 // the enumerator's Skip, before the transcript is opened, and again in
 // session as for any session. Only an error from ctx stops the pass.
-func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) error {
+func (r *run) scan(ctx context.Context, live map[sessionKey]bool, summary *Summary) error {
 	cfg := r.cfg
 	enumerators := cfg.ScanEnumerators
 	if enumerators == nil {
@@ -94,7 +93,7 @@ func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) 
 
 	var candidates []session.Meta
 	activity := map[string]time.Time{}
-	seen := map[string]bool{}
+	seen := map[sessionKey]bool{}
 	done := map[transcript.Provider]bool{}
 	for _, provider := range cfg.Providers {
 		if done[provider] || !r.allowed[provider] {
@@ -116,7 +115,7 @@ func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) 
 		metas, err := enumerator.Enumerate(ctx, reader.EnumerateOptions{
 			ModifiedAfter: after,
 			Skip: func(meta session.Meta) bool {
-				if live[scanKey(provider, meta.ID)] {
+				if live[matchKey(provider, meta.ID)] {
 					return true
 				}
 				if r.skipReason(meta) != "" {
@@ -144,10 +143,10 @@ func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) 
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if meta.ID == "" || live[scanKey(provider, meta.ID)] {
+			if meta.ID == "" || live[matchKey(provider, meta.ID)] {
 				continue
 			}
-			meta.Provider = string(provider)
+			meta.Provider = provider
 			changed, mtime, err := r.changed(source, meta)
 			if err != nil {
 				scan.Complete = false
@@ -157,7 +156,7 @@ func (r *run) scan(ctx context.Context, live map[string]bool, summary *Summary) 
 			if !changed {
 				continue
 			}
-			key := scanKey(provider, meta.ID)
+			key := matchKey(provider, meta.ID)
 			if seen[key] {
 				continue
 			}
@@ -243,6 +242,3 @@ func (r *run) changed(source reader.Source, meta session.Meta) (bool, time.Time,
 }
 
 // scanKey matches liveKey for a session of provider.
-func scanKey(provider transcript.Provider, id string) string {
-	return string(provider) + "\x00" + strings.ToLower(id)
-}

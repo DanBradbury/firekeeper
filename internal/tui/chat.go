@@ -82,7 +82,7 @@ func (m *model) openChat() tea.Cmd {
 		provider: group.provider,
 		meta: session.Meta{
 			ID:          info.id,
-			Provider:    string(group.provider),
+			Provider:    group.provider,
 			Name:        info.name,
 			State:       info.state,
 			CWD:         info.cwd,
@@ -103,7 +103,7 @@ func (m *model) openChat() tea.Cmd {
 func loadChat(rootPID int, meta session.Meta, paths []string, offsets map[string]int64) tea.Cmd {
 	return func() tea.Msg {
 		result := chatResultMsg{rootPID: rootPID, sessionID: meta.ID, loadedAt: time.Now()}
-		source, ok := reader.For(transcript.Provider(meta.Provider))
+		source, ok := reader.For(meta.Provider)
 		if !ok {
 			result.err = fmt.Errorf("no transcript reader for %s sessions", meta.Provider)
 			return result

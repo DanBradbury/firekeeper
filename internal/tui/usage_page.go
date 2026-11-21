@@ -167,7 +167,7 @@ func (m *model) openUsageSessionChat() tea.Cmd {
 		provider: page.Provider,
 		meta: session.Meta{
 			ID:       selected.ID,
-			Provider: string(page.Provider),
+			Provider: page.Provider,
 			CWD:      selected.WorkDir,
 		},
 		title:   usageProjectName(selected) + "/" + dashShortID(selected.ID),

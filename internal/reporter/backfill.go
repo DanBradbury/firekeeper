@@ -397,7 +397,7 @@ func (r *run) plan(ctx context.Context, cfg BackfillConfig, warnings *[]string) 
 
 	sortNewestFirst(all)
 	for i, ps := range all {
-		pp := byProvider[transcript.Provider(ps.meta.Provider)]
+		pp := byProvider[ps.meta.Provider]
 		if cfg.Limit > 0 && i >= cfg.Limit {
 			pp.OverLimit++
 			continue
@@ -517,15 +517,15 @@ func countLines(ctx context.Context, path string, from int64) (int64, error) {
 func sortNewestFirst(sessions []plannedSession) {
 	metas := make([]session.Meta, len(sessions))
 	fallback := map[string]time.Time{}
-	byKey := map[string]plannedSession{}
+	byKey := map[sessionKey]plannedSession{}
 	for i, ps := range sessions {
 		metas[i] = ps.meta
 		fallback[ps.meta.RolloutPath] = ps.activity
-		byKey[ps.meta.Provider+"\x00"+ps.meta.ID] = ps
+		byKey[sessionKey{provider: ps.meta.Provider, id: ps.meta.ID}] = ps
 	}
 	reader.SortNewestFirst(metas, fallback)
 	for i, meta := range metas {
-		sessions[i] = byKey[meta.Provider+"\x00"+meta.ID]
+		sessions[i] = byKey[sessionKey{provider: meta.Provider, id: meta.ID}]
 	}
 }
 
@@ -538,7 +538,7 @@ func (r *run) withLive(ctx context.Context, planned []plannedSession, warnings *
 	if err != nil {
 		return nil, err
 	}
-	live := map[string]session.Meta{}
+	live := map[sessionKey]session.Meta{}
 	found, err := r.discover(ctx, session.Options{Home: r.cfg.Home})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -548,23 +548,19 @@ func (r *run) withLive(ctx context.Context, planned []plannedSession, warnings *
 	}
 	for _, meta := range found {
 		if meta.ID != "" {
-			live[liveKey(meta)] = meta
+			live[matchKey(meta.Provider, meta.ID)] = meta
 		}
 	}
 	metas := make([]session.Meta, len(planned))
 	for i, ps := range planned {
 		meta := ps.meta
 		meta.MachineID = machineID
-		if l, ok := live[liveKey(meta)]; ok {
+		if l, ok := live[matchKey(meta.Provider, meta.ID)]; ok {
 			meta = mergeLive(meta, l)
 		}
 		metas[i] = meta
 	}
 	return metas, nil
-}
-
-func liveKey(meta session.Meta) string {
-	return meta.Provider + "\x00" + strings.ToLower(meta.ID)
 }
 
 // mergeLive overlays a running session's discovered metadata on its

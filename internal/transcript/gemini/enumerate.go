@@ -83,7 +83,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 		}
 		meta := session.Meta{
 			ID:          t.SessionID,
-			Provider:    string(transcript.ProviderGemini),
+			Provider:    transcript.ProviderGemini,
 			State:       session.SessionStateEnded,
 			RolloutPath: c.path,
 			Source:      session.GeminiSource,

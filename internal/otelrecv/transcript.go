@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/firekeeper-ai/firekeeper/internal/session"
+	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript/claude"
 )
 
@@ -57,7 +58,7 @@ func LoadTranscript(sessionID, configDir string) (SessionUsage, error) {
 	if !session.ValidUUID(sessionID) {
 		return SessionUsage{}, nil
 	}
-	paths, err := (&claude.Source{ConfigDir: configDir}).Locate(session.Meta{ID: sessionID, Provider: "claude"})
+	paths, err := (&claude.Source{ConfigDir: configDir}).Locate(session.Meta{ID: sessionID, Provider: transcript.ProviderClaude})
 	if err != nil {
 		return SessionUsage{}, errors.New("transcript unreadable")
 	}

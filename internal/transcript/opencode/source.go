@@ -75,7 +75,7 @@ func (s *Source) database() (string, error) {
 // Locate returns the transcript path for meta when its session is in the
 // database. Discovery already sets meta.RolloutPath for running sessions.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderOpenCode) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderOpenCode {
 		return nil, nil
 	}
 	if !session.ValidOpenCodeSessionID(meta.ID) {

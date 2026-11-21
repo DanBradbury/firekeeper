@@ -59,7 +59,7 @@ func (s *Source) dir() (string, error) {
 // names this session. Otherwise the id is searched for in every project
 // directory. Subagent transcripts are not returned; see NOTES.md.
 func (s *Source) Locate(meta session.Meta) ([]string, error) {
-	if meta.Provider != "" && meta.Provider != string(transcript.ProviderCursor) {
+	if meta.Provider != "" && meta.Provider != transcript.ProviderCursor {
 		return nil, nil
 	}
 	if !session.ValidUUID(meta.ID) {

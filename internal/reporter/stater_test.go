@@ -65,7 +65,7 @@ func (s *rowSource) Pending(_ context.Context, _ string, from int64) (int64, int
 func rowConfig(f *fixture, source *rowSource, server string) Config {
 	cfg := f.config(server)
 	cfg.Providers = []transcript.Provider{transcript.ProviderOpenCode}
-	f.meta.Provider = string(transcript.ProviderOpenCode)
+	f.meta.Provider = transcript.ProviderOpenCode
 	f.meta.RolloutPath = rowPath
 	cfg.Sources = func(p transcript.Provider) (reader.Source, bool) {
 		return source, p == transcript.ProviderOpenCode

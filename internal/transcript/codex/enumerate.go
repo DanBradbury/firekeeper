@@ -111,7 +111,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			bad++
 			continue
 		}
-		meta := session.Meta{ID: c.id, Provider: string(transcript.ProviderCodex), State: session.SessionStateEnded, RolloutPath: c.path}
+		meta := session.Meta{ID: c.id, Provider: transcript.ProviderCodex, State: session.SessionStateEnded, RolloutPath: c.path}
 		// A row whose source column is filled says authoritatively whether
 		// the thread is a subagent; the rollout head is consulted only
 		// without one.

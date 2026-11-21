@@ -56,7 +56,7 @@ func (s *Source) Enumerate(ctx context.Context, opts reader.EnumerateOptions) ([
 			bad++
 			continue
 		}
-		meta := session.Meta{ID: id, Provider: string(transcript.ProviderCopilot), State: session.SessionStateEnded, RolloutPath: path}
+		meta := session.Meta{ID: id, Provider: transcript.ProviderCopilot, State: session.SessionStateEnded, RolloutPath: path}
 		gitRoot := ""
 		if ws, err := session.ReadCopilotWorkspace(filepath.Join(filepath.Dir(path), "workspace.yaml")); err == nil {
 			meta.CWD = clean(session.FirstNonEmpty(ws.CWD, ws.GitRoot))
