@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/firekeeper-ai/firekeeper/internal/config"
 	"github.com/firekeeper-ai/firekeeper/internal/session"
 	"github.com/firekeeper-ai/firekeeper/internal/testenv/fakeapi"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
@@ -623,8 +625,14 @@ func TestRunOnceRejectsBadConfig(t *testing.T) {
 	}
 	cfg = f.config("")
 	cfg.Providers = []transcript.Provider{"nope"}
-	if _, err := RunOnce(context.Background(), cfg); err == nil {
-		t.Fatal("accepted unknown provider")
+	if _, err := RunOnce(context.Background(), cfg); !errors.Is(err, config.ErrUnknownProvider) {
+		t.Fatalf("unknown provider: %v, want config.ErrUnknownProvider", err)
+	}
+	// Providers reach the reporter already parsed, so it checks them
+	// strictly: a typed variant is not accepted here.
+	cfg.Providers = []transcript.Provider{"Codex"}
+	if _, err := RunOnce(context.Background(), cfg); !errors.Is(err, config.ErrUnknownProvider) {
+		t.Fatalf("non-canonical provider: %v, want config.ErrUnknownProvider", err)
 	}
 }
 

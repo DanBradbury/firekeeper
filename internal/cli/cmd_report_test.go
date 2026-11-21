@@ -66,6 +66,7 @@ func TestReportExitCodes(t *testing.T) {
 		stderr  string
 	}{
 		{name: "unknown provider", args: []string{"--provider", "emacs"}, code: 2, stderr: "unknown provider"},
+		{name: "empty provider", args: []string{"--provider", ""}, code: 2, stderr: "no provider given"},
 		{name: "negative since", args: []string{"--since", "-1h"}, code: 2, stderr: "must not be negative"},
 		{name: "extra argument", args: []string{"now"}, code: 2, stderr: "unexpected argument"},
 		{name: "fatal", err: errors.New("run ps: failed"), code: 1, stderr: "firekeeper report: run ps: failed"},

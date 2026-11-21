@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/firekeeper-ai/firekeeper/internal/config"
 	"github.com/firekeeper-ai/firekeeper/internal/reporter"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
@@ -29,9 +30,9 @@ func (p *providerList) String() string {
 }
 
 func (p *providerList) Set(value string) error {
-	provider := transcript.Provider(strings.ToLower(strings.TrimSpace(value)))
-	if !provider.Valid() {
-		return fmt.Errorf("unknown provider %q", value)
+	provider, err := config.ParseProvider(value)
+	if err != nil {
+		return err
 	}
 	*p = append(*p, provider)
 	return nil

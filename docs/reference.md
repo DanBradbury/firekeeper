@@ -484,7 +484,10 @@ Reporting is a set of explicit subcommands: `report`, `backfill`, `daemon`,
 and `daemon` send session metadata and full transcripts to a dashboard server
 that speaks the [open API](api.md). Nothing is sent until you allow
 providers with `--provider`, `backfill --all`, the `FIREKEEPER_PROVIDERS`
-variable, or the config file, and point at a server. With no `--server`, the
+variable, or the config file, and point at a server. Provider names are
+`codex`, `copilot`, `kimi`, `claude`, `opencode`, `gemini`, and `cursor`;
+every `--provider` flag (including `window`'s), the variable, and the config
+file accept them in any case. With no `--server`, the
 default is the [Hosted dashboard](https://firekeeper.ai/docs/hosted/) at
 `https://dashboard.firekeeper.ai`; pass `--server URL` for a self-hosted
 Firekeeper Server. `report --dry-run` shows what would be sent without opening a

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/firekeeper-ai/firekeeper/internal/config"
 	"github.com/firekeeper-ai/firekeeper/internal/reporter"
 	"github.com/firekeeper-ai/firekeeper/internal/transcript"
 )
@@ -47,9 +48,13 @@ func (s *Service) Inspect(ctx context.Context, configServer string, configProvid
 			r.Server = v[len(v)-1]
 		}
 		if v := flagValues(args, "provider"); len(v) > 0 {
+			// The service file can be edited or stale: show only providers
+			// that still parse, the way the daemon would read them.
 			r.Providers = r.Providers[:0:0]
-			for _, p := range v {
-				r.Providers = append(r.Providers, transcript.Provider(p))
+			for _, name := range v {
+				if p, err := config.ParseProvider(name); err == nil {
+					r.Providers = append(r.Providers, p)
+				}
 			}
 		}
 	}

@@ -118,6 +118,19 @@ func TestInspect(t *testing.T) {
 		}
 	})
 
+	t.Run("installed provider flags are parsed like typed ones", func(t *testing.T) {
+		svc, _, _ := testService(t, "darwin")
+		// An edited or stale service file: case and spaces are forgiven,
+		// names that are not providers are left out.
+		svc.Args = []string{"--quiet", "--provider", " Claude ", "--provider", "gpt", "--provider=", "--provider=CODEX"}
+		writeServiceFile(t, svc)
+		r := svc.Inspect(ctx, "", nil)
+		want := []transcript.Provider{transcript.ProviderClaude, transcript.ProviderCodex}
+		if !r.Installed || !slices.Equal(r.Providers, want) {
+			t.Fatalf("Inspect = %+v, want providers %v", r, want)
+		}
+	})
+
 	t.Run("installed without server flag uses config", func(t *testing.T) {
 		svc, _, _ := testService(t, "darwin")
 		svc.Args = []string{"--quiet", "--provider", "codex"}
